@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Live settings -->
+    <string name="deeplink_live_link">5s7ta.app.link</string>
+    <string name="deeplink_alternate_live_link">5s7ta-alternate.app.link</string>
+    <string name="branch_io_sdk_live_branch_key">key_live_lrbMnMpq36W4J5Rcx2zFfjikywidq0Yl</string>
+    <string name="branch_io_sdk_live_branch_secret">secret_live_fEB2kx43FqKusZV6wlk94q1j9XPeRwvm</string>
+    <string name="branch_io_sdk_live_app_id">1306606534616174716</string>
+    <!-- Test settings -->
+    <string name="deeplink_test_link">5s7ta.test-app.link</string>
+    <string name="deeplink_alternate_test_link">5s7ta-alternate.test-app.link</string>
+    <string name="branch_io_sdk_test_branch_key">key_test_hBiNkVpD3069M1Ibv9rdWnebEEljE0N1</string>
+    <string name="branch_io_sdk_test_branch_secret">secret_test_QopvRC0XWmAaT2adrvKxVkf6SoYyuyTc</string>
+    <string name="branch_io_sdk_test_app_id">1306606534611980411</string>
+</resources>
