@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>102260646186-7fsip5k5q2jv1v03chat37nm0glfgp56.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.102260646186-7fsip5k5q2jv1v03chat37nm0glfgp56</string>
+	<key>API_KEY</key>
+	<string>AIzaSyCb1tSspJYWs39XAUhtxwfZILAZaoVgWIc</string>
+	<key>GCM_SENDER_ID</key>
+	<string>102260646186</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.pasella.RunnerTests</string>
+	<key>PROJECT_ID</key>
+	<string>pasella-engine</string>
+	<key>STORAGE_BUCKET</key>
+	<string>pasella-engine.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:102260646186:ios:d381894fb419482a85be53</string>
+</dict>
+</plist>

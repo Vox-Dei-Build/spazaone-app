@@ -1,0 +1,169 @@
+import 'package:flutter/material.dart';
+import 'package:hive_local_storage/hive_local_storage.dart';
+import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
+import 'package:pasella/pages/auth/widgets/logo_display.dart';
+import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/vimeo_video_player.dart';
+import 'package:pasella/utils/auth_util.dart';
+import 'package:pasella/utils/phone_util.dart';
+import 'package:pasella/shared/widgets/custom_text_button.dart';
+import 'package:pasella/shared/widgets/custom_text_field.dart';
+
+class RegisterAnonymousPage extends StatefulWidget {
+  const RegisterAnonymousPage({Key? key}) : super(key: key);
+  static const id = '/registerAnonymousPage';
+
+  @override
+  _RegisterAnonymousPageState createState() => _RegisterAnonymousPageState();
+}
+
+class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
+  late AuthViewModel authViewModel;
+  late String? referrerUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    authViewModel = AuthViewModel();
+    loadInitialData();
+  }
+
+  void loadInitialData() async {
+    var box = Hive.box('deepLinkBox');
+    referrerUserId = box.get('referrerUserId', defaultValue: null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig().init(context);
+
+    return Scaffold(
+      appBar: CustomAppBar(title: 'Create Account'),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+              horizontal: SizeConfig.imageSizeMultiplier * 6),
+          child: Form(
+            key: authViewModel.registrationFormKey,
+            child: Column(
+              children: <Widget>[
+                SizedBox(height: SizeConfig.heightMultiplier * 5),
+                LogoDisplay(),
+                SizedBox(height: SizeConfig.heightMultiplier * 5),
+                CustomTextField(
+                  label: 'Full Name',
+                  hintText: 'Enter Full Name',
+                  prefixIcon: Icons.person,
+                  controller: authViewModel.nameController,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Full Name is required';
+                    }
+                    return null;
+                  },
+                ),
+                CustomTextField(
+                  label: 'Shop Name',
+                  hintText: 'Enter Shop Name',
+                  prefixIcon: Icons.store,
+                  controller: authViewModel.shopNameController,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Shop Name is required';
+                    }
+                    return null;
+                  },
+                ),
+                CustomTextField(
+                  label: 'Mobile Number',
+                  hintText: 'Enter Mobile Number',
+                  prefixIcon: Icons.phone,
+                  controller: authViewModel.registrationMobileNoController,
+                  textInputType: TextInputType.phone,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Mobile Number is required';
+                    }
+                    if (!isValidSAPhoneNumber(value)) {
+                      return 'Enter a valid SA mobile number';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                ValueListenableBuilder<bool>(
+                  valueListenable: authViewModel.isLoading,
+                  builder: (context, isLoading, child) {
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CustomButton(
+                          title: 'Create Account',
+                          onTap: isLoading
+                              ? () => null
+                              : () {
+                                  if (authViewModel
+                                      .registrationFormKey.currentState!
+                                      .validate()) {
+                                    authViewModel.registerAnonymousAccount(
+                                        context,
+                                        referrerUserId: referrerUserId);
+                                  }
+                                },
+                          color: Colors.blue,
+                          icon: Icons.person_add,
+                        ),
+                        if (isLoading)
+                          CircularProgressIndicator(
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white)),
+                      ],
+                    );
+                  },
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                CustomButton(
+                  title: 'How To Video',
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => VimeoVideoPage(
+                        videoId: '935735574',
+                        title: '',
+                      ),
+                    ));
+                  },
+                  color: Colors.lightBlue,
+                  icon: Icons.video_library,
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                OverflowBar(
+                  alignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text('Already have an account?',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: SizeConfig.textMultiplier * 2.5,
+                        )),
+                    TextButton(
+                      child: Text(
+                        'LOGIN',
+                        style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () {
+                        logout(context);
+                      },
+                    ),
+                  ],
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
