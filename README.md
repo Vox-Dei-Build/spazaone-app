@@ -37,13 +37,3 @@ flutter pub get
 ```bash
 flutter run
 ```
-
-### Screenshots
-
-<img src="./screenshots/ledger.jpg" alt="Example Image" width="250">&nbsp;&nbsp;&nbsp;
-<img src="./screenshots/accounts.jpg" alt="Example Image" width="250">&nbsp;&nbsp;&nbsp;
-<img src="./screenshots/add_contact.jpg" alt="Example Image" width="250"><br><br>
-
-<img src="./screenshots/settings.jpg" alt="Example Image" width="250">&nbsp;&nbsp;&nbsp;
-<img src="./screenshots/profile.jpg" alt="Example Image" width="250">&nbsp;&nbsp;&nbsp;
-<img src="./screenshots/account.jpg" alt="Example Image" width="250"><br><br>
