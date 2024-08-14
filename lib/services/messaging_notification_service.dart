@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pasella/services/sms_service.dart';
+import 'package:pasella/services/messaging_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 
-class SMSNotificationService {
+class MessagingNotificationService {
   Future<void> sendFormattedSMS(
     String currentUserId,
     String customerId,
@@ -17,7 +17,7 @@ class SMSNotificationService {
           await fetchAndFormatPhoneNumber(currentUserId, customerId);
 
       if (isValidSAPhoneNumber(phoneNumber) && phoneNumber != null) {
-        final smsService = await SMSService.create();
+        final messageService = await MessagingService.create();
 
         double balance = await CurrencyUtil.fetchCurrentBalanceForCustomer(
             currentUserId, customerId);
@@ -29,7 +29,15 @@ class SMSNotificationService {
         message = message.replaceAll('{shopName}', shopName);
         message = message.replaceAll('{customerName}', customerName);
 
-        smsService.sendSMS(phoneNumber, message);
+        /* await messageService.sendWhatsApp(phoneNumber, message).onError(
+            (error, stackTrace) async =>
+                {await messageService.sendSMS(phoneNumber, message)}); */
+        /* if (shouldSendViaWhatsApp) {
+          await messageService.sendWhatsApp(phoneNumber, message);
+        } else {
+          //smsService.sendSMS(phoneNumber, message);
+          await messageService.sendSMS(phoneNumber, message);
+        } */
 
         await FirebaseFirestore.instance
             .collection('users')

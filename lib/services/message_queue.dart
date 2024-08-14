@@ -1,7 +1,7 @@
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
-import 'package:pasella/services/sms_service.dart';
+import 'package:pasella/services/messaging_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 
@@ -42,7 +42,7 @@ void queueSMSMessage(String phoneNumber, String message, String currentUserId,
       success: true));
 }
 
-Future<void> sendQueuedSMSMessages(SMSService smsService) async {
+Future<void> sendQueuedSMSMessages(MessagingService smsService) async {
   final Box<QueuedSMS> box = Hive.box<QueuedSMS>('smsQueue');
   List<dynamic> keysToRemove = [];
 
@@ -63,7 +63,7 @@ Future<void> sendQueuedSMSMessages(SMSService smsService) async {
 }
 
 Future<bool> sendWithRetries(
-    SMSService smsService, QueuedSMS sms, int maxRetries) async {
+    MessagingService smsService, QueuedSMS sms, int maxRetries) async {
   int attempt = 0;
   Duration delay = Duration(seconds: 60);
 

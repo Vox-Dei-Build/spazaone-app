@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
-import 'package:pasella/services/sms_notification_service.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/whatsapp_notification_service.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -218,7 +218,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .collection('customers')
         .doc(customerId)
         .update({'lastReminderSent': DateTime.now()}).then((value) async {
-      SMSNotificationService smsService = SMSNotificationService();
+      MessagingNotificationService smsService = MessagingNotificationService();
       await smsService.sendReminderSMS(
           userId, customerId, customerName, mobileNumber);
       eventBus.fire(
