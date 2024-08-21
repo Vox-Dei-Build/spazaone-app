@@ -1,12 +1,12 @@
 import 'package:pasella/config/remote_config.dart';
 import 'package:twilio_flutter/twilio_flutter.dart';
 
-class SMSService {
+class SMSMessagingService {
   final TwilioFlutter twilioFlutter;
 
-  SMSService._(this.twilioFlutter);
+  SMSMessagingService._(this.twilioFlutter);
 
-  static SMSService create() {
+  static SMSMessagingService create() {
     final remoteConfigService = RemoteConfigService.createInstance();
 
     final twilioFlutter = TwilioFlutter(
@@ -15,7 +15,7 @@ class SMSService {
       twilioNumber: remoteConfigService.getString('TWILIO_NUMBER')!,
     );
 
-    return SMSService._(twilioFlutter);
+    return SMSMessagingService._(twilioFlutter);
   }
 
   Future<void> sendSMS(String phoneNumber, String message) async {
