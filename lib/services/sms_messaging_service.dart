@@ -1,12 +1,12 @@
 import 'package:pasella/config/remote_config.dart';
 import 'package:twilio_flutter/twilio_flutter.dart';
 
-class MessagingService {
+class SMSMessagingService {
   final TwilioFlutter twilioFlutter;
 
-  MessagingService._(this.twilioFlutter);
+  SMSMessagingService._(this.twilioFlutter);
 
-  static MessagingService create() {
+  static SMSMessagingService create() {
     final remoteConfigService = RemoteConfigService.createInstance();
 
     final twilioFlutter = TwilioFlutter(
@@ -15,19 +15,12 @@ class MessagingService {
       twilioNumber: remoteConfigService.getString('TWILIO_NUMBER')!,
     );
 
-    return MessagingService._(twilioFlutter);
+    return SMSMessagingService._(twilioFlutter);
   }
 
   Future<void> sendSMS(String phoneNumber, String message) async {
     await twilioFlutter.sendSMS(
       toNumber: phoneNumber,
-      messageBody: message,
-    );
-  }
-
-  Future<void> sendWhatsApp(String phoneNumber, String message) async {
-    await twilioFlutter.sendWhatsApp(
-      toNumber: 'whatsapp:$phoneNumber',
       messageBody: message,
     );
   }

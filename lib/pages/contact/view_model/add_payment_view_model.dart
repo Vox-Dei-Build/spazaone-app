@@ -101,7 +101,7 @@ class AddPaymentViewModel extends ChangeNotifier {
       double amountEntered, String customerName, String? mobileNumber) async {
     try {
       MessagingNotificationService smsService = MessagingNotificationService();
-      await smsService.sendConfirmationSMS(
+      await smsService.sendConfirmationMessage(
         currentUserId,
         customerId,
         "Payment",
@@ -109,8 +109,8 @@ class AddPaymentViewModel extends ChangeNotifier {
         customerName,
         mobileNumber,
       );
-      eventBus
-          .fire(SMSEvent("Payment SMS sent successfully :)", success: true));
+      eventBus.fire(
+          SMSEvent("Payment notification sent successfully :)", success: true));
     } catch (e) {
       // Handle error
     }

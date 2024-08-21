@@ -116,7 +116,7 @@ class AddCreditViewModel extends TransactionViewModel {
       double amountEntered, String customerName, String? mobileNumber) async {
     try {
       MessagingNotificationService smsService = MessagingNotificationService();
-      await smsService.sendConfirmationSMS(
+      await smsService.sendConfirmationMessage(
         currentUserId,
         customerId,
         "Credit",
@@ -124,7 +124,8 @@ class AddCreditViewModel extends TransactionViewModel {
         customerName,
         mobileNumber,
       );
-      eventBus.fire(SMSEvent("Credit SMS sent successfully :)", success: true));
+      eventBus.fire(
+          SMSEvent("Credit notification sent successfully :)", success: true));
     } catch (e) {
       print(e);
     }
