@@ -90,9 +90,9 @@ class AddContactViewModel extends ChangeNotifier {
   Future<void> _sendSMS(
       String userId, String customerId, String name, String number) async {
     MessagingNotificationService smsService = MessagingNotificationService();
-    await smsService.sendOnboardingSMS(userId, customerId, name, number);
-    eventBus
-        .fire(SMSEvent("Onboarding SMS sent successfully :)", success: true));
+    await smsService.sendOnboardingMessage(userId, customerId, name, number);
+    eventBus.fire(SMSEvent("Onboarding notification sent successfully :)",
+        success: true));
   }
 
   Future<void> pickImage(BuildContext context) async {

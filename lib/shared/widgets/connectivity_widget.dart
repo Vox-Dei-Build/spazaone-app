@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/services/message_queue.dart';
-import 'package:pasella/services/messaging_service.dart';
+import 'package:pasella/services/sms_messaging_service.dart';
 
 class ConnectivityIndicator extends StatefulWidget {
   @override
@@ -36,7 +36,7 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
     if (_lastSendAttempt == null ||
         now.difference(_lastSendAttempt!) > Duration(seconds: 10)) {
       if (result != ConnectivityResult.none) {
-        final smsService = await MessagingService.create();
+        final smsService = await SMSMessagingService.create();
         sendQueuedSMSMessages(smsService);
       }
       _lastSendAttempt = now;
