@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
-import 'package:pasella/services/sms_notification_service.dart';
-import 'package:pasella/services/whatsapp_notification_service.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/services/whatsapp_messaging_service.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -218,11 +218,11 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .collection('customers')
         .doc(customerId)
         .update({'lastReminderSent': DateTime.now()}).then((value) async {
-      SMSNotificationService smsService = SMSNotificationService();
-      await smsService.sendReminderSMS(
+      MessagingNotificationService smsService = MessagingNotificationService();
+      await smsService.sendReminderMessage(
           userId, customerId, customerName, mobileNumber);
       eventBus.fire(
-          SMSEvent("Payment Reminder sent successfully :)", success: true));
+          SMSEvent("Payment reminder sent successfully :)", success: true));
     }).catchError((error) {
       showSnackbar(context, 'Error adding credit. Please retry when online.',
           Colors.red);
@@ -233,8 +233,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
 
   Future<void> sendWhatsAppMessage(BuildContext context) async {
     sendingReminderNotifier.value = true; // Start loading
-    WhatsAppNotificationService whatsappNotificationService =
-        WhatsAppNotificationService();
+    WhatsAppMessagingService whatsappNotificationService =
+        WhatsAppMessagingService();
     try {
       await whatsappNotificationService.sendReminderWhatsapp(
           userId, customerId, customerName);
