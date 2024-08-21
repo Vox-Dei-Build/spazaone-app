@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/common/sms_event.dart';
-import 'package:pasella/services/sms_notification_service.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -89,10 +89,10 @@ class AddContactViewModel extends ChangeNotifier {
 
   Future<void> _sendSMS(
       String userId, String customerId, String name, String number) async {
-    SMSNotificationService smsService = SMSNotificationService();
-    await smsService.sendOnboardingSMS(userId, customerId, name, number);
-    eventBus
-        .fire(SMSEvent("Onboarding SMS sent successfully :)", success: true));
+    MessagingNotificationService smsService = MessagingNotificationService();
+    await smsService.sendOnboardingMessage(userId, customerId, name, number);
+    eventBus.fire(SMSEvent("Onboarding notification sent successfully :)",
+        success: true));
   }
 
   Future<void> pickImage(BuildContext context) async {
