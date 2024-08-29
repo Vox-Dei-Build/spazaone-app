@@ -22,24 +22,41 @@ export const receiveWhatsappWebhook = functions.https.onRequest((req, res) => {
 
   console.log(`Received from ${From}: ${userResponse}`);
 
-  const menuTemplate =
-    "Hello! 👋🏾 Welcome to Pasella! I'm here to help you manage your account, check your balance, view your recent transactions, and more.\n\n🔍 Main Menu:\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\n🚀 Exciting features coming soon, like ordering via WhatsApp, discounts, and promotions!\n\nPlease reply with the number of the option you want to explore.";
-  const shortMenuTemplate =
-    "🔍 Main Menu:\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\nPlease reply with the number of the option you want to explore.";
+  const menuQuickReplies = ["Check Balance", "View Transaction History"];
 
-  const handleResponse = (message: string) => {
+  const menuTemplate = {
+    body: "Hello! 👋🏾 Welcome to Pasella! I'm here to help you manage your account. What would you like to do?",
+    quickReplies: menuQuickReplies,
+  };
+
+  const shortMenuTemplate = {
+    body: "What would you like to do next?",
+    quickReplies: menuQuickReplies,
+  };
+
+  const handleResponse = (message: any) => {
     twiml.message(message);
     res.contentType("text/xml");
     res.send(twiml.toString());
   };
 
-  switch (userResponse?.trim()) {
-    case "1": // Balance Check
+  switch (userResponse?.trim().toLowerCase()) {
+    case "check balance": // Balance Check
       fetchUserBalance(From)
-        .then((balance) => handleResponse(`${balance}\n\n${shortMenuTemplate}`))
-        .catch(() => handleResponse("⚠️ Failed to fetch balance."));
+        .then((balance) =>
+          handleResponse({
+            body: `${balance}\n\nWhat would you like to do next?`,
+            quickReplies: menuQuickReplies,
+          }),
+        )
+        .catch(() =>
+          handleResponse({
+            body: `${history}\n\nWhat would you like to do next?`,
+            quickReplies: menuQuickReplies,
+          }),
+        );
       break;
-    case "2": // Transactions History
+    case "view transaction history": // Transactions History
       fetchTransactionHistory(From)
         .then((history) => handleResponse(`${history}\n\n${shortMenuTemplate}`))
         .catch(() => handleResponse("⚠️ Failed to fetch transactions."));
