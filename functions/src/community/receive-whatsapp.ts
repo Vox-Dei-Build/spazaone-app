@@ -17,12 +17,15 @@ export const receiveWhatsappWebhook = functions.https.onRequest((req, res) => {
     return;
   }
 
-
   const twiml = new MessagingResponse();
   const { Body: userResponse, From } = req.body;
 
-  console.log(From);
-  console.log(userResponse);
+  console.log(`Received from ${From}: ${userResponse}`);
+
+  const menuTemplate =
+    "Hello! 👋🏾 Welcome to Pasella! I'm here to help you manage your account, check your balance, view your recent transactions, and more.\n\n🔍 Main Menu:\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\n🚀 Exciting features coming soon, like ordering via WhatsApp, discounts, and promotions!\n\nPlease reply with the number of the option you want to explore.";
+  const shortMenuTemplate =
+    "🔍 Main Menu:\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\nPlease reply with the number of the option you want to explore.";
 
   const handleResponse = (message: string) => {
     twiml.message(message);
@@ -33,18 +36,16 @@ export const receiveWhatsappWebhook = functions.https.onRequest((req, res) => {
   switch (userResponse?.trim()) {
     case "1": // Balance Check
       fetchUserBalance(From)
-        .then((balance) => handleResponse(`${balance}`))
-        .catch(() => handleResponse("Failed to fetch balance."));
+        .then((balance) => handleResponse(`${balance}\n\n${shortMenuTemplate}`))
+        .catch(() => handleResponse("⚠️ Failed to fetch balance."));
       break;
     case "2": // Transactions History
       fetchTransactionHistory(From)
-        .then((history) => handleResponse(`${history}`))
-        .catch(() => handleResponse("Failed to fetch transactions."));
+        .then((history) => handleResponse(`${history}\n\n${shortMenuTemplate}`))
+        .catch(() => handleResponse("⚠️ Failed to fetch transactions."));
       break;
     default:
-      handleResponse(
-        "Hello 👋🏾\n\n1. Check Your Balance\n2. View Your Recent Transactions",
-      );
+      handleResponse(menuTemplate);
       break;
   }
 });

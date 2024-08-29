@@ -99,7 +99,7 @@ export async function fetchUserBalance(number: string): Promise<string> {
     await Promise.all(promises);
 
     // Construct the final message
-    let message = "Your balance summary:\n";
+    let message = "💰 Your current balance is:\n";
     for (const userId in merchantBalances) {
       if (Object.prototype.hasOwnProperty.call(merchantBalances, userId)) {
         const details = merchantBalances[userId];
@@ -121,22 +121,19 @@ export async function fetchUserBalance(number: string): Promise<string> {
 }
 
 /**
- * Simulates fetching the transaction history for a user.
+ * Fetches the transaction history for a user and returns a formatted string of transactions.
  *
- * @param {string} number - The user's identifier, from the WhatsApp message.
+ * @param {string} number - The user's phone number received from WhatsApp.
  * @return {Promise<string>} - A promise resolving to a formatted string of the user's recent transactions.
  */
 export async function fetchTransactionHistory(number: string): Promise<string> {
   try {
-    // Normalize the phone number before querying
     const normalizedNumber = normalizePhoneNumber(number);
     console.log(`Normalized number: ${normalizedNumber}`);
 
-    // Get the current date and subtract one month to set the date range
     const now = new Date();
     const lastMonth = new Date(now.setMonth(now.getMonth() - 1));
 
-    // Query the Firestore for the documents where the 'number' field matches the provided number
     const customersRef = db.collectionGroup("customers");
     const querySnapshot = await customersRef
       .where("number", "==", normalizedNumber)
@@ -172,12 +169,11 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
           const date = transaction.date.toDate().toISOString().split("T")[0];
           const type = transaction.type === "Credit" ? "-" : "+";
 
-          // Fetch product details if any products are linked to the transaction
           let productDetails = "";
           if (transaction.products) {
             console.log(`Fetching products for transaction ID: ${doc.id}`);
             const pathSegments = customerDoc.ref.path.split("/");
-            const userId = pathSegments[1]; // Fetch the user ID from the path
+            const userId = pathSegments[1];
 
             const productPromises = Object.keys(transaction.products).map(
               async (productId) => {
@@ -190,7 +186,7 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
                 if (productDoc.exists) {
                   const productData = productDoc.data();
                   console.log(
-                    `Product found: ${productData?.name} with selling price: ${productData?.sellingPrice.toFixed(
+                    `Product found: ${productData?.name} with selling price: R${productData?.sellingPrice.toFixed(
                       2,
                     )}`,
                   );
@@ -216,7 +212,6 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
         }),
       );
 
-      // Include the merchant's shop name or user ID to distinguish transactions
       const pathSegments = customerDoc.ref.path.split("/");
       const userId = pathSegments[1];
       console.log(`User ID associated with the customer: ${userId}`);
@@ -232,7 +227,7 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
         : "Unknown Shop Owner";
 
       allTransactions.push(
-        `\nTransactions with ${merchantName} (${shopName}):\n` +
+        `📜 Your recent transactions with ${merchantName} at ${shopName}:\n` +
           transactionDetails.join("\n"),
       );
 
