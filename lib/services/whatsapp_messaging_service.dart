@@ -121,7 +121,11 @@ class WhatsAppMessagingService {
         if (status == 'delivered' ||
             status == 'failed' ||
             status == 'undelivered' ||
-            status == 'canceled') {
+            status == 'canceled' ||
+            status == 'sent' ||
+            status == 'accepted' ||
+            status == 'read' ||
+            status == 'received') {
           isFinalStatus = true;
           return status == 'delivered';
         } else {
