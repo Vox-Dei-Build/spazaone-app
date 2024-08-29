@@ -103,7 +103,7 @@ export async function fetchUserBalance(number: string): Promise<string> {
     for (const userId in merchantBalances) {
       if (Object.prototype.hasOwnProperty.call(merchantBalances, userId)) {
         const details = merchantBalances[userId];
-        message += `Merchant: ${details.name} (${
+        message += `\nMerchant: ${details.name} (${
           details.shopName
         }) - Balance: R${details.balance.toFixed(2)}\n`;
       }
@@ -132,6 +132,10 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
     const normalizedNumber = normalizePhoneNumber(number);
     console.log(`Normalized number: ${normalizedNumber}`);
 
+    // Get the current date and subtract one month to set the date range
+    const now = new Date();
+    const lastMonth = new Date(now.setMonth(now.getMonth() - 1));
+
     // Query the Firestore for the documents where the 'number' field matches the provided number
     const customersRef = db.collectionGroup("customers");
     const querySnapshot = await customersRef
@@ -150,9 +154,8 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
       const transactionsRef = customerDoc.ref.collection("transactions");
       const transactionsSnapshot = await transactionsRef
         .orderBy("date", "desc")
-        .limit(10)
+        .where("date", ">=", lastMonth) // Filter transactions within the last month
         .get();
-
       if (transactionsSnapshot.empty) {
         console.log(`No transactions found for customer ID: ${customerDoc.id}`);
         return "";
@@ -208,8 +211,8 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
           }
 
           return productDetails
-            ? `Transaction: ${type}R${amount} on ${date} for the following Products: \n${`* ${productDetails}\n`}`
-            : `Transaction: ${type}R${amount} on ${date} (No products associated with the transaction) \n`;
+            ? `\nTransaction: ${type}R${amount} on ${date} for the following Products: \n${`* ${productDetails}\n`}`
+            : `\nTransaction: ${type}R${amount} on ${date} (No products associated with the transaction) \n`;
         }),
       );
 
@@ -242,7 +245,12 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
       return "No recent transactions found.";
     }
 
-    const transactionHistory = allTransactions.join("\n");
+    let transactionHistory = allTransactions.join("\n");
+
+    // Truncate the transaction history if it exceeds 1600 characters: Whatsapp Requirement
+    if (transactionHistory.length > 1500) {
+      transactionHistory = transactionHistory.substring(0, 1500) + "...";
+    }
 
     console.log(
       `Transaction history for ${normalizedNumber}:\n${transactionHistory}`,

@@ -20,4 +20,5 @@ export * from "./notifications/retention_notifications";
 export * from "./notifications/non_payment_notifications";
 export * from "./stock/scheduledTasks/scheduledLowStockCheck";
 export * from "./community/receive-whatsapp";
+export * from "./community/status-callback";
 export * from "./admin/db_cleanup";

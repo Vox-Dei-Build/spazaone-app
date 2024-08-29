@@ -17,33 +17,34 @@ export const receiveWhatsappWebhook = functions.https.onRequest((req, res) => {
     return;
   }
 
+
   const twiml = new MessagingResponse();
   const { Body: userResponse, From } = req.body;
 
   console.log(From);
+  console.log(userResponse);
 
-  switch (userResponse.trim()) {
+  const handleResponse = (message: string) => {
+    twiml.message(message);
+    res.contentType("text/xml");
+    res.send(twiml.toString());
+  };
+
+  switch (userResponse?.trim()) {
     case "1": // Balance Check
-      // Placeholder function to simulate fetching balance
       fetchUserBalance(From)
-        .then((balance) => twiml.message(`Your current balance is: ${balance}`))
-        .catch(() => twiml.message("Failed to fetch balance."));
+        .then((balance) => handleResponse(`${balance}`))
+        .catch(() => handleResponse("Failed to fetch balance."));
       break;
     case "2": // Transactions History
-      // Placeholder function to simulate fetching transaction history
       fetchTransactionHistory(From)
-        .then((history: any) =>
-          twiml.message(`Your recent transactions:\n${history}`),
-        )
-        .catch(() => twiml.message("Failed to fetch transactions."));
+        .then((history) => handleResponse(`${history}`))
+        .catch(() => handleResponse("Failed to fetch transactions."));
       break;
     default:
-      twiml.message(
-        "Welcome to Pasella!\n1. Check Balance\n2. View Transactions",
+      handleResponse(
+        "Hello 👋🏾\n\n1. Check Your Balance\n2. View Your Recent Transactions",
       );
       break;
   }
-
-  res.contentType("text/xml");
-  res.send(twiml.toString());
 });
