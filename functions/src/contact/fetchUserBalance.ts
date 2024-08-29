@@ -243,8 +243,8 @@ export async function fetchTransactionHistory(number: string): Promise<string> {
     let transactionHistory = allTransactions.join("\n");
 
     // Truncate the transaction history if it exceeds 1600 characters: Whatsapp Requirement
-    if (transactionHistory.length > 1500) {
-      transactionHistory = transactionHistory.substring(0, 1500) + "...";
+    if (transactionHistory.length > 1000) {
+      transactionHistory = transactionHistory.substring(0, 1000) + "...";
     }
 
     console.log(
