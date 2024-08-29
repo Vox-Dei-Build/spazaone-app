@@ -8,6 +8,7 @@ import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/whatsapp_messaging_service.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -73,7 +74,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
 
       await customerRef.update({
         'name': nameController.text,
-        'number': numberController.text,
+        'number': normalizePhoneNumber(numberController.text),
         if (profileImageUrl != null) 'profileImageUrl': profileImageUrl,
       });
 

@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -51,7 +52,7 @@ class AddContactViewModel extends ChangeNotifier {
     var newCustomer = {
       'category': model.selectedCustomerCategory,
       'name': customerName,
-      'number': mobileNumber,
+      'number': normalizePhoneNumber(mobileNumber),
       'lastTransaction': getDefaultTransaction(),
       'balance': 0.0,
       'isNPA': false,
