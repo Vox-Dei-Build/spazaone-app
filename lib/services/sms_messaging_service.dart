@@ -18,8 +18,8 @@ class SMSMessagingService {
     return SMSMessagingService._(twilioFlutter);
   }
 
-  Future<void> sendSMS(String phoneNumber, String message) async {
-    await twilioFlutter.sendSMS(
+  Future<int> sendSMS(String phoneNumber, String message) async {
+    return await twilioFlutter.sendSMS(
       toNumber: phoneNumber,
       messageBody: message,
     );

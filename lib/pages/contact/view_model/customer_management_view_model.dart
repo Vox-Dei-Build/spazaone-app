@@ -4,10 +4,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
-import 'package:pasella/services/whatsapp_messaging_service.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -219,32 +217,16 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .collection('customers')
         .doc(customerId)
         .update({'lastReminderSent': DateTime.now()}).then((value) async {
-      MessagingNotificationService smsService = MessagingNotificationService();
-      await smsService.sendReminderMessage(
+      MessagingNotificationService notificationService =
+          MessagingNotificationService();
+      await notificationService.sendReminderMessage(
           userId, customerId, customerName, mobileNumber);
-      eventBus.fire(
-          SMSEvent("Payment reminder sent successfully :)", success: true));
     }).catchError((error) {
       showSnackbar(context, 'Error adding credit. Please retry when online.',
           Colors.red);
     });
 
     sendingReminderNotifier.value = false;
-  }
-
-  Future<void> sendWhatsAppMessage(BuildContext context) async {
-    sendingReminderNotifier.value = true; // Start loading
-    WhatsAppMessagingService whatsappNotificationService =
-        WhatsAppMessagingService();
-    try {
-      await whatsappNotificationService.sendReminderWhatsapp(
-          userId, customerId, customerName);
-    } catch (err) {
-      print("Could not launch WhatsApp: $err");
-      // Optionally, handle the error through the UI.
-    } finally {
-      sendingReminderNotifier.value = false; // End loading
-    }
   }
 
   set profileImageUrl(String? url) {
