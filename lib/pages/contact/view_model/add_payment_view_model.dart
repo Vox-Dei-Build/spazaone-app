@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -100,8 +99,9 @@ class AddPaymentViewModel extends ChangeNotifier {
   Future<void> _sendSMS(String currentUserId, String customerId,
       double amountEntered, String customerName, String? mobileNumber) async {
     try {
-      MessagingNotificationService smsService = MessagingNotificationService();
-      await smsService.sendConfirmationMessage(
+      MessagingNotificationService notificationService =
+          MessagingNotificationService();
+      await notificationService.sendConfirmationMessage(
         currentUserId,
         customerId,
         "Payment",
@@ -109,10 +109,8 @@ class AddPaymentViewModel extends ChangeNotifier {
         customerName,
         mobileNumber,
       );
-      eventBus.fire(
-          SMSEvent("Payment notification sent successfully :)", success: true));
     } catch (e) {
-      // Handle error
+      print(e);
     }
   }
 

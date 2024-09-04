@@ -26,6 +26,24 @@ String formatPhoneNumber(String? phoneNumber) {
   return phoneNumber;
 }
 
+String normalizePhoneNumber(String? rawNumber) {
+  print('Normalizing number: $rawNumber');
+  if (rawNumber == null || rawNumber.isEmpty) return '';
+
+  // Remove all non-digit characters
+  String digits = rawNumber.replaceAll(RegExp(r'\D'), '');
+
+  // Remove country code if present and format to local standard
+  if (digits.startsWith('27')) {
+    digits = '0' + digits.substring(2);
+  } else if (!digits.startsWith('0')) {
+    digits = '0' + digits.substring(digits.length - 9);
+  }
+
+  print('Normalized to local format: $digits');
+  return digits;
+}
+
 String formatPhoneNumberForWhatsapp(String? phoneNumber) {
   if (phoneNumber == null || phoneNumber.isEmpty) return '';
 

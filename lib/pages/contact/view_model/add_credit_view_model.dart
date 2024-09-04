@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
@@ -115,8 +114,9 @@ class AddCreditViewModel extends TransactionViewModel {
   Future<void> _sendSMS(String currentUserId, String customerId,
       double amountEntered, String customerName, String? mobileNumber) async {
     try {
-      MessagingNotificationService smsService = MessagingNotificationService();
-      await smsService.sendConfirmationMessage(
+      MessagingNotificationService notificationService =
+          MessagingNotificationService();
+      await notificationService.sendConfirmationMessage(
         currentUserId,
         customerId,
         "Credit",
@@ -124,8 +124,6 @@ class AddCreditViewModel extends TransactionViewModel {
         customerName,
         mobileNumber,
       );
-      eventBus.fire(
-          SMSEvent("Credit notification sent successfully :)", success: true));
     } catch (e) {
       print(e);
     }
