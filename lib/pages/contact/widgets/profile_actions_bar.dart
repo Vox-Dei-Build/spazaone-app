@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
@@ -209,16 +208,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
               PopupMenuButton<String>(
                 icon: Icon(Icons.more_vert),
                 onSelected: (String value) async {
-                  if (value == 'whatsapp') {
-                    bool shouldProceed = await isAnonymousGate(context);
-                    if (shouldProceed) {
-                      try {
-                        await viewModel.sendWhatsAppMessage(context);
-                      } catch (error) {
-                        print('Error launching WhatsApp: $error');
-                      }
-                    }
-                  } else if (value == 'sms') {
+                  if (value == 'sms') {
                     bool shouldProceed = await isAnonymousGate(context);
                     if (shouldProceed) {
                       viewModel.handleReminderTap(context);
@@ -244,25 +234,11 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                 },
                 itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                   PopupMenuItem<String>(
-                    value: 'whatsapp',
-                    child: ListTile(
-                      leading: Icon(FontAwesomeIcons.whatsapp),
-                      title: Text(
-                        'Send WhatsApp Message',
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier *
-                              2, // Responsive font size
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
-                  PopupMenuItem<String>(
                     value: 'sms',
                     child: ListTile(
                       leading: Icon(Icons.sms_outlined),
                       title: Text(
-                        'Send SMS',
+                        'Send Payment Reminder',
                         style: TextStyle(
                           fontSize: SizeConfig.textMultiplier *
                               2, // Responsive font size
