@@ -23,9 +23,9 @@ export const receiveWhatsappWebhook = functions.https.onRequest((req, res) => {
   console.log(`Received from ${From}: ${userResponse}`);
 
   const menuTemplate =
-    "Hello! 👋🏾 Welcome to Pasella! I'm here to help you manage your account, check your balance, view your recent transactions, and more.\n\n🔍 Main Menu:\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\n🚀 Exciting features coming soon, like ordering via WhatsApp, discounts, and promotions!\n\nPlease reply with the number of the option you want to explore.";
+    "Hello! 👋🏾 Welcome to Pasella! I'm here to help you manage your account, check your balance, view your recent transactions, and more.\n\n🔍 Main Menu:\n\n1️⃣ Check Balance\n2️⃣ View Transaction History\n3️⃣ Buy Electricity/Airtime\n\nPlease reply with the number of the option you want to explore.";
   const shortMenuTemplate =
-    "🔍 Main Menu:\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\nPlease reply with the number of the option you want to explore.";
+    "🔍 Main Menu:\n\n1️⃣ Check Balance\n2️⃣ View Transaction History\n3️⃣ Buy Electricity/Airtime\n\nPlease reply with the number of the option you want to explore.";
 
   const handleResponse = (message: string) => {
     twiml.message(message);
@@ -45,6 +45,8 @@ export const receiveWhatsappWebhook = functions.https.onRequest((req, res) => {
         .catch(() => handleResponse("⚠️ Failed to fetch transactions."));
       break;
     case "0":
+      handleResponse(menuTemplate);
+      break;
     default:
       handleResponse(menuTemplate);
       break;
