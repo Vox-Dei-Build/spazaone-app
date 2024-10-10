@@ -18,7 +18,6 @@ import 'package:pasella/shared/services/period_filter_services.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'config/firebase_options.dart';
 
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
@@ -83,9 +82,7 @@ void main() async {
     await dotenv.load();
 
     // Initialize Firebase
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    await Firebase.initializeApp();
 
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);

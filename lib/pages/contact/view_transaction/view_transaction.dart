@@ -12,7 +12,8 @@ class TransactionDetailScreen extends StatelessWidget {
   final String transactionId;
   final Map<String, dynamic> transaction;
 
-  TransactionDetailScreen({
+  const TransactionDetailScreen({
+    super.key,
     required this.customerName,
     required this.customerId,
     required this.transactionId,
@@ -115,7 +116,7 @@ class TransactionDetailScreen extends StatelessWidget {
                       .get(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return CircularProgressIndicator();
+                      return const CircularProgressIndicator();
                     }
                     if (snapshot.hasError) {
                       return Text('Error fetching product with ID: $productId');
@@ -188,7 +189,7 @@ class TransactionDetailScreen extends StatelessWidget {
             SizedBox(
                 height: SizeConfig.heightMultiplier * 0.5), // Add some spacing
             Text(
-              'Selling Price: ' + CurrencyUtil.format(sellingPrice),
+              'Selling Price: ${CurrencyUtil.format(sellingPrice)}',
               style: TextStyle(
                 fontStyle: FontStyle.italic,
                 fontSize: SizeConfig.textMultiplier * 1.8,
