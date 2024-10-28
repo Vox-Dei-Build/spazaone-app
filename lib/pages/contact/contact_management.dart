@@ -12,8 +12,9 @@ class CustomerManagementPage extends StatefulWidget {
   final String customerId;
   final String? mobileNumber;
 
-  CustomerManagementPage(
-      {required this.customerName,
+  const CustomerManagementPage(
+      {super.key,
+      required this.customerName,
       required this.customerId,
       this.mobileNumber});
 
@@ -69,7 +70,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
               Positioned.fill(
                 child: Container(
                   color: Colors.black45,
-                  child: Center(child: CircularProgressIndicator()),
+                  child: const Center(child: CircularProgressIndicator()),
                 ),
               ),
           ],
@@ -96,7 +97,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
                         customerManagementViewModel.userId, widget.customerId),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center(child: CircularProgressIndicator());
+                        return const Center(child: CircularProgressIndicator());
                       } else if (snapshot.hasError) {
                         return Center(
                             child: Text(
@@ -122,12 +123,12 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
                           children: [
                             Expanded(
                               child: TransactionsListView(
-                                customerManagementViewModel:
-                                    customerManagementViewModel,
-                                transactions: snapshot.data!,
-                                customerId: widget.customerId,
-                                customerName: widget.customerName,
-                              ),
+                                  customerManagementViewModel:
+                                      customerManagementViewModel,
+                                  transactions: snapshot.data!,
+                                  customerId: widget.customerId,
+                                  customerName: widget.customerName,
+                                  mobileNumber: widget.mobileNumber),
                             ),
                           ],
                         );

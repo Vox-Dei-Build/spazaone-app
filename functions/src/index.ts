@@ -13,6 +13,7 @@
 export * from "./config/main";
 export * from "./ledger/ledger";
 export * from "./ledger/onTransactionAdded";
+export * from "./ledger/testUpdateBalances";
 export * from "./reports/business_metrics";
 export * from "./reports/scheduledTasks/updateNPAStatus";
 export * from "./contact/addPayment";
@@ -23,6 +24,7 @@ export * from "./stock/scheduledTasks/scheduledLowStockCheck";
 
 /* Bot */
 export * from "./customer_hub/fetchCustomerAndMerchantDetails";
+export * from "./customer_hub/sendPromoToActiveCustomers";
 export * from "./bots/twillio-whatsapp-notification-bot";
 
 /* ---- Customer Bot ---- */
@@ -34,6 +36,7 @@ export * from "./customer_hub/fetchTransactionHistory";
 
 /* ---- Merchant Bot ---- */
 export * from "./merchant_hub/order/airtime/createAirtimeOrder";
+export * from "./merchant_hub/fetchMerchantDetails";
 export * from "./merchant_hub/order/airtime/getMerchantAirtimeOrders";
 export * from "./merchant_hub/order/electricity/createElectricityOrder";
 export * from "./merchant_hub/order/electricity/getMerchantElectricityOrders";

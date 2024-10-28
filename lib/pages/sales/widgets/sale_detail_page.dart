@@ -4,21 +4,50 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/sales/sales_model.dart';
+import 'package:pasella/pages/sales/widgets/edit_sale.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
 
-class SaleDetailPage extends StatelessWidget {
+class SaleDetailPage extends StatefulWidget {
   final Sale sale;
 
-  const SaleDetailPage({required this.sale});
+  const SaleDetailPage({super.key, required this.sale});
+
+  @override
+  _SaleDetailPageState createState() => _SaleDetailPageState();
+}
+
+class _SaleDetailPageState extends State<SaleDetailPage> {
+  late Sale sale;
+
+  @override
+  void initState() {
+    super.initState();
+    sale = widget.sale; // Initialize with the passed sale data
+  }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
     return Scaffold(
-      appBar: CustomAppBar(title: 'Sale Details'),
+      appBar: CustomAppBar(
+        title: 'Sale Details',
+        trailing: IconButton(
+          icon: const Icon(Icons.edit),
+          onPressed: () async {
+            // Navigate to EditSale and await the result
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditSale(
+                  sale: sale,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -104,7 +133,7 @@ class SaleDetailPage extends StatelessWidget {
                                     builder: (context, snapshot) {
                                       if (snapshot.connectionState ==
                                           ConnectionState.waiting) {
-                                        return CircularProgressIndicator();
+                                        return const CircularProgressIndicator();
                                       }
                                       if (snapshot.hasError) {
                                         return Text(
@@ -186,9 +215,7 @@ class SaleDetailPage extends StatelessWidget {
                                                           .heightMultiplier *
                                                       0.5), // Add some spacing
                                               Text(
-                                                'Selling Price: ' +
-                                                    CurrencyUtil.format(
-                                                        sellingPrice),
+                                                'Selling Price: ${CurrencyUtil.format(sellingPrice)}',
                                                 style: TextStyle(
                                                   fontStyle: FontStyle.italic,
                                                   fontSize: SizeConfig
