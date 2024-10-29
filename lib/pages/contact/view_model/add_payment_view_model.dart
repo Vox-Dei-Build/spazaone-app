@@ -2,20 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
-class AddPaymentViewModel extends ChangeNotifier {
+class AddPaymentViewModel extends TransactionViewModel {
   final String customerName;
   final String customerId;
   final String? mobileNumber;
-  final TextEditingController amountController = TextEditingController();
-  final TextEditingController remarksController = TextEditingController();
-  DateTime selectedDate = DateTime.now();
-  bool _isLoading = false;
-
-  bool get isLoading => _isLoading;
 
   AddPaymentViewModel({
     required this.customerName,
@@ -24,13 +18,13 @@ class AddPaymentViewModel extends ChangeNotifier {
   });
 
   Future<void> addPaymentTransaction(BuildContext context) async {
-    if (_isLoading) return;
+    if (isLoading) return;
 
-    _setLoading(true);
+    setLoading(true);
 
     bool shouldProceed = await isAnonymousGate(context);
     if (!shouldProceed) {
-      _setLoading(false);
+      setLoading(false);
       return;
     }
 
@@ -40,13 +34,13 @@ class AddPaymentViewModel extends ChangeNotifier {
 
     if (amountEntered == null || amountEntered <= 0) {
       showSnackbar(context, 'Please check the amount entered.', Colors.red);
-      _setLoading(false);
+      setLoading(false);
       return;
     }
 
     if (currentUserId.isEmpty) {
       showSnackbar(context, 'No user is logged in!', Colors.red);
-      _setLoading(false);
+      setLoading(false);
       return;
     }
 
@@ -75,8 +69,8 @@ class AddPaymentViewModel extends ChangeNotifier {
           .collection('transactions')
           .add(transactionData);
 
-      await _sendSMS(
-          currentUserId, customerId, amountEntered, customerName, mobileNumber);
+      await sendSMS(currentUserId, customerId, amountEntered, customerName,
+          "Payment", mobileNumber);
 
       DocumentReference customerRef = FirebaseFirestore.instance
           .collection('users')
@@ -88,48 +82,11 @@ class AddPaymentViewModel extends ChangeNotifier {
         'lastTransaction': transactionData,
       });
 
-      _resetFormAndNavigateAway(context);
+      resetFormAndNavigateAway(context);
     } catch (error) {
       showSnackbar(context, 'Error adding payment. Please retry when online.',
           Colors.red);
-      _setLoading(false);
+      setLoading(false);
     }
-  }
-
-  Future<void> _sendSMS(String currentUserId, String customerId,
-      double amountEntered, String customerName, String? mobileNumber) async {
-    try {
-      MessagingNotificationService notificationService =
-          MessagingNotificationService();
-      await notificationService.sendConfirmationMessage(
-        currentUserId,
-        customerId,
-        "Payment",
-        amountEntered,
-        customerName,
-        mobileNumber,
-      );
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  void _resetFormAndNavigateAway(BuildContext context) {
-    amountController.clear();
-    remarksController.clear();
-    _setLoading(false);
-    Navigator.of(context).pop();
-  }
-
-  void _setLoading(bool value) {
-    _isLoading = value;
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    amountController.dispose();
-    remarksController.dispose();
-    super.dispose();
   }
 }

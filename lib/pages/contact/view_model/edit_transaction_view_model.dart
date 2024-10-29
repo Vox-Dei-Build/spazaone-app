@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
-import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class EditTransactionViewModel extends TransactionViewModel {
@@ -16,11 +15,7 @@ class EditTransactionViewModel extends TransactionViewModel {
   final String transactionType; // Either 'Credit' or 'Payment'
   final String? mobileNumber;
   DateTime repaymentDate = DateTime.now().add(const Duration(days: 30));
-  bool _isLoading = false;
   bool _isProductsLoading = false;
-
-  @override
-  bool get isLoading => _isLoading;
   bool get isProductsLoading => _isProductsLoading;
 
   EditTransactionViewModel({
@@ -88,8 +83,8 @@ class EditTransactionViewModel extends TransactionViewModel {
   }
 
   Future<void> updateTransaction(BuildContext context) async {
-    if (_isLoading) return;
-    _setLoading(true);
+    if (isLoading) return;
+    setLoading(true);
 
     final amountEntered = double.tryParse(amountController.text);
     final remarks = remarksController.text;
@@ -97,13 +92,13 @@ class EditTransactionViewModel extends TransactionViewModel {
 
     if (amountEntered == null || amountEntered <= 0) {
       showSnackbar(context, 'Please check the amount entered.', Colors.red);
-      _setLoading(false);
+      setLoading(false);
       return;
     }
 
     if (currentUserId.isEmpty) {
       showSnackbar(context, 'No user is logged in!', Colors.red);
-      _setLoading(false);
+      setLoading(false);
       return;
     }
 
@@ -184,8 +179,9 @@ class EditTransactionViewModel extends TransactionViewModel {
         }
       }
 
-      await _sendSMS(
-          currentUserId, customerId, amountEntered, customerName, mobileNumber);
+      await sendSMS(currentUserId, customerId, amountEntered, customerName,
+          transactionType, mobileNumber);
+
       showSnackbar(context, 'Transaction updated successfully!', Colors.green);
 
       DocumentReference customerRef = FirebaseFirestore.instance
@@ -199,42 +195,12 @@ class EditTransactionViewModel extends TransactionViewModel {
       });
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        _resetFormAndNavigateAway(context);
+        resetFormAndNavigateAway(context);
       });
     } catch (error) {
       showSnackbar(
           context, 'Error updating transaction. Please retry.', Colors.red);
-      _setLoading(false);
+      setLoading(false);
     }
-  }
-
-  Future<void> _sendSMS(String currentUserId, String customerId,
-      double amountEntered, String customerName, String? mobileNumber) async {
-    try {
-      MessagingNotificationService notificationService =
-          MessagingNotificationService();
-      await notificationService.sendConfirmationMessage(
-        currentUserId,
-        customerId,
-        transactionType,
-        amountEntered,
-        customerName,
-        mobileNumber,
-      );
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  void _resetFormAndNavigateAway(BuildContext context) {
-    amountController.clear();
-    remarksController.clear();
-    _setLoading(false);
-    Navigator.of(context).pop();
-  }
-
-  void _setLoading(bool value) {
-    _isLoading = value;
-    notifyListeners();
   }
 }
