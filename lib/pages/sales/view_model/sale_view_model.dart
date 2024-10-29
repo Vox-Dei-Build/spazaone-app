@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
@@ -12,24 +11,18 @@ import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class SalesViewModel extends TransactionViewModel {
-  @override
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
-  @override
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
   StreamController<List<Sale>>? _salesController;
   double totalSales = 0.0;
   double totalCost = 0.0;
   double totalProfit = 0.0;
   int totalNumberOfSales = 0;
   String selectedPeriod = 'Today';
-  @override
-  List<Product> products = [];
   bool productsLoaded = false;
   bool isTransactionLoading = false;
 
   SalesViewModel() {
     _salesController = StreamController<List<Sale>>.broadcast(sync: true);
-    _loadProducts().then((_) {
+    loadProducts().then((_) {
       productsLoaded = true;
       _getSales(selectedPeriod);
     });
@@ -42,7 +35,7 @@ class SalesViewModel extends TransactionViewModel {
     if (productsLoaded) {
       await _getSales(selectedPeriod);
     } else {
-      _loadProducts().then((_) async {
+      loadProducts().then((_) async {
         productsLoaded = true;
         await _getSales(selectedPeriod);
       });
@@ -51,27 +44,10 @@ class SalesViewModel extends TransactionViewModel {
   }
 
   void refreshSales() {
-    _loadProducts().then((_) {
+    loadProducts().then((_) {
       productsLoaded = true;
       _getSales(selectedPeriod);
     });
-  }
-
-  Future<void> _loadProducts() async {
-    try {
-      QuerySnapshot snapshot = await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('products')
-          .get();
-      products = snapshot.docs
-          .map((doc) =>
-              Product.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-          .toList();
-      notifyListeners();
-    } catch (e) {
-      print("Error loading products: $e");
-    }
   }
 
   Future<void> addSalesTransaction(BuildContext context) async {
@@ -278,25 +254,6 @@ class SalesViewModel extends TransactionViewModel {
       showSnackbar(context, 'Error updating sale. Please retry.', Colors.red);
     } finally {
       setLoading(false);
-    }
-  }
-
-  Future<void> updateProduct(String productId, double newPrice) async {
-    try {
-      await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('products')
-          .doc(productId)
-          .update({'sellingPrice': newPrice});
-      // Update the local product list
-      int productIndex = products.indexWhere((p) => p.id == productId);
-      if (productIndex != -1) {
-        products[productIndex].sellingPrice = newPrice;
-        notifyListeners(); // Ensure the listeners are notified to recalculate totals
-      }
-    } catch (e) {
-      print("Error updating product: $e");
     }
   }
 

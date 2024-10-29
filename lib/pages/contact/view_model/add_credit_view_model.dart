@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
-import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -12,7 +11,7 @@ class AddCreditViewModel extends TransactionViewModel {
   final String customerName;
   final String customerId;
   final String? mobileNumber;
-  DateTime repaymentDate = DateTime.now().add(Duration(days: 30));
+  DateTime repaymentDate = DateTime.now().add(const Duration(days: 30));
 
   AddCreditViewModel({
     required this.customerName,
@@ -83,8 +82,8 @@ class AddCreditViewModel extends TransactionViewModel {
         }
       }
 
-      await _sendSMS(
-          userId, customerId, amountEntered, customerName, mobileNumber);
+      await sendSMS(userId, customerId, amountEntered, customerName, "Credit",
+          mobileNumber);
 
       DocumentReference customerRef = FirebaseFirestore.instance
           .collection('users')
@@ -97,7 +96,7 @@ class AddCreditViewModel extends TransactionViewModel {
       });
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        _resetFormAndNavigateAway(context);
+        resetFormAndNavigateAway(context);
       });
     } catch (error) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -109,35 +108,5 @@ class AddCreditViewModel extends TransactionViewModel {
     } finally {
       setLoading(false);
     }
-  }
-
-  Future<void> _sendSMS(String currentUserId, String customerId,
-      double amountEntered, String customerName, String? mobileNumber) async {
-    try {
-      MessagingNotificationService notificationService =
-          MessagingNotificationService();
-      await notificationService.sendConfirmationMessage(
-        currentUserId,
-        customerId,
-        "Credit",
-        amountEntered,
-        customerName,
-        mobileNumber,
-      );
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  void _resetFormAndNavigateAway(BuildContext context) {
-    amountController.clear();
-    remarksController.clear();
-    setLoading(false);
-    Navigator.of(context).pop();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }

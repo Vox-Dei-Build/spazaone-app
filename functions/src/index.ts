@@ -13,7 +13,6 @@
 export * from "./config/main";
 export * from "./ledger/ledger";
 export * from "./ledger/onTransactionAdded";
-export * from "./ledger/testUpdateBalances";
 export * from "./reports/business_metrics";
 export * from "./reports/scheduledTasks/updateNPAStatus";
 export * from "./contact/addPayment";

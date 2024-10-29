@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class TransactionViewModel extends ChangeNotifier {
@@ -175,6 +176,30 @@ class TransactionViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> sendSMS(
+    String currentUserId,
+    String customerId,
+    double amountEntered,
+    String customerName,
+    String transactionType,
+    String? mobileNumber,
+  ) async {
+    try {
+      MessagingNotificationService notificationService =
+          MessagingNotificationService();
+      await notificationService.sendConfirmationMessage(
+        currentUserId,
+        customerId,
+        transactionType,
+        amountEntered,
+        customerName,
+        mobileNumber,
+      );
+    } catch (e) {
+      print(e);
+    }
+  }
+
   @protected
   void setLoading(bool value) {
     _isLoading = value;
@@ -186,8 +211,9 @@ class TransactionViewModel extends ChangeNotifier {
     remarksController.clear();
     selectedProducts.clear();
     salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
+    setLoading(false);
     notifyListeners();
-    Navigator.pop(context);
+    Navigator.of(context).pop();
   }
 
   @override
