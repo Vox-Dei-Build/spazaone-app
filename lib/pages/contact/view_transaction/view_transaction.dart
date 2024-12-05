@@ -1,68 +1,143 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/pages/contact/edit_transaction/edit_transaction.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
 
-class TransactionDetailScreen extends StatelessWidget {
+class TransactionDetailScreen extends StatefulWidget {
   final String customerName;
   final String customerId;
   final String transactionId;
   final Map<String, dynamic> transaction;
+  final String? mobileNumber;
 
-  TransactionDetailScreen({
+  const TransactionDetailScreen({
+    super.key,
     required this.customerName,
     required this.customerId,
     required this.transactionId,
     required this.transaction,
+    this.mobileNumber,
   });
+
+  @override
+  _TransactionDetailScreenState createState() =>
+      _TransactionDetailScreenState();
+}
+
+class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
+  late Future<DocumentSnapshot> _transactionFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load transaction details from Firestore
+    _transactionFuture = loadTransactionDetails();
+  }
+
+  Future<DocumentSnapshot> loadTransactionDetails() {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(FirebaseAuth.instance.currentUser?.uid)
+        .collection('customers')
+        .doc(widget.customerId)
+        .collection('transactions')
+        .doc(widget.transactionId)
+        .get();
+  }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    bool hasProducts = transaction.containsKey('products');
-    bool isMap = hasProducts && transaction['products'] is Map<String, dynamic>;
-    bool isNotEmpty =
-        isMap && (transaction['products'] as Map<String, dynamic>).isNotEmpty;
-
     return Scaffold(
-      appBar: CustomAppBar(title: 'Transaction Details for $customerName'),
+      appBar: CustomAppBar(
+        title: 'Transaction Details for ${widget.customerName}',
+        trailing: IconButton(
+          icon: const Icon(Icons.edit),
+          onPressed: () async {
+            // Navigate to edit transaction screen and wait for the result
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditTransactionScreen(
+                  customerName: widget.customerName,
+                  customerId: widget.customerId,
+                  transactionId: widget.transactionId,
+                  transaction: widget.transaction,
+                  mobileNumber: widget.mobileNumber,
+                ),
+              ),
+            );
+            // Reload the transaction details after editing
+            setState(() {
+              _transactionFuture = loadTransactionDetails();
+            });
+          },
+        ),
+      ),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: SizeConfig.imageSizeMultiplier * 5,
             vertical: SizeConfig.heightMultiplier * 2,
           ),
-          child: ListView(
-            children: [
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      buildListTile('Amount',
-                          CurrencyUtil.format(transaction['amount'] ?? 0)),
-                      buildListTile('Date', transaction['date'].toString()),
-                      if (transaction['type'] == 'Credit')
-                        buildListTile('Repayment Date',
-                            transaction['repaymentDate'].toDate().toString()),
-                      buildListTile('Status', transaction['status']),
-                      buildListTile('Type', transaction['type']),
-                      buildProductListTile(
-                          context, hasProducts, isMap, isNotEmpty)
-                    ],
+          child: FutureBuilder<DocumentSnapshot>(
+            future: _transactionFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (!snapshot.hasData || snapshot.hasError) {
+                return const Center(
+                    child: Text('Error loading transaction data.'));
+              }
+
+              // Get the transaction data from Firestore
+              var transaction = snapshot.data!.data() as Map<String, dynamic>;
+
+              bool hasProducts = transaction.containsKey('products');
+              bool isMap = hasProducts &&
+                  transaction['products'] is Map<String, dynamic>;
+              bool isNotEmpty = isMap &&
+                  (transaction['products'] as Map<String, dynamic>).isNotEmpty;
+
+              return ListView(
+                children: [
+                  Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          buildListTile('Amount',
+                              CurrencyUtil.format(transaction['amount'] ?? 0)),
+                          buildListTile(
+                              'Date', transaction['date'].toDate().toString()),
+                          if (transaction['type'] == 'Credit')
+                            buildListTile(
+                                'Repayment Date',
+                                transaction['repaymentDate']
+                                    .toDate()
+                                    .toString()),
+                          buildListTile('Status', transaction['status']),
+                          buildListTile('Type', transaction['type']),
+                          buildProductListTile(context, hasProducts, isMap,
+                              isNotEmpty, transaction)
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -87,8 +162,8 @@ class TransactionDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget buildProductListTile(
-      BuildContext context, bool hasProducts, bool isMap, bool isNotEmpty) {
+  Widget buildProductListTile(BuildContext context, bool hasProducts,
+      bool isMap, bool isNotEmpty, Map<String, dynamic> transaction) {
     return ListTile(
       title: Text(
         'Products',
@@ -115,7 +190,7 @@ class TransactionDetailScreen extends StatelessWidget {
                       .get(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return CircularProgressIndicator();
+                      return const CircularProgressIndicator();
                     }
                     if (snapshot.hasError) {
                       return Text('Error fetching product with ID: $productId');
@@ -153,8 +228,7 @@ class TransactionDetailScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier *
-            2), // Add padding to avoid overflow
+        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -177,18 +251,16 @@ class TransactionDetailScreen extends StatelessWidget {
                 ),
               ],
             ),
-            SizedBox(
-                height: SizeConfig.heightMultiplier * 1), // Add some spacing
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
             Text(
               'Quantity: $quantity',
               style: TextStyle(
                 fontSize: SizeConfig.textMultiplier * 1.8,
               ),
             ),
-            SizedBox(
-                height: SizeConfig.heightMultiplier * 0.5), // Add some spacing
+            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
             Text(
-              'Selling Price: ' + CurrencyUtil.format(sellingPrice),
+              'Selling Price: ${CurrencyUtil.format(sellingPrice)}',
               style: TextStyle(
                 fontStyle: FontStyle.italic,
                 fontSize: SizeConfig.textMultiplier * 1.8,

@@ -1,6 +1,6 @@
 import { functions, db } from "../config/main";
 
-interface MerchantDetails {
+export interface MerchantDetails {
   name: string;
   shopName: string;
   balance: number;
@@ -12,7 +12,7 @@ interface MerchantDetails {
  * @param {string} rawNumber - The raw phone number.
  * @return {string} - The normalized phone number in local format, e.g., 0648370009.
  */
-function normalizePhoneNumber(rawNumber: string) {
+export function normalizePhoneNumber(rawNumber: string) {
   if (rawNumber === "") {
     return rawNumber; // Return the empty string unchanged
   }

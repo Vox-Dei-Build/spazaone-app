@@ -7,14 +7,25 @@ import 'package:pasella/pages/sales/widgets/sale_detail_page.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:shimmer/shimmer.dart';
 
-class SalesList extends StatelessWidget {
+class SalesList extends StatefulWidget {
   final SalesViewModel viewModel;
 
-  SalesList({required this.viewModel});
+  const SalesList({super.key, required this.viewModel});
+
+  @override
+  _SalesListState createState() => _SalesListState();
+}
+
+class _SalesListState extends State<SalesList> {
+  @override
+  void initState() {
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
+    final viewModel = widget.viewModel;
 
     return StreamBuilder<List<Sale>>(
       stream: viewModel.sales,
@@ -66,11 +77,21 @@ class SalesList extends StatelessWidget {
                         size: SizeConfig.imageSizeMultiplier * 4,
                         color: Colors.grey),
                     onTap: () {
-                      Navigator.of(context).push(
+                      Navigator.of(context)
+                          .push(
                         MaterialPageRoute(
-                          builder: (context) => SaleDetailPage(sale: sale),
+                          builder: (context) => SaleDetailPage(
+                            sale: sale,
+                          ),
                         ),
-                      );
+                      )
+                          .then((value) {
+                        // Check if editing completed with a `true` response
+                        if (value == true) {
+                          viewModel.updateSelectedPeriod(
+                              viewModel.selectedPeriod); // Refresh data
+                        }
+                      });
                     },
                   ),
                 );
