@@ -56,7 +56,6 @@ exports.sendTwilioMessage = functions.https.onRequest(async (req, res) => {
         contentVariables: templateParams ? JSON.stringify(templateParams) : "", // Template params for dynamic placeholders
         contentSid: templateId, // The template ID (Content SID) for the pre-approved message template
       });
-
     } else {
       messageResponse = await client.messages.create({
         to: to, // Phone number to send the message to (WhatsApp/SMS)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/contact/widgets/product_selection.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -10,22 +11,35 @@ import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
-class AddSale extends StatelessWidget {
-  final SalesViewModel salesViewModel;
+class EditSale extends StatefulWidget {
+  final Sale sale;
 
-  const AddSale({super.key, required this.salesViewModel});
+  const EditSale({super.key, required this.sale});
+
+  @override
+  _EditSaleState createState() => _EditSaleState();
+}
+
+class _EditSaleState extends State<EditSale> {
+  late SalesViewModel transactionViewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    transactionViewModel = SalesViewModel()..loadSaleDetails(widget.sale);
+  }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
     return ChangeNotifierProvider(
-      create: (_) => SalesViewModel(),
+      create: (_) => transactionViewModel,
       child: Consumer<SalesViewModel>(
         builder: (context, transactionViewModel, child) {
           return Scaffold(
             key: transactionViewModel.scaffoldKey,
-            appBar: const CustomAppBar(title: 'Add Sale'),
+            appBar: const CustomAppBar(title: 'Edit Sale'),
             body: SafeArea(
               child: Padding(
                 padding: LayoutConstants.padding20Horizontal,
@@ -80,9 +94,11 @@ class AddSale extends StatelessWidget {
                                           lastDate: DateTime.now(),
                                         );
                                         if (pickedDate != null) {
-                                          transactionViewModel
-                                                  .salesSelectedDate =
-                                              dateFormat.format(pickedDate);
+                                          setState(() {
+                                            transactionViewModel
+                                                    .salesSelectedDate =
+                                                dateFormat.format(pickedDate);
+                                          });
                                         }
                                       },
                                       child: Text(
@@ -98,9 +114,18 @@ class AddSale extends StatelessWidget {
                                 ],
                               ),
                               SizedBox(height: SizeConfig.heightMultiplier * 2),
-                              ProductSelectionWidget(
-                                  viewModel: transactionViewModel),
-                              SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              if (transactionViewModel
+                                  .isTransactionLoading) ...[
+                                SizedBox(
+                                    height: SizeConfig.heightMultiplier * 10),
+                                const CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.green),
+                                )
+                              ] else
+                                ProductSelectionWidget(
+                                    viewModel: transactionViewModel),
+                              SizedBox(height: SizeConfig.heightMultiplier * 2)
                             ],
                           ),
                         ),
@@ -119,16 +144,20 @@ class AddSale extends StatelessWidget {
                       alignment: Alignment.center,
                       children: [
                         CustomButton(
-                          title: 'Add Sale',
+                          title: 'Update Sale',
                           onTap: transactionViewModel.isLoading
                               ? () {}
                               : () async {
-                                  await transactionViewModel
-                                      .addSalesTransaction(context);
-                                  salesViewModel.updateSelectedPeriod('All');
+                                  await transactionViewModel.updateSale(
+                                      widget.sale,
+                                      double.tryParse(transactionViewModel
+                                              .amountController.text) ??
+                                          0.0,
+                                      transactionViewModel.selectedProducts,
+                                      context);
                                 },
                           color: Colors.green,
-                          icon: Icons.money,
+                          icon: Icons.save,
                         ),
                         if (transactionViewModel.isLoading)
                           const CircularProgressIndicator(
