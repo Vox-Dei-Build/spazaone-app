@@ -1,25 +1,28 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
+import 'package:pasella/providers/transactional_view_model.dart';
+import 'package:pasella/utils/auth_util.dart';
+import 'package:pasella/utils/show_toast.dart';
 
-class SalesViewModel extends ChangeNotifier {
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+class SalesViewModel extends TransactionViewModel {
   StreamController<List<Sale>>? _salesController;
   double totalSales = 0.0;
   double totalCost = 0.0;
   double totalProfit = 0.0;
   int totalNumberOfSales = 0;
   String selectedPeriod = 'Today';
-  List<Product> products = [];
   bool productsLoaded = false;
+  bool isTransactionLoading = false;
 
   SalesViewModel() {
     _salesController = StreamController<List<Sale>>.broadcast(sync: true);
-    _loadProducts().then((_) {
+    loadProducts().then((_) {
       productsLoaded = true;
       _getSales(selectedPeriod);
     });
@@ -27,64 +30,242 @@ class SalesViewModel extends ChangeNotifier {
 
   Stream<List<Sale>> get sales => _salesController!.stream;
 
-  void updateSelectedPeriod(String period) {
+  Future<void> updateSelectedPeriod(String period) async {
     selectedPeriod = period;
     if (productsLoaded) {
-      _getSales(selectedPeriod);
+      await _getSales(selectedPeriod);
     } else {
-      _loadProducts().then((_) {
+      loadProducts().then((_) async {
         productsLoaded = true;
-        _getSales(selectedPeriod);
+        await _getSales(selectedPeriod);
       });
     }
     notifyListeners();
   }
 
-  Future<void> _loadProducts() async {
-    try {
-      QuerySnapshot snapshot = await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('products')
-          .get();
-      products = snapshot.docs
-          .map((doc) =>
-              Product.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-          .toList();
-      notifyListeners();
-    } catch (e) {
-      print("Error loading products: $e");
-    }
+  void refreshSales() {
+    loadProducts().then((_) {
+      productsLoaded = true;
+      _getSales(selectedPeriod);
+    });
   }
 
-  Future<void> updateProduct(String productId, double newPrice) async {
+  Future<void> addSalesTransaction(BuildContext context) async {
+    setLoading(true);
+
+    if (!await isAnonymousGate(context)) {
+      setLoading(false);
+      return;
+    }
+
     try {
+      final amountEntered = double.tryParse(amountController.text);
+      if (amountEntered == null || amountEntered <= 0) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(context, 'Please check the amount entered.', Colors.red);
+        });
+        setLoading(false);
+        return;
+      }
+
+      final salesData = {
+        'amount': amountEntered,
+        'type': 'Cash',
+        'dateAdded': Timestamp.fromDate(
+            DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
+        'products': selectedProducts,
+      };
+
+      var connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(
+              context,
+              'You\'re offline. Action queued and will complete when back online.',
+              Colors.orange);
+        });
+      }
+
       await firestore
           .collection('users')
           .doc(userId)
-          .collection('products')
-          .doc(productId)
-          .update({'sellingPrice': newPrice});
-      // Update the local product list
-      int productIndex = products.indexWhere((p) => p.id == productId);
-      if (productIndex != -1) {
-        products[productIndex].sellingPrice = newPrice;
-        notifyListeners(); // Ensure the listeners are notified to recalculate totals
+          .collection('sales')
+          .add(salesData);
+
+      currentSale = Sale(
+        id: '', // This will be replaced by Firestore document ID
+        amount: amountEntered,
+        type: 'Cash',
+        products: selectedProducts,
+        dateAdded: DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
+      );
+
+      for (var productId in selectedProducts.keys) {
+        Product? product = products.firstWhere((p) => p.id == productId,
+            orElse: () => Product());
+        if (product.quantity != null) {
+          await firestore
+              .collection('users')
+              .doc(userId)
+              .collection('products')
+              .doc(productId)
+              .update({
+            'quantity': product.quantity! - selectedProducts[productId]!
+          });
+        }
       }
-    } catch (e) {
-      print("Error updating product: $e");
+
+      DocumentReference merchantRef =
+          FirebaseFirestore.instance.collection('users').doc(userId);
+
+      merchantRef.update({
+        'lastSaleTransaction': salesData,
+      });
+
+      // Reset the form and navigate back
+      resetFormAndNavigateAway(context);
+    } catch (error) {
+      print(error);
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        showSnackbar(context, 'Error adding sale. Please retry.', Colors.red);
+      });
+    } finally {
+      setLoading(false);
     }
   }
 
-  void _getSales(String period) async {
+  Future<void> loadSaleDetails(Sale sale) async {
+    isTransactionLoading = true;
+    try {
+      // Preload the amount for editing
+      amountController.text = sale.amount.toString();
+
+      // Preload the sale date for editing
+      salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded);
+
+      // Preload the selected products for editing
+      selectedProducts = sale.products
+          .map((productId, quantity) => MapEntry(productId, quantity));
+
+      // Load product details for each selected product (optional, for displaying in the UI)
+      for (var productId in sale.products.keys) {
+        DocumentSnapshot productSnapshot = await firestore
+            .collection('users')
+            .doc(userId)
+            .collection('products')
+            .doc(productId)
+            .get();
+
+        if (productSnapshot.exists) {
+          var productData = productSnapshot.data() as Map<String, dynamic>;
+          Product product = Product.fromMap(productData, productId);
+          products.add(
+              product); // Add to the list of available products for reference
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      print("Error loading sale details: $e");
+    } finally {
+      isTransactionLoading = false;
+    }
+  }
+
+  Future<void> updateSale(
+    Sale sale,
+    double updatedAmount,
+    Map<String, int> updatedProducts,
+    BuildContext context,
+  ) async {
+    setLoading(true);
+
+    if (!await isAnonymousGate(context)) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Prepare the sale update data
+      final salesData = {
+        'amount': updatedAmount,
+        'products': updatedProducts,
+        'dateAdded': Timestamp.fromDate(
+            DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
+      };
+
+      // Check connectivity and notify if offline
+      var connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(
+              context,
+              'You\'re offline. Action queued and will complete when back online.',
+              Colors.orange);
+        });
+      }
+
+      // Update sale in Firestore
+      await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('sales')
+          .doc(sale.id)
+          .update(salesData);
+
+      // Update product quantities by comparing original and updated values
+      for (var productId in sale.products.keys) {
+        final originalQuantity = sale.products[productId] ?? 0;
+        final updatedQuantity = updatedProducts[productId] ?? 0;
+        final quantityChange = updatedQuantity - originalQuantity;
+
+        if (quantityChange != 0) {
+          // Update product stock
+          Product? product = products.firstWhere((p) => p.id == productId,
+              orElse: () => Product());
+          if (product.quantity != null) {
+            await firestore
+                .collection('users')
+                .doc(userId)
+                .collection('products')
+                .doc(productId)
+                .update({
+              'quantity': product.quantity! - quantityChange,
+            });
+          }
+        }
+      }
+
+      // Update last sale transaction on merchant document
+      DocumentReference merchantRef = firestore.collection('users').doc(userId);
+      await merchantRef.update({
+        'lastSaleTransaction': salesData,
+      });
+      // Show success message and navigate back
+      showSnackbar(context, 'Sale updated successfully!', Colors.green);
+
+      refreshSales();
+
+      // Reset the form and navigate back
+      resetFormAndNavigateAway(context);
+      Navigator.pop(context, true);
+    } catch (error) {
+      print("Error updating sale: $error");
+      showSnackbar(context, 'Error updating sale. Please retry.', Colors.red);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  Future<void> _getSales(String period) async {
     try {
       QuerySnapshot snapshot;
 
       DateTime now = DateTime.now();
       DateTime startOfDay = DateTime(now.year, now.month, now.day);
-      DateTime endOfDay = startOfDay.add(Duration(days: 1));
+      DateTime endOfDay = startOfDay.add(const Duration(days: 1));
       DateTime startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-      DateTime endOfWeek = startOfWeek.add(Duration(days: 7));
+      DateTime endOfWeek = startOfWeek.add(const Duration(days: 7));
       DateTime startOfMonth = DateTime(now.year, now.month, 1);
       DateTime endOfMonth = DateTime(now.year, now.month + 1, 1);
       int currentQuarter = ((now.month - 1) ~/ 3) + 1;
