@@ -9,11 +9,11 @@ exports.updateBalancesOnTransactionAdded = functions.firestore
   .document(
     "users/{userId}/customers/{customerId}/transactions/{transactionId}",
   )
-  .onCreate(async (snapshot, context) => {
-    const { userId } = context.params;
+  .onWrite(async (change, context) => {
+    const { userId, customerId } = context.params;
 
     try {
-      await updateBalances(userId);
+      await updateBalancesWithEdit(userId, customerId);
       console.log(`Processed transaction for user ${userId}`);
     } catch (error) {
       console.error(`Error updating balance for mercant ${userId}:`, error);
@@ -21,86 +21,68 @@ exports.updateBalancesOnTransactionAdded = functions.firestore
   });
 
 /**
- * Updates the balance of a customers and merchants balance based on the new transaction.
+ * Updates the balance for a specific customer based on the new transaction.
  *
  * @param {string} userId - The ID of the user.
  * @param {string} customerId - The ID of the customer.
  */
-async function updateBalances(userId: string) {
+export async function updateBalancesWithEdit(
+  userId: string,
+  customerId: string,
+) {
   try {
     return await db.runTransaction(async (transaction) => {
       const userRef = db.collection("users").doc(userId);
-      const customersRef = userRef.collection("customers");
-      const customersSnapshot = await transaction.get(customersRef);
+      const customerRef = userRef.collection("customers").doc(customerId);
+      const transactionsRef = customerRef.collection("transactions");
 
-      let totalBalance = 0;
-      let paymentCount = 0;
-      let paymentAmount = 0;
+      // Read all transactions for the specific customer
+      const transactionsSnapshot = await transaction.get(transactionsRef);
+
+      let currentCustomerBalance = 0;
       let creditCount = 0;
       let creditAmount = 0;
-      const totalCustomers = customersSnapshot.docs.length;
-      let outstandingCustomers = 0;
+      let paymentCount = 0;
+      let paymentAmount = 0;
 
-      // Preparing a list of all transaction reads
-      const transactionReads: Promise<FirebaseFirestore.QuerySnapshot>[] = [];
-      customersSnapshot.docs.forEach((customerDoc) => {
-        const transactionsRef = customersRef
-          .doc(customerDoc.id)
-          .collection("transactions");
-        transactionReads.push(transaction.get(transactionsRef));
-      });
+      transactionsSnapshot.docs.forEach((transactionDoc) => {
+        const transactionData = transactionDoc.data();
 
-      // Resolving all transaction reads
-      const transactionResults = await Promise.all(transactionReads);
-
-      transactionResults.forEach((transactionsSnapshot, index) => {
-        let currentCustomerBalance = 0;
-        transactionsSnapshot.docs.forEach((transactionDoc) => {
-          const transactionData = transactionDoc.data();
-
-          if (transactionData.type === "Credit") {
-            totalBalance -= transactionData.amount;
-            currentCustomerBalance -= transactionData.amount;
-            creditCount++;
-            creditAmount += transactionData.amount;
-          } else if (transactionData.type === "Payment") {
-            totalBalance += transactionData.amount;
-            currentCustomerBalance += transactionData.amount;
-            paymentCount++;
-            paymentAmount += transactionData.amount;
-          }
-        });
-
-        // Check for outstanding balance
-        if (currentCustomerBalance < 0) {
-          outstandingCustomers++;
+        if (transactionData.type === "Credit") {
+          currentCustomerBalance -= transactionData.amount;
+          creditCount++;
+          creditAmount += transactionData.amount;
+        } else if (transactionData.type === "Payment") {
+          currentCustomerBalance += transactionData.amount;
+          paymentCount++;
+          paymentAmount += transactionData.amount;
         }
-
-        // Update individual customer balance
-        const customerDoc = customersSnapshot.docs[index];
-        transaction.set(
-          customersRef.doc(customerDoc.id),
-          { balance: currentCustomerBalance },
-          { merge: true },
-        );
       });
 
-      // Update the user's overall balance data
-      const balanceData = {
-        totalBalance,
-        payment: {
-          count: paymentCount,
-          totalAmount: paymentAmount,
-        },
-        credit: {
-          count: creditCount,
-          totalAmount: creditAmount,
-        },
-        totalCustomers,
-        outstandingCustomers,
-        lastUpdated: FieldValue.serverTimestamp(),
+      // Update overall balance for the user
+      const userDoc = await transaction.get(userRef);
+      const balanceData = userDoc.data()?.balanceData || {
+        totalBalance: 0,
+        credit: { count: 0, totalAmount: 0 },
+        payment: { count: 0, totalAmount: 0 },
       };
 
+      // Update global balance data for the user
+      balanceData.totalBalance =
+        balanceData.totalBalance + currentCustomerBalance;
+      balanceData.credit.count += creditCount;
+      balanceData.credit.totalAmount += creditAmount;
+      balanceData.payment.count += paymentCount;
+      balanceData.payment.totalAmount += paymentAmount;
+      balanceData.lastUpdated = FieldValue.serverTimestamp();
+
+      // Update the customer's balance
+      transaction.set(
+        customerRef,
+        { balance: currentCustomerBalance },
+        { merge: true },
+      );
+      // Update the user's balance data
       transaction.set(userRef, { balanceData }, { merge: true });
     });
   } catch (error) {

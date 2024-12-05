@@ -9,14 +9,16 @@ class TransactionsListView extends StatelessWidget {
   final List<Map<String, dynamic>> transactions;
   final String customerId;
   final String customerName;
+  final String? mobileNumber;
 
-  const TransactionsListView({
-    Key? key,
-    required this.customerManagementViewModel,
-    required this.transactions,
-    required this.customerId,
-    required this.customerName,
-  }) : super(key: key);
+  const TransactionsListView(
+      {Key? key,
+      required this.customerManagementViewModel,
+      required this.transactions,
+      required this.customerId,
+      required this.customerName,
+      this.mobileNumber})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -37,11 +39,11 @@ class TransactionsListView extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => TransactionDetailScreen(
-                        customerName: customerName,
-                        customerId: customerId,
-                        transactionId: transaction['id'],
-                        transaction: transaction,
-                      ),
+                          customerName: customerName,
+                          customerId: customerId,
+                          transactionId: transaction['id'],
+                          transaction: transaction,
+                          mobileNumber: mobileNumber),
                     ),
                   );
                 },

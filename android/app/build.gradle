@@ -11,12 +11,12 @@ if (flutterRoot == null) {
     throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
 }
 
-def flutterVersionCode = '26'
+def flutterVersionCode = '28'
 if (flutterVersionCode == null) {
     flutterVersionCode = '1'
 }
 
-def flutterVersionName = '1.2.5'
+def flutterVersionName = '1.2.7'
 if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
@@ -67,10 +67,10 @@ android {
 
     signingConfigs {
     release {
-            //storeFile file(keystoreProperties['storeFile'])
-            //storePassword keystoreProperties['storePassword']
-            //keyAlias keystoreProperties['keyAlias']
-            //keyPassword keystoreProperties['keyPassword']
+            storeFile file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
         }
 }
 

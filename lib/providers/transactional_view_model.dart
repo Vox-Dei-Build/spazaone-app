@@ -1,13 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
-import 'package:pasella/utils/auth_util.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class TransactionViewModel extends ChangeNotifier {
@@ -178,94 +176,34 @@ class TransactionViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> sendSMS(
+    String currentUserId,
+    String customerId,
+    double amountEntered,
+    String customerName,
+    String transactionType,
+    String? mobileNumber,
+  ) async {
+    try {
+      MessagingNotificationService notificationService =
+          MessagingNotificationService();
+      await notificationService.sendConfirmationMessage(
+        currentUserId,
+        customerId,
+        transactionType,
+        amountEntered,
+        customerName,
+        mobileNumber,
+      );
+    } catch (e) {
+      print(e);
+    }
+  }
+
   @protected
   void setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
-  }
-
-  Future<void> addSalesTransaction(BuildContext context) async {
-    setLoading(true);
-
-    if (!await isAnonymousGate(context)) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      final amountEntered = double.tryParse(amountController.text);
-      if (amountEntered == null || amountEntered <= 0) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          showSnackbar(context, 'Please check the amount entered.', Colors.red);
-        });
-        setLoading(false);
-        return;
-      }
-
-      final salesData = {
-        'amount': amountEntered,
-        'type': 'Cash',
-        'dateAdded': Timestamp.fromDate(
-            DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
-        'products': selectedProducts,
-      };
-
-      var connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult == ConnectivityResult.none) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          showSnackbar(
-              context,
-              'You\'re offline. Action queued and will complete when back online.',
-              Colors.orange);
-        });
-      }
-
-      await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('sales')
-          .add(salesData);
-
-      currentSale = Sale(
-        id: '', // This will be replaced by Firestore document ID
-        amount: amountEntered,
-        type: 'Cash',
-        products: selectedProducts,
-        dateAdded: DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
-      );
-
-      for (var productId in selectedProducts.keys) {
-        Product? product = products.firstWhere((p) => p.id == productId,
-            orElse: () => Product());
-        if (product.quantity != null) {
-          await firestore
-              .collection('users')
-              .doc(userId)
-              .collection('products')
-              .doc(productId)
-              .update({
-            'quantity': product.quantity! - selectedProducts[productId]!
-          });
-        }
-      }
-
-      DocumentReference merchantRef =
-          FirebaseFirestore.instance.collection('users').doc(userId);
-
-      merchantRef.update({
-        'lastSaleTransaction': salesData,
-      });
-
-      // Reset the form and navigate back
-      resetFormAndNavigateAway(context);
-    } catch (error) {
-      print(error);
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        showSnackbar(context, 'Error adding sale. Please retry.', Colors.red);
-      });
-    } finally {
-      setLoading(false);
-    }
   }
 
   void resetFormAndNavigateAway(BuildContext context) {
@@ -273,6 +211,7 @@ class TransactionViewModel extends ChangeNotifier {
     remarksController.clear();
     selectedProducts.clear();
     salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
+    setLoading(false);
     notifyListeners();
     Navigator.of(context).pop();
   }

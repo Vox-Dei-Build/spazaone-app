@@ -1,290 +1,258 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
-import 'package:pasella/services/firestore_service.dart';
+import 'package:pasella/pages/contact/view_model/edit_transaction_view_model.dart';
+import 'package:pasella/pages/contact/widgets/product_selection.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/utils/currency_util.dart';
+import 'package:provider/provider.dart';
 
 class EditTransactionScreen extends StatefulWidget {
   final String customerName;
   final String customerId;
   final String transactionId;
   final Map<String, dynamic> transaction;
+  final String? mobileNumber;
 
-  EditTransactionScreen({
-    required this.customerName,
-    required this.customerId,
-    required this.transactionId,
-    required this.transaction,
-  });
+  const EditTransactionScreen(
+      {super.key,
+      required this.customerName,
+      required this.customerId,
+      required this.transactionId,
+      required this.transaction,
+      this.mobileNumber});
 
   @override
   _EditTransactionScreenState createState() => _EditTransactionScreenState();
 }
 
 class _EditTransactionScreenState extends State<EditTransactionScreen> {
-  final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-  final _formKey = GlobalKey<FormState>();
-  final _fireStoreService = FirestoreService();
-  TextEditingController _amountController = TextEditingController();
-  TextEditingController _remarksController = TextEditingController();
-  DateTime _selectedDate = DateTime.now();
-  DateTime _repaymentDate = DateTime.now().add(Duration(days: 30));
-  bool _isLoading = false;
+  late String customerName;
+  late String customerId;
+  late String transactionId;
+  late Map<String, dynamic> transaction;
+  late String transactionType;
+  late String? mobileNumber;
 
   @override
   void initState() {
     super.initState();
-    _amountController.text = widget.transaction['amount'].toString();
-    _remarksController.text = widget.transaction['remarks'];
-    _selectedDate = DateTime.parse(widget.transaction['date']);
-    if (widget.transaction['type'] == 'Credit') {
-      _repaymentDate = widget.transaction['repaymentDate'].toDate();
-    }
-  }
-
-  bool _validateAmount() {
-    if (_amountController.text.isEmpty ||
-        double.tryParse(_amountController.text) == null) {
-      return false;
-    }
-    return true;
-  }
-
-  void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? Colors.red : Colors.green,
-    ));
-  }
-
-  Future<void> _editTransaction() async {
-    if (!_formKey.currentState!.validate() ||
-        !_validateAmount() ||
-        _isLoading) {
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Step 2: Update your Firestore Reference
-    DocumentReference transactionRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUserId)
-        .collection('customers')
-        .doc(widget.customerId)
-        .collection('transactions')
-        .doc(widget.transactionId);
-
-    var updatedTransactionData = {
-      'amount': double.parse(_amountController.text),
-      'date': _selectedDate,
-      'remarks': _remarksController.text,
-      'repaymentDate': _repaymentDate,
-      'status': widget.transaction['status'],
-      'type': widget.transaction['type'],
-    };
-
-    DocumentSnapshot snapshot = await transactionRef.get();
-
-    if (!snapshot.exists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text('Failed to update transaction: Transaction does not exist.'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      Navigator.pop(context);
-    } else {
-      try {
-        await transactionRef.update(updatedTransactionData);
-
-        // Step 3: Check and possibly update the Last Transaction
-        DocumentReference customerRef = FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUserId)
-            .collection('customers')
-            .doc(widget.customerId);
-
-        DocumentSnapshot customerSnapshot = await customerRef.get();
-
-        if (customerSnapshot.exists) {
-          var customerData = customerSnapshot.data() as Map<String, dynamic>;
-          var lastTransactionDate =
-              (customerData['lastTransaction']['date'] as Timestamp).toDate();
-
-          DateTime truncatedSelectedDate = DateTime(
-              _selectedDate.year,
-              _selectedDate.month,
-              _selectedDate.day,
-              _selectedDate.hour,
-              _selectedDate.minute,
-              _selectedDate.second);
-          DateTime truncatedLastTransactionDate = DateTime(
-              lastTransactionDate.year,
-              lastTransactionDate.month,
-              lastTransactionDate.day,
-              lastTransactionDate.hour,
-              lastTransactionDate.minute,
-              lastTransactionDate.second);
-
-          if (truncatedLastTransactionDate == truncatedSelectedDate) {
-            await customerRef
-                .update({'lastTransaction': updatedTransactionData});
-          }
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Transaction updated successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-
-        _fireStoreService.triggerBalanceCalculation();
-
-        Navigator.pop(context);
-      } catch (e) {
-        print('Error while updating the transaction: $e');
-
-        // Optionally, inform the user about the error using a UI element.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update the transaction: $e'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      } finally {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+    customerName = widget.customerName;
+    customerId = widget.customerId;
+    transactionId = widget.transactionId;
+    transaction = widget.transaction;
+    transactionType = transaction['type'];
+    mobileNumber = widget.mobileNumber;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppBar(
-          title:
-              'Edit ${widget.transaction['type'] == 'Credit' ? 'Credit' : 'Payment'} for ${widget.customerName}'),
-      body: SafeArea(
-        child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              // Using ListView to avoid overflow issues
-              children: [
-                CustomTextField(
-                    label: 'Amount',
-                    hintText: 'Enter Amount',
-                    prefixIcon: Icons.money,
-                    controller: _amountController,
-                    textInputType: TextInputType.number,
-                    validator: (value) {
-                      if (value!.isEmpty || double.tryParse(value) == null) {
-                        return 'Please enter a valid amount';
-                      }
-                      return null;
-                    }),
-                SizedBox(height: 16),
-                Row(
-                  children: [
-                    Text(
-                      'Date: ',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    SizedBox(width: 10),
-                    ElevatedButton(
-                      onPressed: () async {
-                        DateTime? pickedDate = await showDatePicker(
-                          context: context,
-                          initialDate: _selectedDate,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime.now(),
-                        );
-                        if (pickedDate != null && pickedDate != _selectedDate) {
-                          setState(() {
-                            _selectedDate = pickedDate;
-                          });
-                        }
-                      },
-                      child: Text('${_selectedDate.toLocal()}'.split(' ')[0]),
-                    ),
-                  ],
-                ),
-                if (widget.transaction['type'] == 'Credit') ...[
-                  SizedBox(height: 16),
-                  Row(
+    SizeConfig().init(context); // Initialize SizeConfig
+    final bool isCredit = transactionType == "Credit";
+
+    return ChangeNotifierProvider(
+      create: (_) => EditTransactionViewModel(
+        customerName: customerName,
+        customerId: customerId,
+        transaction: transaction,
+        transactionId: transactionId,
+        transactionType: transactionType,
+        mobileNumber: mobileNumber,
+      ),
+      child: Consumer<EditTransactionViewModel>(
+        builder: (context, viewModel, child) {
+          return Scaffold(
+            key: viewModel.scaffoldKey,
+            appBar:
+                CustomAppBar(title: 'Edit $transactionType for $customerName'),
+            body: SafeArea(
+              child: Padding(
+                padding: LayoutConstants.padding20Horizontal,
+                child: Form(
+                  child: Column(
                     children: [
-                      Text(
-                        'Repayment Date: ',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              CustomTextField(
+                                label: 'Amount',
+                                hintText: 'Enter Amount',
+                                prefixIcon: Icons.money,
+                                controller: viewModel.amountController,
+                                textInputType: TextInputType.number,
+                                validator: (value) {
+                                  if (value == null ||
+                                      value.isEmpty ||
+                                      double.tryParse(value) == null) {
+                                    return 'Please enter a valid amount';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              if (isCredit) ...[
+                                // Repayment Date only for credit transactions
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Date of Credit: ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.8,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                        width: SizeConfig.heightMultiplier * 1),
+                                    ElevatedButton(
+                                      onPressed: () async {
+                                        DateTime? pickedDate =
+                                            await showDatePicker(
+                                          context: context,
+                                          initialDate: viewModel.selectedDate,
+                                          firstDate: DateTime(2000),
+                                          lastDate: DateTime.now(),
+                                        );
+                                        if (pickedDate != null) {
+                                          viewModel.selectedDate = pickedDate;
+                                        }
+                                      },
+                                      child: Text(
+                                        '${viewModel.selectedDate.toLocal()}'
+                                            .split(' ')[0],
+                                        style: TextStyle(
+                                            fontSize:
+                                                SizeConfig.textMultiplier *
+                                                    1.8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              SizedBox(height: SizeConfig.heightMultiplier * 1),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Repayment Date: ',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: SizeConfig.textMultiplier * 1.8,
+                                    ),
+                                  ),
+                                  SizedBox(
+                                      width: SizeConfig.heightMultiplier * 1),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      DateTime? pickedDate =
+                                          await showDatePicker(
+                                        context: context,
+                                        initialDate: viewModel.repaymentDate,
+                                        firstDate: viewModel.selectedDate,
+                                        lastDate: DateTime(2100),
+                                      );
+                                      if (pickedDate != null) {
+                                        viewModel.repaymentDate = pickedDate;
+                                      }
+                                    },
+                                    child: Text(
+                                      '${viewModel.repaymentDate.toLocal()}'
+                                          .split(' ')[0],
+                                      style: TextStyle(
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (isCredit) ...[
+                                SizedBox(
+                                    height: SizeConfig.heightMultiplier * 2),
+                                if (viewModel.isProductsLoading) ...[
+                                  SizedBox(
+                                      height: SizeConfig.heightMultiplier * 10),
+                                  const CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.green),
+                                  )
+                                ] else
+                                  ProductSelectionWidget<
+                                          EditTransactionViewModel>(
+                                      viewModel: viewModel),
+                              ] else ...[
+                                SizedBox(
+                                    height: SizeConfig.heightMultiplier * 1),
+                                TextFormField(
+                                  controller: viewModel.remarksController,
+                                  maxLines: 3,
+                                  decoration: InputDecoration(
+                                    labelText: 'Remarks/Notes',
+                                    border: const OutlineInputBorder(),
+                                    labelStyle: TextStyle(
+                                      fontSize: SizeConfig.textMultiplier * 2,
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      vertical:
+                                          SizeConfig.heightMultiplier * 1.5,
+                                      horizontal:
+                                          SizeConfig.imageSizeMultiplier * 3,
+                                    ),
+                                  ),
+                                ),
+                              ]
+                            ],
+                          ),
+                        ),
                       ),
-                      SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: () async {
-                          DateTime? pickedDate = await showDatePicker(
-                            context: context,
-                            initialDate: _repaymentDate,
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime(2100),
-                          );
-                          if (pickedDate != null &&
-                              pickedDate != _repaymentDate) {
-                            setState(() {
-                              _repaymentDate = pickedDate;
-                            });
-                          }
-                        },
-                        child:
-                            Text('${_repaymentDate.toLocal()}'.split(' ')[0]),
+                      SizedBox(height: SizeConfig.heightMultiplier * 1),
+                      if (isCredit) ...[
+                        Text(
+                          'Total Amount: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: SizeConfig.heightMultiplier * 1),
+                      ],
+                      Column(
+                        children: [
+                          SizedBox(height: SizeConfig.heightMultiplier * 1),
+                          Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CustomButton(
+                                title: 'Update $transactionType',
+                                onTap: viewModel.isLoading
+                                    ? () {}
+                                    : () async {
+                                        await viewModel
+                                            .updateTransaction(context);
+                                      },
+                                color: isCredit ? Colors.red : Colors.green,
+                                icon: isCredit
+                                    ? Icons.arrow_downward
+                                    : Icons.arrow_upward,
+                                fontSize: SizeConfig.textMultiplier * 2,
+                              ),
+                              if (viewModel.isLoading)
+                                const CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-                SizedBox(height: 16),
-                TextFormField(
-                  controller: _remarksController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: 'Remarks/Notes',
-                    border: OutlineInputBorder(),
-                  ),
                 ),
-                SizedBox(height: 16),
-                Stack(alignment: Alignment.center, children: [
-                  CustomButton(
-                    title: 'Update ${widget.transaction['type']}',
-                    onTap: _isLoading
-                        ? () => null
-                        : () async {
-                            await _editTransaction();
-                          },
-                    color: widget.transaction['type'] == 'Credit'
-                        ? Colors.red
-                        : Colors.green,
-                    icon: widget.transaction['type'] == 'Credit'
-                        ? Icons.arrow_downward
-                        : Icons.arrow_upward,
-                  ),
-                  if (_isLoading)
-                    CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
-                ]),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
