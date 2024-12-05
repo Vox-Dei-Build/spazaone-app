@@ -16,6 +16,7 @@ exports.sendPromoToActiveCustomers = functions.https.onRequest(
       templateId,
       testMode = true,
       excludedMerchantNumbers = [],
+      excludedCustomerNumbers = [],
     } = req.body; // Template ID, testMode flag, and excluded merchant numbers
 
     try {
@@ -59,6 +60,11 @@ exports.sendPromoToActiveCustomers = functions.https.onRequest(
                 if (!phoneNumber) {
                   console.log(`No phone number for customer ${customerDoc.id}`);
                   return; // Skip if no phone number
+                }
+
+                if (excludedCustomerNumbers.includes(phoneNumber)) {
+                  console.log(`Skipping customer with phone number ${phoneNumber}`);
+                  return;
                 }
 
                 // Normalize the phone number
