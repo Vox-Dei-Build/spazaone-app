@@ -34,7 +34,7 @@ class _SalesPageState extends State<SalesPage> {
               ),
               child: SizedBox(
                 height:
-                    SizeConfig.heightMultiplier * 8, // Adjust height as needed
+                    SizeConfig.heightMultiplier * 7, // Adjust height as needed
                 child: FloatingActionButton.extended(
                   elevation: 3.0,
                   onPressed: () {
@@ -49,14 +49,14 @@ class _SalesPageState extends State<SalesPage> {
                   icon: Icon(
                     Icons.add_outlined,
                     color: Colors.white,
-                    size: SizeConfig.heightMultiplier * 3, // Smaller icon
+                    size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
                   ),
                   label: Text(
                     'Add Sale',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize:
-                          SizeConfig.textMultiplier * 2.5, // Adjust font size
+                          SizeConfig.textMultiplier * 2, // Adjust font size
                     ),
                   ),
                 ),
@@ -65,11 +65,11 @@ class _SalesPageState extends State<SalesPage> {
             body: SafeArea(
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.imageSizeMultiplier * 5),
+                    horizontal: SizeConfig.imageSizeMultiplier * 4),
                 child: Column(
                   children: <Widget>[
                     SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    SalesPageHeader(),
+                    const SalesPageHeader(),
                     SizedBox(height: SizeConfig.heightMultiplier * 2),
                     SalesPeriodDropdown(viewModel: viewModel),
                     SizedBox(height: SizeConfig.heightMultiplier * 1.5),

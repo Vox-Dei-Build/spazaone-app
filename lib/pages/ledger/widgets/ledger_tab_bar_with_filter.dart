@@ -19,9 +19,8 @@ class LedgerTabBarWithFilter extends StatelessWidget {
             tabIndexNotifier.value = index;
           },
           labelStyle: TextStyle(
-            fontSize:
-                SizeConfig.textMultiplier * 1.8, // Font size for selected tab
-            fontWeight: FontWeight.normal, // Font weight for selected tab
+            fontSize: SizeConfig.textMultiplier * 1.8,
+            fontWeight: FontWeight.normal,
           ),
           unselectedLabelStyle: TextStyle(
             fontSize: SizeConfig.textMultiplier *

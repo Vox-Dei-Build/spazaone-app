@@ -12,6 +12,8 @@ import 'widgets/add_product_group_button.dart';
 import 'widgets/product_group_list.dart';
 
 class StockPage extends StatefulWidget {
+  const StockPage({super.key});
+
   @override
   _StockPageState createState() => _StockPageState();
 }
@@ -55,7 +57,7 @@ class _StockPageState extends State<StockPage>
                       right: SizeConfig.imageSizeMultiplier * 1,
                     ),
                     child: SizedBox(
-                      height: SizeConfig.heightMultiplier * 8,
+                      height: SizeConfig.heightMultiplier * 7,
                       child: _buildFloatingActionButton(tabIndex, viewModel),
                     ),
                   );
@@ -70,41 +72,42 @@ class _StockPageState extends State<StockPage>
                     children: [
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       PageHeader(
-                        onSearchTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const GlobalSearchPage(),
-                            ),
-                          );
-                        },
-                        actionWidget: IconButton(
-                          icon: Icon(
-                            Icons.help_outline,
-                            color: Colors.black,
-                            size: SizeConfig.imageSizeMultiplier * 7,
-                          ),
-                          onPressed: () {
+                          onSearchTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (context) => VimeoVideoPage(
-                                  videoId: '951892750',
-                                  title: 'How to Capture Stock',
-                                ),
+                                builder: (context) => const GlobalSearchPage(),
                               ),
                             );
                           },
-                        ),
-                      ),
+                          actionWidget: Expanded(
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.help_outline,
+                                color: Colors.black,
+                                size: SizeConfig.imageSizeMultiplier * 7,
+                              ),
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => VimeoVideoPage(
+                                      videoId: '951892750',
+                                      title: 'How to Capture Stock',
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          )),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       TabBar(
                         controller: _tabController,
                         labelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 2,
-                          fontWeight: FontWeight.bold,
+                          fontSize: SizeConfig.textMultiplier * 1.8,
+                          fontWeight: FontWeight.normal,
                         ),
                         unselectedLabelStyle: TextStyle(
                           fontSize: SizeConfig.textMultiplier *
-                              2, // Font size for unselected tabs
+                              1.8, // Font size for unselected tabs
                           fontWeight: FontWeight
                               .normal, // Font weight for unselected tabs
                         ),
@@ -153,13 +156,13 @@ class _StockPageState extends State<StockPage>
             icon: Icon(
               Icons.add_outlined,
               color: Colors.white,
-              size: SizeConfig.heightMultiplier * 3, // Smaller icon
+              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
             ),
             label: Text(
               'Add Product',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2.5, // Adjust font size
+                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
               ),
             ),
           )

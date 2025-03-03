@@ -64,7 +64,7 @@ class _LedgerPageState extends State<LedgerPage> {
         body: SafeArea(
           child: Padding(
             padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 5),
+                horizontal: SizeConfig.imageSizeMultiplier * 4),
             child: LedgerMainContent(
               ledgerViewModel: ledgerViewModel,
               tabIndexNotifier: _tabIndexNotifier,

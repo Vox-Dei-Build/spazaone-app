@@ -34,7 +34,8 @@ class AuthViewModel with ChangeNotifier {
 
     try {
       String formattedPhoneNumber = formatPhoneNumber(mobileNoController.text);
-      bool isRegistered = await _isUserRegistered(mobileNoController.text);
+      String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
+      bool isRegistered = await _isUserRegistered(normalizedPhoneNumber);
 
       if (!isRegistered) {
         showErrorSnackBar(
@@ -66,7 +67,8 @@ class AuthViewModel with ChangeNotifier {
     try {
       String formattedPhoneNumber =
           formatPhoneNumber(registrationMobileNoController.text);
-      bool isAlreadyRegistered = await _isUserRegistered(formattedPhoneNumber);
+      String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
+      bool isAlreadyRegistered = await _isUserRegistered(normalizedPhoneNumber);
 
       if (isAlreadyRegistered) {
         showErrorSnackBar(
@@ -217,16 +219,16 @@ class AuthViewModel with ChangeNotifier {
         String smsCode = "";
 
         return AlertDialog(
-          title: Text('Enter SMS Code'),
+          title: const Text('Enter SMS Code'),
           content: SingleChildScrollView(
             child: Container(
-              padding: EdgeInsets.all(16.0), // Add padding if needed
+              padding: const EdgeInsets.all(16.0), // Add padding if needed
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     onChanged: (value) => smsCode = value,
-                    decoration: InputDecoration(hintText: "SMS Code"),
+                    decoration: const InputDecoration(hintText: "SMS Code"),
                     keyboardType: TextInputType.number,
                     autofocus: true, // Automatically focus on the TextField
                   ),
@@ -236,14 +238,14 @@ class AuthViewModel with ChangeNotifier {
           ),
           actions: [
             TextButton(
-              child: Text('Cancel'),
+              child: const Text('Cancel'),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 completer.complete();
               },
             ),
             TextButton(
-              child: Text('Verify'),
+              child: const Text('Verify'),
               onPressed: () {
                 onVerifyPressed(smsCode);
                 if (Navigator.of(dialogContext).canPop()) {
@@ -341,7 +343,7 @@ class AuthViewModel with ChangeNotifier {
       }
     } catch (e) {
       showErrorSnackBar(context, "Failed to link anonymous account: $e");
-      throw e; // Rethrow if you need further error handling upstream
+      rethrow; // Rethrow if you need further error handling upstream
     } finally {
       stopLoading();
     }

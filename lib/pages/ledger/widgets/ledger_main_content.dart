@@ -28,22 +28,24 @@ class LedgerMainContent extends StatelessWidget {
           children: [
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             PageHeader(
-              actionWidget: IconButton(
-                icon: Icon(
-                  Icons.help_outline,
-                  color: Colors.black,
-                  size: SizeConfig.imageSizeMultiplier * 7,
-                ),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => VimeoVideoPage(
-                        videoId: '951892750',
-                        title: 'How to Capture Sales & Credit',
+              actionWidget: Expanded(
+                child: IconButton(
+                  icon: Icon(
+                    Icons.help_outline,
+                    color: Colors.black,
+                    size: SizeConfig.imageSizeMultiplier * 7,
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => VimeoVideoPage(
+                          videoId: '951892750',
+                          title: 'How to Capture Sales & Credit',
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -55,7 +57,7 @@ class LedgerMainContent extends StatelessWidget {
                     searchTextNotifier: ledgerViewModel.searchTextNotifier,
                     hasCustomersNotifier: ledgerViewModel.hasCustomersNotifier,
                   ),
-                  BusinessReportPage(),
+                  const BusinessReportPage(),
                 ],
               ),
             ),
