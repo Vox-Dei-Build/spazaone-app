@@ -10,20 +10,20 @@ class LedgerFloatingActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: SizeConfig.heightMultiplier * 8,
+      height: SizeConfig.heightMultiplier * 7,
       child: FloatingActionButton.extended(
         elevation: 3.0,
         onPressed: onPressed,
         icon: Icon(
           Icons.add_outlined,
           color: Colors.white,
-          size: SizeConfig.heightMultiplier * 3,
+          size: SizeConfig.heightMultiplier * 2.5,
         ),
         label: Text(
           'Add Contact',
           style: TextStyle(
             color: Colors.white,
-            fontSize: SizeConfig.textMultiplier * 2.5,
+            fontSize: SizeConfig.textMultiplier * 2,
           ),
         ),
       ),

@@ -4,8 +4,8 @@ import 'package:pasella/pages/ledger/ledger.dart';
 import 'package:pasella/pages/ledger/widgets/tab.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/pages/sales/sales.dart';
-import 'package:pasella/pages/settings/settings.dart';
 import 'package:pasella/pages/stock/stock.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/utils/auth_util.dart';
 
 enum SwitchType {
@@ -18,8 +18,8 @@ class AppModel with ChangeNotifier {
   final List<Widget> _navigationOptions = [
     const LedgerPage(),
     StockPage(),
-    SalesPage(),
-    const SettingsPage(),
+    const SalesPage(),
+    const WalletPage()
   ];
 
   void handleNavigation(BuildContext context, int index) {

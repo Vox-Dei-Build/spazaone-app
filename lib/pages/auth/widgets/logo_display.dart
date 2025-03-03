@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart'; // Ensure SizeConfig is imported
 
 class LogoDisplay extends StatelessWidget {
+  const LogoDisplay({super.key});
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context); // Initialize SizeConfig
@@ -9,10 +11,10 @@ class LogoDisplay extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center, // Center align the contents
       children: <Widget>[
-        Image.asset(
-          'assets/images/logo.png',
-          width: SizeConfig.imageSizeMultiplier * 25, // Responsive width
-          height: SizeConfig.imageSizeMultiplier * 25, // Responsive height
+        Icon(
+          Icons.shopping_cart_outlined,
+          color: Colors.orangeAccent,
+          size: SizeConfig.imageSizeMultiplier * 24,
         ),
         SizedBox(height: SizeConfig.heightMultiplier * 2), // Responsive spacing
         Text(

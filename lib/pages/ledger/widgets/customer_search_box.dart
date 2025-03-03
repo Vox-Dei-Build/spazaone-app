@@ -31,7 +31,7 @@ class _CustomerSearchBoxState extends State<CustomerSearchBox> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: SizeConfig.heightMultiplier * 7,
+      height: SizeConfig.heightMultiplier * 6,
       width: double.infinity,
       decoration: BoxDecoration(
         color: kHighLightColor,
@@ -42,14 +42,14 @@ class _CustomerSearchBoxState extends State<CustomerSearchBox> {
           SizedBox(width: SizeConfig.imageSizeMultiplier * 7),
           Icon(
             Icons.search,
-            size: SizeConfig.imageSizeMultiplier * 6,
+            size: SizeConfig.imageSizeMultiplier * 5,
           ),
           SizedBox(width: SizeConfig.imageSizeMultiplier * 7),
           Expanded(
             child: TextField(
               controller: _controller,
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.5,
+                fontSize: SizeConfig.textMultiplier * 2,
               ),
               decoration: InputDecoration(
                 hintText: 'Search...',
@@ -59,7 +59,7 @@ class _CustomerSearchBoxState extends State<CustomerSearchBox> {
                 suffixIcon: IconButton(
                   icon: Icon(
                     Icons.clear,
-                    size: SizeConfig.imageSizeMultiplier * 6,
+                    size: SizeConfig.imageSizeMultiplier * 5,
                   ),
                   onPressed: () {
                     _controller.clear();

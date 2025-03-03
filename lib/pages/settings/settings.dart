@@ -7,6 +7,8 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/settings/widgets/setting_tile.dart';
 import 'package:pasella/config/size_config.dart';
 
+import '../../shared/widgets/custom_app_bar.dart';
+
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
@@ -16,6 +18,7 @@ class SettingsPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+      appBar: const CustomAppBar(title: 'Settings'),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -25,14 +28,6 @@ class SettingsPage extends StatelessWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  Text(
-                    'Settings',
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 2.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
                   SizedBox(height: SizeConfig.heightMultiplier * 1),
                   Expanded(
                     child: ListView(

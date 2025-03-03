@@ -4,7 +4,6 @@ import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
 import 'package:pasella/pages/auth/widgets/logo_display.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:pasella/utils/phone_util.dart';
 
 Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
@@ -22,7 +21,7 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
             child: Column(
               children: <Widget>[
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
-                LogoDisplay(),
+                const LogoDisplay(),
                 SizedBox(height: SizeConfig.heightMultiplier * 10),
                 CustomTextField(
                   label: 'Mobile Number',
@@ -50,7 +49,7 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                         CustomButton(
                           title: 'Login',
                           onTap: isLoading
-                              ? () => null
+                              ? () {}
                               : () {
                                   if (authViewModel.formKey.currentState!
                                       .validate()) {
@@ -59,9 +58,10 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                                 },
                           color: Colors.green,
                           icon: Icons.login,
+                          fontSize: SizeConfig.textMultiplier * 2,
                         ),
                         if (isLoading)
-                          CircularProgressIndicator(
+                          const CircularProgressIndicator(
                               valueColor:
                                   AlwaysStoppedAnimation<Color>(Colors.white)),
                       ],
@@ -76,27 +76,7 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                   },
                   color: Colors.green,
                   icon: Icons.app_registration,
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                CustomButton(
-                  title: 'Explore',
-                  onTap: () {
-                    authViewModel.signInAnonymously(context);
-                  },
-                  color: Colors.blue,
-                  icon: Icons.visibility,
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                CustomButton(
-                  title: 'How To Video',
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) =>
-                          VimeoVideoPage(videoId: '935735574', title: ''),
-                    ));
-                  },
-                  color: Colors.lightBlue,
-                  icon: Icons.video_library,
+                  fontSize: SizeConfig.textMultiplier * 2,
                 ),
               ],
             ),
