@@ -60,7 +60,7 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
           ? Colors.red
           : Colors.green, // Background color
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 1.5),
+        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 0.5),
         child: Container(
           width: SizeConfig.imageSizeMultiplier * 1.5, // Adjust width as needed
           height:

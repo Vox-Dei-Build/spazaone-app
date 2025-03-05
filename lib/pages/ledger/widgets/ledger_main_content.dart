@@ -33,7 +33,7 @@ class LedgerMainContent extends StatelessWidget {
                   icon: Icon(
                     Icons.help_outline,
                     color: Colors.black,
-                    size: SizeConfig.imageSizeMultiplier * 7,
+                    size: SizeConfig.imageSizeMultiplier * 5,
                   ),
                   onPressed: () {
                     Navigator.of(context).push(

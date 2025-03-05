@@ -12,7 +12,7 @@ class SalesPageHeader extends StatelessWidget {
       actionWidget: Expanded(
         child: IconButton(
           icon: Icon(Icons.help_outline,
-              color: Colors.black, size: SizeConfig.imageSizeMultiplier * 7),
+              color: Colors.black, size: SizeConfig.imageSizeMultiplier * 5),
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute(

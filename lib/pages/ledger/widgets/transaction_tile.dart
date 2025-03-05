@@ -93,17 +93,33 @@ class TransactionTile extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               profileImageUrl != null
-                                  ? CachedNetworkImage(
-                                      imageUrl: profileImageUrl!,
-                                      placeholder: (context, url) =>
-                                          CircularProgressIndicator(),
-                                      errorWidget: (context, url, error) =>
-                                          Icon(Icons.error),
+                                  ? Container(
+                                      constraints: BoxConstraints(
+                                        maxWidth:
+                                            MediaQuery.of(context).size.width *
+                                                0.6, // Limits image width
+                                        maxHeight:
+                                            MediaQuery.of(context).size.height *
+                                                0.6, // Limits image height
+                                      ),
+                                      child: AspectRatio(
+                                        aspectRatio:
+                                            1, // Maintain a square aspect ratio
+                                        child: CachedNetworkImage(
+                                          imageUrl: profileImageUrl!,
+                                          placeholder: (context, url) =>
+                                              const CircularProgressIndicator(),
+                                          errorWidget: (context, url, error) =>
+                                              const Icon(Icons.error),
+                                          fit: BoxFit
+                                              .contain, // Ensures the image scales proportionally
+                                        ),
+                                      ),
                                     )
                                   : CircleAvatar(
                                       backgroundColor:
                                           Color(kTertiaryColor.value),
-                                      radius: SizeConfig.heightMultiplier * 2.5,
+                                      radius: SizeConfig.heightMultiplier * 6,
                                       child: Text(
                                         name.isNotEmpty ? name[0] : '',
                                         style: TextStyle(
@@ -114,11 +130,12 @@ class TransactionTile extends StatelessWidget {
                                         ),
                                       ),
                                     ),
+                              const SizedBox(height: 10),
                               TextButton(
                                 onPressed: () {
                                   Navigator.of(context).pop();
                                 },
-                                child: Text('Close'),
+                                child: const Text('Close'),
                               )
                             ],
                           ),
