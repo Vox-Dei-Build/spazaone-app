@@ -186,7 +186,7 @@ class TransactionViewModel extends ChangeNotifier {
   ) async {
     try {
       MessagingNotificationService notificationService =
-          MessagingNotificationService();
+          await MessagingNotificationService.create();
       await notificationService.sendConfirmationMessage(
         currentUserId,
         customerId,

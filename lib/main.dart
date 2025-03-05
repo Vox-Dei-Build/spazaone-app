@@ -45,8 +45,7 @@ Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
 
 Future<void> _initializeRemoteConfigAndSmartlook() async {
   try {
-    final remoteConfigService = RemoteConfigService.createInstance();
-    await remoteConfigService.initialize();
+    final remoteConfigService = await RemoteConfigService.getInstance();
 
     String projectKey =
         remoteConfigService.getString('SMARTLOOK_PROJECT_KEY') ??

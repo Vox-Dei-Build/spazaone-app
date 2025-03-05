@@ -6,13 +6,14 @@ class SMSMessagingService {
 
   SMSMessagingService._(this.twilioFlutter);
 
-  static SMSMessagingService create() {
-    final remoteConfigService = RemoteConfigService.createInstance();
+  static Future<SMSMessagingService> create() async {
+    final remoteConfigService =
+        await RemoteConfigService.getInstance(); // 🔥 Reuse instance
 
     final twilioFlutter = TwilioFlutter(
-      accountSid: remoteConfigService.getString('TWILIO_ACCOUNT_SID')!,
-      authToken: remoteConfigService.getString('TWILIO_AUTH_TOKEN')!,
-      twilioNumber: remoteConfigService.getString('TWILIO_NUMBER')!,
+      accountSid: remoteConfigService.getString('TWILIO_ACCOUNT_SID'),
+      authToken: remoteConfigService.getString('TWILIO_AUTH_TOKEN'),
+      twilioNumber: remoteConfigService.getString('TWILIO_NUMBER'),
     );
 
     return SMSMessagingService._(twilioFlutter);

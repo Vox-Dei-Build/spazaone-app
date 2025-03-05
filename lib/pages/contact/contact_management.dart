@@ -114,6 +114,9 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                     ),
                     ConnectManagementPage(
                       customerId: widget.customerId,
+                      profileImageUrl:
+                          customerManagementViewModel.profileImageUrl,
+                      customerName: widget.customerName,
                     ),
                     Container(),
                   ],

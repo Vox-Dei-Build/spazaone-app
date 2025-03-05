@@ -6,8 +6,14 @@ import 'package:pasella/providers/customer_balance_summary_provider.dart';
 
 class ConnectManagementPage extends StatefulWidget {
   final String customerId;
+  final String? profileImageUrl; // ✅ Add profile image URL
+  final String customerName; // ✅ Add customer name for initials fallback
 
-  const ConnectManagementPage({super.key, required this.customerId});
+  const ConnectManagementPage(
+      {super.key,
+      required this.customerId,
+      this.profileImageUrl,
+      required this.customerName});
 
   @override
   _ConnectManagementPageState createState() => _ConnectManagementPageState();
@@ -60,8 +66,7 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
               children: [
                 Expanded(
                   child: StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: connectManagementViewModel
-                        .streamMessages(widget.customerId),
+                    stream: connectManagementViewModel.streamMessages(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
@@ -93,6 +98,8 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
                             Expanded(
                               child: MessagesListView(
                                 messages: snapshot.data!,
+                                profileImageUrl: widget.profileImageUrl,
+                                customerName: widget.customerName,
                               ),
                             ),
                           ],

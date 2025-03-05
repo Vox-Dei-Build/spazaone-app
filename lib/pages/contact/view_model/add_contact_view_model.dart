@@ -91,7 +91,7 @@ class AddContactViewModel extends ChangeNotifier {
       String userId, String customerId, String name, String number) async {
     try {
       MessagingNotificationService notificationService =
-          MessagingNotificationService();
+          await MessagingNotificationService.create();
       await notificationService.sendOnboardingMessage(
           userId, customerId, name, number);
     } catch (e) {

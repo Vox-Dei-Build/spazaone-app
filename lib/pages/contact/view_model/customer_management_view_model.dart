@@ -125,7 +125,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .map((snapshot) {
       List<Map<String, dynamic>> transactions = [];
       for (var doc in snapshot.docs) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        Map<String, dynamic> data = doc.data();
         data['id'] = doc.id;
         if (data['date'] is Timestamp) {
           data['date'] = (data['date'] as Timestamp).toDate().toIso8601String();
@@ -175,15 +175,15 @@ class CustomerManagementViewModel extends ChangeNotifier {
     return await showDialog(
           context: context,
           builder: (BuildContext context) => AlertDialog(
-            title: Text('Send Reminder'),
-            content: Text('Do you want to send a payment reminder?'),
+            title: const Text('Send Reminder'),
+            content: const Text('Do you want to send a payment reminder?'),
             actions: <Widget>[
               TextButton(
-                child: Text('Cancel'),
+                child: const Text('Cancel'),
                 onPressed: () => Navigator.of(context).pop(false),
               ),
               TextButton(
-                child: Text('Send'),
+                child: const Text('Send'),
                 onPressed: () => Navigator.of(context).pop(true),
               ),
             ],
@@ -218,7 +218,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .doc(customerId)
         .update({'lastReminderSent': DateTime.now()}).then((value) async {
       MessagingNotificationService notificationService =
-          MessagingNotificationService();
+          await MessagingNotificationService.create();
       await notificationService.sendReminderMessage(
           userId, customerId, customerName, mobileNumber);
     }).catchError((error) {
