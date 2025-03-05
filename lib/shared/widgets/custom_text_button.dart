@@ -3,18 +3,18 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 
 class CustomButton extends StatelessWidget {
-  const CustomButton({
-    super.key,
-    required this.title,
-    required this.onTap,
-    this.color,
-    this.margin,
-    this.width,
-    this.height,
-    this.fontSize,
-    this.icon,
-    this.radius,
-  });
+  const CustomButton(
+      {super.key,
+      required this.title,
+      required this.onTap,
+      this.color,
+      this.margin,
+      this.width,
+      this.height,
+      this.fontSize,
+      this.icon,
+      this.radius,
+      this.iconSize});
 
   final String title;
   final VoidCallback onTap;
@@ -25,6 +25,7 @@ class CustomButton extends StatelessWidget {
   final double? fontSize;
   final IconData? icon;
   final double? radius;
+  final double? iconSize;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +54,7 @@ class CustomButton extends StatelessWidget {
                 child: Icon(
                   icon,
                   color: Colors.white,
-                  size: SizeConfig.imageSizeMultiplier * 6,
+                  size: iconSize ?? SizeConfig.imageSizeMultiplier * 6,
                 ),
               ),
             Text(

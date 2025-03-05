@@ -41,7 +41,7 @@ class PageHeader extends StatelessWidget {
               child: IconButton(
                 icon: Icon(Icons.search,
                     color: Colors.black,
-                    size: SizeConfig.imageSizeMultiplier * 7),
+                    size: SizeConfig.imageSizeMultiplier * 5),
                 onPressed: onSearchTap,
                 alignment: Alignment.centerRight,
               ),
@@ -55,7 +55,7 @@ class PageHeader extends StatelessWidget {
             child: IconButton(
               icon: Icon(Icons.settings_outlined,
                   color: Colors.black,
-                  size: SizeConfig.imageSizeMultiplier * 7),
+                  size: SizeConfig.imageSizeMultiplier * 5),
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(

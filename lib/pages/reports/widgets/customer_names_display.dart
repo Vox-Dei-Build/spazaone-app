@@ -8,7 +8,8 @@ import 'package:pasella/utils/date_util.dart';
 class CustomersWithBadLoansTile extends StatelessWidget {
   final Future<List<dynamic>>? customersWithBadLoansFuture;
 
-  CustomersWithBadLoansTile({required this.customersWithBadLoansFuture});
+  const CustomersWithBadLoansTile(
+      {super.key, required this.customersWithBadLoansFuture});
 
   bool reminderSentRecently(customer) {
     if (customer['lastReminderSent'] != null) {
@@ -29,7 +30,7 @@ class CustomersWithBadLoansTile extends StatelessWidget {
       future: customersWithBadLoansFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return CircularProgressIndicator();
+          return const CircularProgressIndicator();
         } else if (snapshot.hasError) {
           return Text('Error: ${snapshot.error}');
         } else {
