@@ -14,16 +14,18 @@ class MessagingNotificationService {
   late final String payment_transaction;
   late final String reminder_message;
 
-  MessagingNotificationService() {
-    final remoteConfigService = RemoteConfigService.createInstance();
-    welcome_message =
-        remoteConfigService.getString('TWILIO_WELCOME_MESSAGE_TID')!;
-    credit_transaction =
-        remoteConfigService.getString('TWILIO_CREDIT_TRANSACTION_TID')!;
-    payment_transaction =
-        remoteConfigService.getString('TWILIO_PAYMENT_TRANSACTION_TID')!;
-    reminder_message =
-        remoteConfigService.getString('TWILIO_REMINDER_MESSAGE_TID')!;
+  MessagingNotificationService._(this.welcome_message, this.credit_transaction,
+      this.payment_transaction, this.reminder_message);
+
+  static Future<MessagingNotificationService> create() async {
+    final remoteConfigService = await RemoteConfigService.getInstance();
+
+    return MessagingNotificationService._(
+      remoteConfigService.getString('TWILIO_WELCOME_MESSAGE_TID'),
+      remoteConfigService.getString('TWILIO_CREDIT_TRANSACTION_TID'),
+      remoteConfigService.getString('TWILIO_PAYMENT_TRANSACTION_TID'),
+      remoteConfigService.getString('TWILIO_REMINDER_MESSAGE_TID'),
+    );
   }
 
   Future<void> sendFormattedMessage(
@@ -54,7 +56,7 @@ class MessagingNotificationService {
 
       if (isValidSAPhoneNumber(phoneNumber) && phoneNumber != null) {
         final WhatsAppMessagingService whatsappService =
-            WhatsAppMessagingService();
+            await WhatsAppMessagingService.create();
 
         String formattedBalance = CurrencyUtil.format(balance);
 
@@ -111,7 +113,8 @@ class MessagingNotificationService {
 
   Future<void> _sendSMSFallback(phoneNumber, message, formattedBalance,
       shopName, customerName, inAppNotificationMessage) async {
-    final SMSMessagingService messageService = SMSMessagingService.create();
+    final SMSMessagingService messageService =
+        await SMSMessagingService.create();
 
     message = message.replaceAll('{balance}', formattedBalance);
     message = message.replaceAll('{shopName}', shopName);

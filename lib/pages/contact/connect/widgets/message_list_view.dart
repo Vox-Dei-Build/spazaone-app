@@ -1,17 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
-import 'message_card.dart'; // Import the new MessageCard
+import 'message_card.dart';
 
-class MessagesListView extends StatelessWidget {
+class MessagesListView extends StatefulWidget {
   final List<Map<String, dynamic>> messages;
+  final String? profileImageUrl; // ✅ Add profile image URL
+  final String customerName; // ✅ Add customer name for initials fallback
+  const MessagesListView(
+      {super.key,
+      required this.messages,
+      this.profileImageUrl,
+      required this.customerName});
 
-  const MessagesListView({super.key, required this.messages});
+  @override
+  _MessagesListViewState createState() => _MessagesListViewState();
+}
+
+class _MessagesListViewState extends State<MessagesListView> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void didUpdateWidget(covariant MessagesListView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // ✅ Auto-scroll to the bottom when new messages arrive
+    if (widget.messages.length > oldWidget.messages.length) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+        }
+      });
+    }
+  }
 
   Map<String, List<Map<String, dynamic>>> groupMessagesByDate() {
     Map<String, List<Map<String, dynamic>>> groupedMessages = {};
 
-    for (var message in messages) {
+    for (var message in widget.messages) {
       String formattedDate = _formatDate(message['dateSent']);
       if (!groupedMessages.containsKey(formattedDate)) {
         groupedMessages[formattedDate] = [];
@@ -38,17 +64,26 @@ class MessagesListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var groupedMessages = groupMessagesByDate();
+    var reversedKeys =
+        groupedMessages.keys.toList().reversed.toList(); // ✅ Reverse order
 
     return ListView.builder(
-      itemCount: groupedMessages.keys.length,
+      controller: _scrollController,
+      reverse: true, // ✅ Newest messages at the bottom
+      itemCount: reversedKeys.length,
       itemBuilder: (context, index) {
-        String date = groupedMessages.keys.elementAt(index);
+        String date = reversedKeys[index];
         return Column(
           children: [
             _buildDateHeader(date),
             ...groupedMessages[date]!
-                .map((message) => MessageCard(message))
-                .toList(),
+                .map((message) => MessageCard(
+                      message,
+                      profileImageUrl: widget.profileImageUrl,
+                      customerName: widget.customerName,
+                    ))
+                .toList()
+                .reversed, // ✅ Reverse messages per day
           ],
         );
       },

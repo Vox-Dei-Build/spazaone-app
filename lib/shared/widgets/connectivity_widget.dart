@@ -38,7 +38,7 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
     if (_lastSendAttempt == null ||
         now.difference(_lastSendAttempt!) > const Duration(seconds: 10)) {
       if (result != ConnectivityResult.none) {
-        final smsService = SMSMessagingService.create();
+        final smsService = await SMSMessagingService.create();
         sendQueuedSMSMessages(smsService);
       }
       _lastSendAttempt = now;
