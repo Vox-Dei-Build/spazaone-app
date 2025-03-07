@@ -15,7 +15,7 @@ class ProfileAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String? mobileNumber;
   final Function(String?) onProfileUpdated;
 
-  ProfileAppBar({
+  const ProfileAppBar({
     Key? key,
     required this.customerId,
     required this.customerName,
@@ -79,9 +79,9 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                                       ? CachedNetworkImage(
                                           imageUrl: viewModel.profileImageUrl!,
                                           placeholder: (context, url) =>
-                                              CircularProgressIndicator(),
+                                              const CircularProgressIndicator(),
                                           errorWidget: (context, url, error) =>
-                                              Icon(Icons.error),
+                                              const Icon(Icons.error),
                                         )
                                       : CircleAvatar(
                                           backgroundColor:
@@ -102,7 +102,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                                     onPressed: () {
                                       Navigator.of(context).pop();
                                     },
-                                    child: Text('Close'),
+                                    child: const Text('Close'),
                                   ),
                                 ],
                               ),
@@ -140,11 +140,11 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                         context: context,
                         builder: (BuildContext context) {
                           return AlertDialog(
-                            title: Text("Full Name"),
+                            title: const Text("Full Name"),
                             content: Text(widget.customerName),
                             actions: <Widget>[
                               TextButton(
-                                child: Text("Close"),
+                                child: const Text("Close"),
                                 onPressed: () {
                                   Navigator.of(context).pop();
                                 },
@@ -168,7 +168,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                           textAlign: TextAlign
                               .start, // Changed to start for better alignment
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Row(
                           children: [
                             Icon(
@@ -206,9 +206,9 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
             ),
             actions: [
               PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert),
+                icon: const Icon(Icons.more_vert),
                 onSelected: (String value) async {
-                  if (value == 'sms') {
+                  if (value == 'reminder') {
                     bool shouldProceed = await isAnonymousGate(context);
                     if (shouldProceed) {
                       viewModel.handleReminderTap(context);
@@ -230,13 +230,15 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                         widget.onProfileUpdated(result);
                       }
                     }
+                  } else if (value == 'delete') {
+                    viewModel.deleteCustomer(context);
                   }
                 },
                 itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
                   PopupMenuItem<String>(
-                    value: 'sms',
+                    value: 'reminder',
                     child: ListTile(
-                      leading: Icon(Icons.sms_outlined),
+                      leading: const Icon(Icons.sms_outlined),
                       title: Text(
                         'Send Payment Reminder',
                         style: TextStyle(
@@ -250,13 +252,27 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                   PopupMenuItem<String>(
                     value: 'edit',
                     child: ListTile(
-                      leading: Icon(Icons.create_outlined),
+                      leading: const Icon(Icons.create_outlined),
                       title: Text(
                         'Edit Customer',
                         style: TextStyle(
                           fontSize: SizeConfig.textMultiplier *
                               2, // Responsive font size
                           fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'delete',
+                    child: ListTile(
+                      leading: const Icon(Icons.delete, color: Colors.red),
+                      title: Text(
+                        'Delete Customer',
+                        style: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 2,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.red, // Highlight delete option in red
                         ),
                       ),
                     ),
