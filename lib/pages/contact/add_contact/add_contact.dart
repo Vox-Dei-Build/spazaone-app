@@ -26,7 +26,7 @@ class AddContactPage extends StatelessWidget {
       child: Consumer<AddContactViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
-            appBar: CustomAppBar(title: 'Add Contact'),
+            appBar: const CustomAppBar(title: 'Add Contact'),
             body: SafeArea(
               child: Padding(
                 padding: LayoutConstants.padding20Horizontal,
@@ -57,11 +57,19 @@ class AddContactPage extends StatelessWidget {
                                         if (contact != null) {
                                           String? phoneNumber =
                                               contact.phones?.first.value;
-                                          if (phoneNumber != null) {
+                                          if (phoneNumber != null &&
+                                              phoneNumber.isNotEmpty) {
                                             viewModel.nameController.text =
                                                 contact.displayName ?? '';
                                             viewModel.numberController.text =
                                                 phoneNumber;
+                                          } else {
+                                            SchedulerBinding.instance
+                                                .addPostFrameCallback((_) {
+                                              showErrorSnackBar(context,
+                                                  "This contact does not have a number.",
+                                                  isWarning: true);
+                                            });
                                           }
                                         }
                                       } catch (e) {
@@ -91,7 +99,7 @@ class AddContactPage extends StatelessWidget {
                                     height: SizeConfig.heightMultiplier * 2),
                                 Row(
                                   children: [
-                                    CustomDivider(),
+                                    const CustomDivider(),
                                     Text(
                                       'OR',
                                       style: TextStyle(
@@ -100,7 +108,7 @@ class AddContactPage extends StatelessWidget {
                                           fontSize:
                                               SizeConfig.textMultiplier * 1.8),
                                     ),
-                                    CustomDivider(),
+                                    const CustomDivider(),
                                   ],
                                 ),
                                 Column(
@@ -120,26 +128,6 @@ class AddContactPage extends StatelessWidget {
                                     SizedBox(
                                         height:
                                             SizeConfig.heightMultiplier * 2),
-                                    GestureDetector(
-                                      onTap: () => viewModel.pickImage(context),
-                                      child: CircleAvatar(
-                                        radius: 50,
-                                        backgroundImage: viewModel
-                                                    .profileImage !=
-                                                null
-                                            ? FileImage(viewModel.profileImage!)
-                                            : null,
-                                        child: viewModel.profileImage == null &&
-                                                viewModel.profileImageUrl ==
-                                                    null
-                                            ? Icon(Icons.camera_alt,
-                                                size:
-                                                    SizeConfig.textMultiplier *
-                                                        3,
-                                                color: Colors.grey)
-                                            : null,
-                                      ),
-                                    ),
                                     SizedBox(
                                         height: SizeConfig.heightMultiplier * 2)
                                   ],
@@ -147,9 +135,9 @@ class AddContactPage extends StatelessWidget {
                                 SectionCard(
                                   children: [
                                     CustomTextField(
-                                      hintText: 'User name',
+                                      hintText: 'Customer Name',
                                       prefixIcon: Icons.person,
-                                      label: 'Name*',
+                                      label: 'Name *',
                                       textInputType: TextInputType.name,
                                       maxLength: 20,
                                       controller: viewModel.nameController,
@@ -161,9 +149,10 @@ class AddContactPage extends StatelessWidget {
                                       },
                                     ),
                                     CustomTextField(
-                                      hintText: 'XXXXXXXXXX (Optional)',
+                                      hintText:
+                                          'Change it later via "Edit Customer"',
                                       prefixIcon: Icons.call,
-                                      label: 'Number',
+                                      label: 'Mobile Number (Optional)',
                                       textInputType: TextInputType.number,
                                       maxLength: 10,
                                       controller: viewModel.numberController,
@@ -172,12 +161,10 @@ class AddContactPage extends StatelessWidget {
                                 ),
                                 CustomButton(
                                   onTap: viewModel.isLoading
-                                      ? () => null
+                                      ? () {}
                                       : () async {
                                           if (viewModel.formKey.currentState!
                                               .validate()) {
-                                            await viewModel
-                                                .uploadProfileImage();
                                             await viewModel
                                                 .addCustomerToFirestore(
                                                     context, model);
@@ -192,7 +179,7 @@ class AddContactPage extends StatelessWidget {
                           ),
                         ),
                         if (viewModel.isLoading)
-                          Center(
+                          const Center(
                             child: CircularProgressIndicator(),
                           ),
                       ],

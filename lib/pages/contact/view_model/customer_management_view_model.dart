@@ -162,13 +162,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
       return;
     }
 
-    DateTime? lastReminderSent = await _getLastReminderSentDate();
-    if (lastReminderSent != null &&
-        DateTime.now().difference(lastReminderSent).inDays < 30) {
-      showSnackbar(context, 'Reminder already sent this month!', Colors.orange);
-      return;
-    }
-
     bool shouldSend = await _showConfirmationDialog(context);
     if (shouldSend) await _sendReminder(context);
   }
@@ -240,6 +233,58 @@ class CustomerManagementViewModel extends ChangeNotifier {
     });
 
     sendingReminderNotifier.value = false;
+  }
+
+  Future<void> deleteCustomer(BuildContext context) async {
+    bool confirmDelete = await _showDeleteConfirmationDialog(context);
+    if (!confirmDelete) return;
+
+    _setLoading(true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('customers')
+          .doc(customerId)
+          .delete();
+
+      showSnackbar(context, 'Customer deleted successfully.', Colors.green);
+
+      // Close the screen or navigate back after deletion
+      Navigator.of(context).pop();
+    } catch (error) {
+      showErrorSnackBar(context, "Error deleting customer :(");
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> _showDeleteConfirmationDialog(BuildContext context) async {
+    return await showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text("Confirm Deletion"),
+              content: const Text(
+                  "Are you sure you want to delete this customer? This action cannot be undone."),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text("Cancel"),
+                  onPressed: () => Navigator.of(context).pop(false),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red, // Red color for delete
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text("Delete"),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
   }
 
   set profileImageUrl(String? url) {
