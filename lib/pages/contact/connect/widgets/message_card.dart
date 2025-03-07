@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 
 class MessageCard extends StatelessWidget {
   final Map<String, dynamic> message;
@@ -51,8 +52,7 @@ class MessageCard extends StatelessWidget {
         // ✅ Show Avatar ONLY for customer messages
         if (!isMerchantMessage)
           Padding(
-            padding:
-                EdgeInsets.only(right: SizeConfig.imageSizeMultiplier * 1.5),
+            padding: EdgeInsets.only(right: SizeConfig.imageSizeMultiplier * 1),
             child: _buildAvatar(),
           ),
 
@@ -91,7 +91,8 @@ class MessageCard extends StatelessWidget {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: SizeConfig.textMultiplier * 1.5,
-                          color: Colors.orangeAccent,
+                          color:
+                              isMerchantMessage ? Colors.white : Colors.black,
                         ),
                       ),
                     ],
@@ -105,11 +106,8 @@ class MessageCard extends StatelessWidget {
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // ✅ WhatsApp-style status icon
-                      statusIcon,
-
                       // ✅ Timestamp
                       Text(
                         isMerchantMessage
@@ -121,6 +119,8 @@ class MessageCard extends StatelessWidget {
                                 ? Colors.white
                                 : Colors.black),
                       ),
+                      // ✅ WhatsApp-style status icon
+                      statusIcon,
                     ],
                   ),
                 ],
@@ -135,11 +135,12 @@ class MessageCard extends StatelessWidget {
   // ✅ Avatar Builder: Uses Profile Image or Initial
   Widget _buildAvatar() {
     return CircleAvatar(
-      radius: SizeConfig.heightMultiplier * 2.5,
+      radius: SizeConfig.heightMultiplier * 2,
       backgroundImage: profileImageUrl != null
           ? CachedNetworkImageProvider(profileImageUrl!)
           : null,
-      backgroundColor: profileImageUrl == null ? Colors.blueGrey : null,
+      backgroundColor:
+          profileImageUrl == null ? Color(kTertiaryColor.value) : null,
       child: profileImageUrl == null
           ? Text(
               customerName.isNotEmpty ? customerName[0].toUpperCase() : '?',

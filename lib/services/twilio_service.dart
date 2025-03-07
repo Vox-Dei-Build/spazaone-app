@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pasella/config/remote_config.dart';
@@ -12,107 +13,144 @@ class TwilioService {
 
   static Future<TwilioService> create() async {
     final remoteConfigService = await RemoteConfigService.getInstance();
-
     return TwilioService._(
       remoteConfigService.getString('TWILIO_ACCOUNT_SID'),
       remoteConfigService.getString('TWILIO_AUTH_TOKEN'),
     );
   }
 
+  /// ✅ Helper: Fetch customer details from Firestore
+  Future<Map<String, dynamic>?> _fetchCustomerDetails(
+      String userId, String customerId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('customers')
+        .doc(customerId)
+        .get();
+    return doc.exists ? doc.data() : null;
+  }
+
+  bool _isTemplateMessage(String messageText) {
+    List<String> templateKeywords = [
+      "your recent credit of", // Credit template
+      "your recent payment of", // Payment template
+      "your account with", // Onboarding template
+      "your balance at", // Reminder template
+    ];
+
+    return templateKeywords.any((keyword) => messageText.contains(keyword));
+  }
+
+  /// ✅ Helper: Fetch merchant details from Firestore
+  Future<Map<String, dynamic>?> _fetchMerchantDetails(String userId) async {
+    final doc =
+        await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    return doc.exists ? doc.data() : null;
+  }
+
+  /// ✅ Helper: Fetch messages from Twilio API
+  Future<List<Map<String, dynamic>>> _fetchTwilioMessages(
+      String toQuery) async {
+    final url = Uri.parse(
+        'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?To=${Uri.encodeComponent(toQuery)}');
+
+    final response = await http.get(url, headers: {
+      'Authorization':
+          'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
+    });
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      return List<Map<String, dynamic>>.from(data['messages'].map((msg) => {
+            'sid': msg['sid'],
+            'message': msg['body'],
+            'dateSent': msg['date_sent'] != null
+                ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
+                    .parse(msg['date_sent'])
+                : DateTime.now(),
+            'status': msg['status'],
+            'direction': "outbound",
+            'from': msg['from'],
+            'to': msg['to'],
+            'isWhatsApp': msg['from'].contains('whatsapp') ||
+                msg['to'].contains('whatsapp'),
+          }));
+    } else {
+      print("❌ Twilio API Error: ${response.statusCode} - ${response.body}");
+      return [];
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchMessagesToCustomer({
     required String customerNumber,
-    required String twilioSmsNumber,
-    required String twilioMessagingServiceId,
+    required String currentUserId,
+    required String customerId,
   }) async {
-    // ✅ Format numbers correctly
     final smsToQuery = formatForTwilio(customerNumber, false); // "+27..."
     final whatsappToQuery =
         formatForTwilio(customerNumber, true); // "whatsapp:+27..."
 
-    print("📡 Fetching messages sent TO Customer: $customerNumber...");
-    print("📩 SMS Query: $smsToQuery");
-    print("📩 WhatsApp Query: $whatsappToQuery");
-
-    List<Map<String, dynamic>> allMessages = [];
-
     try {
-      // ✅ First API call: Fetch SMS messages
-      final smsUrl = Uri.parse(
-          'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?To=${Uri.encodeComponent(smsToQuery)}');
+      // ✅ Fetch SMS & WhatsApp Messages in parallel
+      final messagesFuture = Future.wait([
+        _fetchTwilioMessages(smsToQuery),
+        _fetchTwilioMessages(whatsappToQuery),
+        _fetchCustomerDetails(currentUserId, customerId),
+        _fetchMerchantDetails(currentUserId),
+      ]);
 
-      print("🔗 Fetching SMS messages from: $smsUrl");
-      final smsResponse = await http.get(smsUrl, headers: {
-        'Authorization':
-            'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
-      });
+      // ✅ Wait for all tasks to complete
+      final results = await messagesFuture;
 
-      if (smsResponse.statusCode == 200) {
-        final smsData = jsonDecode(smsResponse.body);
-        print("✅ Fetched ${smsData['messages'].length} SMS messages.");
+      // Ensure the results are cast to List<Map<String, dynamic>>? before spreading
+      final List<Map<String, dynamic>> allMessages = [
+        ...?results[0] as List<
+            Map<String, dynamic>>?, // ✅ Ensures it's a list before spreading
+        ...?results[1] as List<
+            Map<String, dynamic>>?, // ✅ Ensures it's a list before spreading
+      ];
 
-        allMessages.addAll(
-          List<Map<String, dynamic>>.from(smsData['messages'].map((msg) => {
-                'sid': msg['sid'],
-                'message': msg['body'],
-                'dateSent': msg['date_sent'] != null
-                    ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
-                        .parse(msg['date_sent'])
-                    : DateTime.now(),
-                'status': msg['status'],
-                'direction': "outbound",
-                'from': msg['from'],
-                'to': msg['to'],
-                'isWhatsApp': false, // ✅ Mark as SMS
-              })),
-        );
-      } else {
-        print(
-            "❌ Twilio SMS API Error: ${smsResponse.statusCode} - ${smsResponse.body}");
-      }
+      final Map<String, dynamic>? customerData =
+          results[2] as Map<String, dynamic>?;
+      final Map<String, dynamic>? merchantData =
+          results[3] as Map<String, dynamic>?;
 
-      // ✅ Second API call: Fetch WhatsApp messages
-      final whatsappUrl = Uri.parse(
-          'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?To=${Uri.encodeComponent(whatsappToQuery)}');
+      // 🔥 Extract customer & merchant details
+      final customerName = customerData?['name'] ?? "";
+      final shopName = merchantData?['shopName'] ?? "";
 
-      print("🔗 Fetching WhatsApp messages from: $whatsappUrl");
-      final whatsappResponse = await http.get(whatsappUrl, headers: {
-        'Authorization':
-            'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
-      });
+      // 🔥 Step 2: Identify & Verify Template Messages
+      List<Map<String, dynamic>> filteredMessages =
+          allMessages.where((message) {
+        final messageText = message['message'];
+        final isWhatsApp = message['isWhatsApp'] ?? false;
 
-      if (whatsappResponse.statusCode == 200) {
-        final whatsappData = jsonDecode(whatsappResponse.body);
-        print(
-            "✅ Fetched ${whatsappData['messages'].length} WhatsApp messages.");
+        bool isTemplateMessage = isWhatsApp
+            ? _isTemplateMessage(messageText) // WhatsApp template detection
+            : true; // All SMS messages are templates
 
-        allMessages.addAll(
-          List<Map<String, dynamic>>.from(
-              whatsappData['messages'].map((msg) => {
-                    'sid': msg['sid'],
-                    'message': msg['body'],
-                    'dateSent': msg['date_sent'] != null
-                        ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
-                            .parse(msg['date_sent'])
-                        : DateTime.now(),
-                    'status': msg['status'],
-                    'direction': "outbound",
-                    'from': msg['from'],
-                    'to': msg['to'],
-                    'isWhatsApp': true, // ✅ Mark as WhatsApp
-                  })),
-        );
-      } else {
-        print(
-            "❌ Twilio WhatsApp API Error: ${whatsappResponse.statusCode} - ${whatsappResponse.body}");
-      }
+        if (isTemplateMessage) {
+          // ✅ Verified Template Message from the correct merchant. Keeping it.
+          if (messageText.contains(customerName) ||
+              messageText.contains(shopName)) {
+            return true;
+          } else {
+            // 🚨 Template Message Mismatch! Likely from another merchant. Discarding."
+            return false;
+          }
+        } else {
+          // "🛠 AI Bot or General Message Detected. Keeping it.
+          return true;
+        }
+      }).toList();
 
-      // ✅ Sort messages by date (latest first)
-      allMessages.sort((a, b) => b['dateSent'].compareTo(a['dateSent']));
-      print("✅ Merged ${allMessages.length} total messages.");
-
-      return allMessages;
+      // ✅ Sort by date (latest at the bottom)
+      filteredMessages.sort((a, b) => a['dateSent'].compareTo(b['dateSent']));
+      return filteredMessages;
     } catch (e, stackTrace) {
-      print("🔥 Error fetching messages: $e");
+      print("🔥 Error processing messages: $e");
       print("📜 StackTrace: $stackTrace");
       return [];
     }
@@ -126,11 +164,6 @@ class TwilioService {
     final smsFromQuery = formatForTwilio(customerNumber, false); // "+27..."
     final whatsappFromQuery =
         formatForTwilio(customerNumber, true); // "whatsapp:+27..."
-
-    print("📡 Fetching messages FROM Customer: $customerNumber...");
-    print("📩 SMS Query: $smsFromQuery");
-    print("📩 WhatsApp Query: $whatsappFromQuery");
-
     List<Map<String, dynamic>> allMessages = [];
 
     try {
@@ -138,7 +171,6 @@ class TwilioService {
       final smsUrl = Uri.parse(
           'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?From=${Uri.encodeComponent(smsFromQuery)}');
 
-      print("🔗 Fetching SMS messages from: $smsUrl");
       final smsResponse = await http.get(smsUrl, headers: {
         'Authorization':
             'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
@@ -146,7 +178,6 @@ class TwilioService {
 
       if (smsResponse.statusCode == 200) {
         final smsData = jsonDecode(smsResponse.body);
-        print("✅ Fetched ${smsData['messages'].length} SMS messages.");
 
         allMessages.addAll(
           List<Map<String, dynamic>>.from(smsData['messages'].map((msg) => {
@@ -172,7 +203,6 @@ class TwilioService {
       final whatsappUrl = Uri.parse(
           'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?From=${Uri.encodeComponent(whatsappFromQuery)}');
 
-      print("🔗 Fetching WhatsApp messages from: $whatsappUrl");
       final whatsappResponse = await http.get(whatsappUrl, headers: {
         'Authorization':
             'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
@@ -180,8 +210,6 @@ class TwilioService {
 
       if (whatsappResponse.statusCode == 200) {
         final whatsappData = jsonDecode(whatsappResponse.body);
-        print(
-            "✅ Fetched ${whatsappData['messages'].length} WhatsApp messages.");
 
         allMessages.addAll(
           List<Map<String, dynamic>>.from(
@@ -205,7 +233,6 @@ class TwilioService {
       }
 
       allMessages.sort((a, b) => b['dateSent'].compareTo(a['dateSent']));
-      print("✅ Merged ${allMessages.length} total messages.");
 
       return allMessages;
     } catch (e, stackTrace) {
