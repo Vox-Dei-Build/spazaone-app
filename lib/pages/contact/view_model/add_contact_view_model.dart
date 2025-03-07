@@ -21,8 +21,8 @@ class AddContactViewModel extends ChangeNotifier {
       BuildContext context, AppModel model) async {
     _setLoading(true);
 
-    final customerName = nameController.text.trim();
-    final mobileNumber = normalizePhoneNumber(numberController.text.trim());
+    final customerName = nameController.text;
+    final mobileNumber = numberController.text;
 
     if (customerName.isEmpty || currentUserId.isEmpty) {
       showSnackbar(
@@ -41,51 +41,38 @@ class AddContactViewModel extends ChangeNotifier {
       });
     }
 
+    var newCustomer = {
+      'category': model.selectedCustomerCategory,
+      'name': customerName,
+      'number': normalizePhoneNumber(mobileNumber),
+      'lastTransaction': getDefaultTransaction(),
+      'balance': 0.0,
+      'isNPA': false,
+    };
+
     try {
-      // **Check if the user already exists**
-      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+      await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUserId)
           .collection('customers')
-          .where('name', isEqualTo: customerName)
-          .where('number', isEqualTo: mobileNumber)
-          .get();
+          .add(newCustomer)
+          .then((docRef) async {
+        if (mobileNumber.isNotEmpty) {
+          await _sendSMS(currentUserId, docRef.id, customerName, mobileNumber);
+        } else {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            showSnackbar(
+              context,
+              'Customer added without a number. You can update it later via "Edit Customer".',
+              Colors.blue,
+            );
+          });
+        }
+      }).catchError((error) {
+        showSnackbar(context,
+            'Error adding customer. It will retry when online.', Colors.red);
+      });
 
-      if (querySnapshot.docs.isNotEmpty) {
-        showSnackbar(context, 'This contact already exists!', Colors.orange);
-        _setLoading(false);
-        return;
-      }
-
-      var newCustomer = {
-        'category': model.selectedCustomerCategory,
-        'name': customerName,
-        'number':
-            mobileNumber.isEmpty ? null : mobileNumber, // Prevent empty numbers
-        'lastTransaction': getDefaultTransaction(),
-        'balance': 0.0,
-        'isNPA': false,
-      };
-
-      DocumentReference docRef = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUserId)
-          .collection('customers')
-          .add(newCustomer);
-
-      if (mobileNumber.isNotEmpty) {
-        await _sendSMS(currentUserId, docRef.id, customerName, mobileNumber);
-      } else {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          showSnackbar(
-            context,
-            'Customer added without a number. You can update it later via "Edit Customer".',
-            Colors.blue,
-          );
-        });
-      }
-
-      // Clear fields after successful addition
       nameController.clear();
       numberController.clear();
 
@@ -95,7 +82,7 @@ class AddContactViewModel extends ChangeNotifier {
     } catch (error) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showSnackbar(context,
-            'Error adding customer. We will retry when online.', Colors.red);
+            'Error adding customer. It will retry when online.', Colors.red);
       });
     } finally {
       _setLoading(false);

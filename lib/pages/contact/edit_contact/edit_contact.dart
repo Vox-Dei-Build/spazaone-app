@@ -15,8 +15,9 @@ class EditCustomerPage extends StatelessWidget {
   final CustomerBalanceSummaryProvider customerBalanceSummaryProvider;
   final String? mobileNumber;
 
-  EditCustomerPage(
-      {required this.customerId,
+  const EditCustomerPage(
+      {super.key,
+      required this.customerId,
       required this.customerName,
       required this.customerBalanceSummaryProvider,
       this.mobileNumber});
@@ -29,7 +30,7 @@ class EditCustomerPage extends StatelessWidget {
       child: Consumer<CustomerManagementViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
-            appBar: CustomAppBar(title: 'Edit Customer'),
+            appBar: const CustomAppBar(title: 'Edit Customer'),
             body: SafeArea(
               child: SingleChildScrollView(
                 child: Padding(
@@ -44,6 +45,7 @@ class EditCustomerPage extends StatelessWidget {
                         label: 'Customer Name',
                         textInputType: TextInputType.name,
                         maxLength: 20,
+                        validator: (_) => viewModel.validateName(),
                       ),
                       CustomTextField(
                         controller: viewModel.numberController,
@@ -52,6 +54,7 @@ class EditCustomerPage extends StatelessWidget {
                         label: 'Mobile Number',
                         textInputType: TextInputType.phone,
                         maxLength: 20,
+                        validator: (_) => viewModel.validateNumber(),
                       ),
                       Stack(
                         alignment: Alignment.center,
@@ -59,7 +62,7 @@ class EditCustomerPage extends StatelessWidget {
                           CustomButton(
                             title: 'Save Changes',
                             onTap: viewModel.isLoading
-                                ? () => null
+                                ? () {}
                                 : () async {
                                     await viewModel
                                         .updateCustomerDetails(context);
@@ -67,7 +70,7 @@ class EditCustomerPage extends StatelessWidget {
                             icon: Icons.save,
                           ),
                           if (viewModel.isLoading)
-                            CircularProgressIndicator(
+                            const CircularProgressIndicator(
                               valueColor:
                                   AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
@@ -89,77 +92,103 @@ class EditCustomerPage extends StatelessWidget {
     return Column(
       children: [
         InkWell(
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return Dialog(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Container(
-                          padding: EdgeInsets.all(
-                              SizeConfig.imageSizeMultiplier * 4),
-                          constraints: BoxConstraints(
-                            maxHeight: MediaQuery.of(context).size.height * 0.8,
-                            maxWidth: MediaQuery.of(context).size.width * 0.8,
-                          ),
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                viewModel.profileImage != null
-                                    ? Image.file(viewModel.profileImage!)
-                                    : viewModel.profileImageUrl != null
-                                        ? Image.network(
-                                            viewModel.profileImageUrl!)
-                                        : CircleAvatar(
-                                            radius:
-                                                SizeConfig.imageSizeMultiplier *
-                                                    15, // Responsive radius
-                                            child: Icon(Icons.person,
-                                                size: SizeConfig
-                                                        .imageSizeMultiplier *
-                                                    15),
-                                          ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                  child: Text('Close'),
-                                )
-                              ],
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (BuildContext context) {
+                return Dialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Container(
+                    padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 4),
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.8,
+                      maxWidth: MediaQuery.of(context).size.width * 0.8,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          viewModel.profileImage != null
+                              ? Image.file(viewModel.profileImage!)
+                              : viewModel.profileImageUrl != null
+                                  ? Image.network(viewModel.profileImageUrl!)
+                                  : CircleAvatar(
+                                      radius:
+                                          SizeConfig.imageSizeMultiplier * 15,
+                                      backgroundColor: Colors.grey[300],
+                                      child: Icon(Icons.person,
+                                          size: SizeConfig.imageSizeMultiplier *
+                                              15,
+                                          color: Colors.grey[600]),
+                                    ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                            child: const Text(
+                              'Close',
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
-                          )));
-                },
-              );
-            },
-            child: viewModel.profileImage != null
-                ? CircleAvatar(
-                    radius: SizeConfig.imageSizeMultiplier *
-                        15, // Responsive radius
-                    backgroundImage: FileImage(viewModel.profileImage!),
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+          child: CircleAvatar(
+            radius: SizeConfig.imageSizeMultiplier * 15,
+            backgroundImage: viewModel.profileImage != null
+                ? FileImage(viewModel.profileImage!)
+                : (viewModel.profileImageUrl != null
+                    ? CachedNetworkImageProvider(viewModel.profileImageUrl!)
+                        as ImageProvider<Object>?
+                    : null),
+            backgroundColor:
+                viewModel.profileImageUrl == null ? Colors.grey[200] : null,
+            child: viewModel.profileImage == null &&
+                    viewModel.profileImageUrl == null
+                ? Icon(
+                    Icons.person,
+                    size: SizeConfig.imageSizeMultiplier * 15,
+                    color: Colors.grey[600],
                   )
-                : CircleAvatar(
-                    radius: SizeConfig.imageSizeMultiplier *
-                        15, // Responsive radius
-                    backgroundImage: viewModel.profileImageUrl != null
-                        ? CachedNetworkImageProvider(viewModel.profileImageUrl!)
-                        : null,
-                    backgroundColor: viewModel.profileImageUrl == null
-                        ? Colors.grey[200]
-                        : null,
-                    child: viewModel.profileImageUrl == null
-                        ? Icon(Icons.person,
-                            size: SizeConfig.imageSizeMultiplier * 15)
-                        : null,
-                  )),
+                : null,
+          ),
+        ),
+        SizedBox(height: SizeConfig.heightMultiplier * 2),
+        Text(
+          "Upload Profile Picture",
+          style: TextStyle(
+            fontSize: SizeConfig.textMultiplier * 2,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+        SizedBox(height: SizeConfig.heightMultiplier * 1),
+        Text(
+          "Profile picture will only be saved when you tap 'Save'",
+          style: TextStyle(
+            fontSize: SizeConfig.textMultiplier * 1.6,
+            color: Colors.grey[600],
+            fontStyle: FontStyle.italic,
+          ),
+        ),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            SizedBox(width: SizeConfig.imageSizeMultiplier * 2), // Adds spacing
             IconButton(
-              icon: Icon(Icons.camera_alt,
-                  size: SizeConfig.imageSizeMultiplier * 8),
+              icon: Icon(
+                Icons.camera_alt,
+                size: SizeConfig.imageSizeMultiplier * 8,
+                color: Colors.green, // Make icon color pop
+              ),
               onPressed: () => viewModel.handleImagePick(context),
             ),
           ],
