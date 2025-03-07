@@ -36,6 +36,33 @@ class CustomerManagementViewModel extends ChangeNotifier {
     _loadCustomerDetails();
   }
 
+  /// ✅ **Validation Logic**
+  String? validateName() {
+    if (nameController.text.trim().isEmpty) {
+      return "Name cannot be empty";
+    }
+    if (nameController.text.trim().length < 3) {
+      return "Name must be at least 3 characters";
+    }
+    return null;
+  }
+
+  String? validateNumber() {
+    String trimmedNumber = numberController.text.trim();
+    if (trimmedNumber.isNotEmpty && trimmedNumber.length < 10) {
+      return "Enter a valid mobile number (at least 10 digits)";
+    }
+    return null;
+  }
+
+  /// ✅ **Enables Save Button only if changes are made & values are valid**
+  bool get isSaveEnabled {
+    return validateName() == null &&
+        validateNumber() == null &&
+        (nameController.text.trim() != customerName ||
+            numberController.text.trim() != (mobileNumber ?? ''));
+  }
+
   Future<void> _loadCustomerDetails() async {
     final DocumentReference customerRef = FirebaseFirestore.instance
         .collection('users')

@@ -33,6 +33,19 @@ class ProfileAppBar extends StatefulWidget implements PreferredSizeWidget {
 }
 
 class _ProfileAppBarState extends State<ProfileAppBar> {
+  Future<void> _navigateToEditIfAllowed(
+      BuildContext context, Widget page, Function(dynamic)? onResult) async {
+    bool shouldProceed = await isAnonymousGate(context);
+    if (!shouldProceed) return;
+
+    final result = await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => page));
+
+    if (result != null && onResult != null) {
+      onResult(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
@@ -136,22 +149,16 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                 Expanded(
                   child: InkWell(
                     onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            title: const Text("Full Name"),
-                            content: Text(widget.customerName),
-                            actions: <Widget>[
-                              TextButton(
-                                child: const Text("Close"),
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                },
-                              ),
-                            ],
-                          );
-                        },
+                      _navigateToEditIfAllowed(
+                        context,
+                        EditCustomerPage(
+                          customerId: widget.customerId,
+                          customerName: widget.customerName,
+                          customerBalanceSummaryProvider:
+                              widget.customerBalanceSummaryProvider,
+                          mobileNumber: widget.mobileNumber,
+                        ),
+                        (result) => widget.onProfileUpdated(result),
                       );
                     },
                     child: Column(
@@ -214,22 +221,17 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                       viewModel.handleReminderTap(context);
                     }
                   } else if (value == 'edit') {
-                    bool shouldProceed = await isAnonymousGate(context);
-                    if (shouldProceed) {
-                      final result =
-                          await Navigator.of(context).push(MaterialPageRoute(
-                        builder: (context) => EditCustomerPage(
-                          customerId: widget.customerId,
-                          customerName: widget.customerName,
-                          customerBalanceSummaryProvider:
-                              widget.customerBalanceSummaryProvider,
-                          mobileNumber: widget.mobileNumber,
-                        ),
-                      ));
-                      if (result != null) {
-                        widget.onProfileUpdated(result);
-                      }
-                    }
+                    _navigateToEditIfAllowed(
+                      context,
+                      EditCustomerPage(
+                        customerId: widget.customerId,
+                        customerName: widget.customerName,
+                        customerBalanceSummaryProvider:
+                            widget.customerBalanceSummaryProvider,
+                        mobileNumber: widget.mobileNumber,
+                      ),
+                      (result) => widget.onProfileUpdated(result),
+                    );
                   } else if (value == 'delete') {
                     viewModel.deleteCustomer(context);
                   }
