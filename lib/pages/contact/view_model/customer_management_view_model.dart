@@ -103,13 +103,26 @@ class CustomerManagementViewModel extends ChangeNotifier {
 
   Map<String, List<Map<String, dynamic>>> groupTransactionsByDate() {
     Map<String, List<Map<String, dynamic>>> groupedTransactions = {};
+
     for (var transaction in transactions) {
       if (!groupedTransactions.containsKey(transaction['date'])) {
         groupedTransactions[transaction['date']] = [];
       }
       groupedTransactions[transaction['date']]?.add(transaction);
     }
-    return groupedTransactions;
+
+    // ✅ Sort date keys (ascending order so latest is at the bottom)
+    var sortedKeys = groupedTransactions.keys.toList()..sort();
+
+    // ✅ Sort transactions inside each date group
+    Map<String, List<Map<String, dynamic>>> sortedGroupedTransactions = {};
+    for (var key in sortedKeys) {
+      sortedGroupedTransactions[key] = groupedTransactions[key]!
+        ..sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(
+            b['date']))); // Ensure transactions are sorted within the group
+    }
+
+    return sortedGroupedTransactions;
   }
 
   Stream<List<Map<String, dynamic>>> streamTransactions(

@@ -47,9 +47,7 @@ Future<void> _initializeRemoteConfigAndSmartlook() async {
   try {
     final remoteConfigService = await RemoteConfigService.getInstance();
 
-    String projectKey =
-        remoteConfigService.getString('SMARTLOOK_PROJECT_KEY') ??
-            dotenv.get('SMARTLOOK_PROJECT_KEY');
+    String projectKey = remoteConfigService.getString('SMARTLOOK_PROJECT_KEY');
 
     final Smartlook smartlook = Smartlook.instance;
     smartlook.start();

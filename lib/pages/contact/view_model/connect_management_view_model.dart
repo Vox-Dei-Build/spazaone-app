@@ -7,9 +7,12 @@ import 'package:pasella/utils/phone_util.dart';
 
 class ConnectManagementViewModel {
   final String customerId;
-
+  final StreamController<List<Map<String, dynamic>>> _controller =
+      StreamController.broadcast();
+  bool isDisposed = false;
   final ValueNotifier<bool> loadingNotifier = ValueNotifier(false);
   late TwilioService _twilioService;
+  Timer? _fetchTimer; // ✅ Store Timer reference
 
   ConnectManagementViewModel(this.customerId) {
     _initializeTwilioService();
@@ -19,61 +22,73 @@ class ConnectManagementViewModel {
     _twilioService = await TwilioService.create();
   }
 
-  Stream<List<Map<String, dynamic>>> streamMessages() async* {
-    await _initializeTwilioService();
+  Stream<List<Map<String, dynamic>>> streamMessages() {
+    _startFetchingMessages();
+    return _controller.stream;
+  }
 
-    while (true) {
-      try {
-        final currentUserId = FirebaseAuth.instance.currentUser!.uid;
-        final customerNumber =
-            await fetchAndFormatPhoneNumber(currentUserId, customerId);
+  void _startFetchingMessages() {
+    // ✅ Ensure no duplicate timers
+    _fetchTimer?.cancel();
 
-        // 🔥 Get Twilio Numbers from Remote Config
-        final remoteConfigService = await RemoteConfigService.getInstance();
-        final twilioSmsNumber = remoteConfigService.getString('TWILIO_NUMBER');
-        final twilioMessagingServiceId =
-            remoteConfigService.getString('TWILIO_MESSAGING_SERVICE_ID');
+    _fetchMessages(customerId); // Start first fetch
+    _fetchTimer = Timer.periodic(const Duration(seconds: 700), (timer) {
+      if (isDisposed) {
+        timer.cancel(); // ✅ Stop when disposed
+      } else {
+        _fetchMessages(customerId);
+      }
+    });
+  }
 
-        if (customerNumber == null) {
-          print("🚨 No valid customer number found");
-          yield [];
-          await Future.delayed(const Duration(seconds: 30));
-          continue;
-        }
+  Future<void> _fetchMessages(String customerId) async {
+    if (isDisposed) return; // ✅ Stop immediately if disposed
 
-        // 🔥 Fetch outgoing messages (Merchant → Customer)
-        final sentMessages = await _twilioService.fetchMessagesToCustomer(
-          customerNumber: customerNumber,
-          twilioSmsNumber: twilioSmsNumber,
-          twilioMessagingServiceId: twilioMessagingServiceId,
-        );
-        print("📩 Sent Messages: ${sentMessages.length}");
+    try {
+      final currentUserId = FirebaseAuth.instance.currentUser!.uid;
+      final customerNumber =
+          await fetchAndFormatPhoneNumber(currentUserId, customerId);
 
-        // 🔥 Fetch incoming messages (Customer → Twilio)
-        final receivedMessages = await _twilioService.fetchMessagesFromCustomer(
-          customerNumber: customerNumber,
-          twilioSmsNumber: twilioSmsNumber,
-          twilioMessagingServiceId: twilioMessagingServiceId,
-        );
-        print("📩 Received Messages: ${receivedMessages.length}");
+      // 🔥 Get Twilio Numbers from Remote Config
+      final remoteConfigService = await RemoteConfigService.getInstance();
+      final twilioSmsNumber = remoteConfigService.getString('TWILIO_NUMBER');
+      final twilioMessagingServiceId =
+          remoteConfigService.getString('TWILIO_MESSAGING_SERVICE_ID');
 
-        // 🔥 Merge both types & sort by date (latest first)
-        final allMessages = [...sentMessages, ...receivedMessages];
-        allMessages.sort((a, b) => a['dateSent'].compareTo(b['dateSent']));
-
-        print("✅ Merged Messages: ${allMessages.length}");
-        yield allMessages;
-      } catch (e, stackTrace) {
-        print("🔥 Error fetching messages: $e");
-        print("📜 StackTrace: $stackTrace");
-        yield [];
+      //  🚨 No valid customer number found
+      if (customerNumber == null) {
+        _controller.add([]);
+        return;
       }
 
-      await Future.delayed(const Duration(seconds: 300));
+      // 🔥 Fetch outgoing & incoming messages
+      final sentMessages = await _twilioService.fetchMessagesToCustomer(
+        customerNumber: customerNumber,
+        currentUserId: currentUserId,
+        customerId: customerId,
+      );
+
+      final receivedMessages = await _twilioService.fetchMessagesFromCustomer(
+        customerNumber: customerNumber,
+        twilioSmsNumber: twilioSmsNumber,
+        twilioMessagingServiceId: twilioMessagingServiceId,
+      );
+
+      // 🔥 Merge & sort messages
+      final allMessages = [...sentMessages, ...receivedMessages];
+      allMessages.sort((a, b) => a['dateSent'].compareTo(b['dateSent']));
+      if (!isDisposed) _controller.add(allMessages); // ✅ Only update if active
+    } catch (e, stackTrace) {
+      print("🔥 Error fetching messages: $e");
+      print("📜 StackTrace: $stackTrace");
+      if (!isDisposed) _controller.add([]);
     }
   }
 
   void dispose() {
+    isDisposed = true;
+    _fetchTimer?.cancel(); // ✅ Stop fetching immediately
     loadingNotifier.dispose();
+    _controller.close();
   }
 }
