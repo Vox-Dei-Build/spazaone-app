@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
@@ -7,6 +6,7 @@ import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:provider/provider.dart';
 
 class EditCustomerPage extends StatelessWidget {
@@ -91,75 +91,14 @@ class EditCustomerPage extends StatelessWidget {
       BuildContext context, CustomerManagementViewModel viewModel) {
     return Column(
       children: [
-        InkWell(
-          onTap: () {
-            showDialog(
-              context: context,
-              builder: (BuildContext context) {
-                return Dialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Container(
-                    padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 4),
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.8,
-                      maxWidth: MediaQuery.of(context).size.width * 0.8,
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          viewModel.profileImage != null
-                              ? Image.file(viewModel.profileImage!)
-                              : viewModel.profileImageUrl != null
-                                  ? Image.network(viewModel.profileImageUrl!)
-                                  : CircleAvatar(
-                                      radius:
-                                          SizeConfig.imageSizeMultiplier * 15,
-                                      backgroundColor: Colors.grey[300],
-                                      child: Icon(Icons.person,
-                                          size: SizeConfig.imageSizeMultiplier *
-                                              15,
-                                          color: Colors.grey[600]),
-                                    ),
-                          const SizedBox(height: 12),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                            },
-                            child: const Text(
-                              'Close',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-          child: CircleAvatar(
-            radius: SizeConfig.imageSizeMultiplier * 15,
-            backgroundImage: viewModel.profileImage != null
-                ? FileImage(viewModel.profileImage!)
-                : (viewModel.profileImageUrl != null
-                    ? CachedNetworkImageProvider(viewModel.profileImageUrl!)
-                        as ImageProvider<Object>?
-                    : null),
-            backgroundColor:
-                viewModel.profileImageUrl == null ? Colors.grey[200] : null,
-            child: viewModel.profileImage == null &&
-                    viewModel.profileImageUrl == null
-                ? Icon(
-                    Icons.person,
-                    size: SizeConfig.imageSizeMultiplier * 15,
-                    color: Colors.grey[600],
-                  )
-                : null,
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            profilePicture(context, customerName, viewModel.profileImageUrl,
+                mobileNumber, true,
+                displayIcons: false, radius: SizeConfig.heightMultiplier * 9),
+          ],
         ),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
         Text(

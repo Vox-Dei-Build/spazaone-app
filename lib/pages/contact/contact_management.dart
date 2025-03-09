@@ -44,7 +44,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
         customerBalanceSummaryProvider,
         widget.mobileNumber);
 
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       _tabIndexNotifier.value = _tabController.index;
     });
@@ -71,7 +71,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
     SizeConfig().init(context);
 
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
         appBar: ProfileAppBar(
           customerId: widget.customerId,
@@ -100,7 +100,6 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                 tabs: const [
                   Tab(text: 'Transcations'),
                   Tab(text: 'Messages'),
-                  Tab(text: 'Report'),
                 ],
               ),
               Expanded(
@@ -118,7 +117,6 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                           customerManagementViewModel.profileImageUrl,
                       customerName: widget.customerName,
                     ),
-                    Container(),
                   ],
                 ),
               ),

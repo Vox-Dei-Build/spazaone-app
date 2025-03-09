@@ -1,10 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
+import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
 
@@ -49,9 +48,8 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    String initial = widget.customerName.isNotEmpty
-        ? widget.customerName[0].toUpperCase()
-        : '';
+    String name = widget.customerName;
+    String number = widget.mobileNumber ?? '';
 
     return ChangeNotifierProvider(
       create: (_) => CustomerManagementViewModel(
@@ -67,84 +65,9 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
             title: Row(
               mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                InkWell(
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return Dialog(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Container(
-                            padding: EdgeInsets.all(
-                                SizeConfig.imageSizeMultiplier * 4),
-                            constraints: BoxConstraints(
-                              maxHeight:
-                                  MediaQuery.of(context).size.height * 0.8,
-                              maxWidth: MediaQuery.of(context).size.width * 0.8,
-                            ),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  viewModel.profileImageUrl != null
-                                      ? CachedNetworkImage(
-                                          imageUrl: viewModel.profileImageUrl!,
-                                          placeholder: (context, url) =>
-                                              const CircularProgressIndicator(),
-                                          errorWidget: (context, url, error) =>
-                                              const Icon(Icons.error),
-                                        )
-                                      : CircleAvatar(
-                                          backgroundColor:
-                                              Color(kTertiaryColor.value),
-                                          radius:
-                                              SizeConfig.heightMultiplier * 2.5,
-                                          child: Text(
-                                            initial,
-                                            style: TextStyle(
-                                              fontSize: SizeConfig
-                                                      .textMultiplier *
-                                                  2.5, // Responsive font size
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                  TextButton(
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                    },
-                                    child: const Text('Close'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  child: CircleAvatar(
-                    backgroundImage: viewModel.profileImageUrl != null
-                        ? CachedNetworkImageProvider(viewModel.profileImageUrl!)
-                        : null,
-                    backgroundColor: viewModel.profileImageUrl == null
-                        ? Color(kTertiaryColor.value)
-                        : null,
-                    radius: SizeConfig.heightMultiplier * 2.5, // Fixed size
-                    child: viewModel.profileImageUrl == null
-                        ? Text(
-                            initial,
-                            style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier *
-                                  2.5, // Responsive font size
-                              color: Colors.white,
-                            ),
-                          )
-                        : null,
-                  ),
-                ),
+                profilePicture(
+                    context, name, viewModel.profileImageUrl, number, true,
+                    displayIcons: false),
                 SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
                 Expanded(
                   child: InkWell(
