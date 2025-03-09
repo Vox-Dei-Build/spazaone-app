@@ -25,18 +25,18 @@ class Dashboard extends StatelessWidget {
                   value.handleNavigation(context, index),
               destinations: [
                 NavigationDestination(
-                  icon: Icon(Icons.book_outlined,
+                  icon: Icon(Icons.contacts_outlined,
                       size: SizeConfig.imageSizeMultiplier * 7),
-                  selectedIcon: Icon(Icons.book,
+                  selectedIcon: Icon(Icons.contacts_outlined,
                       size: SizeConfig.imageSizeMultiplier * 7),
-                  label: 'Ledger',
+                  label: 'Customers',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.inventory_outlined,
                       size: SizeConfig.imageSizeMultiplier * 7),
                   selectedIcon: Icon(Icons.inventory_outlined,
                       size: SizeConfig.imageSizeMultiplier * 7),
-                  label: 'Stock',
+                  label: 'Products',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.point_of_sale,

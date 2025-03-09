@@ -14,7 +14,8 @@ class AddCreditScreen extends StatelessWidget {
   final String customerId;
   final String? mobileNumber;
 
-  AddCreditScreen({
+  const AddCreditScreen({
+    super.key,
     required this.customerName,
     required this.customerId,
     this.mobileNumber,
@@ -149,7 +150,7 @@ class AddCreditScreen extends StatelessWidget {
                         CustomButton(
                           title: 'Add Credit',
                           onTap: viewModel.isLoading
-                              ? () => null
+                              ? () {}
                               : () async {
                                   await viewModel.addCreditTransaction(context);
                                 },
@@ -158,7 +159,7 @@ class AddCreditScreen extends StatelessWidget {
                           fontSize: SizeConfig.textMultiplier * 2,
                         ),
                         if (viewModel.isLoading)
-                          CircularProgressIndicator(
+                          const CircularProgressIndicator(
                             valueColor:
                                 AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
