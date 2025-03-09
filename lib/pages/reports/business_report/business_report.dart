@@ -1,14 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/models/common/period_filter_model.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
-import 'package:pasella/pages/ledger/widgets/ledger_stream_builder_section.dart';
 import 'package:pasella/pages/reports/business_report/view_model/business_report_view_model.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/shared/services/period_filter_services.dart';
-import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
-import 'package:pasella/shared/widgets/balance_summary/balance_period_filter.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/metric_tile.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -24,7 +20,6 @@ class BusinessReportPage extends StatefulWidget {
 
 class _BusinessReportPageState extends State<BusinessReportPage> {
   late BusinessReportViewModel businessReportViewModel;
-  late BalanceSummaryViewModel balanceSummaryViewModel;
 
   @override
   void initState() {
@@ -32,13 +27,6 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     var currentUser = FirebaseAuth.instance.currentUser?.uid ?? '';
     var periodFilterService =
         Provider.of<PeriodFilterService>(context, listen: false);
-
-    BalanceSummaryProvider balanceSummaryProvider =
-        Provider.of<BalanceSummaryProvider>(context, listen: false);
-    balanceSummaryViewModel = BalanceSummaryViewModel(balanceSummaryProvider);
-
-    balanceSummaryViewModel
-        .fetchBalanceSummary(periodFilterService.getStartDate());
 
     businessReportViewModel =
         BusinessReportViewModel(currentUser, periodFilterService);
@@ -59,33 +47,26 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
 
     return Consumer<BalanceSummaryProvider>(
       builder: (context, balanceSummary, child) {
-        var periodFilterService =
-            Provider.of<PeriodFilterService>(context, listen: false);
         return Scaffold(
           body: SafeArea(
             child: SingleChildScrollView(
               child: Padding(
-                padding: EdgeInsets.all(
-                    SizeConfig.imageSizeMultiplier * 5), // Adjust padding
+                padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 5),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    PeriodFilter(
-                      selectedPeriod: periodFilterService.currentSelectedPeriod,
-                      onPeriodChanged: (TimePeriod selectedPeriod) {
-                        balanceSummary.updatePeriodFilter(
-                            context, selectedPeriod);
-                      },
-                    ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    LedgerStreamBuilderSection(),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    Text(
-                      'Cashflow Impact',
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2.5,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Pay Later Report',
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                     SizedBox(height: SizeConfig.heightMultiplier * 2),
                     Card(
@@ -117,20 +98,17 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                     children: [
                                       MetricTile(
                                           context,
-                                          'Cashflow Impact',
+                                          'Total Owed',
                                           () async => CurrencyUtil.format(
                                               report.cashflowImpact),
                                           false),
-                                      MetricTile(
-                                          context,
-                                          '% of People Not Paying',
-                                          () async => report.nplRatio,
-                                          false),
+                                      MetricTile(context, '% Who Owe You',
+                                          () async => report.nplRatio, false),
                                       SizedBox(
                                           height:
                                               SizeConfig.heightMultiplier * 2),
                                       Text(
-                                        'People Who Didn\'t Pay (${report.totalNumberofNPAs})',
+                                        'Customers (${report.totalNumberofNPAs})',
                                         style: TextStyle(
                                             fontSize:
                                                 SizeConfig.textMultiplier * 2.5,

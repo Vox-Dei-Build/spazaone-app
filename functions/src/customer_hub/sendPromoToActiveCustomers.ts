@@ -63,7 +63,9 @@ exports.sendPromoToActiveCustomers = functions.https.onRequest(
                 }
 
                 if (excludedCustomerNumbers.includes(phoneNumber)) {
-                  console.log(`Skipping customer with phone number ${phoneNumber}`);
+                  console.log(
+                    `Skipping customer with phone number ${phoneNumber}`,
+                  );
                   return;
                 }
 

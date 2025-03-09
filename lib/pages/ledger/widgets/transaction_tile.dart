@@ -1,7 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
+import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
 
@@ -56,7 +56,8 @@ class TransactionTile extends StatelessWidget {
           ListTile(
             contentPadding: const EdgeInsets.all(0.0),
             visualDensity: const VisualDensity(horizontal: -2),
-            leading: _buildLeadingIcon(context),
+            leading:
+                profilePicture(context, name, profileImageUrl, number, isNPA),
             title: _buildTitle(),
             subtitle: _buildSubtitle(),
           ),
@@ -66,130 +67,6 @@ class TransactionTile extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildLeadingIcon(BuildContext parentContext) {
-    return Stack(
-      children: [
-        InkWell(
-          onTap: () {
-            showDialog(
-              context: parentContext,
-              builder: (BuildContext context) {
-                return Dialog(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Container(
-                        padding:
-                            EdgeInsets.all(SizeConfig.imageSizeMultiplier * 4),
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.8,
-                          maxWidth: MediaQuery.of(context).size.width * 0.8,
-                        ),
-                        child: SingleChildScrollView(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              profileImageUrl != null
-                                  ? Container(
-                                      constraints: BoxConstraints(
-                                        maxWidth:
-                                            MediaQuery.of(context).size.width *
-                                                0.6, // Limits image width
-                                        maxHeight:
-                                            MediaQuery.of(context).size.height *
-                                                0.6, // Limits image height
-                                      ),
-                                      child: AspectRatio(
-                                        aspectRatio:
-                                            1, // Maintain a square aspect ratio
-                                        child: CachedNetworkImage(
-                                          imageUrl: profileImageUrl!,
-                                          placeholder: (context, url) =>
-                                              const CircularProgressIndicator(),
-                                          errorWidget: (context, url, error) =>
-                                              const Icon(Icons.error),
-                                          fit: BoxFit
-                                              .contain, // Ensures the image scales proportionally
-                                        ),
-                                      ),
-                                    )
-                                  : CircleAvatar(
-                                      backgroundColor:
-                                          Color(kTertiaryColor.value),
-                                      radius: SizeConfig.heightMultiplier * 6,
-                                      child: Text(
-                                        name.isNotEmpty ? name[0] : '',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize:
-                                              SizeConfig.textMultiplier * 2.5,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                              const SizedBox(height: 10),
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.of(context).pop();
-                                },
-                                child: const Text('Close'),
-                              )
-                            ],
-                          ),
-                        )));
-              },
-            );
-          },
-          child: CircleAvatar(
-            radius: SizeConfig.heightMultiplier * 2.5, // Fixed size
-            backgroundImage: profileImageUrl != null
-                ? CachedNetworkImageProvider(profileImageUrl!)
-                : null,
-            child: profileImageUrl == null
-                ? Text(
-                    name.isNotEmpty ? name[0] : '',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: SizeConfig.textMultiplier * 2,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  )
-                : null,
-          ),
-        ),
-        if (number == null || number!.isEmpty)
-          Positioned(
-            left: 0,
-            bottom: 0,
-            child: Icon(
-              Icons.phone_disabled,
-              color: Colors.red,
-              size: SizeConfig.imageSizeMultiplier * 3,
-            ),
-          )
-        else
-          Positioned(
-            left: 0,
-            bottom: 0,
-            child: Icon(
-              Icons.phone_enabled,
-              color: Colors.green,
-              size: SizeConfig.imageSizeMultiplier * 3,
-            ),
-          ),
-        Positioned(
-          right: 0,
-          bottom: 0,
-          child: Icon(
-            isNPA == true ? Icons.report : Icons.verified_user,
-            color: isNPA == true ? Colors.red : Colors.green,
-            size: SizeConfig.imageSizeMultiplier * 3,
-          ),
-        ),
-      ],
     );
   }
 

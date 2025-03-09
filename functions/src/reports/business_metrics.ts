@@ -146,6 +146,7 @@ async function fetchCustomersWithNPAsCashflowImpact(currentUserId: string) {
         lastTransaction: customerData.lastTransaction,
         lastReminderSent: customerData.lastReminderSent,
         isNPA: customerData.isNPA,
+        profileImageUrl: customerData.profileImageUrl,
       });
     });
 
