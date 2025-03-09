@@ -56,12 +56,12 @@ final kCustomThemeData = ThemeData(
     labelTextStyle: MaterialStateProperty.resolveWith((states) {
       if (states.contains(MaterialState.selected)) {
         return TextStyle(
-          fontSize: SizeConfig.textMultiplier * 2,
+          fontSize: SizeConfig.textMultiplier * 1.5,
           fontWeight: FontWeight.w500,
         );
       }
       return TextStyle(
-        fontSize: SizeConfig.textMultiplier * 2,
+        fontSize: SizeConfig.textMultiplier * 1.5,
         fontWeight: FontWeight.normal,
       );
     }),
