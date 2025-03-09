@@ -24,7 +24,7 @@ class AddCreditPaymentButtons extends StatelessWidget {
       children: [
         Expanded(
           child: CustomButton(
-            title: 'Credit',
+            title: 'Pay Later',
             onTap: () {
               Navigator.push(
                 context,
@@ -48,7 +48,7 @@ class AddCreditPaymentButtons extends StatelessWidget {
         SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
         Expanded(
           child: CustomButton(
-            title: 'Payment',
+            title: 'Pay Now',
             onTap: () {
               Navigator.push(
                 context,

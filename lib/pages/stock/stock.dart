@@ -8,8 +8,6 @@ import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:provider/provider.dart';
-import 'widgets/add_product_group_button.dart';
-import 'widgets/product_group_list.dart';
 
 class StockPage extends StatefulWidget {
   const StockPage({super.key});
@@ -26,7 +24,7 @@ class _StockPageState extends State<StockPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       _tabIndexNotifier.value = _tabController.index;
     });
@@ -113,7 +111,6 @@ class _StockPageState extends State<StockPage>
                         ),
                         tabs: const [
                           Tab(text: 'PRODUCTS'),
-                          Tab(text: 'GROUPS'),
                           Tab(text: 'REPORT'),
                         ],
                       ),
@@ -126,7 +123,6 @@ class _StockPageState extends State<StockPage>
                               groupName:
                                   null, // Set groupname to null so that all products show up
                             ),
-                            ProductGroupList(viewModel: viewModel),
                             ProductReportsTab(viewModel: viewModel),
                           ],
                         ),
@@ -166,9 +162,7 @@ class _StockPageState extends State<StockPage>
               ),
             ),
           )
-        : tabIndex == 1
-            ? AddProductGroupButton(viewModel: viewModel)
-            : Container();
+        : Container();
   }
 }
 
