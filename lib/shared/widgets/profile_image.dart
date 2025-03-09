@@ -55,14 +55,16 @@ class ProfileImageWidget extends StatelessWidget {
 
 Widget profilePicture(BuildContext context, String name, String? imageUrl,
     String? number, bool? isNPA,
-    {bool displayIcons = true, final double? radius}) {
+    {bool displayIcons = true, final double? radius, File? profileImage}) {
+  var initials = name.isNotEmpty ? name[0] : '';
   return Stack(
     children: [
       ProfileImageWidget(
         imageUrl: imageUrl,
-        initials: name.isNotEmpty ? name[0] : '',
+        imageFile: profileImage,
+        initials: initials,
         radius: radius ?? SizeConfig.heightMultiplier * 3,
-        onTap: () => showProfileImageDialog(context, imageUrl, null, name),
+        onTap: () => showProfileImageDialog(context, imageUrl, null, initials),
       ),
       displayIcons
           ? Positioned(

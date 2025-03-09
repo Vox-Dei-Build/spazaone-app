@@ -119,11 +119,12 @@ class CustomerManagementViewModel extends ChangeNotifier {
     }
   }
 
-  void handleImagePick(BuildContext context) async {
-    await _photoUploadUtil.handleImagePick(context, (pickedImage) {
+  Future<void> handleImagePick(BuildContext context) async {
+    await _photoUploadUtil.handleImagePick(context, (pickedImage) async {
       if (pickedImage != null) {
+        print("📸 New profile image picked: $_profileImage"); // Debug print
         _profileImage = pickedImage;
-        notifyListeners();
+        notifyListeners(); // 🔥 Ensure UI updates
       }
     });
   }

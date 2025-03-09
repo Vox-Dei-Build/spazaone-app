@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 
 void showProfileImageDialog(
     BuildContext context, String? imageUrl, File? imageFile, String initials) {
@@ -35,10 +36,14 @@ void showProfileImageDialog(
                           )
                         : CircleAvatar(
                             radius: SizeConfig.imageSizeMultiplier * 15,
-                            backgroundColor: Colors.grey[300],
-                            child: Icon(Icons.person,
-                                size: SizeConfig.imageSizeMultiplier * 15,
-                                color: Colors.grey[600]),
+                            backgroundColor: Color(kTertiaryColor.value),
+                            child: Text(
+                              initials,
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: SizeConfig.textMultiplier * 2.5,
+                                  fontWeight: FontWeight.w500),
+                            ),
                           )),
                 const SizedBox(height: 12),
                 TextButton(
