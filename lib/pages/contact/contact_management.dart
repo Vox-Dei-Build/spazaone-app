@@ -50,14 +50,6 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
     });
   }
 
-  void refreshPage(String? newProfileImageUrl) {
-    if (newProfileImageUrl != null) {
-      setState(() {
-        customerManagementViewModel.profileImageUrl = newProfileImageUrl;
-      });
-    }
-  }
-
   @override
   void dispose() {
     _tabController.dispose();
@@ -70,57 +62,56 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: ProfileAppBar(
-          customerId: widget.customerId,
-          customerName: widget.customerName,
-          customerBalanceSummaryProvider: customerBalanceSummaryProvider,
-          mobileNumber: widget.mobileNumber,
-          onProfileUpdated: refreshPage,
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 4),
-            child: Column(children: [
-              TabBar(
-                controller: _tabController,
-                labelStyle: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.8,
-                  fontWeight: FontWeight.normal,
-                ),
-                unselectedLabelStyle: TextStyle(
-                  fontSize: SizeConfig.textMultiplier *
-                      1.8, // Font size for unselected tabs
-                  fontWeight:
-                      FontWeight.normal, // Font weight for unselected tabs
-                ),
-                tabs: const [
-                  Tab(text: 'Transcations'),
-                  Tab(text: 'Messages'),
-                ],
-              ),
-              Expanded(
-                child: TabBarView(
+    return ChangeNotifierProvider(
+      create: (_) => customerManagementViewModel,
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: ProfileAppBar(
+            customerBalanceSummaryProvider: customerBalanceSummaryProvider,
+          ),
+          body: SafeArea(
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.imageSizeMultiplier * 4),
+              child: Column(children: [
+                TabBar(
                   controller: _tabController,
-                  children: [
-                    TransactionsManagementPage(
-                      customerName: widget.customerName,
-                      customerId: widget.customerId,
-                      mobileNumber: widget.mobileNumber,
-                    ),
-                    ConnectManagementPage(
-                      customerId: widget.customerId,
-                      profileImageUrl:
-                          customerManagementViewModel.profileImageUrl,
-                      customerName: widget.customerName,
-                    ),
+                  labelStyle: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                    fontWeight: FontWeight.normal,
+                  ),
+                  unselectedLabelStyle: TextStyle(
+                    fontSize: SizeConfig.textMultiplier *
+                        1.8, // Font size for unselected tabs
+                    fontWeight:
+                        FontWeight.normal, // Font weight for unselected tabs
+                  ),
+                  tabs: const [
+                    Tab(text: 'Transcations'),
+                    Tab(text: 'Messages'),
                   ],
                 ),
-              ),
-            ]),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      TransactionsManagementPage(
+                        customerName: widget.customerName,
+                        customerId: widget.customerId,
+                        mobileNumber: widget.mobileNumber,
+                      ),
+                      ConnectManagementPage(
+                        customerId: widget.customerId,
+                        profileImageUrl:
+                            customerManagementViewModel.profileImageUrl,
+                        customerName: widget.customerName,
+                      ),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
           ),
         ),
       ),

@@ -47,7 +47,7 @@ class PhotoUploadUtil {
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Select an option'),
+        title: const Text('Select an option'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -55,14 +55,14 @@ class PhotoUploadUtil {
               onPressed: () {
                 Navigator.of(context).pop(true);
               },
-              child: Text("Camera"),
+              child: const Text("Camera"),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(false);
               },
-              child: Text("Gallery"),
+              child: const Text("Gallery"),
             ),
           ],
         ),
