@@ -21,28 +21,29 @@ class MessageCard extends StatelessWidget {
     // ✅ Determine WhatsApp/SMS status icon
     Icon statusIcon;
     String statusText = message['status'] ?? 'unknown';
+    var iconSize = SizeConfig.textMultiplier * 2;
 
     switch (statusText) {
       case "failed":
       case "undelivered":
-        statusIcon = const Icon(Icons.error,
-            color: Colors.red, size: 16); // ❌ Failed/Undelivered
+        statusIcon = Icon(Icons.error,
+            color: Colors.red, size: iconSize); // ❌ Failed/Undelivered
         break;
       case "sent":
         statusIcon =
-            const Icon(Icons.check, color: Colors.white, size: 16); // ✔️ Sent
+            Icon(Icons.check, color: Colors.white, size: iconSize); // ✔️ Sent
         break;
       case "delivered":
-        statusIcon = const Icon(Icons.done_all,
-            color: Colors.white, size: 16); // ✔✔ Delivered
+        statusIcon = Icon(Icons.done_all,
+            color: Colors.white, size: iconSize); // ✔✔ Delivered
         break;
       case "read": // ✅ Only for WhatsApp
-        statusIcon = const Icon(Icons.done_all,
-            color: Colors.lightBlueAccent, size: 16); // ✔✔ Read (Only WhatsApp)
+        statusIcon = Icon(Icons.done_all,
+            color: Colors.lightBlue, size: iconSize); // ✔✔ Read (Only WhatsApp)
         break;
       default:
-        statusIcon = const Icon(Icons.done_all,
-            color: Colors.lightBlueAccent, size: 16); // ⏳ Unknown
+        statusIcon = Icon(Icons.done_all,
+            color: Colors.lightBlue, size: iconSize); // ⏳ Unknown
     }
 
     return Row(
@@ -58,8 +59,8 @@ class MessageCard extends StatelessWidget {
 
         // ✅ Message Card
         Container(
-          width: SizeConfig.screenWidth *
-              (SizeConfig.screenWidth > 360 ? 0.7 : 0.9),
+          width:
+              SizeConfig.screenWidth * (SizeConfig.screenWidth > 360 ? 0.7 : 1),
           margin: EdgeInsets.symmetric(
             vertical: SizeConfig.heightMultiplier * 0.5,
           ),
@@ -75,7 +76,7 @@ class MessageCard extends StatelessWidget {
                     isMerchantMessage ? Radius.zero : const Radius.circular(12),
               ),
             ),
-            color: isMerchantMessage ? Colors.green : Colors.white,
+            color: isMerchantMessage ? Colors.green[400] : Colors.white,
             child: Padding(
               padding: EdgeInsets.symmetric(
                 vertical: SizeConfig.heightMultiplier * 1.5,
@@ -95,6 +96,26 @@ class MessageCard extends StatelessWidget {
                               isMerchantMessage ? Colors.white : Colors.black,
                         ),
                       ),
+
+                      // AI indicator
+                      if (message['isAI'] == true) ...[
+                        SizedBox(width: SizeConfig.heightMultiplier * 0.4),
+                        Text(
+                          "AI Agent",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: SizeConfig.textMultiplier * 1.5,
+                            color:
+                                isMerchantMessage ? Colors.white : Colors.black,
+                          ),
+                        ),
+                        SizedBox(width: SizeConfig.heightMultiplier * 0.5),
+                        Icon(
+                          Icons.verified_rounded,
+                          color: isMerchantMessage ? Colors.white : Colors.grey,
+                          size: SizeConfig.imageSizeMultiplier * 4,
+                        ),
+                      ],
                     ],
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 1),
@@ -107,6 +128,7 @@ class MessageCard extends StatelessWidget {
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // ✅ Timestamp
                       Text(
@@ -119,8 +141,12 @@ class MessageCard extends StatelessWidget {
                                 ? Colors.white
                                 : Colors.black),
                       ),
+                      SizedBox(width: SizeConfig.heightMultiplier * 0.8),
                       // ✅ WhatsApp-style status icon
-                      statusIcon,
+                      Align(
+                        alignment: Alignment.center,
+                        child: statusIcon,
+                      ),
                     ],
                   ),
                 ],
