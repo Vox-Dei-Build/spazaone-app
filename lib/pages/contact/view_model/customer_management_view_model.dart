@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -19,7 +21,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> transactions = [];
   File? _profileImage;
   String? _profileImageUrl;
-
+  late final DynamicPricingService pricingService;
   final ValueNotifier<bool> sendingReminderNotifier =
       ValueNotifier<bool>(false);
   bool isLoading = false;
@@ -27,13 +29,25 @@ class CustomerManagementViewModel extends ChangeNotifier {
   String? get profileImageUrl =>
       _profileImageUrl; // Getter for profile image URL
   final PhotoUploadUtil _photoUploadUtil = PhotoUploadUtil();
-
+  late final MessagingNotificationService notificationService;
+  late final bool hasWhatsApp;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController numberController = TextEditingController();
 
   CustomerManagementViewModel(this.customerId, this.customerName,
       this.customerBalanceSummaryProvider, this.mobileNumber) {
     _loadCustomerDetails();
+    _initServices();
+  }
+
+  Future<void> _initServices() async {
+    notificationService = await MessagingNotificationService.create();
+    pricingService = await DynamicPricingService.initialize();
+    hasWhatsApp = (mobileNumber != null)
+        ? await notificationService.isWhatsAppEnabled(mobileNumber!)
+        : false;
+
+    notifyListeners();
   }
 
   /// ✅ **Validation Logic**
@@ -243,6 +257,15 @@ class CustomerManagementViewModel extends ChangeNotifier {
             'You\'re offline. Action queued and will complete when back online.',
             Colors.orange);
       });
+    }
+
+    bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+        context, userId, pricingService.smsReminderTemplatePrice);
+
+    if (!canProceed) {
+      SnackbarComponents.showInsufficientBalance(context);
+      sendingReminderNotifier.value = false;
+      return; // Exit early, do NOT send the message
     }
 
     FirebaseFirestore.instance

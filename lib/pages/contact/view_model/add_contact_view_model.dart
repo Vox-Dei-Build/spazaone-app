@@ -3,8 +3,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -14,8 +16,18 @@ class AddContactViewModel extends ChangeNotifier {
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
   bool _isLoading = false;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  DynamicPricingService? pricingService;
 
   bool get isLoading => _isLoading;
+
+  AddContactViewModel() {
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    pricingService = await DynamicPricingService.initialize();
+    notifyListeners();
+  }
 
   Future<void> addCustomerToFirestore(
       BuildContext context, AppModel model) async {
@@ -57,8 +69,16 @@ class AddContactViewModel extends ChangeNotifier {
           .collection('customers')
           .add(newCustomer)
           .then((docRef) async {
-        if (mobileNumber.isNotEmpty) {
-          await _sendSMS(currentUserId, docRef.id, customerName, mobileNumber);
+        if (mobileNumber.isNotEmpty && pricingService != null) {
+          bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+              context, currentUserId, pricingService!.smsReminderTemplatePrice);
+
+          if (canProceed) {
+            await _sendSMS(
+                currentUserId, docRef.id, customerName, mobileNumber);
+          } else {
+            SnackbarComponents.showInsufficientBalance(context);
+          }
         } else {
           SchedulerBinding.instance.addPostFrameCallback((_) {
             showSnackbar(
