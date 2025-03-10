@@ -3,19 +3,29 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/auth_util.dart';
+import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class AddPaymentViewModel extends TransactionViewModel {
   final String customerName;
   final String customerId;
   final String? mobileNumber;
+  late final DynamicPricingService pricingService;
 
   AddPaymentViewModel({
     required this.customerName,
     required this.customerId,
     this.mobileNumber,
-  });
+  }) {
+    _initServices();
+  }
+
+  Future<void> _initServices() async {
+    pricingService = await DynamicPricingService.initialize();
+    notifyListeners();
+  }
 
   Future<void> addPaymentTransaction(BuildContext context) async {
     if (isLoading) return;
@@ -69,8 +79,15 @@ class AddPaymentViewModel extends TransactionViewModel {
           .collection('transactions')
           .add(transactionData);
 
-      await sendSMS(currentUserId, customerId, amountEntered, customerName,
-          "Payment", mobileNumber);
+      bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+          context, userId, pricingService.smsPaymentTemplatePrice);
+
+      if (canProceed) {
+        await sendSMS(currentUserId, customerId, amountEntered, customerName,
+            "Payment", mobileNumber);
+      } else {
+        SnackbarComponents.showInsufficientBalance(context);
+      }
 
       DocumentReference customerRef = FirebaseFirestore.instance
           .collection('users')

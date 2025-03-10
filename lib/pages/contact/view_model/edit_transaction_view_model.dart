@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class EditTransactionViewModel extends TransactionViewModel {
@@ -17,6 +19,7 @@ class EditTransactionViewModel extends TransactionViewModel {
   DateTime repaymentDate = DateTime.now().add(const Duration(days: 30));
   bool _isProductsLoading = false;
   bool get isProductsLoading => _isProductsLoading;
+  late final DynamicPricingService pricingService;
 
   EditTransactionViewModel({
     required this.customerName,
@@ -27,6 +30,12 @@ class EditTransactionViewModel extends TransactionViewModel {
     this.mobileNumber,
   }) {
     loadTransactionDetails();
+    _initServices();
+  }
+
+  Future<void> _initServices() async {
+    pricingService = await DynamicPricingService.initialize();
+    notifyListeners();
   }
 
   Future<void> loadTransactionDetails() async {
@@ -179,8 +188,19 @@ class EditTransactionViewModel extends TransactionViewModel {
         }
       }
 
-      await sendSMS(currentUserId, customerId, amountEntered, customerName,
-          transactionType, mobileNumber);
+      bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+          context,
+          currentUserId,
+          transactionType == "Credit"
+              ? pricingService.smsReminderTemplatePrice
+              : pricingService.smsPaymentTemplatePrice);
+
+      if (canProceed) {
+        await sendSMS(currentUserId, customerId, amountEntered, customerName,
+            transactionType, mobileNumber);
+      } else {
+        SnackbarComponents.showInsufficientBalance(context);
+      }
 
       showSnackbar(context, 'Transaction updated successfully!', Colors.green);
 
