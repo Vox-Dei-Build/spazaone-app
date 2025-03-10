@@ -12,6 +12,7 @@ import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/settings/chat/chat_page.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/services/period_filter_services.dart';
@@ -165,6 +166,7 @@ class MyApp extends StatelessWidget {
           HelpPage.id: (context) => const HelpPage(),
           SharePage.id: (context) => const SharePage(),
           SalesPage.id: (context) => const SalesPage(),
+          WalletPage.id: (context) => const WalletPage(),
           FindDefaulterPage.id: (context) => const FindDefaulterPage(),
         },
       ),
