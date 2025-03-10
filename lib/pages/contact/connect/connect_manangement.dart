@@ -60,7 +60,7 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
         body: SafeArea(
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 5,
+              horizontal: SizeConfig.imageSizeMultiplier * 0,
             ),
             child: Column(
               children: [

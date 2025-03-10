@@ -34,9 +34,13 @@ class TwilioService {
   bool _isTemplateMessage(String messageText) {
     List<String> templateKeywords = [
       "your recent credit of", // Credit template
-      "your recent payment of", // Payment template
+      "your recent Credit of", // Credit template
+      "your payment of", // Payment template
+      "your recent Payment of", // Payment template
       "your account with", // Onboarding template
-      "your balance at", // Reminder template
+      "No more books!", // Onboarding template
+      "any late fees", // reminder template
+      "join the 98% of", // reminder template
     ];
 
     return templateKeywords.any((keyword) => messageText.contains(keyword));
@@ -142,6 +146,7 @@ class TwilioService {
           }
         } else {
           // "🛠 AI Bot or General Message Detected. Keeping it.
+          message['isAI'] = true;
           return true;
         }
       }).toList();
