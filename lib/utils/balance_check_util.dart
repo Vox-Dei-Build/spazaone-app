@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/dashboard/dashboard.dart';
+import 'package:provider/provider.dart';
 
 // snackbar_messages.dart
 const String insufficientBalanceMessage =
@@ -47,22 +50,23 @@ class BalanceCheckUtil {
           builder: (context) => AlertDialog(
             title: const Text("Insufficient Balance"),
             content: const Text(
-                "Your balance is too low to send messages. Please top up to continue."),
+                "Your balance is too low to send messages. 📩 To keep your customers informed and engaged, please top up now and continue sending important updates seamlessly! 🔄💡"),
             actions: [
+              TextButton(
+                onPressed: () {
+                  // Navigator.of(context).pop(false);
+                  Provider.of<AppModel>(context, listen: false)
+                      .handleNavigation(context, 3);
+                  Navigator.pushNamed(context, Dashboard.id);
+                },
+                child: const Text("Top Up Now"),
+              ),
               TextButton(
                 onPressed: () {
                   Navigator.of(context)
                       .pop(false); // ❌ Cancel → Do NOT send message
                 },
-                child: const Text("Cancel"),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(false); // ❌ Exit without sending
-                  Navigator.pushNamed(
-                      context, '/wallet'); // 🔄 Redirect to Wallet
-                },
-                child: const Text("Top Up Now"),
+                child: const Text("Proceed Without Message"),
               ),
             ],
           ),

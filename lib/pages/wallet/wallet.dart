@@ -13,6 +13,8 @@ import 'widgets/banking_details.dart';
 class WalletPage extends StatefulWidget {
   const WalletPage({Key? key}) : super(key: key);
 
+  static const id = '/walletPage';
+
   @override
   _WalletPageState createState() => _WalletPageState();
 }
