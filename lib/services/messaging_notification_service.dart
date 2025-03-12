@@ -89,34 +89,35 @@ class MessagingNotificationService {
           bool delivered = await whatsappService.pollMessageStatus(messageId);
 
           if (delivered) {
-            eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
             messageSent = true;
             await deductBalance(currentUserId, messageCost);
+            // 🔹 Store the notification record in Firestore
+            await storeNotification(
+                currentUserId: currentUserId,
+                customerId: customerId,
+                message: message,
+                phoneNumber: phoneNumber,
+                customerDetails: variables,
+                messageCost: messageCost);
+            eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
           }
         }
       }
 
       // 🔹 If WhatsApp failed, fallback to SMS
       if (!messageSent) {
-        await _sendSMSFallback(phoneNumber, message, formattedBalance, shopName,
-            customerName, inAppNotificationMessage, currentUserId, messageCost);
+        await _sendSMSFallback(
+            phoneNumber,
+            message,
+            formattedBalance,
+            shopName,
+            customerName,
+            inAppNotificationMessage,
+            currentUserId,
+            messageCost,
+            customerId,
+            variables);
       }
-
-      // 🔹 Store the notification record in Firestore
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUserId)
-          .collection('customers')
-          .doc(customerId)
-          .collection('reminders')
-          .add({
-        'message': message,
-        'dateSent': Timestamp.now(),
-        'phoneNumber': phoneNumber,
-        'customer_details': variables,
-        'messageCost': messageCost,
-        'merchant': currentUserId
-      });
     } catch (e) {
       print('Error while sending message: $e');
       eventBus.fire(SMSEvent(
@@ -133,7 +134,9 @@ class MessagingNotificationService {
       customerName,
       inAppNotificationMessage,
       currentUserId,
-      messageCost) async {
+      messageCost,
+      customerId,
+      variables) async {
     final SMSMessagingService messageService =
         await SMSMessagingService.create();
 
@@ -144,6 +147,13 @@ class MessagingNotificationService {
     await messageService.sendSMS(phoneNumber, message).then((statusCode) async {
       if (statusCode == 201) {
         await deductBalance(currentUserId, messageCost);
+        await storeNotification(
+            currentUserId: currentUserId,
+            customerId: customerId,
+            message: message,
+            phoneNumber: phoneNumber,
+            customerDetails: variables,
+            messageCost: messageCost);
         eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
       } else {
         eventBus.fire(SMSEvent(
@@ -165,6 +175,30 @@ class MessagingNotificationService {
       double newBalance = currentBalance - cost;
 
       transaction.update(merchantRef, {'virtualBalance': newBalance});
+    });
+  }
+
+  Future<void> storeNotification({
+    required String currentUserId,
+    required String customerId,
+    required String message,
+    required String phoneNumber,
+    required Map<String, dynamic> customerDetails,
+    required double messageCost,
+  }) async {
+    final notificationRef = FirebaseFirestore.instance
+        .collection('notifications')
+        .doc(currentUserId)
+        .collection('customer_notifications');
+
+    await notificationRef.add({
+      'timestamp': FieldValue.serverTimestamp(),
+      'message': message,
+      'messageCost': messageCost,
+      'merchant': currentUserId,
+      'customer_details': customerDetails,
+      'customer_phone': phoneNumber,
+      'dateSent': Timestamp.now(),
     });
   }
 
