@@ -72,8 +72,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
           ),
           body: SafeArea(
             child: Padding(
-              padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.imageSizeMultiplier * 3),
+              padding: const EdgeInsets.symmetric(horizontal: 0),
               child: Column(children: [
                 TabBar(
                   controller: _tabController,

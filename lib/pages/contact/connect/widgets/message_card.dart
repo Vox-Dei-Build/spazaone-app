@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
@@ -30,37 +29,31 @@ class MessageCard extends StatelessWidget {
             color: Colors.red, size: iconSize); // ❌ Failed/Undelivered
         break;
       case "sent":
-        statusIcon =
-            Icon(Icons.check, color: Colors.white, size: iconSize); // ✔️ Sent
+        statusIcon = Icon(Icons.check,
+            color: WaBrandColour.time, size: iconSize); // ✔️ Sent
         break;
       case "delivered":
         statusIcon = Icon(Icons.done_all,
-            color: Colors.white, size: iconSize); // ✔✔ Delivered
+            color: WaBrandColour.time, size: iconSize); // ✔✔ Delivered
         break;
       case "read": // ✅ Only for WhatsApp
         statusIcon = Icon(Icons.done_all,
-            color: Colors.lightBlue, size: iconSize); // ✔✔ Read (Only WhatsApp)
+            color: WaBrandColour.checkmarkBlue,
+            size: iconSize); // ✔✔ Read (Only WhatsApp)
         break;
       default:
         statusIcon = Icon(Icons.done_all,
-            color: Colors.lightBlue, size: iconSize); // ⏳ Unknown
+            color: WaBrandColour.checkmarkBlue, size: iconSize); // ⏳ Unknown
     }
 
     return Row(
       mainAxisAlignment:
           isMerchantMessage ? MainAxisAlignment.end : MainAxisAlignment.start,
       children: [
-        // ✅ Show Avatar ONLY for customer messages
-        if (!isMerchantMessage)
-          Padding(
-            padding: EdgeInsets.only(right: SizeConfig.imageSizeMultiplier * 1),
-            child: _buildAvatar(),
-          ),
-
         // ✅ Message Card
         Container(
           width:
-              SizeConfig.screenWidth * (SizeConfig.screenWidth > 360 ? 0.7 : 1),
+              SizeConfig.screenWidth * (SizeConfig.screenWidth > 360 ? 0.8 : 1),
           margin: EdgeInsets.symmetric(
             vertical: SizeConfig.heightMultiplier * 0.5,
           ),
@@ -76,11 +69,13 @@ class MessageCard extends StatelessWidget {
                     isMerchantMessage ? Radius.zero : const Radius.circular(12),
               ),
             ),
-            color: isMerchantMessage ? Colors.green[400] : Colors.white,
+            color: isMerchantMessage
+                ? WaBrandColour.outgoingChatBubble
+                : WaBrandColour.white,
             child: Padding(
               padding: EdgeInsets.symmetric(
-                vertical: SizeConfig.heightMultiplier * 1.5,
-                horizontal: SizeConfig.imageSizeMultiplier * 3,
+                vertical: SizeConfig.heightMultiplier * 1,
+                horizontal: SizeConfig.imageSizeMultiplier * 2.5,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,8 +87,7 @@ class MessageCard extends StatelessWidget {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: SizeConfig.textMultiplier * 1.5,
-                          color:
-                              isMerchantMessage ? Colors.white : Colors.black,
+                          color: Colors.black,
                         ),
                       ),
 
@@ -105,14 +99,13 @@ class MessageCard extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: SizeConfig.textMultiplier * 1.5,
-                            color:
-                                isMerchantMessage ? Colors.white : Colors.black,
+                            color: Colors.black,
                           ),
                         ),
                         SizedBox(width: SizeConfig.heightMultiplier * 0.5),
                         Icon(
                           Icons.verified_rounded,
-                          color: isMerchantMessage ? Colors.white : Colors.grey,
+                          color: WaBrandColour.lightGreen,
                           size: SizeConfig.imageSizeMultiplier * 4,
                         ),
                       ],
@@ -123,7 +116,7 @@ class MessageCard extends StatelessWidget {
                     message['message'],
                     style: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 2,
-                        color: isMerchantMessage ? Colors.white : Colors.black),
+                        color: Colors.black),
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Row(
@@ -132,14 +125,10 @@ class MessageCard extends StatelessWidget {
                     children: [
                       // ✅ Timestamp
                       Text(
-                        isMerchantMessage
-                            ? "Sent at ${DateFormat('HH:mm').format(message['dateSent'])}"
-                            : "Received at ${DateFormat('HH:mm').format(message['dateSent'])}",
+                        DateFormat('HH:mm').format(message['dateSent']),
                         style: TextStyle(
                             fontSize: SizeConfig.textMultiplier * 1.5,
-                            color: isMerchantMessage
-                                ? Colors.white
-                                : Colors.black),
+                            color: WaBrandColour.time),
                       ),
                       SizedBox(width: SizeConfig.heightMultiplier * 0.8),
                       // ✅ WhatsApp-style status icon
@@ -155,28 +144,6 @@ class MessageCard extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  // ✅ Avatar Builder: Uses Profile Image or Initial
-  Widget _buildAvatar() {
-    return CircleAvatar(
-      radius: SizeConfig.heightMultiplier * 2,
-      backgroundImage: profileImageUrl != null
-          ? CachedNetworkImageProvider(profileImageUrl!)
-          : null,
-      backgroundColor:
-          profileImageUrl == null ? Color(kTertiaryColor.value) : null,
-      child: profileImageUrl == null
-          ? Text(
-              customerName.isNotEmpty ? customerName[0].toUpperCase() : '?',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2,
-                fontWeight: FontWeight.w500,
-              ),
-            )
-          : null,
     );
   }
 }

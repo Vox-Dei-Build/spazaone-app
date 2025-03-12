@@ -1,119 +1,105 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
+import 'package:sticky_headers/sticky_headers.dart';
 import 'message_card.dart';
 
 class MessagesListView extends StatefulWidget {
   final List<Map<String, dynamic>> messages;
-  final String? profileImageUrl; // ✅ Add profile image URL
-  final String customerName; // ✅ Add customer name for initials fallback
-  const MessagesListView(
-      {super.key,
-      required this.messages,
-      this.profileImageUrl,
-      required this.customerName});
+  final String? profileImageUrl;
+  final String customerName;
+
+  const MessagesListView({
+    super.key,
+    required this.messages,
+    this.profileImageUrl,
+    required this.customerName,
+  });
 
   @override
-  _MessagesListViewState createState() => _MessagesListViewState();
+  State<MessagesListView> createState() => _MessagesListViewState();
 }
 
 class _MessagesListViewState extends State<MessagesListView> {
   final ScrollController _scrollController = ScrollController();
 
   @override
-  void didUpdateWidget(covariant MessagesListView oldWidget) {
-    super.didUpdateWidget(oldWidget);
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => scrollToBottom());
+  }
 
-    // ✅ Auto-scroll to the bottom when new messages arrive
-    if (widget.messages.length > oldWidget.messages.length) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (_scrollController.hasClients) {
-          _scrollController.jumpTo(_scrollController.position.minScrollExtent);
-        }
-      });
+  void scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
     }
   }
 
-  Map<String, List<Map<String, dynamic>>> groupMessagesByDate() {
+  Map<String, List<Map<String, dynamic>>> _groupMessagesByDate() {
     Map<String, List<Map<String, dynamic>>> groupedMessages = {};
-
     for (var message in widget.messages) {
-      String formattedDate = _formatDate(message['dateSent']);
-      if (!groupedMessages.containsKey(formattedDate)) {
-        groupedMessages[formattedDate] = [];
-      }
-      groupedMessages[formattedDate]!.add(message);
+      final dateKey = DateFormat('yyyy-MM-dd').format(message['dateSent']);
+      groupedMessages.putIfAbsent(dateKey, () => []).add(message);
     }
-
     return groupedMessages;
   }
 
-  String _formatDate(DateTime date) {
-    DateTime now = DateTime.now();
-    if (DateFormat('yyyyMMdd').format(date) ==
-        DateFormat('yyyyMMdd').format(now)) {
-      return 'Today';
-    } else if (DateFormat('yyyyMMdd').format(date) ==
-        DateFormat('yyyyMMdd').format(now.subtract(const Duration(days: 1)))) {
-      return 'Yesterday';
-    } else {
-      return DateFormat('dd MMM yyyy').format(date);
+  String _formatDate(String date) {
+    final messageDate = DateTime.parse(date);
+    final today = DateTime.now();
+    if (DateUtils.isSameDay(messageDate, today)) return "Today";
+    if (DateUtils.isSameDay(
+        messageDate, today.subtract(const Duration(days: 1)))) {
+      return "Yesterday";
     }
+    return DateFormat('dd MMM yyyy').format(messageDate);
   }
 
   @override
   Widget build(BuildContext context) {
-    var groupedMessages = groupMessagesByDate();
-    var reversedKeys =
-        groupedMessages.keys.toList().reversed.toList(); // ✅ Reverse order
+    final groupedMessages = _groupMessagesByDate();
+    final sortedDates = groupedMessages.keys.toList()
+      ..sort((a, b) => a.compareTo(
+          b)); // Oldest at top, newest at bottom (WhatsApp-style clearly!)
 
     return ListView.builder(
       controller: _scrollController,
-      reverse: true, // ✅ Newest messages at the bottom
-      itemCount: reversedKeys.length,
+      itemCount: sortedDates.length,
       itemBuilder: (context, index) {
-        String date = reversedKeys[index];
-        return Column(
-          children: [
-            _buildDateHeader(date),
-            ...groupedMessages[date]!
-                .map((message) => MessageCard(
-                      message,
+        final date = sortedDates[index];
+        final messages = groupedMessages[date]!;
+
+        return StickyHeader(
+          header: _buildDateHeader(_formatDate(date)),
+          content: Column(
+            children: messages
+                .map((msg) => MessageCard(
+                      msg,
                       profileImageUrl: widget.profileImageUrl,
                       customerName: widget.customerName,
                     ))
-                .toList()
-                .reversed, // ✅ Reverse messages per day
-          ],
+                .toList(),
+          ),
         );
       },
     );
   }
 
   Widget _buildDateHeader(String date) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 1,
-      ),
-      child: Center(
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.imageSizeMultiplier * 1.5,
-            vertical: SizeConfig.heightMultiplier * 0.5,
-          ),
-          decoration: BoxDecoration(
-            color: const Color(0xffbdbdbd),
-            borderRadius:
-                BorderRadius.circular(SizeConfig.heightMultiplier * 1),
-          ),
-          child: Text(
-            date,
-            style: TextStyle(
-              fontWeight: FontWeight.w300,
-              color: Colors.white,
-              fontSize: SizeConfig.textMultiplier * 1.5,
-            ),
-          ),
+    return Container(
+      width: double.infinity,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+        decoration: BoxDecoration(
+          color: WaBrandColour.white,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          date,
+          style: const TextStyle(fontSize: 12, color: WaBrandColour.time),
         ),
       ),
     );
