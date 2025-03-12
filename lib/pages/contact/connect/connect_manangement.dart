@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/app_imports.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/contact/connect/widgets/message_list_view.dart';
 import 'package:pasella/pages/contact/view_model/connect_management_view_model.dart';
@@ -57,10 +58,12 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
         );
       },
       child: Scaffold(
+        backgroundColor: WaBrandColour.chatBackground,
         body: SafeArea(
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 0,
+              horizontal: SizeConfig.imageSizeMultiplier * 2.5,
+              vertical: 0,
             ),
             child: Column(
               children: [
@@ -94,7 +97,6 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
                         return Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SizedBox(height: SizeConfig.heightMultiplier * 1.5),
                             Expanded(
                               child: MessagesListView(
                                 messages: snapshot.data!,
