@@ -54,7 +54,6 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
   void dispose() {
     _tabController.dispose();
     _tabIndexNotifier.dispose();
-    customerManagementViewModel.dispose();
     super.dispose();
   }
 
