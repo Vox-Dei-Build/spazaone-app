@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/wallet/widgets/payment_response_screen.dart';
 import 'package:pasella/services/paystack_service.dart';
 import 'package:pasella/pages/wallet/widgets/paystack_webview.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -47,18 +48,38 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         context,
         MaterialPageRoute(
           builder: (context) => PaystackWebView(
-              url: checkoutUrl, reference: "ref+$currentUserId"),
+            url: checkoutUrl,
+            reference: "ref+$currentUserId",
+            amount: amount,
+          ),
         ),
       );
 
       if (success == true) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Payment successful!")));
-        Navigator.of(context).pop(); // Close the form screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PaymentResponseScreen(
+              isSuccess: true,
+              message: "Your balance has been successfully topped up!",
+              amount: amount,
+              reference: "ref+$currentUserId",
+            ),
+          ),
+        );
       }
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Transaction failed")));
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PaymentResponseScreen(
+            isSuccess: false,
+            message: "Transaction failed. Please try again.",
+            amount: amount,
+            reference: "ref+$currentUserId",
+          ),
+        ),
+      );
     }
   }
 
