@@ -23,7 +23,6 @@ import 'package:firebase_core/firebase_core.dart';
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
-import 'pages/wallet/widgets/banking_details.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('Handling a background message: ${message.messageId}');
@@ -151,7 +150,6 @@ class MyApp extends StatelessWidget {
           RegisterAnonymousPage.id: (context) => const RegisterAnonymousPage(),
           Dashboard.id: (context) => const Dashboard(),
           AddContactPage.id: (context) => const AddContactPage(),
-          AddBankingDetailsPage.id: (context) => const AddBankingDetailsPage(),
           SecurityPage.id: (context) => const SecurityPage(),
           ProfilePage.id: (context) => const ProfilePage(),
           BusinessTypePage.id: (context) => const BusinessTypePage(),

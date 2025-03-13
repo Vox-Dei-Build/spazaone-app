@@ -5,9 +5,6 @@ import axios from "axios";
 
 /**
  * Google Cloud Function to send promotional messages to active customers using Twilio.
- */
-/**
- * Google Cloud Function to send promotional messages to active customers using Twilio.
  * Test mode is used to prevent actual sending during testing.
  */
 exports.sendPromoToActiveCustomers = functions.https.onRequest(
