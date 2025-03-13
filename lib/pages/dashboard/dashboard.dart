@@ -50,7 +50,7 @@ class Dashboard extends StatelessWidget {
                       size: SizeConfig.imageSizeMultiplier * 5),
                   selectedIcon: Icon(Icons.wallet,
                       size: SizeConfig.imageSizeMultiplier * 5),
-                  label: 'Wallet',
+                  label: 'Billing',
                 ),
               ],
             ),

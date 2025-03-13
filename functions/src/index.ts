@@ -20,6 +20,8 @@ export * from "./contact/fetchUserBalance";
 export * from "./notifications/retention_notifications";
 export * from "./notifications/non_payment_notifications";
 export * from "./stock/scheduledTasks/scheduledLowStockCheck";
+export * from "./payments/paystack/createPaystackTransaction";
+export * from "./payments/paystack/verifyPaystackTransaction";
 
 /* Bot */
 export * from "./customer_hub/fetchCustomerAndMerchantDetails";
