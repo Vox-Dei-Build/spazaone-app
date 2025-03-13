@@ -1,10 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/config/size_config.dart';
 
-class PricingInfoTab extends StatelessWidget {
+class PricingInfoTab extends StatefulWidget {
   const PricingInfoTab({super.key});
+
+  @override
+  _PricingInfoTab createState() => _PricingInfoTab();
+}
+
+class _PricingInfoTab extends State<PricingInfoTab> {
+  DynamicPricingService? pricingService;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    initialisePricingService();
+  }
+
+  Future<void> initialisePricingService() async {
+    final service = await DynamicPricingService.initialize();
+    setState(() {
+      pricingService = service;
+      isLoading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,19 +73,28 @@ class PricingInfoTab extends StatelessWidget {
             _buildBulletPoint(
                 '💬 Pricing is usage-based, meaning you are charged per message sent.'),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
-            _pricingRow('Reminder SMS', 'R3.48/Msg'),
-            _pricingRow('WhatsApp Reminder', 'R0.38/Msg'),
+            _pricingRow('Reminder SMS',
+                '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/Msg'),
+            _pricingRow('WhatsApp Reminder',
+                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
             _divider(),
-            _pricingRow('Credit SMS', 'R3.48/Msg'),
-            _pricingRow('WhatsApp Credit', 'R0.38/Msg'),
+            _pricingRow('Credit SMS',
+                '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/Msg'),
+            _pricingRow('WhatsApp Credit',
+                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
             _divider(),
-            _pricingRow('Payment SMS', 'R1.74/Msg'),
-            _pricingRow('WhatsApp Payment', 'R0.38/Msg'),
+            _pricingRow('Payment SMS',
+                '${CurrencyUtil.format(pricingService?.smsPaymentTemplatePrice ?? 0)}/Msg'),
+            _pricingRow('WhatsApp Payment',
+                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
             _divider(),
-            _pricingRow('Onboarding SMS', 'R3.48/Msg'),
-            _pricingRow('WhatsApp Onboarding', 'R0.38/Msg'),
+            _pricingRow('Onboarding SMS',
+                '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/Msg'),
+            _pricingRow('WhatsApp Onboarding',
+                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
             _divider(),
-            _pricingRow('WhatsApp Promotions', 'R1.90/Msg'),
+            _pricingRow('WhatsApp Promotions',
+                '${CurrencyUtil.format(pricingService?.whatsappPromotionPrice ?? 0)}/Msg'),
             _pricingRow('AI Assistant', 'R0.25/Msg'),
 
             SizedBox(height: SizeConfig.heightMultiplier * 3),
