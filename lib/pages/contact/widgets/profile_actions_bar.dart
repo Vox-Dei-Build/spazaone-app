@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/app_imports.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
@@ -77,20 +78,29 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                   ),
                   const SizedBox(height: 2),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Icon(
                         mobileNumber.isNotEmpty
-                            ? Icons.check_circle
+                            ? viewModel.hasWhatsApp
+                                ? Icons.verified
+                                : Icons.sms_outlined
                             : Icons.error,
-                        color:
-                            mobileNumber.isNotEmpty ? Colors.green : Colors.red,
+                        color: mobileNumber.isNotEmpty
+                            ? viewModel.hasWhatsApp
+                                ? WaBrandColour.tealGreenLighter
+                                : Colors.blue
+                            : Colors.red,
                         size: SizeConfig.textMultiplier * 1.5,
                       ),
                       SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
                       Expanded(
                         child: Text(
                           mobileNumber.isNotEmpty
-                              ? "Mobile number available"
+                              ? viewModel.hasWhatsApp
+                                  ? "WhatsApp"
+                                  : "Likely Only SMS"
                               : "No mobile number",
                           style: TextStyle(
                             fontSize: SizeConfig.textMultiplier * 1.5,
@@ -100,7 +110,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                         ),
                       ),
                     ],
-                  ),
+                  )
                 ],
               ),
             ),

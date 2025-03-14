@@ -61,50 +61,66 @@ class MessagingNotificationService {
         return;
       }
 
-      // 🔹 Check Firestore if the number supports WhatsApp
-      final bool hasWhatsApp = await isWhatsAppEnabled(phoneNumber);
-      final double messageCost = hasWhatsApp
-          ? pricingService.whatsappUtilityPrice
-          : templateMessageCost;
+      // Normalize number format for Firestore lookup
+      String normalizedPhone = normalizePhoneNumber(phoneNumber);
 
-      Map<String, dynamic> variables = {
-        "customerName": customerName,
-        "amount": amount,
-        "shopName": shopName,
-        "balance": formattedBalance,
-      };
+      // Fetch existing WhatsApp status from Firestore
+      final whatsappStatus = await fetchWhatsAppStatus(normalizedPhone);
+      bool? hasWhatsApp = whatsappStatus['hasWhatsApp'];
+      DateTime? lastChecked = whatsappStatus['lastChecked'];
 
-      bool messageSent = false; // Track if any message was successfully sent
+      // If we've **never checked before** or it’s been over 30 days, force a WhatsApp test
+      bool needsWhatsAppCheck = (lastChecked == null) ||
+          (DateTime.now().difference(lastChecked).inDays > 30);
 
-      // 🔹 Try WhatsApp First
-      if (hasWhatsApp) {
+      bool messageSent = false; // Track if message was successfully sent
+
+      // Try WhatsApp First if we need to check or we already know it works
+      if (needsWhatsAppCheck || hasWhatsApp == true) {
         final WhatsAppMessagingService whatsappService =
             await WhatsAppMessagingService.create();
 
-        String? messageId = await whatsappService.sendWhatsAppMessage(
-            phoneNumber, templateSid, variables);
+        String? messageId = await whatsappService
+            .sendWhatsAppMessage(phoneNumber, templateSid, {
+          "customerName": customerName,
+          "amount": amount,
+          "shopName": shopName,
+          "balance": formattedBalance,
+        });
 
         if (messageId != null) {
-          // Poll for delivery confirmation
-          bool delivered = await whatsappService.pollMessageStatus(messageId);
+          // Fire and forget → Poll for delivery status in the background
+          whatsappService.pollMessageStatus(messageId).then((delivered) async {
+            if (delivered) {
+              // If delivered, deduct balance and update Firestore
+              await deductBalance(
+                  currentUserId, pricingService.whatsappUtilityPrice);
+              await storeWhatsAppCheck(normalizedPhone, true);
+              await storeNotification(
+                  currentUserId: currentUserId,
+                  customerId: customerId,
+                  message: message,
+                  phoneNumber: phoneNumber,
+                  customerDetails: {
+                    "customerName": customerName,
+                    "amount": amount,
+                    "shopName": shopName,
+                    "balance": formattedBalance,
+                  },
+                  messageCost: pricingService.whatsappUtilityPrice);
+              eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
+            } else {
+              // If WhatsApp failed, store failure in Firestore
+              await storeWhatsAppCheck(normalizedPhone, false);
+            }
+          });
 
-          if (delivered) {
-            messageSent = true;
-            await deductBalance(currentUserId, messageCost);
-            // 🔹 Store the notification record in Firestore
-            await storeNotification(
-                currentUserId: currentUserId,
-                customerId: customerId,
-                message: message,
-                phoneNumber: phoneNumber,
-                customerDetails: variables,
-                messageCost: messageCost);
-            eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
-          }
+          messageSent =
+              true; // Assume message was sent since it's now being polled
         }
       }
 
-      // 🔹 If WhatsApp failed, fallback to SMS
+      // If WhatsApp failed or user is confirmed not to have it, fallback to SMS
       if (!messageSent) {
         await _sendSMSFallback(
             phoneNumber,
@@ -114,9 +130,13 @@ class MessagingNotificationService {
             customerName,
             inAppNotificationMessage,
             currentUserId,
-            messageCost,
-            customerId,
-            variables);
+            templateMessageCost,
+            customerId, {
+          "customerName": customerName,
+          "amount": amount,
+          "shopName": shopName,
+          "balance": formattedBalance,
+        });
       }
     } catch (e) {
       print('Error while sending message: $e');
@@ -200,6 +220,33 @@ class MessagingNotificationService {
       'customer_phone': phoneNumber,
       'dateSent': Timestamp.now(),
     });
+  }
+
+  Future<Map<String, dynamic>> fetchWhatsAppStatus(String phoneNumber) async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('successfulWhatsAppNumbers')
+        .doc(phoneNumber)
+        .get();
+
+    if (snapshot.exists && snapshot.data() != null) {
+      return {
+        'hasWhatsApp': snapshot['hasWhatsApp'], // Nullable
+        'lastChecked': (snapshot['lastChecked'] as Timestamp?)?.toDate(),
+      };
+    }
+
+    // Return null values if we’ve never checked before
+    return {'hasWhatsApp': null, 'lastChecked': null};
+  }
+
+  Future<void> storeWhatsAppCheck(String phoneNumber, bool hasWhatsApp) async {
+    await FirebaseFirestore.instance
+        .collection('successfulWhatsAppNumbers')
+        .doc(phoneNumber)
+        .set({
+      'hasWhatsApp': hasWhatsApp,
+      'lastChecked': Timestamp.now(),
+    }, SetOptions(merge: true)); // Avoids overwriting existing data
   }
 
   Future<bool> isWhatsAppEnabled(String phoneNumber) async {

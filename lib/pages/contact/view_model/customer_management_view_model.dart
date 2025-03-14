@@ -30,7 +30,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
       _profileImageUrl; // Getter for profile image URL
   final PhotoUploadUtil _photoUploadUtil = PhotoUploadUtil();
   late final MessagingNotificationService notificationService;
-  late final bool hasWhatsApp;
+  bool hasWhatsApp = false;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController numberController = TextEditingController();
 
@@ -44,7 +44,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
     notificationService = await MessagingNotificationService.create();
     pricingService = await DynamicPricingService.initialize();
     hasWhatsApp = (mobileNumber != null)
-        ? await notificationService.isWhatsAppEnabled(mobileNumber!)
+        ? await notificationService
+            .isWhatsAppEnabled(normalizePhoneNumber(mobileNumber))
         : false;
 
     notifyListeners();
