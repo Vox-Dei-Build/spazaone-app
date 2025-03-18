@@ -189,10 +189,10 @@ class _PricingInfoTab extends State<PricingInfoTab> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title,
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.5)),
           Text(price,
               style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 2,
+                  fontSize: SizeConfig.textMultiplier * 1.5,
                   fontWeight: FontWeight.bold)),
         ],
       ),

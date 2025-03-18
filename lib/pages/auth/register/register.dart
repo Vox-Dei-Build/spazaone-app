@@ -4,6 +4,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
 import 'package:pasella/pages/auth/widgets/logo_display.dart';
 import 'package:pasella/shared/widgets/vimeo_video_player.dart';
+import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
@@ -61,13 +62,13 @@ class _RegisterPageState extends State<RegisterPage> {
                   },
                 ),
                 CustomTextField(
-                  label: 'Shop Name',
-                  hintText: 'Enter Shop Name',
+                  label: 'Business Name',
+                  hintText: 'Enter Business Name',
                   prefixIcon: Icons.store,
                   controller: authViewModel.shopNameController,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Shop Name is required';
+                      return 'Business Name is required';
                     }
                     return null;
                   },
@@ -121,15 +122,17 @@ class _RegisterPageState extends State<RegisterPage> {
                   },
                 ),
                 SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-                CustomButton(
-                  title: 'Explore',
-                  onTap: () {
-                    authViewModel.signInAnonymously(context);
-                  },
-                  color: Colors.blue,
-                  icon: Icons.visibility,
-                  fontSize: SizeConfig.textMultiplier * 2,
-                ),
+                if (FeatureFlags.enableAnonymousGate) ...[
+                  CustomButton(
+                    title: 'Explore',
+                    onTap: () {
+                      authViewModel.signInAnonymously(context);
+                    },
+                    color: Colors.blue,
+                    icon: Icons.visibility,
+                    fontSize: SizeConfig.textMultiplier * 2,
+                  ),
+                ],
                 SizedBox(height: SizeConfig.heightMultiplier * 1.5),
                 CustomButton(
                   title: 'How To Video',
