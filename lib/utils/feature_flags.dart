@@ -6,4 +6,6 @@ class FeatureFlags {
   static const bool enableBalancePayout = false;
   static const bool enableCashAdvance = false;
   static const bool enableBankingDetails = false;
+
+  static const bool enableAnonymousGate = false;
 }
