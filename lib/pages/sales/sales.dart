@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/sales/widgets/add_sale.dart';
+import 'package:pasella/pages/sales/widgets/sales_calendar_view.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
-import 'package:pasella/pages/sales/widgets/sales_period_dropdown.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
@@ -18,6 +18,26 @@ class SalesPage extends StatefulWidget {
 }
 
 class _SalesPageState extends State<SalesPage> {
+  DateTime? _selectedDay = DateTime.now();
+  DateTime? _startDate;
+  DateTime? _endDate;
+
+  void _onDateSelected(DateTime selectedDay) {
+    setState(() {
+      _selectedDay = selectedDay;
+      _startDate = null;
+      _endDate = null;
+    });
+  }
+
+  void _onDateRangeSelected(DateTime start, DateTime end) {
+    setState(() {
+      _startDate = start;
+      _endDate = end;
+      _selectedDay = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
@@ -66,19 +86,38 @@ class _SalesPageState extends State<SalesPage> {
               child: Padding(
                 padding: EdgeInsets.symmetric(
                     horizontal: SizeConfig.imageSizeMultiplier * 4),
-                child: Column(
-                  children: <Widget>[
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    const SalesPageHeader(),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    SalesPeriodDropdown(viewModel: viewModel),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-                    SalesStatsCard(viewModel: viewModel),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-                    Expanded(
-                      child: SalesList(viewModel: viewModel),
-                    ),
-                  ],
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: <Widget>[
+                      SizedBox(height: SizeConfig.heightMultiplier * 2),
+                      const SalesPageHeader(),
+                      SizedBox(height: SizeConfig.heightMultiplier * 2),
+                      SalesCalendarView(
+                        viewModel: viewModel,
+                        selectedDay: _selectedDay,
+                        startDate: _startDate,
+                        endDate: _endDate,
+                        onDateSelected: _onDateSelected,
+                        onDateRangeSelected: _onDateRangeSelected,
+                      ),
+                      SizedBox(height: SizeConfig.heightMultiplier * 1.5),
+                      SalesStatsCard(
+                        viewModel: viewModel,
+                        selectedDay: _selectedDay,
+                        startDate: _startDate,
+                        endDate: _endDate,
+                      ),
+                      SizedBox(height: SizeConfig.heightMultiplier * 1.5),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height *
+                              0.5, // Limit height
+                        ),
+                        child: SalesList(viewModel: viewModel),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
