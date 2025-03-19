@@ -62,7 +62,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                         Text(
                           'Pay Later Report',
                           style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -111,7 +111,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                         'Customers (${report.totalNumberofNPAs})',
                                         style: TextStyle(
                                             fontSize:
-                                                SizeConfig.textMultiplier * 2.5,
+                                                SizeConfig.textMultiplier * 2,
                                             fontWeight: FontWeight.bold),
                                       ),
                                       SizedBox(

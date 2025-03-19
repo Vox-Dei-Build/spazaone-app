@@ -98,6 +98,9 @@ class AddSale extends StatelessWidget {
                                 ],
                               ),
                               SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              ProductSelectionWidget(
+                                  viewModel: transactionViewModel),
+                              SizedBox(height: SizeConfig.heightMultiplier * 2),
                               TextFormField(
                                 controller:
                                     transactionViewModel.remarksController,
@@ -115,10 +118,6 @@ class AddSale extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              SizedBox(height: SizeConfig.heightMultiplier * 2),
-                              ProductSelectionWidget(
-                                  viewModel: transactionViewModel),
-                              SizedBox(height: SizeConfig.heightMultiplier * 2),
                             ],
                           ),
                         ),
@@ -128,7 +127,7 @@ class AddSale extends StatelessWidget {
                     Text(
                       'Total Amount: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2.5,
+                        fontSize: SizeConfig.textMultiplier * 2,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

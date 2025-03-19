@@ -5,7 +5,7 @@ import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 class SalesPeriodDropdown extends StatelessWidget {
   final SalesViewModel viewModel;
 
-  SalesPeriodDropdown({required this.viewModel});
+  const SalesPeriodDropdown({super.key, required this.viewModel});
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +19,7 @@ class SalesPeriodDropdown extends StatelessWidget {
           value: value,
           child: Text(
             value,
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5),
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
           ),
         );
       }).toList(),

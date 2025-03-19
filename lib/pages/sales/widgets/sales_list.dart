@@ -40,8 +40,8 @@ class _SalesListState extends State<SalesList> {
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return Center(
                   child: Text("No sales data available",
-                      style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 2.5)));
+                      style:
+                          TextStyle(fontSize: SizeConfig.textMultiplier * 2)));
             }
             return ListView.builder(
               itemCount: snapshot.data!.length,
@@ -65,13 +65,13 @@ class _SalesListState extends State<SalesList> {
                       "Date: ${DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded)}",
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: SizeConfig.textMultiplier * 2.1),
+                          fontSize: SizeConfig.textMultiplier * 2),
                     ),
                     subtitle: Text(
                       "Amount: ${CurrencyUtil.format(sale.amount)}",
                       style: TextStyle(
                           color: Colors.green,
-                          fontSize: SizeConfig.textMultiplier * 1.9),
+                          fontSize: SizeConfig.textMultiplier * 1.5),
                     ),
                     trailing: Icon(Icons.arrow_forward_ios,
                         size: SizeConfig.imageSizeMultiplier * 4,

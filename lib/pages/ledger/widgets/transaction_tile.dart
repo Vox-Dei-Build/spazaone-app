@@ -109,7 +109,7 @@ class TransactionTile extends StatelessWidget {
               style: TextStyle(
                 color: status == 'PAID' ? kPrimaryColor : Colors.red,
                 fontWeight: FontWeight.w500,
-                fontSize: SizeConfig.textMultiplier * 1.6,
+                fontSize: SizeConfig.textMultiplier * 1.5,
               ),
               children: [
                 TextSpan(text: CurrencyUtil.format(amount)),

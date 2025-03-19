@@ -41,7 +41,7 @@ void showProfileImageDialog(
                               initials,
                               style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: SizeConfig.textMultiplier * 2.5,
+                                  fontSize: SizeConfig.textMultiplier * 2,
                                   fontWeight: FontWeight.w500),
                             ),
                           )),

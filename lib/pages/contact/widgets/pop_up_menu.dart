@@ -5,7 +5,7 @@ enum CustomerActions { edit, sendReminder, viewReport }
 class CustomerActionsMenu extends StatelessWidget {
   final Function(CustomerActions action) onSelected;
 
-  CustomerActionsMenu({required this.onSelected});
+  const CustomerActionsMenu({super.key, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -34,16 +34,6 @@ class CustomerActionsMenu extends StatelessWidget {
             ],
           ),
         ),
-        /* const PopupMenuItem<CustomerActions>(
-          value: CustomerActions.viewReport,
-          child: Row(
-            children: [
-              Icon(Icons.article, size: 20.0, color: Colors.grey),
-              SizedBox(width: 10.0),
-              Text('View Report', style: TextStyle(fontSize: 16.0)),
-            ],
-          ),
-        ), */
       ],
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10.0),

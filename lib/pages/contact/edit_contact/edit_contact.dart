@@ -104,7 +104,7 @@ class _EditCustomerPageState extends State<EditCustomerPage> {
         Text(
           "Profile picture will only be saved when you tap 'Save'",
           style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 1.6,
+            fontSize: SizeConfig.textMultiplier * 1.5,
             color: Colors.grey[600],
             fontStyle: FontStyle.italic,
           ),

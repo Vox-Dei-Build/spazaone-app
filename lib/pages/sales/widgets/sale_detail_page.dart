@@ -69,13 +69,13 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                           'Amount',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                           ),
                         ),
                         subtitle: Text(
                           CurrencyUtil.format(sale.amount),
                           style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 2),
+                              fontSize: SizeConfig.textMultiplier * 1.8),
                         ),
                       ),
                       ListTile(
@@ -83,13 +83,13 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                           'Date',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                           ),
                         ),
                         subtitle: Text(
                           DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded),
                           style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 2),
+                              fontSize: SizeConfig.textMultiplier * 1.8),
                         ),
                       ),
                       ListTile(
@@ -97,13 +97,13 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                           'Type',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                           ),
                         ),
                         subtitle: Text(
                           sale.type,
                           style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 2),
+                              fontSize: SizeConfig.textMultiplier * 1.8),
                         ),
                       ),
                       ListTile(
@@ -111,13 +111,13 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                           'Remarks',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                           ),
                         ),
                         subtitle: Text(
                           sale.remarks ?? 'No Remarks',
                           style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 2),
+                              fontSize: SizeConfig.textMultiplier * 1.8),
                         ),
                       ),
                       ListTile(
@@ -125,7 +125,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                           'Products',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                           ),
                         ),
                         subtitle: sale.products.isNotEmpty

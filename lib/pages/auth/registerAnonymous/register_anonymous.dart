@@ -143,13 +143,13 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                     Text('Already have an account?',
                         style: TextStyle(
                           color: Colors.black,
-                          fontSize: SizeConfig.textMultiplier * 2.5,
+                          fontSize: SizeConfig.textMultiplier * 2,
                         )),
                     TextButton(
                       child: Text(
                         'LOGIN',
                         style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                             fontWeight: FontWeight.bold),
                       ),
                       onPressed: () {

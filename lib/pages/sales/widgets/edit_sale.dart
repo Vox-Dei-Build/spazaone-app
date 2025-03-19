@@ -114,6 +114,18 @@ class _EditSaleState extends State<EditSale> {
                                 ],
                               ),
                               SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              if (transactionViewModel
+                                  .isTransactionLoading) ...[
+                                SizedBox(
+                                    height: SizeConfig.heightMultiplier * 10),
+                                const CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.green),
+                                )
+                              ] else
+                                ProductSelectionWidget(
+                                    viewModel: transactionViewModel),
+                              SizedBox(height: SizeConfig.heightMultiplier * 2),
                               TextFormField(
                                 controller:
                                     transactionViewModel.remarksController,
@@ -131,19 +143,6 @@ class _EditSaleState extends State<EditSale> {
                                   ),
                                 ),
                               ),
-                              SizedBox(height: SizeConfig.heightMultiplier * 2),
-                              if (transactionViewModel
-                                  .isTransactionLoading) ...[
-                                SizedBox(
-                                    height: SizeConfig.heightMultiplier * 10),
-                                const CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.green),
-                                )
-                              ] else
-                                ProductSelectionWidget(
-                                    viewModel: transactionViewModel),
-                              SizedBox(height: SizeConfig.heightMultiplier * 2)
                             ],
                           ),
                         ),
@@ -153,7 +152,7 @@ class _EditSaleState extends State<EditSale> {
                     Text(
                       'Total Amount: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2.5,
+                        fontSize: SizeConfig.textMultiplier * 2,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

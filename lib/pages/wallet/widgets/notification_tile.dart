@@ -25,7 +25,7 @@ class NotificationTile extends StatelessWidget {
       leading: Icon(
         type == "WhatsApp" ? Icons.chat : Icons.sms,
         color: type == "WhatsApp" ? Colors.green : Colors.blue,
-        size: SizeConfig.textMultiplier * 2.5,
+        size: SizeConfig.textMultiplier * 2,
       ),
       title: Text(
         "To: $phone",
@@ -44,7 +44,7 @@ class NotificationTile extends StatelessWidget {
         style: TextStyle(
             color: Colors.red,
             fontWeight: FontWeight.bold,
-            fontSize: SizeConfig.textMultiplier * 1.6),
+            fontSize: SizeConfig.textMultiplier * 1.5),
       ),
       onTap: () => _showMessageDetails(context),
     );
@@ -84,7 +84,7 @@ class NotificationTile extends StatelessWidget {
                 Text(
                   "Message Details",
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2.2,
+                    fontSize: SizeConfig.textMultiplier * 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -118,7 +118,7 @@ class NotificationTile extends StatelessWidget {
                       child: Text(
                         message,
                         style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.6,
+                          fontSize: SizeConfig.textMultiplier * 1.5,
                           color: Colors.black87,
                         ),
                       ),
@@ -151,7 +151,7 @@ class NotificationTile extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 1.6,
+              fontSize: SizeConfig.textMultiplier * 1.5,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -160,7 +160,7 @@ class NotificationTile extends StatelessWidget {
             child: Text(
               value,
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.6,
+                fontSize: SizeConfig.textMultiplier * 1.5,
                 color: Colors.grey[700],
               ),
               overflow: TextOverflow.ellipsis,

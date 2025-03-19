@@ -43,7 +43,7 @@ class ProductList extends StatelessWidget {
                 Text(
                   'No products available',
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2.5,
+                    fontSize: SizeConfig.textMultiplier * 2,
                     color: Colors.grey,
                   ),
                 ),
