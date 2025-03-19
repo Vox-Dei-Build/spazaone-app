@@ -108,6 +108,20 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                       ),
                       ListTile(
                         title: Text(
+                          'Remarks',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: SizeConfig.textMultiplier * 2.5,
+                          ),
+                        ),
+                        subtitle: Text(
+                          sale.remarks ?? 'No Remarks',
+                          style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 2),
+                        ),
+                      ),
+                      ListTile(
+                        title: Text(
                           'Products',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,

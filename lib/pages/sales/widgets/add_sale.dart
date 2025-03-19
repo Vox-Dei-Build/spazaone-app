@@ -98,6 +98,24 @@ class AddSale extends StatelessWidget {
                                 ],
                               ),
                               SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              TextFormField(
+                                controller:
+                                    transactionViewModel.remarksController,
+                                maxLines: 3,
+                                decoration: InputDecoration(
+                                  labelText: 'Remarks/Notes',
+                                  border: const OutlineInputBorder(),
+                                  labelStyle: TextStyle(
+                                    fontSize: SizeConfig.textMultiplier * 2,
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: SizeConfig.heightMultiplier * 1.5,
+                                    horizontal:
+                                        SizeConfig.imageSizeMultiplier * 3,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: SizeConfig.heightMultiplier * 2),
                               ProductSelectionWidget(
                                   viewModel: transactionViewModel),
                               SizedBox(height: SizeConfig.heightMultiplier * 2),
