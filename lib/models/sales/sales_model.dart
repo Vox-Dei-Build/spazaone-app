@@ -6,14 +6,15 @@ class Sale {
   final String type;
   final Map<String, int> products; // Product ID and Quantity
   final DateTime dateAdded;
+  final String? remarks;
 
-  Sale({
-    required this.id,
-    required this.amount,
-    required this.type,
-    required this.products,
-    required this.dateAdded,
-  });
+  Sale(
+      {required this.id,
+      required this.amount,
+      required this.type,
+      required this.products,
+      required this.dateAdded,
+      this.remarks});
 
   factory Sale.fromMap(Map<String, dynamic> data, String documentId) {
     return Sale(
@@ -22,6 +23,7 @@ class Sale {
       type: data['type'] ?? 'Unknown',
       products: Map<String, int>.from(data['products'] ?? {}),
       dateAdded: (data['dateAdded'] as Timestamp).toDate(),
+      remarks: data['remarks'] ?? '',
     );
   }
 }

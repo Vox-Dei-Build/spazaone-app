@@ -74,6 +74,7 @@ class SalesViewModel extends TransactionViewModel {
         'dateAdded': Timestamp.fromDate(
             DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
         'products': selectedProducts,
+        'remarks': remarksController.text,
       };
 
       var connectivityResult = await Connectivity().checkConnectivity();
@@ -147,6 +148,8 @@ class SalesViewModel extends TransactionViewModel {
       selectedProducts = sale.products
           .map((productId, quantity) => MapEntry(productId, quantity));
 
+      remarksController.text = sale.remarks ?? '';
+
       // Load product details for each selected product (optional, for displaying in the UI)
       for (var productId in sale.products.keys) {
         DocumentSnapshot productSnapshot = await firestore
@@ -192,6 +195,7 @@ class SalesViewModel extends TransactionViewModel {
         'products': updatedProducts,
         'dateAdded': Timestamp.fromDate(
             DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
+        'remarks': remarksController.text,
       };
 
       // Check connectivity and notify if offline
