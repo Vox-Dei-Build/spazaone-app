@@ -140,7 +140,7 @@ class _PricingInfoTab extends State<PricingInfoTab> {
       child: Text(
         title,
         style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2.5,
+            fontSize: SizeConfig.textMultiplier * 2,
             fontWeight: FontWeight.bold,
             color: Colors.black87,
             decoration: TextDecoration.none),

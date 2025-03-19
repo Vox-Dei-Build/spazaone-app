@@ -6,7 +6,7 @@ import 'package:pasella/utils/currency_util.dart';
 class SalesStatsCard extends StatelessWidget {
   final SalesViewModel viewModel;
 
-  SalesStatsCard({required this.viewModel});
+  const SalesStatsCard({super.key, required this.viewModel});
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +27,7 @@ class SalesStatsCard extends StatelessWidget {
             Text(
               _buildPeriodText(viewModel.selectedPeriod),
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.5,
+                fontSize: SizeConfig.textMultiplier * 2,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -86,7 +86,7 @@ class SalesStatsCard extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 1.9,
+            fontSize: SizeConfig.textMultiplier * 1.5,
             color: Colors.grey[600],
           ),
         ),
@@ -94,7 +94,7 @@ class SalesStatsCard extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2.3,
+            fontSize: SizeConfig.textMultiplier * 2,
             fontWeight: FontWeight.bold,
             color: color,
           ),

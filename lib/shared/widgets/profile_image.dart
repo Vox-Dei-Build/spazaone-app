@@ -42,7 +42,7 @@ class ProfileImageWidget extends StatelessWidget {
             ? Text(
                 initials.isNotEmpty ? initials[0] : '',
                 style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 2.5,
+                  fontSize: SizeConfig.textMultiplier * 2,
                   color: Colors.white,
                   fontWeight: FontWeight.w500,
                 ),

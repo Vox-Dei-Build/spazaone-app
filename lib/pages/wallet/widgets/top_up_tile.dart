@@ -14,7 +14,7 @@ class TopUpTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(Icons.attach_money,
-          color: Colors.green, size: SizeConfig.textMultiplier * 2.5),
+          color: Colors.green, size: SizeConfig.textMultiplier * 2),
       title: Text(
         "Top-Up",
         style: TextStyle(
@@ -32,7 +32,7 @@ class TopUpTile extends StatelessWidget {
         style: TextStyle(
             color: Colors.green,
             fontWeight: FontWeight.bold,
-            fontSize: SizeConfig.textMultiplier * 1.6),
+            fontSize: SizeConfig.textMultiplier * 1.5),
       ),
     );
   }

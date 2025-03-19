@@ -104,6 +104,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   transaction['products'] is Map<String, dynamic>;
               bool isNotEmpty = isMap &&
                   (transaction['products'] as Map<String, dynamic>).isNotEmpty;
+              bool hasRemarks = transaction.containsKey('remarks') &&
+                  (transaction['remarks'] is String) &&
+                  transaction['remarks'] != '';
+              String remarks =
+                  hasRemarks ? transaction['remarks'] : 'No remarks';
 
               return ListView(
                 children: [
@@ -129,6 +134,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                                     .toString()),
                           buildListTile('Status', transaction['status']),
                           buildListTile('Type', transaction['type']),
+                          buildListTile('Remarks', remarks),
                           buildProductListTile(context, hasProducts, isMap,
                               isNotEmpty, transaction)
                         ],

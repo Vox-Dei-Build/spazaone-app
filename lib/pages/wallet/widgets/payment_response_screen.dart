@@ -32,7 +32,7 @@ class PaymentResponseScreen extends StatelessWidget {
             Text(
               isSuccess ? "Payment Successful" : "Payment Failed",
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.5,
+                fontSize: SizeConfig.textMultiplier * 2,
                 fontWeight: FontWeight.bold,
                 color: isSuccess ? Colors.green : Colors.red,
               ),
