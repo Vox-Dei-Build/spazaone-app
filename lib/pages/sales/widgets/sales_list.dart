@@ -39,6 +39,7 @@ class _SalesListState extends State<SalesList> {
           default:
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return Center(
+                  heightFactor: 5,
                   child: Text("No sales data available",
                       style:
                           TextStyle(fontSize: SizeConfig.textMultiplier * 2)));

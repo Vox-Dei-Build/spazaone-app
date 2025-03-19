@@ -24,7 +24,8 @@ class SalesViewModel extends TransactionViewModel {
     _salesController = StreamController<List<Sale>>.broadcast(sync: true);
     loadProducts().then((_) {
       productsLoaded = true;
-      _getSales(selectedPeriod);
+      _getSalesByDate(
+          DateTime.now()); // Ensure only today's sales load initially
     });
   }
 
@@ -32,15 +33,90 @@ class SalesViewModel extends TransactionViewModel {
 
   Future<void> updateSelectedPeriod(String period) async {
     selectedPeriod = period;
+
     if (productsLoaded) {
-      await _getSales(selectedPeriod);
+      if (period == 'Today') {
+        await _getSalesByDate(DateTime.now());
+      } else {
+        await _getSales(period); // Uses existing period-based logic
+      }
     } else {
       loadProducts().then((_) async {
         productsLoaded = true;
-        await _getSales(selectedPeriod);
+        if (period == 'Today') {
+          await _getSalesByDate(DateTime.now());
+        } else {
+          await _getSales(period);
+        }
       });
     }
+
     notifyListeners();
+  }
+
+  Future<void> updateSelectedDate(DateTime date) async {
+    selectedPeriod = DateFormat('yyyy-MM-dd').format(date);
+    await _getSalesByDate(date);
+    notifyListeners();
+  }
+
+  Future<void> updateSelectedDateRange(DateTime start, DateTime end) async {
+    selectedPeriod = "Custom";
+    await _getSalesByDateRange(start, end);
+    notifyListeners();
+  }
+
+  Future<void> _getSalesByDate(DateTime date) async {
+    try {
+      DateTime startOfDay = DateTime(date.year, date.month, date.day);
+      DateTime endOfDay = startOfDay.add(const Duration(days: 1));
+
+      QuerySnapshot snapshot = await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('sales')
+          .where('dateAdded',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('dateAdded', isLessThan: Timestamp.fromDate(endOfDay))
+          .orderBy('dateAdded', descending: true)
+          .get();
+
+      final sales = snapshot.docs
+          .map(
+            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          )
+          .toList();
+
+      _salesController!.add(sales);
+      _calculateSalesStats(sales);
+    } catch (e) {
+      print("Error fetching sales for selected date: $e");
+    }
+  }
+
+  Future<void> _getSalesByDateRange(DateTime start, DateTime end) async {
+    try {
+      QuerySnapshot snapshot = await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('sales')
+          .where('dateAdded', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('dateAdded',
+              isLessThan: Timestamp.fromDate(end.add(const Duration(days: 1))))
+          .orderBy('dateAdded', descending: true)
+          .get();
+
+      final sales = snapshot.docs
+          .map(
+            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          )
+          .toList();
+
+      _salesController!.add(sales);
+      _calculateSalesStats(sales);
+    } catch (e) {
+      print("Error fetching sales by date range: $e");
+    }
   }
 
   void refreshSales() {

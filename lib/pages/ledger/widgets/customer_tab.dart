@@ -17,7 +17,7 @@ class CustomerTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SizedBox(height: SizeConfig.heightMultiplier * 5),
+        SizedBox(height: SizeConfig.heightMultiplier * 1),
         ValueListenableBuilder<bool>(
           valueListenable: hasCustomersNotifier,
           builder: (context, hasCustomers, child) {
