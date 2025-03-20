@@ -39,7 +39,6 @@ String formatForTwilio(String customerNumber, bool isWhatsApp) {
 }
 
 String normalizePhoneNumber(String? rawNumber) {
-  print('Normalizing number: $rawNumber');
   if (rawNumber == null || rawNumber.isEmpty) return '';
 
   // Remove all non-digit characters
@@ -51,8 +50,6 @@ String normalizePhoneNumber(String? rawNumber) {
   } else if (!digits.startsWith('0')) {
     digits = '0${digits.substring(digits.length - 9)}';
   }
-
-  print('Normalized to local format: $digits');
   return digits;
 }
 

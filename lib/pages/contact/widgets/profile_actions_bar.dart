@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/app_imports.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 
 class ProfileAppBar extends StatefulWidget implements PreferredSizeWidget {
   final CustomerBalanceSummaryProvider customerBalanceSummaryProvider;
@@ -77,40 +78,64 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                         .start, // Changed to start for better alignment
                   ),
                   const SizedBox(height: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Icon(
-                        mobileNumber.isNotEmpty
-                            ? viewModel.hasWhatsApp
-                                ? Icons.verified
-                                : Icons.sms_outlined
-                            : Icons.error,
-                        color: mobileNumber.isNotEmpty
-                            ? viewModel.hasWhatsApp
-                                ? WaBrandColour.tealGreenLighter
-                                : Colors.blue
-                            : Colors.red,
-                        size: SizeConfig.textMultiplier * 1.5,
-                      ),
-                      SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
-                      Expanded(
-                        child: Text(
+                  if (viewModel.isLoading)
+                    Row(
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                              vertical: SizeConfig.heightMultiplier * 0.5,
+                              horizontal: SizeConfig.imageSizeMultiplier * 2),
+                          child: Shimmer.fromColors(
+                            baseColor: Colors.black12,
+                            highlightColor: Colors.black26,
+                            child: Container(
+                              width: SizeConfig.imageSizeMultiplier * 15,
+                              height: SizeConfig.heightMultiplier * 1,
+                              decoration: BoxDecoration(
+                                color: Colors.grey,
+                                borderRadius: BorderRadius.all(Radius.circular(
+                                    SizeConfig.imageSizeMultiplier * 2)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (!viewModel.isLoading)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(
                           mobileNumber.isNotEmpty
                               ? viewModel.hasWhatsApp
-                                  ? "WhatsApp"
-                                  : "Likely Only SMS"
-                              : "No mobile number",
-                          style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.5,
-                            color: Colors.grey,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                                  ? Icons.verified
+                                  : Icons.sms_outlined
+                              : Icons.error,
+                          color: mobileNumber.isNotEmpty
+                              ? viewModel.hasWhatsApp
+                                  ? WaBrandColour.tealGreenLighter
+                                  : Colors.blue
+                              : Colors.red,
+                          size: SizeConfig.textMultiplier * 1.5,
                         ),
-                      ),
-                    ],
-                  )
+                        SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
+                        Expanded(
+                          child: Text(
+                            mobileNumber.isNotEmpty
+                                ? viewModel.hasWhatsApp
+                                    ? "WhatsApp"
+                                    : "Likely Only SMS"
+                                : "No mobile number",
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 1.5,
+                              color: Colors.grey,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    )
                 ],
               ),
             ),
