@@ -7,14 +7,16 @@ import 'package:pasella/providers/customer_balance_summary_provider.dart';
 
 class ConnectManagementPage extends StatefulWidget {
   final String customerId;
-  final String? profileImageUrl; // ✅ Add profile image URL
-  final String customerName; // ✅ Add customer name for initials fallback
+  final String? profileImageUrl;
+  final String customerName;
+  final String? mobileNumber;
 
   const ConnectManagementPage(
       {super.key,
       required this.customerId,
       this.profileImageUrl,
-      required this.customerName});
+      required this.customerName,
+      this.mobileNumber});
 
   @override
   _ConnectManagementPageState createState() => _ConnectManagementPageState();
@@ -29,6 +31,12 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
     super.initState();
     // Initialize the view model
     connectManagementViewModel = ConnectManagementViewModel(widget.customerId);
+    // ✅ Call markMessagesAsRead when navigating to the page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.mobileNumber != null) {
+        connectManagementViewModel.markMessagesAsRead(widget.mobileNumber);
+      }
+    });
   }
 
   @override

@@ -33,6 +33,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
   bool hasWhatsApp = false;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController numberController = TextEditingController();
+  int unreadMessagesCount = 0;
 
   CustomerManagementViewModel(this.customerId, this.customerName,
       this.customerBalanceSummaryProvider, this.mobileNumber) {
@@ -41,14 +42,45 @@ class CustomerManagementViewModel extends ChangeNotifier {
   }
 
   Future<void> _initServices() async {
-    notificationService = await MessagingNotificationService.create();
-    pricingService = await DynamicPricingService.initialize();
-    hasWhatsApp = (mobileNumber != null)
-        ? await notificationService
-            .isWhatsAppEnabled(normalizePhoneNumber(mobileNumber))
-        : false;
+    _setLoading(true);
+    try {
+      notificationService = await MessagingNotificationService.create();
+      pricingService = await DynamicPricingService.initialize();
+      hasWhatsApp = (mobileNumber != null)
+          ? await notificationService
+              .isWhatsAppEnabled(normalizePhoneNumber(mobileNumber))
+          : false;
+      fetchNumberOfUnreadMessages();
+      _setLoading(false);
+    } catch (e) {
+      _setLoading(false);
+    }
 
     notifyListeners();
+  }
+
+  void fetchNumberOfUnreadMessages() async {
+    try {
+      // ✅ Listen for unread messages from Firestore **for this customer only**
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId) // 🔥 Replace with actual merchant ID
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists) {
+          var unreadMessages = snapshot.data()?['unreadMessages'] ?? [];
+
+          // 🔥 Filter messages for this specific `customerId`
+          var filteredMessages = unreadMessages
+              .where((msg) => msg['customerNumber'] == mobileNumber)
+              .toList();
+
+          unreadMessagesCount = filteredMessages.length;
+
+          notifyListeners();
+        }
+      });
+    } catch (e) {}
   }
 
   /// ✅ **Validation Logic**

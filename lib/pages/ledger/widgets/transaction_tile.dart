@@ -20,6 +20,7 @@ class TransactionTile extends StatelessWidget {
     this.isNPA,
     this.number,
     this.profileImageUrl, // Add profileImageUrl
+    required this.unreadCount,
   });
 
   final int color;
@@ -34,6 +35,7 @@ class TransactionTile extends StatelessWidget {
   final bool? isNPA;
   final String? number;
   final String? profileImageUrl; // Add profileImageUrl
+  final int? unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +58,11 @@ class TransactionTile extends StatelessWidget {
           ListTile(
             contentPadding: const EdgeInsets.all(0.0),
             visualDensity: const VisualDensity(horizontal: -2),
-            leading:
+            leading: Stack(
+              children: [
                 profilePicture(context, name, profileImageUrl, number, isNPA),
+              ],
+            ),
             title: _buildTitle(),
             subtitle: _buildSubtitle(),
           ),
@@ -71,20 +76,43 @@ class TransactionTile extends StatelessWidget {
   }
 
   Widget _buildTitle() {
+    var unreadMessageCount = unreadCount ?? 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 3.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
-            child: Text(
-              name,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: SizeConfig.textMultiplier * 2,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+            child: Row(
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+                if (unreadMessageCount >
+                    0) // 🔥 Show unread badge only if messages exist
+                  Padding(
+                    padding: EdgeInsets.only(
+                        left: SizeConfig.imageSizeMultiplier * 1),
+                    child: CircleAvatar(
+                      radius: SizeConfig.imageSizeMultiplier * 2,
+                      backgroundColor: Colors.green,
+                      child: Text(
+                        unreadMessageCount.toString(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: SizeConfig.textMultiplier * 1.2,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           Text(

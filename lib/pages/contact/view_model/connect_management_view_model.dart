@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/twilio_service.dart';
 import 'package:pasella/utils/phone_util.dart';
+import 'package:http/http.dart' as http;
 
 class ConnectManagementViewModel {
   final String customerId;
+  final currentUserId = FirebaseAuth.instance.currentUser!.uid;
   final StreamController<List<Map<String, dynamic>>> _controller =
       StreamController.broadcast();
   bool isDisposed = false;
@@ -45,7 +49,6 @@ class ConnectManagementViewModel {
     if (isDisposed) return; // ✅ Stop immediately if disposed
 
     try {
-      final currentUserId = FirebaseAuth.instance.currentUser!.uid;
       final customerNumber =
           await fetchAndFormatPhoneNumber(currentUserId, customerId);
 
@@ -82,6 +85,25 @@ class ConnectManagementViewModel {
       print("🔥 Error fetching messages: $e");
       print("📜 StackTrace: $stackTrace");
       if (!isDisposed) _controller.add([]);
+    }
+  }
+
+  void markMessagesAsRead(String? customerNumber) async {
+    try {
+      await http.post(
+        Uri.parse(
+            "https://us-central1-pasella-ledger.cloudfunctions.net/markMessagesAsRead"),
+        body: jsonEncode({
+          "merchantId": currentUserId,
+          "customerNumber": customerNumber,
+        }),
+        headers: {"Content-Type": "application/json"},
+      );
+
+      // Remove badge after marking messages as read
+      FlutterAppBadger.removeBadge();
+    } catch (e) {
+      print("Error marking messages as read: $e");
     }
   }
 

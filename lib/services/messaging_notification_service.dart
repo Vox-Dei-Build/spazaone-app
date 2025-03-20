@@ -66,8 +66,8 @@ class MessagingNotificationService {
 
       // Fetch existing WhatsApp status from Firestore
       final whatsappStatus = await fetchWhatsAppStatus(normalizedPhone);
-      bool? hasWhatsApp = whatsappStatus['hasWhatsApp'];
-      DateTime? lastChecked = whatsappStatus['lastChecked'];
+      bool? hasWhatsApp = whatsappStatus?['hasWhatsApp'];
+      DateTime? lastChecked = whatsappStatus?['lastChecked'];
 
       // If we've **never checked before** or it’s been over 30 days, force a WhatsApp test
       bool needsWhatsAppCheck = (lastChecked == null) ||
@@ -222,40 +222,57 @@ class MessagingNotificationService {
     });
   }
 
-  Future<Map<String, dynamic>> fetchWhatsAppStatus(String phoneNumber) async {
-    final snapshot = await FirebaseFirestore.instance
+  Future<Map<String, dynamic>?> fetchWhatsAppStatus(String phoneNumber) async {
+    final querySnapshot = await FirebaseFirestore.instance
         .collection('successfulWhatsAppNumbers')
-        .doc(phoneNumber)
+        .where('phoneNumber', isEqualTo: phoneNumber)
+        .limit(1)
         .get();
 
-    if (snapshot.exists && snapshot.data() != null) {
+    if (querySnapshot.docs.isNotEmpty) {
+      final data = querySnapshot.docs.first.data();
       return {
-        'hasWhatsApp': snapshot['hasWhatsApp'], // Nullable
-        'lastChecked': (snapshot['lastChecked'] as Timestamp?)?.toDate(),
+        'hasWhatsApp': data['hasWhatsApp'] ?? false, // Ensure boolean value
+        'lastChecked': (data['lastChecked'] as Timestamp?)?.toDate(),
       };
     }
 
-    // Return null values if we’ve never checked before
-    return {'hasWhatsApp': null, 'lastChecked': null};
+    return null; // No record found → we've never checked before
   }
 
   Future<void> storeWhatsAppCheck(String phoneNumber, bool hasWhatsApp) async {
-    await FirebaseFirestore.instance
+    final querySnapshot = await FirebaseFirestore.instance
         .collection('successfulWhatsAppNumbers')
-        .doc(phoneNumber)
-        .set({
-      'hasWhatsApp': hasWhatsApp,
-      'lastChecked': Timestamp.now(),
-    }, SetOptions(merge: true)); // Avoids overwriting existing data
+        .where('phoneNumber', isEqualTo: phoneNumber)
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isNotEmpty) {
+      // Update existing record
+      await querySnapshot.docs.first.reference.set({
+        'hasWhatsApp': hasWhatsApp,
+        'lastChecked': Timestamp.now(),
+      }, SetOptions(merge: true));
+    } else {
+      // Create a new record
+      await FirebaseFirestore.instance
+          .collection('successfulWhatsAppNumbers')
+          .add({
+        'phoneNumber': phoneNumber,
+        'hasWhatsApp': hasWhatsApp,
+        'lastChecked': Timestamp.now(),
+      });
+    }
   }
 
   Future<bool> isWhatsAppEnabled(String phoneNumber) async {
-    DocumentSnapshot snapshot = await firestore
+    final querySnapshot = await FirebaseFirestore.instance
         .collection('successfulWhatsAppNumbers')
-        .doc(phoneNumber)
+        .where('phoneNumber', isEqualTo: phoneNumber)
+        .limit(1)
         .get();
 
-    return snapshot.exists;
+    return querySnapshot.docs.isNotEmpty;
   }
 
   Future<void> sendConfirmationMessage(

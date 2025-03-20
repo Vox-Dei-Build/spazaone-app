@@ -42,3 +42,5 @@ export * from "./merchant_hub/order/airtime/getMerchantAirtimeOrders";
 export * from "./merchant_hub/order/electricity/createElectricityOrder";
 export * from "./merchant_hub/order/electricity/getMerchantElectricityOrders";
 export * from "./merchant_hub/order/updateOrderStatus";
+export * from "./merchant_hub/logUnreadMessage";
+export * from "./merchant_hub/markMessagesAsRead";

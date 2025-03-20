@@ -3,7 +3,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_smartlook/flutter_smartlook.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
@@ -24,11 +26,67 @@ import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('Handling a background message: ${message.messageId}');
 }
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+Future<void> setupFlutterNotifications() async {
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@drawable/ic_launcher');
+
+  const InitializationSettings initializationSettings =
+      InitializationSettings(android: initializationSettingsAndroid);
+
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse: (response) {
+      // handle notification tapped logic here
+    },
+  );
+}
+
+Future<void> createNotificationChannel() async {
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'default_channel', // matches manifest EXACTLY
+    'Default Notifications',
+    description: 'Default notification channel for Pasella app.',
+    importance: Importance.high,
+  );
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+}
+
+void showLocalNotification(RemoteMessage message) async {
+  if (message.data.containsKey('unreadCount')) {
+    int unreadCount = int.parse(message.data['unreadCount']);
+    FlutterAppBadger.updateBadgeCount(unreadCount);
+  }
+
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'default_channel',
+    'Default Notifications',
+    channelDescription: 'Default notification channel',
+    importance: Importance.max,
+    priority: Priority.high,
+    icon: '@drawable/ic_launcher',
+  );
+
+  const notificationDetails = NotificationDetails(android: androidDetails);
+
+  await flutterLocalNotificationsPlugin.show(
+    message.hashCode,
+    message.notification?.title,
+    message.notification?.body,
+    notificationDetails,
+  );
+}
 
 Future<void> _firebaseMessagingOnMessageOpenedAppHandler(
     RemoteMessage message) async {
@@ -54,6 +112,21 @@ Future<void> _initializeRemoteConfigAndSmartlook() async {
     smartlook.preferences.setProjectKey(projectKey);
   } catch (e) {
     print("Error initializing Remote Config or Smartlook: $e");
+  }
+}
+
+void requestNotificationPermission() async {
+  NotificationSettings settings =
+      await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+    print('✅ User granted permission');
+  } else {
+    print('❌ User declined or has not accepted permission');
   }
 }
 
@@ -84,20 +157,35 @@ void main() async {
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);
 
-    await Hive.initFlutter();
-    Hive.registerAdapter(QueuedSMSAdapter());
-    await Hive.openBox<QueuedSMS>('smsQueue');
-    await Hive.openBox('deepLinkBox');
-
     // Initialize and configure Remote Config and Smartlook
     if (kReleaseMode) {
       await _initializeRemoteConfigAndSmartlook();
     }
 
+    await Hive.initFlutter();
+    Hive.registerAdapter(QueuedSMSAdapter());
+    await Hive.openBox<QueuedSMS>('smsQueue');
+    await Hive.openBox('deepLinkBox');
+
+    await setupFlutterNotifications();
+    await createNotificationChannel();
+    requestNotificationPermission();
+
     // Firebase Messaging setup
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedAppHandler);
     FirebaseMessaging.instance.getInitialMessage().then(_onInitialMessage);
+
+    // Foreground message listener
+    FirebaseMessaging.onMessage
+        .listen(showLocalNotification); // ✅ listen and display
+
+    // When app is opened from a notification
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (message.data.containsKey('route')) {
+        navigatorKey.currentState?.pushNamed(message.data['route']);
+      }
+    });
   } catch (error) {
     print("Initialization error: $error");
     // Consider showing an error message to the user or sending an error report

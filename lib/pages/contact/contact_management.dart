@@ -80,14 +80,44 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                     fontWeight: FontWeight.normal,
                   ),
                   unselectedLabelStyle: TextStyle(
-                    fontSize: SizeConfig.textMultiplier *
-                        1.8, // Font size for unselected tabs
-                    fontWeight:
-                        FontWeight.normal, // Font weight for unselected tabs
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                    fontWeight: FontWeight.normal,
                   ),
-                  tabs: const [
-                    Tab(text: 'Transcations'),
-                    Tab(text: 'Messages'),
+                  tabs: [
+                    const Tab(text: 'Transactions'),
+                    Consumer<CustomerManagementViewModel>(
+                      // 🔥 Wrap this tab with Consumer
+                      builder: (context, model, child) {
+                        return Tab(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Messages'),
+                              if (model.unreadMessagesCount >
+                                  0) // 🔥 Show badge only if unread messages exist
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      left: SizeConfig.imageSizeMultiplier * 1),
+                                  child: CircleAvatar(
+                                    radius:
+                                        SizeConfig.imageSizeMultiplier * 2.3,
+                                    backgroundColor: Colors.green,
+                                    child: Text(
+                                      model.unreadMessagesCount.toString(),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
                 Expanded(
@@ -104,6 +134,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                         profileImageUrl:
                             customerManagementViewModel.profileImageUrl,
                         customerName: widget.customerName,
+                        mobileNumber: widget.mobileNumber,
                       ),
                     ],
                   ),
