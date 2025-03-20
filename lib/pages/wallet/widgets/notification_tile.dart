@@ -84,7 +84,7 @@ class NotificationTile extends StatelessWidget {
                 Text(
                   "Message Details",
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 22,
+                    fontSize: SizeConfig.textMultiplier * 2,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
