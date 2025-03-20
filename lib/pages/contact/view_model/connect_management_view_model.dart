@@ -16,7 +16,7 @@ class ConnectManagementViewModel {
   bool isDisposed = false;
   final ValueNotifier<bool> loadingNotifier = ValueNotifier(false);
   late TwilioService _twilioService;
-  Timer? _fetchTimer; // ✅ Store Timer reference
+  Timer? _fetchTimer;
 
   ConnectManagementViewModel(this.customerId) {
     _initializeTwilioService();
@@ -77,9 +77,22 @@ class ConnectManagementViewModel {
         twilioMessagingServiceId: twilioMessagingServiceId,
       );
 
-      // 🔥 Merge & sort messages
-      final allMessages = [...sentMessages, ...receivedMessages];
-      allMessages.sort((a, b) => a['dateSent'].compareTo(b['dateSent']));
+      final cutOffDate = DateTime(2024, 01, 01);
+
+      // 🔥 Merge, filter & sort messages
+      // 🔥 Merge, filter, and sort messages
+      final allMessages = [...sentMessages, ...receivedMessages].where((msg) {
+        final dateString = msg['dateSent'].toString(); // Ensure it's a String
+        final messageDate = DateTime.parse(dateString); // Convert to DateTime
+        return messageDate.isAfter(cutOffDate);
+      }).toList();
+
+      allMessages.sort((a, b) {
+        final dateA = DateTime.parse(a['dateSent'].toString());
+        final dateB = DateTime.parse(b['dateSent'].toString());
+        return dateA.compareTo(dateB);
+      });
+
       if (!isDisposed) _controller.add(allMessages); // ✅ Only update if active
     } catch (e, stackTrace) {
       print("🔥 Error fetching messages: $e");

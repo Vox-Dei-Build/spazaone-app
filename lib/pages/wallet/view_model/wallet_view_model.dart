@@ -2,8 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/wallet/wallet_model.dart';
+import 'package:pasella/pages/wallet/widgets/paystack_form.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class WalletState {
   final double balance;
@@ -91,6 +95,91 @@ class WalletViewModel {
         accountNumber.text = details.accountNumber;
         // You can set additional fields here if applicable
       }
+    }
+  }
+
+  /// Open the Paystack Form screen
+  void openPaystackForm(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const PaystackFormScreen(),
+      ),
+    );
+  }
+
+  /// Send a prefilled WhatsApp message with merchant and shop details
+  Future<void> sendWhatsAppMessage(BuildContext context,
+      {double amount = 100.0}) async {
+    try {
+      // Fetch merchant details
+      final String? merchantName = await fetchNameForUser(userId);
+      final String? shopName = await fetchShopNameForUser(userId);
+
+      // Fetch WhatsApp Support Number from Remote Config
+      final remoteConfigService = await RemoteConfigService.getInstance();
+      final String merchantNumber =
+          remoteConfigService.getString('WA_SUPPORT_NUMBER');
+
+      if (merchantName == null || shopName == null || merchantNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not retrieve required details')),
+        );
+        return;
+      }
+
+      // Ensure phone number is correctly formatted
+      final String formattedNumber =
+          formatPhoneNumberForWhatsapp(merchantNumber);
+
+      // Construct WhatsApp message
+      final String message = Uri.encodeComponent(
+          "Hi, it's me $merchantName 😊,\n\n"
+          "I'd like to top up my account at *$shopName* with *R$amount*.\n\n"
+          "Can you assist me? Thanks! 😊");
+
+      // Construct WhatsApp URL
+      final Uri whatsappUri =
+          Uri.parse('https://wa.me/$formattedNumber?text=$message');
+
+      // Check if WhatsApp can be launched
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+      } else {
+        _showCallSnackbar(context, merchantNumber);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('An error occurred while preparing WhatsApp message')),
+      );
+      print('Error sending WhatsApp message: $e');
+    }
+  }
+
+  /// Show a Snackbar with a Call button if WhatsApp isn't available
+  void _showCallSnackbar(BuildContext context, String phoneNumber) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'WhatsApp is not available. You can call instead.',
+        ),
+        action: SnackBarAction(
+          label: 'Call Now',
+          onPressed: () => _makePhoneCall(phoneNumber),
+        ),
+      ),
+    );
+  }
+
+  /// Make a direct phone call to the merchant
+  void _makePhoneCall(String phoneNumber) async {
+    final Uri callUri = Uri.parse('tel:$phoneNumber');
+
+    if (await canLaunchUrl(callUri)) {
+      await launchUrl(callUri);
+    } else {
+      print('Could not launch call to $phoneNumber');
     }
   }
 

@@ -8,4 +8,6 @@ class FeatureFlags {
   static const bool enableBankingDetails = false;
 
   static const bool enableAnonymousGate = false;
+
+  static const bool enableTopUpPaystack = false;
 }
