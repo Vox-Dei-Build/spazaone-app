@@ -359,10 +359,25 @@ class AuthViewModel with ChangeNotifier {
         'shopName': shopNameController.text,
         'mobileNumber': registrationMobileNoController.text,
         'virtualBalance': 0.0,
+        'cashAdvanceBalance': 0.0,
+        'cashAdvanceWithdrawn': 0.0,
+        'cashAdvanceDueDate': null,
+        'penaltyFee': 0.0,
+        'accountSuspended': false,
+        'totalCashAdvanceGiven': 0.0,
+        'totalCashAdvanceRepaid': 0.0,
+        'repaymentHistory': [
+          {
+            'date': DateTime.now().toIso8601String(), // ✅ Use ISO date format
+            'amount': 0.0,
+            'method': "N/A",
+            'status': "N/A",
+            'reference': "N/A"
+          }
+        ],
         'referralCount': 0,
-        // Include referrer ID if provided
         'referrerUserId': referrerUserId ?? ""
-      }, SetOptions(merge: true)); // Use merge to update existing document
+      }, SetOptions(merge: true)); // Ensures existing data is merged
 
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (error) {
@@ -380,6 +395,22 @@ class AuthViewModel with ChangeNotifier {
         'shopName': shopNameController.text,
         'mobileNumber': registrationMobileNoController.text,
         'virtualBalance': 0.0,
+        'cashAdvanceBalance': 0.0,
+        'cashAdvanceWithdrawn': 0.0,
+        'cashAdvanceDueDate': null,
+        'penaltyFee': 0.0,
+        'accountSuspended': false,
+        'totalCashAdvanceGiven': 0.0,
+        'totalCashAdvanceRepaid': 0.0,
+        'repaymentHistory': [
+          {
+            'date': DateTime.now().toIso8601String(), // ✅ Use ISO date format
+            'amount': 0.0,
+            'method': "N/A",
+            'status': "N/A",
+            'reference': "N/A"
+          }
+        ],
         'referralCount': 0,
       };
 

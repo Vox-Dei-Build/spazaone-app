@@ -1,7 +1,6 @@
 import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pasella/models/wallet/wallet_model.dart';
+import 'package:pasella/models/wallet/banking_detail_model.dart';
 
 Future<bool> checkIfBankingDetailsExist(String userId) async {
   var docRef = FirebaseFirestore.instance
@@ -14,6 +13,27 @@ Future<bool> checkIfBankingDetailsExist(String userId) async {
   }
 
   return false;
+}
+
+// Check Banking Details
+Future<bool> hasBankingDetails(String userId) async {
+  var snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(userId)
+      .collection('bankingDetails')
+      .limit(1)
+      .get();
+  return snapshot.docs.isNotEmpty;
+}
+
+Future<String?> checkAndFetchBankingDetailsDocId(String userId) async {
+  var snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(userId)
+      .collection('bankingDetails')
+      .limit(1)
+      .get();
+  return snapshot.docs.isNotEmpty ? snapshot.docs.first.id : null;
 }
 
 Future<BankingDetails?> fetchBankingDetails(String docId, String userId) async {

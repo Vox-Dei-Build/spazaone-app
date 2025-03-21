@@ -35,9 +35,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                     SizeConfig.imageSizeMultiplier * 6, // Responsive icon size
               ),
             )
-          : leading != null
-              ? leading
-              : null, // Provide an empty space or null if onBack is false or there is no leading icon
+          : leading, // Provide an empty space or null if onBack is false or there is no leading icon
       title: Text(
         title,
         style: TextStyle(
@@ -55,5 +53,5 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }

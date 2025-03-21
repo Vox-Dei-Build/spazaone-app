@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
+import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 
@@ -15,24 +17,23 @@ class TopUpTab extends StatelessWidget {
         children: [
           // 🔥 Feature-flagged Paystack button
           if (FeatureFlags.enableTopUpPaystack)
-            ElevatedButton(
-              onPressed: () => walletVM.openPaystackForm(context),
-              child: const Text("Top Up with Paystack"),
+            CustomButton(
+              title: 'Top Up via Paystack',
+              onTap: () => walletVM.openPaystackForm(context),
+              color: Colors.green,
+              fontSize: SizeConfig.textMultiplier * 2,
+              width: SizeConfig.imageSizeMultiplier * 60,
             ),
 
-          const SizedBox(height: 16), // Spacing between buttons
+          SizedBox(height: SizeConfig.heightMultiplier * 2),
 
-          // 🟢 Always show WhatsApp button
-          ElevatedButton.icon(
-            icon: const Icon(Icons.chat, color: Colors.white),
-            label: const Text(
-              "Top Up via WhatsApp",
-              style: TextStyle(color: Colors.white),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
-            onPressed: () => walletVM.sendWhatsAppMessage(context),
+          CustomButton(
+            title: 'Top Up via WhatsApp',
+            onTap: () => walletVM.sendTopUpWhatsAppMessage(context),
+            color: Colors.green,
+            icon: Icons.chat,
+            fontSize: SizeConfig.textMultiplier * 2,
+            width: SizeConfig.imageSizeMultiplier * 60,
           ),
         ],
       ),

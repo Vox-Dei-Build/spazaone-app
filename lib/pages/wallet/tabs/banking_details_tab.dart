@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/pages/wallet/widgets/add_banking_details.dart';
+import 'package:pasella/shared/widgets/custom_text_button.dart';
 
 class BankingDetailsTab extends StatefulWidget {
   const BankingDetailsTab({super.key});
@@ -11,15 +13,6 @@ class BankingDetailsTab extends StatefulWidget {
 
 class _BankingDetailsTabState extends State<BankingDetailsTab> {
   final WalletViewModel walletViewModel = WalletViewModel();
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-
-  final TextEditingController accountHolderController = TextEditingController();
-  final TextEditingController accountNumberController = TextEditingController();
-
-  // Defined Account Types List
-  final List<String> accountTypes = ['Savings', 'Current', 'Business'];
-  String? selectedAccountType; // Allow null initially
-
   bool isLoading = true;
 
   @override
@@ -34,32 +27,9 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
     super.dispose();
   }
 
-  // 🟢 Corrected Banking Details Loader
   Future<void> _loadBankingDetails() async {
     setState(() => isLoading = true);
     await walletViewModel.initializeBankingDetails();
-
-    if (walletViewModel.editingDocumentId != null) {
-      final details = await walletViewModel
-          .fetchBankingDetails(walletViewModel.editingDocumentId!);
-      if (details != null) {
-        setState(() {
-          walletViewModel.accountHolderName.text = details.accountHolderName;
-          walletViewModel.accountNumber.text = details.accountNumber;
-
-          // Validate selected account type
-          if (accountTypes.contains(details.selectedAccountType)) {
-            selectedAccountType = details.selectedAccountType;
-          } else {
-            selectedAccountType = accountTypes.first; // Default fallback
-          }
-        });
-      } else {
-        setState(() {
-          selectedAccountType = accountTypes.first; // Ensure default
-        });
-      }
-    }
     setState(() => isLoading = false);
   }
 
@@ -68,70 +38,79 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
     return Scaffold(
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.imageSizeMultiplier * 4),
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  children: [
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    DropdownButtonFormField<String>(
-                      value: selectedAccountType,
-                      items: accountTypes
-                          .map((type) => DropdownMenuItem(
-                                value: type,
-                                child: Text(type),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        setState(() => selectedAccountType = value!);
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Account Type',
-                        prefixIcon: Icon(Icons.account_balance_wallet),
-                      ),
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  if (walletViewModel.editingDocumentId == null) ...[
+                    Text(
+                      "You haven't added any banking details yet.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: Colors.red,
+                          fontSize: SizeConfig.textMultiplier * 1.5),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: walletViewModel.accountHolderName,
-                      decoration: const InputDecoration(
-                        labelText: 'Account Holder Name',
-                        prefixIcon: Icon(Icons.person),
-                      ),
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'Enter account holder name'
-                          : null,
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: walletViewModel.accountNumber,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Account Number',
-                        prefixIcon: Icon(Icons.account_balance_wallet),
-                      ),
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'Enter valid account number'
-                          : null,
-                    ),
-                    const SizedBox(height: 30),
-                    ElevatedButton(
-                      onPressed: () async {
-                        if (_formKey.currentState!.validate()) {
-                          await walletViewModel.saveBankingDetails(
-                            context,
-                            'Bank', // Defaulting to "Bank" as a service type
-                            selectedAccountType!,
-                          );
-                        }
-                      },
-                      child: const Text('Save Banking Details'),
-                    ),
+                  ] else ...[
+                    _bankingDetailsSummary(walletViewModel),
                   ],
-                ),
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  CustomButton(
+                    title: 'Add / Edit Banking Details',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AddBankingDetailsPage(
+                            walletViewModel: walletViewModel,
+                          ),
+                        ),
+                      );
+                    },
+                    color: Colors.blue,
+                    icon: Icons.add,
+                    fontSize: SizeConfig.textMultiplier * 2,
+                    width: SizeConfig.imageSizeMultiplier * 65,
+                  ),
+                ],
               ),
             ),
+    );
+  }
+
+  Widget _bankingDetailsSummary(WalletViewModel viewModel) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _infoRow("Bank", viewModel.bankName.text),
+            _infoRow("Account Holder Name", viewModel.accountHolderName.text),
+            _infoRow("Account Number", viewModel.accountNumber.text),
+            _infoRow("Account Type", viewModel.accountType.text),
+            _infoRow("Branch Code", viewModel.branchCode.text),
+            _infoRow("Reference", viewModel.reference.text),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding:
+          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(value, style: const TextStyle(color: Colors.black54)),
+        ],
+      ),
     );
   }
 }
