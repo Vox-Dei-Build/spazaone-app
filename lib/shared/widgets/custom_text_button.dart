@@ -3,18 +3,20 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 
 class CustomButton extends StatelessWidget {
-  const CustomButton(
-      {super.key,
-      required this.title,
-      required this.onTap,
-      this.color,
-      this.margin,
-      this.width,
-      this.height,
-      this.fontSize,
-      this.icon,
-      this.radius,
-      this.iconSize});
+  const CustomButton({
+    super.key,
+    required this.title,
+    required this.onTap,
+    this.color,
+    this.margin,
+    this.width,
+    this.height,
+    this.fontSize,
+    this.icon,
+    this.radius,
+    this.iconSize,
+    this.isDisabled = false,
+  });
 
   final String title;
   final VoidCallback onTap;
@@ -26,13 +28,14 @@ class CustomButton extends StatelessWidget {
   final IconData? icon;
   final double? radius;
   final double? iconSize;
+  final bool isDisabled;
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: isDisabled ? null : onTap,
       child: Container(
         margin: margin ??
             EdgeInsets.symmetric(
@@ -40,7 +43,7 @@ class CustomButton extends StatelessWidget {
         height: height ?? SizeConfig.heightMultiplier * 7,
         width: width ?? double.infinity,
         decoration: BoxDecoration(
-          color: color ?? kPrimaryColor,
+          color: isDisabled ? Colors.grey.shade400 : (color ?? kPrimaryColor),
           borderRadius: BorderRadius.circular(
               radius ?? SizeConfig.imageSizeMultiplier * 4),
         ),

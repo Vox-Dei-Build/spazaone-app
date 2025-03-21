@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/pages/wallet/widgets/payout_request.dart';
+import 'package:pasella/shared/widgets/custom_text_button.dart';
 
 class BalancePayoutTab extends StatelessWidget {
   const BalancePayoutTab({super.key});
@@ -16,7 +19,7 @@ class BalancePayoutTab extends StatelessWidget {
         }
 
         final walletState = snapshot.data!;
-        bool canRequestPayout = walletState.balance > 0 &&
+        bool canRequestPayout = walletState.cashAdvanceBalance > 0 &&
             walletState.hasBankAccount &&
             !walletState.hasPendingPayout; // ✅ Fixed variable name
 
@@ -24,13 +27,21 @@ class BalancePayoutTab extends StatelessWidget {
             child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ElevatedButton(
-              onPressed: canRequestPayout
-                  ? () {
-                      // handle payout request
-                    }
-                  : null,
-              child: const Text('Request Payout'),
+            CustomButton(
+              title: 'Withdraw Cash Advance',
+              onTap: () => {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PayoutPage(),
+                  ),
+                )
+              },
+              color: Colors.blue,
+              icon: Icons.payments_outlined,
+              fontSize: SizeConfig.textMultiplier * 2,
+              width: SizeConfig.imageSizeMultiplier * 65,
+              isDisabled: !canRequestPayout,
             ),
             if (!canRequestPayout)
               Padding(
@@ -38,7 +49,7 @@ class BalancePayoutTab extends StatelessWidget {
                 child: Text(
                   walletState.hasPendingPayout // ✅ Fixed variable name
                       ? 'Pending payout request.'
-                      : walletState.balance <= 0
+                      : walletState.cashAdvanceBalance <= 0
                           ? 'Insufficient balance.'
                           : 'Please add banking details first.',
                   style: const TextStyle(color: Colors.redAccent),

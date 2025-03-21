@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/config/remote_config.dart';
-import 'package:pasella/models/wallet/wallet_model.dart';
+import 'package:pasella/models/wallet/banking_detail_model.dart';
 import 'package:pasella/pages/wallet/widgets/paystack_form.dart';
+import 'package:pasella/utils/banking_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,30 +14,56 @@ class WalletState {
   final double balance;
   final bool hasBankAccount;
   final bool hasPendingPayout;
+  final double cashAdvanceBalance;
+
+  // 🆕 Repayment-related fields
+  final double cashAdvanceWithdrawn;
+  final double penaltyFee;
+  final bool accountSuspended;
+  final DateTime? cashAdvanceDueDate;
+  final double totalCashAdvanceGiven;
+  final double totalCashAdvanceRepaid;
+
+  // 🆕 Repayment history (list of repayments)
+  final List<Map<String, dynamic>> repaymentHistory;
 
   WalletState({
     required this.balance,
     required this.hasBankAccount,
     required this.hasPendingPayout,
+    required this.cashAdvanceBalance,
+    required this.cashAdvanceWithdrawn,
+    required this.penaltyFee,
+    required this.accountSuspended,
+    required this.cashAdvanceDueDate,
+    required this.totalCashAdvanceGiven,
+    required this.totalCashAdvanceRepaid,
+    required this.repaymentHistory,
   });
 }
 
 class WalletViewModel {
+  final FirebaseFirestore firestore = FirebaseFirestore.instance;
+  final FirebaseAuth auth = FirebaseAuth.instance;
+
   // UI Controllers
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  final TextEditingController bankName = TextEditingController();
   final TextEditingController accountHolderName = TextEditingController();
   final TextEditingController accountNumber = TextEditingController();
-  final TextEditingController flashVendorId = TextEditingController();
-  final TextEditingController helloPaisaAccountId = TextEditingController();
+  final TextEditingController accountType = TextEditingController();
+  final TextEditingController branchCode = TextEditingController();
+  final TextEditingController reference = TextEditingController();
 
   String? editingDocumentId;
   final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   // State Notifiers
   final ValueNotifier<bool> isProcessing = ValueNotifier<bool>(false);
+  bool isLoading = false;
   final ValueNotifier<bool> isProcessingPayoutRequest =
       ValueNotifier<bool>(false);
-
+  final ValueNotifier<bool> virtualBalance = ValueNotifier<bool>(false);
   // Wallet state stream
   final StreamController<WalletState> _walletStateController =
       StreamController<WalletState>.broadcast();
@@ -46,6 +73,15 @@ class WalletViewModel {
     _initWalletState();
   }
 
+  /// Fetches max cash advance amount from Remote Config
+  Future<double> getMaxCashAdvanceAmount() async {
+    final remoteConfigService = await RemoteConfigService.getInstance();
+    final String maxAmount =
+        remoteConfigService.getString('MAX_CASH_ADVANCE_AMOUNT');
+
+    return double.tryParse(maxAmount) ?? 0.0; // Default to R3000 if not set
+  }
+
   // Initialization
   void _initWalletState() {
     FirebaseFirestore.instance
@@ -53,49 +89,174 @@ class WalletViewModel {
         .doc(userId)
         .snapshots()
         .listen((snapshot) async {
-      final balance = snapshot.data()?['virtualBalance']?.toDouble() ?? 0.0;
-      final hasBankAccount = await hasBankingDetails();
+      final data = snapshot.data();
+
+      final balance = data?['virtualBalance']?.toDouble() ?? 0.0;
+      final cashAdvanceBalance = data?['cashAdvanceBalance']?.toDouble() ?? 0.0;
+      final cashAdvanceWithdrawn =
+          data?['cashAdvanceWithdrawn']?.toDouble() ?? 0.0;
+      final penaltyFee = data?['penaltyFee']?.toDouble() ?? 0.0;
+      final accountSuspended = data?['accountSuspended'] ?? false;
+
+      final cashAdvanceDueDate = data?['cashAdvanceDueDate'] != null
+          ? (data!['cashAdvanceDueDate'] as Timestamp).toDate()
+          : null;
+
+      final totalCashAdvanceGiven =
+          data?['totalCashAdvanceGiven']?.toDouble() ?? 0.0;
+      final totalCashAdvanceRepaid =
+          data?['totalCashAdvanceRepaid']?.toDouble() ?? 0.0;
+
+      final hasBankAccount = await hasBankingDetails(userId);
       final hasPendingPayout = await hasPendingOrProcessingPayout();
+
+      // 🆕 Safe handling of repayment history (Handles both Timestamp and String)
+      final repaymentHistory =
+          (data?['repaymentHistory'] as List<dynamic>?)?.map((entry) {
+                return {
+                  "date": entry['date'] is Timestamp
+                      ? (entry['date'] as Timestamp).toDate()
+                      : DateTime.tryParse(entry['date']) ?? DateTime.now(),
+                  "amount": (entry['amount'] as num).toDouble(),
+                  "method": entry['method'] ?? "N/A",
+                  "status": entry['status'] ?? "N/A",
+                  "reference": entry['reference'] ?? "N/A",
+                };
+              }).toList() ??
+              [];
 
       _walletStateController.add(WalletState(
         balance: balance,
         hasBankAccount: hasBankAccount,
         hasPendingPayout: hasPendingPayout,
+        cashAdvanceBalance: cashAdvanceBalance,
+        cashAdvanceWithdrawn: cashAdvanceWithdrawn,
+        penaltyFee: penaltyFee,
+        accountSuspended: accountSuspended,
+        cashAdvanceDueDate: cashAdvanceDueDate,
+        totalCashAdvanceGiven: totalCashAdvanceGiven,
+        totalCashAdvanceRepaid: totalCashAdvanceRepaid,
+        repaymentHistory: repaymentHistory,
       ));
     });
   }
 
-  // Check Banking Details
-  Future<bool> hasBankingDetails() async {
+  Future<void> requestPayout(BuildContext context, double amount) async {
+    isProcessingPayoutRequest.value = true;
+    try {
+      await FirebaseFirestore.instance.collection('payoutRequests').add({
+        'merchantId': userId,
+        'amount': amount,
+        'payoutStatus': 'pending',
+        'status': 'pending',
+        'requestedOn': FieldValue.serverTimestamp(),
+        'penaltyApplied': false,
+        'repaymentDueDate': null,
+        'repaymentStatus': 'pending'
+      });
+
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'cashAdvanceBalance': FieldValue.increment(-amount),
+      });
+
+      showSnackbar(
+          context, 'Payout request submitted successfully', Colors.green);
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    } catch (e) {
+      print('Error submitting payout request: $e');
+      showSnackbar(context, 'Failed to submit payout request.', Colors.red);
+    } finally {
+      isProcessingPayoutRequest.value = false;
+    }
+  }
+
+  Future<void> initializeBankingDetails() async {
+    editingDocumentId = await checkAndFetchBankingDetailsDocId(userId);
+    if (editingDocumentId != null) {
+      final details = await fetchBankingDetails(editingDocumentId!, userId);
+      if (details != null) {
+        bankName.text = details.bankName;
+        accountHolderName.text = details.accountHolderName;
+        accountNumber.text = details.accountNumber;
+        accountType.text = details.accountType;
+        branchCode.text = details.branchCode;
+        reference.text = details.reference;
+      }
+    }
+  }
+
+  Future<bool> hasPendingOrProcessingPayout() async {
     var snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('bankingDetails')
+        .collection('payoutRequests')
+        .where('merchantId', isEqualTo: userId)
+        .where('payoutStatus', whereIn: ['pending', 'processing'])
         .limit(1)
         .get();
     return snapshot.docs.isNotEmpty;
   }
 
-  Future<String?> checkAndFetchBankingDetailsDocId() async {
-    var snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('bankingDetails')
-        .limit(1)
-        .get();
-    return snapshot.docs.isNotEmpty ? snapshot.docs.first.id : null;
+  Future<void> saveBankingDetails() async {
+    isProcessing.value = true;
+    try {
+      final bankingDetails = BankingDetails(
+        bankName: bankName.text.trim(),
+        accountHolderName: accountHolderName.text.trim(),
+        accountNumber: accountNumber.text.trim(),
+        accountType: accountType.text.trim(),
+        branchCode: branchCode.text.trim(),
+        reference: reference.text.trim(),
+      );
+
+      final collectionRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('bankingDetails');
+
+      if (editingDocumentId == null) {
+        await collectionRef.add(bankingDetails.toJson());
+      } else {
+        await collectionRef
+            .doc(editingDocumentId)
+            .update(bankingDetails.toJson());
+      }
+    } catch (e) {
+      print('Error saving banking details: $e');
+    } finally {
+      isProcessing.value = false;
+    }
   }
 
-  Future<void> initializeBankingDetails() async {
-    editingDocumentId = await checkAndFetchBankingDetailsDocId();
-    if (editingDocumentId != null) {
-      final details = await fetchBankingDetails(editingDocumentId!);
-      if (details != null) {
-        accountHolderName.text = details.accountHolderName;
-        accountNumber.text = details.accountNumber;
-        // You can set additional fields here if applicable
+  /// 🔥 Transfer money from Cash Advance to Virtual Balance
+  Future<void> transferToVirtualBalance(
+      BuildContext context, double amount) async {
+    DocumentReference userRef = firestore.collection('users').doc(userId);
+
+    await firestore.runTransaction((transaction) async {
+      DocumentSnapshot userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) return;
+
+      double virtualBalance =
+          (userSnapshot['virtualBalance'] ?? 0.0).toDouble();
+      double cashAdvanceBalance =
+          (userSnapshot['cashAdvanceBalance'] ?? 0.0).toDouble();
+
+      if (cashAdvanceBalance < amount) {
+        showSnackbar(
+            context, '❌ Insufficient Cash Advance Balance.', Colors.red);
+        return;
       }
-    }
+
+      double newVirtualBalance = virtualBalance + amount;
+      double newCashAdvanceBalance = cashAdvanceBalance - amount;
+
+      transaction.update(userRef, {
+        'virtualBalance': newVirtualBalance,
+        'cashAdvanceBalance': newCashAdvanceBalance,
+      });
+
+      showSnackbar(
+          context, '✅ R$amount moved to Virtual Balance.', Colors.green);
+    });
   }
 
   /// Open the Paystack Form screen
@@ -107,8 +268,66 @@ class WalletViewModel {
     );
   }
 
+  /// Request a Cash Advance via WhatsApp
+  Future<void> requestCashAdvance(BuildContext context,
+      {double amount = 500.0}) async {
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User not authenticated')),
+      );
+      return;
+    }
+
+    try {
+      // Fetch merchant details
+      final String? merchantName = await fetchNameForUser(userId);
+      final String? shopName = await fetchShopNameForUser(userId);
+
+      // Fetch WhatsApp Support Number from Remote Config
+      final remoteConfigService = await RemoteConfigService.getInstance();
+      final String merchantNumber =
+          remoteConfigService.getString('WA_SUPPORT_NUMBER');
+
+      if (merchantName == null || shopName == null || merchantNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not retrieve required details')),
+        );
+        return;
+      }
+
+      // Ensure phone number is correctly formatted
+      final String formattedNumber =
+          formatPhoneNumberForWhatsapp(merchantNumber);
+
+      // Construct WhatsApp message
+      final String message = Uri.encodeComponent(
+          "Hi, it's me $merchantName,\n\n"
+          "I'd like to request a *cash advance* for *$shopName* for *R$amount*.\n\n"
+          "Please let me know if this is possible. Thanks! 😊");
+
+      // Construct WhatsApp URL
+      final Uri whatsappUri =
+          Uri.parse('https://wa.me/$formattedNumber?text=$message');
+
+      // Try launching WhatsApp
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+      } else {
+        _showCallSnackbar(context, merchantNumber);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('An error occurred while preparing WhatsApp message')),
+      );
+      print('Error sending WhatsApp message: $e');
+    }
+  }
+
   /// Send a prefilled WhatsApp message with merchant and shop details
-  Future<void> sendWhatsAppMessage(BuildContext context,
+  Future<void> sendTopUpWhatsAppMessage(BuildContext context,
       {double amount = 100.0}) async {
     try {
       // Fetch merchant details
@@ -183,129 +402,73 @@ class WalletViewModel {
     }
   }
 
-  Future<BankingDetails?> fetchBankingDetails(String docId) async {
+  Future<void> sendRepaymentWhatsAppMessage(BuildContext context) async {
     try {
-      var snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('bankingDetails')
-          .doc(docId)
-          .get();
-      if (snapshot.exists && snapshot.data() != null) {
-        return BankingDetails.fromFirestore(snapshot.data()!);
+      // Fetch merchant details
+      final String? merchantName = await fetchNameForUser(userId);
+      final String? shopName = await fetchShopNameForUser(userId);
+
+      // Fetch WhatsApp Support Number from Remote Config
+      final remoteConfigService = await RemoteConfigService.getInstance();
+      final String merchantNumber =
+          remoteConfigService.getString('WA_SUPPORT_NUMBER');
+
+      if (merchantName == null || shopName == null || merchantNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not retrieve required details')),
+        );
+        return;
       }
-      return null;
-    } catch (e) {
-      print('Error fetching banking details: $e');
-      return null;
-    }
-  }
 
-  Future<bool> hasPendingOrProcessingPayout() async {
-    var snapshot = await FirebaseFirestore.instance
-        .collection('payoutRequests')
-        .where('merchantId', isEqualTo: userId)
-        .where('payoutStatus', whereIn: ['pending', 'processing'])
-        .limit(1)
-        .get();
-    return snapshot.docs.isNotEmpty;
-  }
+      // Ensure phone number is correctly formatted
+      final String formattedNumber =
+          formatPhoneNumberForWhatsapp(merchantNumber);
 
-  Future<void> saveBankingDetails(BuildContext context, String selectedService,
-      String selectedAccountType) async {
-    isProcessing.value = true;
-    try {
-      BankingDetails bankingDetails = BankingDetails(
-        selectedService: selectedService,
-        selectedAccountType: selectedAccountType,
-        accountHolderName: accountHolderName.text,
-        accountNumber: accountNumber.text,
-        referenceCode: selectedService == 'Flash'
-            ? flashVendorId.text
-            : helloPaisaAccountId.text,
-      );
+      // Construct WhatsApp message specifically for repayment
+      final String message = Uri.encodeComponent(
+          "Hi, it's me $merchantName 😊,\n\n"
+          "I'd like to repay my cash advance at *$shopName*. Can you assist me with this?\n\nThanks! 😊");
 
-      var collectionRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('bankingDetails');
+      // Construct WhatsApp URL
+      final Uri whatsappUri =
+          Uri.parse('https://wa.me/$formattedNumber?text=$message');
 
-      if (editingDocumentId == null) {
-        await collectionRef.add(bankingDetails.toJson());
+      // Check if WhatsApp can be launched
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
       } else {
-        await collectionRef
-            .doc(editingDocumentId)
-            .update(bankingDetails.toJson());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'Cannot launch WhatsApp. Please contact $merchantNumber directly.')),
+        );
       }
-
-      showSnackbar(context, 'Banking details saved successfully', Colors.green);
-      Navigator.pop(context);
     } catch (e) {
-      print('Error saving banking details: $e');
-      showSnackbar(
-          context, 'Failed to save details, please try again.', Colors.red);
-    } finally {
-      isProcessing.value = false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('An error occurred while preparing WhatsApp message')),
+      );
+      print('Error sending WhatsApp repayment message: $e');
     }
-  }
-
-  Future<void> requestPayout(BuildContext context, double amount) async {
-    isProcessingPayoutRequest.value = true;
-    try {
-      await FirebaseFirestore.instance.collection('payoutRequests').add({
-        'merchantId': userId,
-        'amount': amount,
-        'payoutStatus': 'pending',
-        'status': 'pending',
-        'requestedOn': FieldValue.serverTimestamp(),
-      });
-
-      await FirebaseFirestore.instance.collection('users').doc(userId).update({
-        'virtualBalance': FieldValue.increment(-amount),
-      });
-
-      showSnackbar(
-          context, 'Payout request submitted successfully', Colors.green);
-      Navigator.pushReplacementNamed(context, '/dashboard');
-    } catch (e) {
-      print('Error submitting payout request: $e');
-      showSnackbar(context, 'Failed to submit payout request.', Colors.red);
-    } finally {
-      isProcessingPayoutRequest.value = false;
-    }
-  }
-
-  String? findBankByAccountNumber(
-      String selectedService, String accountNumber) {
-    Map<String, String>? serviceDetails =
-        predefinedAccountDetails[selectedService];
-    if (serviceDetails != null) {
-      // Iterate through the map to find which bank has the matching account number.
-      for (var entry in serviceDetails.entries) {
-        if (entry.value == accountNumber && entry.key != 'AccountName') {
-          return entry.key; // Return the matching bank's name.
-        }
-      }
-    }
-    return null; // Return null if no matching bank is found or the service doesn't exist.
-  }
-
-  Future<void> refreshBalance() async {
-    // Call Firestore to update balance (or fetch latest)
   }
 
   void resetFields() {
+    bankName.clear();
     accountHolderName.clear();
     accountNumber.clear();
-    flashVendorId.clear();
-    helloPaisaAccountId.clear();
+    accountType.clear();
+    branchCode.clear();
+    reference.clear();
   }
 
   void dispose() {
+    bankName.dispose();
     accountHolderName.dispose();
     accountNumber.dispose();
-    flashVendorId.dispose();
-    helloPaisaAccountId.dispose();
+    accountType.dispose();
+    branchCode.dispose();
+    reference.dispose();
     isProcessing.dispose();
     isProcessingPayoutRequest.dispose();
     _walletStateController.close();

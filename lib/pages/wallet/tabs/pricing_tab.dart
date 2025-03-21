@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
+import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/config/size_config.dart';
 
@@ -13,13 +14,16 @@ class PricingInfoTab extends StatefulWidget {
 }
 
 class _PricingInfoTab extends State<PricingInfoTab> {
+  final WalletViewModel walletVM = WalletViewModel();
   DynamicPricingService? pricingService;
   bool isLoading = true;
+  double maxCashAdvance = 3000.0; // Default max amount
 
   @override
   void initState() {
     super.initState();
     initialisePricingService();
+    _fetchMaxCashAdvance();
   }
 
   Future<void> initialisePricingService() async {
@@ -27,6 +31,13 @@ class _PricingInfoTab extends State<PricingInfoTab> {
     setState(() {
       pricingService = service;
       isLoading = false;
+    });
+  }
+
+  Future<void> _fetchMaxCashAdvance() async {
+    double fetchedAmount = await walletVM.getMaxCashAdvanceAmount();
+    setState(() {
+      maxCashAdvance = fetchedAmount;
     });
   }
 
@@ -42,85 +53,90 @@ class _PricingInfoTab extends State<PricingInfoTab> {
           children: [
             // 🟢 Section 1: How It Works
             _sectionTitle('How It Works'),
+
+            _buildBulletPoint(
+                '📊 Viewing balance - Always visible at the top of your wallet.'),
+
+            _buildBulletPoint(
+                '📜 Transaction history - View payments & expenses anytime.'),
+
             if (FeatureFlags.enableBalancePayout) ...[
               _buildBulletPoint(
-                  '📌 Account setup - Add your banking details to receive payouts.'),
+                  '📌 Set up banking details to receive payouts.'),
               _buildBulletPoint(
-                  '💰 Request payouts - Withdraw your balance at any time.'),
+                  '💰 Request payouts - Withdraw balance whenever needed.'),
             ],
-
-            _buildBulletPoint(
-                '📊 Viewing balance - Your balance is visible at the top of the wallet page.'),
-
-            _buildBulletPoint(
-                '📜 Transaction history - Track payments & expenses in the History tab.'),
 
             SizedBox(height: SizeConfig.heightMultiplier * 3),
 
             // 🟢 Section 2: Top-Up Pricing
-            _sectionTitle('Top-Up Pricing'),
-            _buildBulletPoint(
-                '🔹 Top-up via Paystack - Instant wallet top-ups using card, bank transfer, or mobile money.'),
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
-            _pricingRow('💳 Card Payment', '2.5% + R1.00'),
-            _pricingRow('🏦 Bank Transfer', '1.8%'),
-            _pricingRow('📲 Mobile Money', '3%'),
-
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
-
-            // 🟢 Section 3: Messaging Pricing & Fees
-            _sectionTitle('Messaging Pricing & Fees'),
-            _buildBulletPoint(
-                '💬 Pricing is usage-based, meaning you are charged per message sent.'),
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
-            _pricingRow('Reminder SMS',
-                '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/Msg'),
-            _pricingRow('WhatsApp Reminder',
-                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
-            _divider(),
-            _pricingRow('Credit SMS',
-                '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/Msg'),
-            _pricingRow('WhatsApp Credit',
-                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
-            _divider(),
-            _pricingRow('Payment SMS',
-                '${CurrencyUtil.format(pricingService?.smsPaymentTemplatePrice ?? 0)}/Msg'),
-            _pricingRow('WhatsApp Payment',
-                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
-            _divider(),
-            _pricingRow('Onboarding SMS',
-                '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/Msg'),
-            _pricingRow('WhatsApp Onboarding',
-                '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
-            _divider(),
-            _pricingRow('WhatsApp Promotions',
-                '${CurrencyUtil.format(pricingService?.whatsappPromotionPrice ?? 0)}/Msg'),
-            _pricingRow('AI Assistant', 'R0.25/Msg'),
-
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
-
-            // 🟢 Section 4: Cash Advance
-            if (FeatureFlags.enableCashAdvance) ...[
-              _sectionTitle('Cash Advance'),
+            if (FeatureFlags.enableTopUpPaystack) ...[
+              _sectionTitle('Top-Up Pricing'),
               _buildBulletPoint(
-                  '💰 Borrow funds instantly and repay in 7 days.'),
-              _buildBulletPoint('📅 10% fee applies for the 7-day advance.'),
-              _pricingRow('Minimum Advance', 'R100'),
-              _pricingRow('Maximum Advance', 'R1,000'),
-              _pricingRow('Flat Fee', '10%'),
-              _pricingRow('Repayment Period', '7 Days'),
-              SizedBox(height: SizeConfig.heightMultiplier * 3)
+                  '🔹 Instant top-ups via Paystack (Card, Bank Transfer, Mobile Money).'),
+              SizedBox(height: SizeConfig.heightMultiplier * 1),
+              _pricingRow('💳 Card Payment', '2.5% + R1.00'),
+              _pricingRow('🏦 Bank Transfer', '1.8%'),
+              _pricingRow('📲 Mobile Money', '3%'),
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
             ],
 
-            // 🟢 Section 5: Payouts
+            // 🟢 Section 3: Cash Advance (Dynamic)
+            if (FeatureFlags.enableCashAdvance) ...[
+              _sectionTitle('Cash Advance'),
+
+              _buildBulletPoint('💰 Borrow funds instantly & repay in 7 days.'),
+              _buildBulletPoint('📅 10% fee applies for the 7-day advance.'),
+
+              _pricingRow('Minimum Advance', 'R100'),
+              _pricingRow('Maximum Advance',
+                  'R${maxCashAdvance.toStringAsFixed(0)}'), // Dynamic
+              _pricingRow('Flat Fee', '10%'),
+              _pricingRow('Repayment Period', '7 Days'),
+              _pricingRow('Instant Payment fee between banks', 'R50'),
+
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
+            ],
+
+            // 🟢 Section 4: Payouts (Dynamic)
             if (FeatureFlags.enableBalancePayout) ...[
               _sectionTitle('Payouts'),
               _buildBulletPoint(
                   '🕒 Request anytime - Processed during business hours.'),
+              _buildBulletPoint('🔍 Track payout status in real-time.'),
+              _buildBulletPoint('🏧 Funds sent to your linked bank account.'),
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
+            ],
+
+            // 🟢 Section 5: Messaging Pricing & Fees
+            if (FeatureFlags.enablePricingInfo) ...[
+              _sectionTitle('Messaging Pricing & Fees'),
               _buildBulletPoint(
-                  '🔍 Status tracking - Get real-time payout updates.'),
-              _buildBulletPoint(
-                  '🏧 Direct deposits - Funds sent to your linked bank account.'),
+                  '💬 Charged per message sent (WhatsApp & SMS).'),
+              SizedBox(height: SizeConfig.heightMultiplier * 1),
+              _pricingRow('Reminder SMS',
+                  '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/SMS'),
+              _pricingRow('WhatsApp Reminder',
+                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+              _divider(),
+              _pricingRow('Credit SMS',
+                  '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/SMS'),
+              _pricingRow('WhatsApp Credit',
+                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+              _divider(),
+              _pricingRow('Payment SMS',
+                  '${CurrencyUtil.format(pricingService?.smsPaymentTemplatePrice ?? 0)}/SMS'),
+              _pricingRow('WhatsApp Payment',
+                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+              _divider(),
+              _pricingRow('Onboarding SMS',
+                  '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/SMS'),
+              _pricingRow('WhatsApp Onboarding',
+                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+              _divider(),
+              _pricingRow('WhatsApp Promotions',
+                  '${CurrencyUtil.format(pricingService?.whatsappPromotionPrice ?? 0)}/Msg'),
+              _pricingRow('AI Assistant', 'R0.25/Msg'),
               SizedBox(height: SizeConfig.heightMultiplier * 3),
             ],
 
@@ -164,10 +180,6 @@ class _PricingInfoTab extends State<PricingInfoTab> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('',
-              style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 3,
-                  color: Colors.black54)),
           Expanded(
             child: Text(
               text,
@@ -199,30 +211,20 @@ class _PricingInfoTab extends State<PricingInfoTab> {
     );
   }
 
-  // ✅ WhatsApp Help Option with Clickable Link
+  // ✅ WhatsApp Help Option
   Widget _helpOption(String text, String phone) {
     return GestureDetector(
       onTap: () => _launchWhatsApp(phone),
-      child: Padding(
-        padding:
-            EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2,
-            color: Colors.blue,
-            decoration: TextDecoration.none,
-          ),
-        ),
+      child: Text(
+        text,
+        style: TextStyle(
+            fontSize: SizeConfig.textMultiplier * 2, color: Colors.blue),
       ),
     );
   }
 
-  // ✅ Open WhatsApp Chat
   void _launchWhatsApp(String phone) async {
     final url = "https://wa.me/$phone";
-    if (await canLaunch(url)) {
-      await launch(url);
-    }
+    if (await canLaunch(url)) await launch(url);
   }
 }

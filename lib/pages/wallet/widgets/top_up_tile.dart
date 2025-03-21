@@ -13,7 +13,7 @@ class TopUpTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(Icons.attach_money,
+      leading: Icon(Icons.wallet,
           color: Colors.green, size: SizeConfig.textMultiplier * 2),
       title: Text(
         "Top-Up",
