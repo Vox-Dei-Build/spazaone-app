@@ -57,13 +57,17 @@ exports.verifyPaystackTransaction = functions.https.onRequest(
       }
 
       // ✅ Step 3: Update Firestore balance & log transaction
-      const userRef = db.collection("users").doc(userId);
+      const walletRef = db
+        .collection("users")
+        .doc(userId)
+        .collection("wallet")
+        .doc("current");
 
       await db.runTransaction(async (transaction) => {
-        const userSnapshot = await transaction.get(userRef);
-        const currentBalance = userSnapshot.data()?.virtualBalance || 0;
+        const walletSnapshot = await transaction.get(walletRef);
+        const currentBalance = walletSnapshot.data()?.virtualBalance || 0;
 
-        transaction.update(userRef, {
+        transaction.update(walletRef, {
           virtualBalance: currentBalance + amount,
         });
 

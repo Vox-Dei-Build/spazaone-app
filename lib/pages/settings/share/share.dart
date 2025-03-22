@@ -51,31 +51,37 @@ class _SharePageState extends State<SharePage> {
     });
 
     try {
-      var userDocRef =
+      final userRef =
           FirebaseFirestore.instance.collection('users').doc(userId);
-      var userDocSnapshot = await userDocRef.get();
+      final walletRef = userRef.collection('wallet').doc('current');
 
-      if (userDocSnapshot.exists) {
-        Map<String, dynamic>? userData = userDocSnapshot.data();
+      final userSnapshot = await userRef.get();
+      final walletSnapshot = await walletRef.get();
+
+      if (userSnapshot.exists) {
+        final userData = userSnapshot.data();
+        final walletData = walletSnapshot.data();
+
         setState(() {
-          final dynamic balance = userData?['virtualBalance'];
-          if (balance != null) {
-            // Checks if the balance is an integer and converts it to double
-            virtualBalance = balance is int ? balance.toDouble() : balance;
+          // Virtual Balance comes from subcollection
+          if (walletData != null && walletData.containsKey('virtualBalance')) {
+            final balance = walletData['virtualBalance'];
+            virtualBalance =
+                balance is int ? balance.toDouble() : (balance ?? 0.0);
           } else {
-            // Default value if balance is null
             virtualBalance = 0.0;
           }
+
           referralCount = userData?['referralCount'] ?? 0;
         });
 
-        // Check if the referralCount field exists, if not, initialize it
+        // Ensure referralCount is initialized
         if (userData != null && userData['referralCount'] == null) {
-          userDocRef.update({'referralCount': 0}); // Initialize referral count
+          await userRef.update({'referralCount': 0});
         }
       }
     } catch (e) {
-      print("Error fetching balance info: " + e.toString());
+      print("Error fetching balance info: $e");
     } finally {
       setState(() {
         balanceLoading = false;
@@ -126,7 +132,7 @@ class _SharePageState extends State<SharePage> {
 
   String constructShareMessage() {
     final String expiryDate = DateFormat('yyyy-MM-dd').format(DateTime.now()
-            .add(Duration(days: 30)) // Adding 30 days as the expiry date
+            .add(const Duration(days: 30)) // Adding 30 days as the expiry date
         );
 
     String message = 'Join me on Pasella and get R50 credit! 🌟\n'
@@ -194,16 +200,16 @@ class _SharePageState extends State<SharePage> {
           child: Wrap(
             children: <Widget>[
               ListTile(
-                leading: Icon(Icons.share),
-                title: Text('Share using other apps'),
+                leading: const Icon(Icons.share),
+                title: const Text('Share using other apps'),
                 onTap: () {
                   Share.share(text);
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                leading: Icon(FontAwesomeIcons.whatsapp),
-                title: Text('Share on WhatsApp'),
+                leading: const Icon(FontAwesomeIcons.whatsapp),
+                title: const Text('Share on WhatsApp'),
                 onTap: () {
                   shareToWhatsApp(text);
                   Navigator.pop(context);
@@ -238,7 +244,7 @@ class _SharePageState extends State<SharePage> {
     final String detailedMessage = constructShareMessage();
 
     return Scaffold(
-      appBar: CustomAppBar(title: 'Share and Earn'),
+      appBar: const CustomAppBar(title: 'Share and Earn'),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -249,7 +255,7 @@ class _SharePageState extends State<SharePage> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   balanceLoading
-                      ? Center(child: CircularProgressIndicator())
+                      ? const Center(child: CircularProgressIndicator())
                       : ReferralDashboard(
                           referralCount: referralCount,
                           rewardsEarned: virtualBalance),
@@ -258,58 +264,59 @@ class _SharePageState extends State<SharePage> {
                     width: 200,
                   ),
                   const SizedBox(height: 10.0),
-                  Text(
+                  const Text(
                     'Invite your friends and earn rewards!',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  SizedBox(height: 20),
-                  Text(
+                  const SizedBox(height: 20),
+                  const Text(
                     'Share your referral link and get R100 cash for each friend who signs up, and your friend will also get R50. Help us grow! Ensure each friend onboards at least 5 customers and completes transactions worth R1000 through our app.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 14),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   referralLink == null
-                      ? Text(
+                      ? const Text(
                           "Generating your unique referral link... Please wait...",
                           style: TextStyle(color: Colors.black))
                       : InkWell(
                           onTap: () {
                             Clipboard.setData(
                                 ClipboardData(text: referralLink ?? ''));
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text(
-                                    'Referral link copied to clipboard!')));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Referral link copied to clipboard!')));
                           },
                           child: Text(
                             referralLink ?? '',
-                            style: TextStyle(
+                            style: const TextStyle(
                                 color: Colors.blue,
                                 decoration: TextDecoration.underline),
                           ),
                         ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   referralLink != null
                       ? ElevatedButton.icon(
-                          icon: Icon(Icons.share),
-                          label: Text('Share Link'),
+                          icon: const Icon(Icons.share),
+                          label: const Text('Share Link'),
                           onPressed: () => Share.share(detailedMessage),
                         )
                       : Container(),
                   referralLink != null
                       ? ElevatedButton.icon(
-                          icon: Icon(FontAwesomeIcons.whatsapp),
-                          label: Text('WhatsApp'),
+                          icon: const Icon(FontAwesomeIcons.whatsapp),
+                          label: const Text('WhatsApp'),
                           onPressed: () => shareToWhatsApp(detailedMessage),
                         )
                       : Container(),
                   ElevatedButton.icon(
-                    icon: Icon(
+                    icon: const Icon(
                       Icons.video_library,
                       color: Colors.white,
                     ),
-                    label: Text('Watch Referral Tutorial',
+                    label: const Text('Watch Referral Tutorial',
                         style: TextStyle(color: Colors.white)),
                     onPressed: () =>
                         Navigator.of(context).push(MaterialPageRoute(
@@ -318,14 +325,15 @@ class _SharePageState extends State<SharePage> {
                           title: 'How the referral works'),
                     )),
                     style: ElevatedButton.styleFrom(
-                      primary: Colors.green, // Optional: Customize button color
+                      backgroundColor:
+                          Colors.green, // Optional: Customize button color
                     ),
                   ),
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: InkWell(
                       onTap: () => _launchURL(termsUrl),
-                      child: Text(
+                      child: const Text(
                         "Terms and Conditions",
                         style: TextStyle(
                             color: Colors.blue,

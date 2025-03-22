@@ -184,17 +184,20 @@ class MessagingNotificationService {
   }
 
   Future<void> deductBalance(String merchantId, double cost) async {
-    DocumentReference merchantRef =
-        firestore.collection('users').doc(merchantId);
+    DocumentReference walletRef = firestore
+        .collection('users')
+        .doc(merchantId)
+        .collection('wallet')
+        .doc('current');
 
     await firestore.runTransaction((transaction) async {
-      DocumentSnapshot snapshot = await transaction.get(merchantRef);
+      DocumentSnapshot snapshot = await transaction.get(walletRef);
       if (!snapshot.exists) return;
 
       double currentBalance = (snapshot['virtualBalance'] ?? 0).toDouble();
       double newBalance = currentBalance - cost;
 
-      transaction.update(merchantRef, {'virtualBalance': newBalance});
+      transaction.update(walletRef, {'virtualBalance': newBalance});
     });
   }
 
