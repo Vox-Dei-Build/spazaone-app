@@ -9,7 +9,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
     extends StatelessWidget {
   final T viewModel;
 
-  ProductSelectionWidget({required this.viewModel});
+  const ProductSelectionWidget({super.key, required this.viewModel});
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +33,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
             onTap: () async {
               await showSearch<Product?>(
                 context: context,
-                delegate: ProductSearchDelegate(
-                  viewModel: viewModel,
-                ),
+                delegate: ProductSearchDelegate(viewModel: viewModel),
               );
             },
           ),
@@ -46,13 +44,20 @@ class ProductSelectionWidget<T extends TransactionViewModel>
             children: [
               ...viewModel.paginatedSelectedProducts.map(
                 (entry) {
+                  final product = viewModel.products.firstWhere(
+                    (product) => product.id == entry.key,
+                    orElse: () => Product(name: 'Unknown Product'),
+                  );
+
+                  final productName = formatStringToCamelCase(
+                    product.name ?? 'Unnamed Product',
+                  );
+
                   return Row(
                     children: [
                       Expanded(
                         child: Text(
-                          formatStringToCamelCase(viewModel.products
-                              .firstWhere((product) => product.id == entry.key)
-                              .name!),
+                          productName,
                           style: TextStyle(
                               fontSize: SizeConfig.textMultiplier * 2),
                         ),
@@ -82,7 +87,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                   );
                 },
               ),
-              Container(
+              SizedBox(
                 height: SizeConfig.heightMultiplier * 4,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

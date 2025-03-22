@@ -38,42 +38,44 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
     return Scaffold(
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  if (walletViewModel.editingDocumentId == null) ...[
-                    Text(
-                      "You haven't added any banking details yet.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: Colors.red,
-                          fontSize: SizeConfig.textMultiplier * 1.5),
-                    ),
-                  ] else ...[
-                    _bankingDetailsSummary(walletViewModel),
-                  ],
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  CustomButton(
-                    title: 'Add / Edit Banking Details',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AddBankingDetailsPage(
-                            walletViewModel: walletViewModel,
+          : SingleChildScrollView(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    if (walletViewModel.editingDocumentId == null) ...[
+                      Text(
+                        "You haven't added any banking details yet.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Colors.red,
+                            fontSize: SizeConfig.textMultiplier * 1.5),
+                      ),
+                    ] else ...[
+                      _bankingDetailsSummary(walletViewModel),
+                    ],
+                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    CustomButton(
+                      title: 'Add / Edit Banking Details',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AddBankingDetailsPage(
+                              walletViewModel: walletViewModel,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    color: Colors.blue,
-                    icon: Icons.add,
-                    fontSize: SizeConfig.textMultiplier * 2,
-                    width: SizeConfig.imageSizeMultiplier * 65,
-                  ),
-                ],
+                        );
+                      },
+                      color: Colors.blue,
+                      icon: Icons.add,
+                      fontSize: SizeConfig.textMultiplier * 2,
+                      width: SizeConfig.imageSizeMultiplier * 65,
+                    ),
+                  ],
+                ),
               ),
             ),
     );
@@ -84,7 +86,7 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+        padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1.5),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

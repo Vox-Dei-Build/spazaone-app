@@ -254,7 +254,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       child: ListTile(
         leading: const Icon(Icons.warning, color: Colors.red),
         title: Text(
-            "💸 Repayment Due: ${CurrencyUtil.format(walletState.cashAdvanceBalance * 1.1)}",
+            "💸 Repayment Due: ${CurrencyUtil.format(walletState.cashAdvanceWithdrawn * 1.1)}",
             style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6)),
         trailing: TextButton(
           onPressed: () => _showRepaymentBottomSheet(context, walletState),
@@ -293,7 +293,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               SizedBox(height: SizeConfig.heightMultiplier * 2),
               _infoRow('Amount Due',
-                  CurrencyUtil.format(walletState.cashAdvanceBalance * 1.1)),
+                  CurrencyUtil.format(walletState.cashAdvanceWithdrawn * 1.1)),
               _infoRow(
                   'Penalty',
                   walletState.penaltyFee > 0
@@ -310,7 +310,6 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
               SizedBox(height: SizeConfig.heightMultiplier * 2),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
