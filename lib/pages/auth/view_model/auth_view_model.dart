@@ -354,77 +354,75 @@ class AuthViewModel with ChangeNotifier {
     if (user == null) return;
 
     try {
+      // Set root user details
       await _firestore.collection('users').doc(user.uid).set({
         'name': nameController.text,
         'shopName': shopNameController.text,
         'mobileNumber': registrationMobileNoController.text,
-        'virtualBalance': 15.0,
-        'cashAdvanceBalance': 0.0,
-        'cashAdvanceWithdrawn': 0.0,
-        'cashAdvanceDueDate': null,
-        'penaltyFee': 0.0,
-        'accountSuspended': false,
-        'totalCashAdvanceGiven': 0.0,
-        'totalCashAdvanceRepaid': 0.0,
-        'repaymentHistory': [
-          {
-            'date': DateTime.now().toIso8601String(), // ✅ Use ISO date format
-            'amount': 0.0,
-            'method': "N/A",
-            'status': "N/A",
-            'reference': "N/A"
-          }
-        ],
         'referralCount': 0,
-        'referrerUserId': referrerUserId ?? ""
-      }, SetOptions(merge: true)); // Ensures existing data is merged
+        'referrerUserId': referrerUserId ?? "",
+      }, SetOptions(merge: true));
+
+      // DRY ✅ create wallet doc
+      await _createInitialWallet(user.uid);
 
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (error) {
-      print("Error storing user details after linking: ${error.toString()}");
-      showErrorSnackBar(
-          context, "Error storing user details: ${error.toString()}");
+      print("Error storing user details after linking: $error");
+      showErrorSnackBar(context, "Error storing user details: $error");
     }
   }
 
   Future<void> _storeUserDetails(BuildContext context, User user,
       {String? referrerUserId}) async {
     try {
-      Map<String, dynamic> userData = {
+      final Map<String, dynamic> userData = {
         'name': nameController.text,
         'shopName': shopNameController.text,
         'mobileNumber': registrationMobileNoController.text,
-        'virtualBalance': 15.0,
-        'cashAdvanceBalance': 0.0,
-        'cashAdvanceWithdrawn': 0.0,
-        'cashAdvanceDueDate': null,
-        'penaltyFee': 0.0,
-        'accountSuspended': false,
-        'totalCashAdvanceGiven': 0.0,
-        'totalCashAdvanceRepaid': 0.0,
-        'repaymentHistory': [
-          {
-            'date': DateTime.now().toIso8601String(), // ✅ Use ISO date format
-            'amount': 0.0,
-            'method': "N/A",
-            'status': "N/A",
-            'reference': "N/A"
-          }
-        ],
         'referralCount': 0,
       };
 
-      // Include referrerUserId if not null
       if (referrerUserId != null) {
         userData['referrerUserId'] = referrerUserId;
       }
 
       await _firestore.collection('users').doc(user.uid).set(userData);
+
+      // DRY ✅ create wallet doc
+      await _createInitialWallet(user.uid);
     } catch (error) {
-      print("Error storing user details: ${error.toString()}");
-      showErrorSnackBar(
-          context, "Error storing user details: ${error.toString()}");
+      print("Error storing user details: $error");
+      showErrorSnackBar(context, "Error storing user details: $error");
     }
+  }
+
+  /// 🧠 DRY: Shared helper to create initial wallet doc
+  Future<void> _createInitialWallet(String userId) async {
+    await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('wallet')
+        .doc('current')
+        .set({
+      'virtualBalance': 15.0,
+      'cashAdvanceBalance': 0.0,
+      'cashAdvanceWithdrawn': 0.0,
+      'cashAdvanceDueDate': null,
+      'penaltyFee': 0.0,
+      'accountSuspended': false,
+      'totalCashAdvanceGiven': 0.0,
+      'totalCashAdvanceRepaid': 0.0,
+      'repaymentHistory': [
+        {
+          'date': DateTime.now().toIso8601String(),
+          'amount': 0.0,
+          'method': "N/A",
+          'status': "N/A",
+          'reference': "N/A"
+        }
+      ]
+    });
   }
 
   Future<void> clearDeepLinkData() async {

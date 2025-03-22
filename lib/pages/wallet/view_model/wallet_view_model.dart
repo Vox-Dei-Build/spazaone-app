@@ -84,11 +84,13 @@ class WalletViewModel {
 
   // Initialization
   void _initWalletState() {
-    FirebaseFirestore.instance
+    final walletDocRef = FirebaseFirestore.instance
         .collection('users')
         .doc(userId)
-        .snapshots()
-        .listen((snapshot) async {
+        .collection('wallet')
+        .doc('current');
+
+    walletDocRef.snapshots().listen((snapshot) async {
       final data = snapshot.data();
 
       final balance = data?['virtualBalance']?.toDouble() ?? 0.0;
@@ -110,7 +112,6 @@ class WalletViewModel {
       final hasBankAccount = await hasBankingDetails(userId);
       final hasPendingPayout = await hasPendingOrProcessingPayout();
 
-      // 🆕 Safe handling of repayment history (Handles both Timestamp and String)
       final repaymentHistory =
           (data?['repaymentHistory'] as List<dynamic>?)?.map((entry) {
                 return {
@@ -144,8 +145,8 @@ class WalletViewModel {
   static WalletState fromFirestore(Map<String, dynamic> data) {
     return WalletState(
       balance: (data['virtualBalance'] ?? 0.0).toDouble(),
-      hasBankAccount: false, // You'll fetch this separately
-      hasPendingPayout: false, // You'll fetch this separately
+      hasBankAccount: false,
+      hasPendingPayout: false,
       cashAdvanceBalance: (data['cashAdvanceBalance'] ?? 0.0).toDouble(),
       cashAdvanceWithdrawn: (data['cashAdvanceWithdrawn'] ?? 0.0).toDouble(),
       penaltyFee: (data['penaltyFee'] ?? 0.0).toDouble(),
@@ -158,11 +159,9 @@ class WalletViewModel {
           (data['totalCashAdvanceRepaid'] ?? 0.0).toDouble(),
       repaymentHistory: (data['repaymentHistory'] as List<dynamic>? ?? [])
           .map((item) {
-            if (item['date'] is Timestamp) {
-              item['date'] = (item['date'] as Timestamp).toDate();
-            } else if (item['date'] is String) {
-              item['date'] = DateTime.tryParse(item['date']) ?? DateTime.now();
-            }
+            item['date'] = item['date'] is Timestamp
+                ? (item['date'] as Timestamp).toDate()
+                : DateTime.tryParse(item['date']) ?? DateTime.now();
             return item;
           })
           .cast<Map<String, dynamic>>()
@@ -184,9 +183,9 @@ class WalletViewModel {
         'repaymentStatus': 'pending'
       });
 
-      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+      /*  await FirebaseFirestore.instance.collection('users').doc(userId).update({
         'cashAdvanceBalance': FieldValue.increment(-amount),
-      });
+      }); */
 
       showSnackbar(
           context, 'Payout request submitted successfully', Colors.green);
@@ -255,19 +254,24 @@ class WalletViewModel {
     }
   }
 
-  /// 🔥 Transfer money from Cash Advance to Virtual Balance
+  /// 🔥 Transfer money from Cash Advance to Virtual Balance using wallet subcollection
   Future<void> transferToVirtualBalance(
       BuildContext context, double amount) async {
-    DocumentReference userRef = firestore.collection('users').doc(userId);
+    final walletRef = firestore
+        .collection('users')
+        .doc(userId)
+        .collection('wallet')
+        .doc('current');
 
     await firestore.runTransaction((transaction) async {
-      DocumentSnapshot userSnapshot = await transaction.get(userRef);
-      if (!userSnapshot.exists) return;
+      final walletSnapshot = await transaction.get(walletRef);
+      if (!walletSnapshot.exists) return;
 
-      double virtualBalance =
-          (userSnapshot['virtualBalance'] ?? 0.0).toDouble();
+      final data = walletSnapshot.data();
+
+      double virtualBalance = (data?['virtualBalance'] ?? 0.0).toDouble();
       double cashAdvanceBalance =
-          (userSnapshot['cashAdvanceBalance'] ?? 0.0).toDouble();
+          (data?['cashAdvanceBalance'] ?? 0.0).toDouble();
 
       if (cashAdvanceBalance < amount) {
         showSnackbar(
@@ -278,7 +282,7 @@ class WalletViewModel {
       double newVirtualBalance = virtualBalance + amount;
       double newCashAdvanceBalance = cashAdvanceBalance - amount;
 
-      transaction.update(userRef, {
+      transaction.update(walletRef, {
         'virtualBalance': newVirtualBalance,
         'cashAdvanceBalance': newCashAdvanceBalance,
       });
