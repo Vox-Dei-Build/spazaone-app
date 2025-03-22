@@ -25,6 +25,7 @@ class LedgerViewModel with ChangeNotifier {
     });
   }
 
+  @override
   void dispose() {
     searchTextNotifier.dispose();
     hasCustomersNotifier.dispose();

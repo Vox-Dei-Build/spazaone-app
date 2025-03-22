@@ -65,98 +65,100 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
         final walletState = snapshot.data!;
         final double cashAdvanceBalance = walletState.cashAdvanceBalance;
 
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
+        return SingleChildScrollView(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
 
-              CustomButton(
-                title: 'Pay Back Now',
-                onTap: () => walletVM.sendRepaymentWhatsAppMessage(context),
-                color: Colors.green,
-                icon: Icons.payment,
-                fontSize: SizeConfig.textMultiplier * 2,
-                width: SizeConfig.imageSizeMultiplier * 60,
-              ),
-
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
-
-              CustomButton(
-                title: 'Get Cash Advance',
-                onTap: () =>
-                    walletVM.requestCashAdvance(context, amount: 500.0),
-                color: Colors.blue,
-                icon: Icons.account_balance_wallet_sharp,
-                fontSize: SizeConfig.textMultiplier * 2,
-                width: SizeConfig.imageSizeMultiplier * 60,
-              ),
-
-              SizedBox(height: SizeConfig.heightMultiplier * 2), // Spacing
-
-              CustomButton(
-                title: 'View Terms',
-                onTap: () => _showTermsSheet(context),
-                color: Colors.blue,
-                icon: Icons.receipt,
-                fontSize: SizeConfig.textMultiplier * 2,
-                width: SizeConfig.imageSizeMultiplier * 60,
-              ),
-
-              SizedBox(height: SizeConfig.heightMultiplier * 2), // Spacing
-
-              CustomButton(
-                title: 'View Full Report',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          FullRepaymentReportPage(walletState: walletState),
-                    ),
-                  );
-                },
-                color: Colors.blue,
-                icon: Icons.receipt_long,
-                fontSize: SizeConfig.textMultiplier * 2,
-                width: SizeConfig.imageSizeMultiplier * 60,
-              ),
-
-              SizedBox(height: SizeConfig.heightMultiplier * 2), // Spacing
-
-              if (FeatureFlags.enableMoveFunds) ...[
-                ElevatedButton(
-                  onPressed: cashAdvanceBalance > 0
-                      ? () => walletVM.transferToVirtualBalance(
-                          context, cashAdvanceBalance)
-                      : null, // 🔥 Disables button when balance is 0
-
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: cashAdvanceBalance > 0
-                        ? Colors.blue // 🔹 Active State
-                        : Colors.grey.shade400, // 🔹 Disabled State (Muted)
-
-                    padding: EdgeInsets.symmetric(
-                        vertical: SizeConfig.heightMultiplier * 1.5,
-                        horizontal: SizeConfig.imageSizeMultiplier * 5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Move Funds to App',
-                    style: TextStyle(
-                      color: Colors.white, // 🔹 Muted text if disabled
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                CustomButton(
+                  title: 'Pay Back Now',
+                  onTap: () => walletVM.sendRepaymentWhatsAppMessage(context),
+                  color: Colors.green,
+                  icon: Icons.payment,
+                  fontSize: SizeConfig.textMultiplier * 2,
+                  width: SizeConfig.imageSizeMultiplier * 60,
                 ),
-              ],
 
-              SizedBox(
-                  height: SizeConfig.heightMultiplier *
-                      3), // Extra spacing at bottom
-            ],
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+
+                CustomButton(
+                  title: 'Get Cash Advance',
+                  onTap: () =>
+                      walletVM.requestCashAdvance(context, amount: 500.0),
+                  color: Colors.blue,
+                  icon: Icons.account_balance_wallet_sharp,
+                  fontSize: SizeConfig.textMultiplier * 2,
+                  width: SizeConfig.imageSizeMultiplier * 60,
+                ),
+
+                SizedBox(height: SizeConfig.heightMultiplier * 2), // Spacing
+
+                CustomButton(
+                  title: 'View Terms',
+                  onTap: () => _showTermsSheet(context),
+                  color: Colors.blue,
+                  icon: Icons.receipt,
+                  fontSize: SizeConfig.textMultiplier * 2,
+                  width: SizeConfig.imageSizeMultiplier * 60,
+                ),
+
+                SizedBox(height: SizeConfig.heightMultiplier * 2), // Spacing
+
+                CustomButton(
+                  title: 'View Full Report',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            FullRepaymentReportPage(walletState: walletState),
+                      ),
+                    );
+                  },
+                  color: Colors.blue,
+                  icon: Icons.receipt_long,
+                  fontSize: SizeConfig.textMultiplier * 2,
+                  width: SizeConfig.imageSizeMultiplier * 60,
+                ),
+
+                SizedBox(height: SizeConfig.heightMultiplier * 2), // Spacing
+
+                if (FeatureFlags.enableMoveFunds) ...[
+                  ElevatedButton(
+                    onPressed: cashAdvanceBalance > 0
+                        ? () => walletVM.transferToVirtualBalance(
+                            context, cashAdvanceBalance)
+                        : null, // 🔥 Disables button when balance is 0
+
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cashAdvanceBalance > 0
+                          ? Colors.blue // 🔹 Active State
+                          : Colors.grey.shade400, // 🔹 Disabled State (Muted)
+
+                      padding: EdgeInsets.symmetric(
+                          vertical: SizeConfig.heightMultiplier * 1.5,
+                          horizontal: SizeConfig.imageSizeMultiplier * 5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Move Funds to App',
+                      style: TextStyle(
+                        color: Colors.white, // 🔹 Muted text if disabled
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+
+                SizedBox(
+                    height: SizeConfig.heightMultiplier *
+                        3), // Extra spacing at bottom
+              ],
+            ),
           ),
         );
       },

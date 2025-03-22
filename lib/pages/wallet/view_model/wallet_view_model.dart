@@ -141,6 +141,35 @@ class WalletViewModel {
     });
   }
 
+  static WalletState fromFirestore(Map<String, dynamic> data) {
+    return WalletState(
+      balance: (data['virtualBalance'] ?? 0.0).toDouble(),
+      hasBankAccount: false, // You'll fetch this separately
+      hasPendingPayout: false, // You'll fetch this separately
+      cashAdvanceBalance: (data['cashAdvanceBalance'] ?? 0.0).toDouble(),
+      cashAdvanceWithdrawn: (data['cashAdvanceWithdrawn'] ?? 0.0).toDouble(),
+      penaltyFee: (data['penaltyFee'] ?? 0.0).toDouble(),
+      accountSuspended: data['accountSuspended'] ?? false,
+      cashAdvanceDueDate: data['cashAdvanceDueDate'] is Timestamp
+          ? (data['cashAdvanceDueDate'] as Timestamp).toDate()
+          : null,
+      totalCashAdvanceGiven: (data['totalCashAdvanceGiven'] ?? 0.0).toDouble(),
+      totalCashAdvanceRepaid:
+          (data['totalCashAdvanceRepaid'] ?? 0.0).toDouble(),
+      repaymentHistory: (data['repaymentHistory'] as List<dynamic>? ?? [])
+          .map((item) {
+            if (item['date'] is Timestamp) {
+              item['date'] = (item['date'] as Timestamp).toDate();
+            } else if (item['date'] is String) {
+              item['date'] = DateTime.tryParse(item['date']) ?? DateTime.now();
+            }
+            return item;
+          })
+          .cast<Map<String, dynamic>>()
+          .toList(),
+    );
+  }
+
   Future<void> requestPayout(BuildContext context, double amount) async {
     isProcessingPayoutRequest.value = true;
     try {
@@ -271,14 +300,6 @@ class WalletViewModel {
   /// Request a Cash Advance via WhatsApp
   Future<void> requestCashAdvance(BuildContext context,
       {double amount = 500.0}) async {
-    final String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User not authenticated')),
-      );
-      return;
-    }
-
     try {
       // Fetch merchant details
       final String? merchantName = await fetchNameForUser(userId);

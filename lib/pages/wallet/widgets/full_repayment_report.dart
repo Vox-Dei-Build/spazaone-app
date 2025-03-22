@@ -42,7 +42,7 @@ class _FullRepaymentReportPage extends State<FullRepaymentReportPage> {
             _infoRow('Total Repaid',
                 CurrencyUtil.format(walletState.totalCashAdvanceRepaid)),
             _infoRow('Current Due',
-                CurrencyUtil.format(walletState.cashAdvanceBalance * 1.1)),
+                CurrencyUtil.format(walletState.cashAdvanceWithdrawn * 1.1)),
             _infoRow(
                 'Penalty Applied', CurrencyUtil.format(walletState.penaltyFee)),
             _infoRow('Suspension Status',
@@ -62,7 +62,9 @@ class _FullRepaymentReportPage extends State<FullRepaymentReportPage> {
                     margin: EdgeInsets.only(
                         bottom: SizeConfig.heightMultiplier * 1.5),
                     child: ListTile(
-                      title: Text(CurrencyUtil.format(repayment['amount']),
+                      title: Text(
+                          CurrencyUtil.format(
+                              (repayment['amount'] as num).toDouble()),
                           style: TextStyle(
                             fontSize: SizeConfig.textMultiplier * 1.8,
                             fontWeight: FontWeight.bold,
