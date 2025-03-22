@@ -18,9 +18,14 @@ class BalanceCheckUtil {
     // 🔹 Fetch Merchant's Balance
     final firestore = FirebaseFirestore.instance;
 
-    DocumentSnapshot merchantSnapshot =
-        await firestore.collection('users').doc(merchantId).get();
-    double balance = (merchantSnapshot['virtualBalance'] ?? 0).toDouble();
+    DocumentSnapshot walletSnapshot = await firestore
+        .collection('users')
+        .doc(merchantId)
+        .collection('wallet')
+        .doc('current')
+        .get();
+
+    double balance = (walletSnapshot['virtualBalance'] ?? 0).toDouble();
 
     if (balance >= messageCost) {
       return true; // ✅ Enough balance, proceed
@@ -35,10 +40,15 @@ class BalanceCheckUtil {
   static Future<bool> hasSufficientBalance(
       String merchantId, double cost) async {
     final firestore = FirebaseFirestore.instance;
-    DocumentSnapshot merchantSnapshot =
-        await firestore.collection('users').doc(merchantId).get();
 
-    double balance = (merchantSnapshot['virtualBalance'] ?? 0).toDouble();
+    DocumentSnapshot walletSnapshot = await firestore
+        .collection('users')
+        .doc(merchantId)
+        .collection('wallet')
+        .doc('current')
+        .get();
+
+    double balance = (walletSnapshot['virtualBalance'] ?? 0).toDouble();
 
     return balance >= cost;
   }

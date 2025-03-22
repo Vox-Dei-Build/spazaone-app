@@ -23,11 +23,11 @@ class Dashboard extends StatelessWidget {
       );
     }
 
+    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
+    final walletRef = userRef.collection('wallet').doc('current');
+
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .snapshots(),
+      stream: walletRef.snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
@@ -36,10 +36,17 @@ class Dashboard extends StatelessWidget {
         }
 
         final data = snapshot.data?.data() as Map<String, dynamic>?;
-        final isSuspended = data?['accountSuspended'] ?? false;
+
+        if (data == null) {
+          return const Scaffold(
+            body: Center(child: Text("Wallet data not found.")),
+          );
+        }
+
+        final isSuspended = data['accountSuspended'] ?? false;
 
         if (isSuspended) {
-          final walletState = WalletViewModel.fromFirestore(data!);
+          final walletState = WalletViewModel.fromFirestore(data);
           return SuspensionPaywall(walletState: walletState);
         }
 
