@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
-import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/utils/wallet_utils.dart';
 
 class SuspensionPaywall extends StatelessWidget {
   final WalletState walletState;
@@ -12,8 +12,6 @@ class SuspensionPaywall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalDue =
-        walletState.cashAdvanceWithdrawn * 1.1 + walletState.penaltyFee;
     final WalletViewModel walletVM = WalletViewModel();
 
     return Scaffold(
@@ -45,13 +43,40 @@ class SuspensionPaywall extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 30),
-              _infoTile('Amount Due',
-                  CurrencyUtil.format(walletState.cashAdvanceWithdrawn * 1.1)),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateAdvanceFee(walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoTile('Fee Charged', value);
+                },
+              ),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateAmountDue(walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoTile('Amount Due', value);
+                },
+              ),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateBankFee(walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoTile('Bank Fee', value);
+                },
+              ),
               _infoTile(
-                  'Penalty Fee', CurrencyUtil.format(walletState.penaltyFee)),
+                  'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
               const Divider(height: 32, thickness: 1),
-              _infoTile('Total Owed', CurrencyUtil.format(totalDue),
-                  isBold: true),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
+                    walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoTile('Total Owed', value, isBold: true);
+                },
+              ),
+              _infoTile(
+                  'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
               const Spacer(),
               CustomButton(
                 title: 'Pay Back Now',

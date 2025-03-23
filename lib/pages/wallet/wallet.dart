@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
 import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
@@ -11,6 +10,7 @@ import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
+import 'package:pasella/utils/wallet_utils.dart';
 
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
@@ -241,9 +241,15 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       color: Colors.red.shade50,
       child: ListTile(
         leading: const Icon(Icons.warning, color: Colors.red),
-        title: Text(
-            "💸 Repayment Due: ${CurrencyUtil.format(walletState.cashAdvanceWithdrawn * 1.1)}",
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6)),
+        title: FutureBuilder<String>(
+          future:
+              WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
+          builder: (context, snapshot) {
+            final due = snapshot.data ?? '...';
+            return Text("💸 Repayment Due: $due",
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6));
+          },
+        ),
         trailing: TextButton(
           onPressed: () => _showRepaymentBottomSheet(context, walletState),
           child: const Text("View", style: TextStyle(color: Colors.red)),
@@ -277,24 +283,38 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                 ),
               ),
               SizedBox(height: SizeConfig.heightMultiplier * 2),
-              const Text('Repayment Details',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text('Repayment Details',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: SizeConfig.textMultiplier * 2)),
               SizedBox(height: SizeConfig.heightMultiplier * 2),
-              _infoRow('Amount Due',
-                  CurrencyUtil.format(walletState.cashAdvanceWithdrawn * 1.1)),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateAdvanceFee(walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoRow('Fee Charged', value);
+                },
+              ),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateBankFee(walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoRow('Bank Fee', value);
+                },
+              ),
               _infoRow(
-                  'Penalty',
-                  walletState.penaltyFee > 0
-                      ? CurrencyUtil.format(walletState.penaltyFee)
-                      : 'No penalty'),
+                  'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
+                    walletState),
+                builder: (context, snapshot) {
+                  final due = snapshot.data ?? '...';
+                  return _infoRow('Amount Due', due);
+                },
+              ),
+              _infoRow('Due Date', WalletUtils.formatDueDate(walletState)),
               _infoRow(
-                  'Due Date',
-                  walletState.cashAdvanceDueDate != null
-                      ? DateFormat('dd MMM yyyy')
-                          .format(walletState.cashAdvanceDueDate!)
-                      : 'Not Set'),
-              _infoRow(
-                  'Suspended', walletState.accountSuspended ? 'Yes' : 'No'),
+                  'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
               SizedBox(height: SizeConfig.heightMultiplier * 2),
               ElevatedButton(
                 onPressed: () {

@@ -17,6 +17,8 @@ import 'package:pasella/pages/settings/chat/chat_page.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
+import 'package:pasella/templates/sms_message.dart';
+import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -160,6 +162,9 @@ void main() async {
     if (kReleaseMode) {
       await _initializeRemoteConfigAndSmartlook();
     }
+
+    await FeatureFlags.loadFlags();
+    await SMSMessages.loadTemplates();
 
     await Hive.initFlutter();
     Hive.registerAdapter(QueuedSMSAdapter());
