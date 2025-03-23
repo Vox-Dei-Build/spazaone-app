@@ -8,6 +8,7 @@ import 'package:pasella/pages/settings/widgets/setting_tile.dart';
 import 'package:pasella/config/size_config.dart';
 
 import '../../shared/widgets/custom_app_bar.dart';
+import 'share/share.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -40,6 +41,15 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.help,
                           title: 'Help',
                           subTitle: 'FAQs, contact us, privacy policy',
+                        ),
+                        SettingTile(
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            SharePage.id,
+                          ),
+                          icon: Icons.share,
+                          title: 'Share',
+                          subTitle: 'Share with others and get rewards',
                         ),
                         SettingTile(
                           onTap: () async {

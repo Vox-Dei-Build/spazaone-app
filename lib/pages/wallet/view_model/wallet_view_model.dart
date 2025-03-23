@@ -84,7 +84,7 @@ class WalletViewModel {
 
   // Initialization
   void _initWalletState() {
-    final walletDocRef = FirebaseFirestore.instance
+    final walletDocRef = firestore
         .collection('users')
         .doc(userId)
         .collection('wallet')
@@ -169,6 +169,101 @@ class WalletViewModel {
     );
   }
 
+  Future<List<Map<String, dynamic>>> fetchMergedTransactionHistory() async {
+    try {
+      const int limitCount = 20;
+      print(
+          '📥 [fetchMergedTransactionHistory] Starting with limit: $limitCount');
+
+      print('📡 Fetching top-up transactions...');
+      final transactionsFuture = firestore
+          .collection('users')
+          .doc(userId)
+          .collection('topUpTransactions')
+          .orderBy('createdAt', descending: true)
+          .limit(limitCount)
+          .get();
+
+      print('📡 Fetching customer notifications...');
+      final notificationsFuture = firestore
+          .collection('notifications')
+          .doc(userId)
+          .collection('customer_notifications')
+          .orderBy('timestamp', descending: true)
+          .limit(limitCount)
+          .get();
+
+      print('📡 Fetching payout requests...');
+      final payoutsFuture = firestore
+          .collection('payoutRequests')
+          .where('merchantId', isEqualTo: userId)
+          .orderBy('requestedOn', descending: true)
+          .limit(limitCount)
+          .get();
+
+      // Fetch all in parallel
+      final results = await Future.wait([
+        transactionsFuture,
+        notificationsFuture,
+        payoutsFuture,
+      ]);
+
+      final transactionsSnap = results[0];
+      final notificationsSnap = results[1];
+      final payoutSnap = results[2];
+
+      print('✅ Top-ups fetched: ${transactionsSnap.docs.length}');
+      print('✅ Notifications fetched: ${notificationsSnap.docs.length}');
+      print('✅ Payouts fetched: ${payoutSnap.docs.length}');
+
+      final mergedList = <Map<String, dynamic>>[];
+
+      for (var tx in transactionsSnap.docs) {
+        mergedList.add({
+          'type': 'top-up',
+          'amount': (tx['amount'] as num?) ?? 0,
+          'timestamp':
+              (tx['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+        });
+      }
+
+      for (var notification in notificationsSnap.docs) {
+        mergedList.add({
+          'type': 'message',
+          'message': notification['message'] ?? '',
+          'messageCost': (notification['messageCost'] as num?) ?? 0,
+          'phone': notification['customer_phone'] ?? '',
+          'timestamp': (notification['timestamp'] as Timestamp?)?.toDate() ??
+              DateTime.now(),
+        });
+      }
+
+      for (var payout in payoutSnap.docs) {
+        final data = payout.data();
+        mergedList.add({
+          'type': 'payout',
+          'amount': (data['amount'] as num?) ?? 0,
+          'status': data['payoutStatus'] ?? 'Unknown',
+          'timestamp':
+              (data['requestedOn'] as Timestamp?)?.toDate() ?? DateTime.now(),
+        });
+      }
+
+      print('🔄 Sorting merged list of ${mergedList.length} items...');
+      mergedList.sort((a, b) {
+        final aTime = a['timestamp'] as DateTime;
+        final bTime = b['timestamp'] as DateTime;
+        return bTime.compareTo(aTime);
+      });
+
+      print('✅ Merged transaction history ready. Total: ${mergedList.length}');
+      return mergedList;
+    } catch (e, st) {
+      print('🔥 Error fetching merged history: $e\n$st');
+      return [];
+    }
+  }
+
   Future<void> requestPayout(BuildContext context, double amount) async {
     isProcessingPayoutRequest.value = true;
     try {
@@ -183,12 +278,10 @@ class WalletViewModel {
         'repaymentStatus': 'pending'
       });
 
-      /*  await FirebaseFirestore.instance.collection('users').doc(userId).update({
-        'cashAdvanceBalance': FieldValue.increment(-amount),
-      }); */
-
       showSnackbar(
-          context, 'Payout request submitted successfully', Colors.green);
+          context,
+          'Payout request submitted successfully, we will notify you once transferred.',
+          Colors.green);
       Navigator.pushReplacementNamed(context, '/dashboard');
     } catch (e) {
       print('Error submitting payout request: $e');

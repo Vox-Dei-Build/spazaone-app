@@ -20,7 +20,7 @@ class ProductSection extends StatelessWidget {
         title: Text(
           title,
           style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 22,
+            fontSize: SizeConfig.textMultiplier * 2,
             fontWeight: FontWeight.bold,
           ),
         ),

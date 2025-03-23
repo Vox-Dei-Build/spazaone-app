@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/wallet/tabs/balance_payout_tab.dart';
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
 import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
-import 'package:pasella/pages/wallet/tabs/histroy_tab.dart';
-import 'package:pasella/pages/wallet/tabs/payout_history_tab.dart';
 import 'package:pasella/pages/wallet/tabs/pricing_tab.dart';
 import 'package:pasella/pages/wallet/tabs/top_up_tab.dart';
+import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
@@ -47,10 +45,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       FeatureFlags.enableTopUp,
       FeatureFlags.enableCashAdvance,
       FeatureFlags.enableTransactionHistory,
-      FeatureFlags.enableBalancePayout,
       FeatureFlags.enableBankingDetails,
       FeatureFlags.enablePricingInfo,
-      FeatureFlags.enablePayoutHistory
     ].where((enabled) => enabled).length;
   }
 
@@ -70,9 +66,11 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       tabViews.add(const CashAdvanceTab());
     }
 
-    if (FeatureFlags.enableBalancePayout) {
-      tabLabels.add(const Tab(text: 'Withdraw'));
-      tabViews.add(const BalancePayoutTab());
+    if (FeatureFlags.enableTransactionHistory) {
+      tabLabels.add(const Tab(text: 'Transaction History'));
+      tabViews.add(UnifiedHistoryTab(
+        viewModel: walletVM,
+      ));
     }
 
     if (FeatureFlags.enableBankingDetails) {
@@ -80,18 +78,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       tabViews.add(const BankingDetailsTab());
     }
 
-    if (FeatureFlags.enableTransactionHistory) {
-      tabLabels.add(const Tab(text: 'Transaction History'));
-      tabViews.add(const TransactionHistoryTab());
-    }
-
-    if (FeatureFlags.enablePayoutHistory) {
-      tabLabels.add(const Tab(text: 'Payout History'));
-      tabViews.add(const PayoutHistoryTab());
-    }
-
     if (FeatureFlags.enablePricingInfo) {
-      tabLabels.add(const Tab(text: 'Pricing Info'));
+      tabLabels.add(const Tab(text: 'Info'));
       tabViews.add(const PricingInfoTab());
     }
 

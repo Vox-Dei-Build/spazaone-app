@@ -69,7 +69,7 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
                           ),
                         );
                       },
-                      color: Colors.blue,
+                      color: Colors.green,
                       icon: Icons.add,
                       fontSize: SizeConfig.textMultiplier * 2,
                       width: SizeConfig.imageSizeMultiplier * 65,
