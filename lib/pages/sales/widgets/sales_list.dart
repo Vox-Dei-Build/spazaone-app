@@ -89,8 +89,7 @@ class _SalesListState extends State<SalesList> {
                           .then((value) {
                         // Check if editing completed with a `true` response
                         if (value == true) {
-                          viewModel.updateSelectedPeriod(
-                              viewModel.selectedPeriod); // Refresh data
+                          viewModel.updateSelectedDate(DateTime.now());
                         }
                       });
                     },

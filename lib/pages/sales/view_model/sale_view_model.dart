@@ -31,29 +31,6 @@ class SalesViewModel extends TransactionViewModel {
 
   Stream<List<Sale>> get sales => _salesController!.stream;
 
-  Future<void> updateSelectedPeriod(String period) async {
-    selectedPeriod = period;
-
-    if (productsLoaded) {
-      if (period == 'Today') {
-        await _getSalesByDate(DateTime.now());
-      } else {
-        await _getSales(period); // Uses existing period-based logic
-      }
-    } else {
-      loadProducts().then((_) async {
-        productsLoaded = true;
-        if (period == 'Today') {
-          await _getSalesByDate(DateTime.now());
-        } else {
-          await _getSales(period);
-        }
-      });
-    }
-
-    notifyListeners();
-  }
-
   Future<void> updateSelectedDate(DateTime date) async {
     selectedPeriod = DateFormat('yyyy-MM-dd').format(date);
     await _getSalesByDate(date);
