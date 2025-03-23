@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/balance_summary_model.dart';
 import 'package:pasella/shared/widgets/balance_summary/balance_stats.dart';
-import 'package:pasella/shared/widgets/balance_summary/customer_stats.dart';
 import 'package:pasella/shared/widgets/balance_summary/net_balance.dart';
 
 class BalanceSummaryCardContent extends StatelessWidget {
@@ -40,10 +39,6 @@ class BalanceSummaryCardContent extends StatelessWidget {
               balanceColor: balanceColor,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
-            CustomerStats(
-              balanceSummary: balanceSummary,
-              balanceColor: balanceColor,
-            ),
             if (children != null) ...children,
           ],
         ),

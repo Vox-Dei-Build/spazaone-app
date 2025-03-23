@@ -142,7 +142,8 @@ class AddSale extends StatelessWidget {
                               : () async {
                                   await transactionViewModel
                                       .addSalesTransaction(context);
-                                  salesViewModel.updateSelectedPeriod('All');
+                                  salesViewModel
+                                      .updateSelectedDate(DateTime.now());
                                 },
                           color: Colors.green,
                           icon: Icons.money,

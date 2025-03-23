@@ -17,7 +17,6 @@ import 'package:pasella/pages/settings/chat/chat_page.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
-import 'package:pasella/shared/services/period_filter_services.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -220,9 +219,6 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => BalanceSummaryProvider()),
         ChangeNotifierProvider(
             create: (context) => CustomerBalanceSummaryProvider()),
-        ChangeNotifierProvider<PeriodFilterService>(
-          create: (context) => PeriodFilterService(),
-        ),
         ChangeNotifierProvider<LedgerViewModel>(
             create: (context) =>
                 LedgerViewModel(Provider.of<AppModel>(context, listen: false))),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/sales/widgets/add_sale.dart';
-import 'package:pasella/pages/sales/widgets/sales_calendar_view.dart';
+import 'package:pasella/pages/reports/widgets/report_calendar_view.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
@@ -93,13 +93,16 @@ class _SalesPageState extends State<SalesPage> {
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       const SalesPageHeader(),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      SalesCalendarView(
-                        viewModel: viewModel,
+                      ReportCalendarView(
                         selectedDay: _selectedDay,
                         startDate: _startDate,
                         endDate: _endDate,
                         onDateSelected: _onDateSelected,
                         onDateRangeSelected: _onDateRangeSelected,
+                        onInternalDateSelect: (date) =>
+                            viewModel.updateSelectedDate(date),
+                        onInternalRangeSelect: (start, end) =>
+                            viewModel.updateSelectedDateRange(start, end),
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 1.5),
                       SalesStatsCard(

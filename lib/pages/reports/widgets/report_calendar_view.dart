@@ -1,31 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 
-class SalesCalendarView extends StatefulWidget {
-  final SalesViewModel viewModel;
+class ReportCalendarView extends StatefulWidget {
+  final Function(DateTime) onDateSelected;
+  final Function(DateTime, DateTime) onDateRangeSelected;
   final DateTime? selectedDay;
   final DateTime? startDate;
   final DateTime? endDate;
-  final Function(DateTime) onDateSelected;
-  final Function(DateTime, DateTime) onDateRangeSelected;
+  final void Function(DateTime)? onInternalDateSelect;
+  final void Function(DateTime, DateTime)? onInternalRangeSelect;
 
-  const SalesCalendarView({
-    super.key,
-    required this.viewModel,
-    required this.selectedDay,
-    required this.startDate,
-    required this.endDate,
-    required this.onDateSelected,
-    required this.onDateRangeSelected,
-  });
+  const ReportCalendarView(
+      {super.key,
+      required this.onDateSelected,
+      required this.onDateRangeSelected,
+      required this.selectedDay,
+      required this.startDate,
+      required this.endDate,
+      this.onInternalDateSelect,
+      this.onInternalRangeSelect});
 
   @override
   _SalesCalendarViewState createState() => _SalesCalendarViewState();
 }
 
-class _SalesCalendarViewState extends State<SalesCalendarView> {
+class _SalesCalendarViewState extends State<ReportCalendarView> {
   late DateTime _focusedDay;
   CalendarFormat _calendarFormat = CalendarFormat.week;
 
@@ -46,8 +46,9 @@ class _SalesCalendarViewState extends State<SalesCalendarView> {
     );
 
     if (picked != null) {
-      widget.onDateRangeSelected(picked.start, picked.end);
-      widget.viewModel.updateSelectedDateRange(picked.start, picked.end);
+      widget.onDateRangeSelected(picked.start, picked.end); // updates UI state
+      widget.onInternalRangeSelect
+          ?.call(picked.start, picked.end); // triggers model update
     }
   }
 
@@ -72,6 +73,9 @@ class _SalesCalendarViewState extends State<SalesCalendarView> {
                   firstDay: DateTime(2020, 1, 1),
                   lastDay: DateTime.now(),
                   focusedDay: _focusedDay,
+                  rangeStartDay: widget.startDate,
+                  rangeEndDay: widget.endDate,
+                  rangeSelectionMode: RangeSelectionMode.toggledOn,
                   selectedDayPredicate: (day) =>
                       widget.selectedDay != null &&
                       isSameDay(widget.selectedDay!, day),
@@ -98,8 +102,11 @@ class _SalesCalendarViewState extends State<SalesCalendarView> {
                   ),
                   onDaySelected: (selectedDay, focusedDay) {
                     if (selectedDay.isAfter(DateTime.now())) return;
+                    setState(() {
+                      _focusedDay = selectedDay;
+                    });
                     widget.onDateSelected(selectedDay);
-                    widget.viewModel.updateSelectedDate(selectedDay);
+                    widget.onInternalDateSelect?.call(selectedDay);
                   },
                   onFormatChanged: (format) {
                     setState(() {
@@ -114,7 +121,7 @@ class _SalesCalendarViewState extends State<SalesCalendarView> {
 
         // Custom Date Range Selection Button
         Padding(
-          padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 1),
+          padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 0),
           child: ElevatedButton(
             onPressed: () => _pickCustomDateRange(context),
             child: const Text("Select Date Range"),
