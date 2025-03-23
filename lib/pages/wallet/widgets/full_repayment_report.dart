@@ -4,6 +4,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:pasella/utils/wallet_utils.dart';
 
 class FullRepaymentReportPage extends StatefulWidget {
   final WalletState walletState;
@@ -41,12 +42,32 @@ class _FullRepaymentReportPage extends State<FullRepaymentReportPage> {
                 CurrencyUtil.format(walletState.totalCashAdvanceGiven)),
             _infoRow('Total Repaid',
                 CurrencyUtil.format(walletState.totalCashAdvanceRepaid)),
-            _infoRow('Current Due',
-                CurrencyUtil.format(walletState.cashAdvanceWithdrawn * 1.1)),
+            FutureBuilder<String>(
+              future: WalletUtils.calculateAdvanceFee(walletState),
+              builder: (context, snapshot) {
+                final value = snapshot.data ?? '...';
+                return _infoRow('Fee Charged', value);
+              },
+            ),
+            FutureBuilder<String>(
+              future: WalletUtils.calculateBankFee(walletState),
+              builder: (context, snapshot) {
+                final value = snapshot.data ?? '...';
+                return _infoRow('Bank Fee', value);
+              },
+            ),
             _infoRow(
-                'Penalty Applied', CurrencyUtil.format(walletState.penaltyFee)),
-            _infoRow('Suspension Status',
-                walletState.accountSuspended ? 'Suspended' : 'Active'),
+                'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
+            FutureBuilder<String>(
+              future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
+                  walletState),
+              builder: (context, snapshot) {
+                final due = snapshot.data ?? '...';
+                return _infoRow('Current Due', due);
+              },
+            ),
+            _infoRow(
+                'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
             SizedBox(height: SizeConfig.heightMultiplier * 3),
             Text('Repayment History',
                 style: TextStyle(

@@ -48,10 +48,10 @@ class FirestoreService {
   // Check if the message matches one of the known merchant templates
   bool _isMerchantMessage(String message) {
     List<String> merchantTemplates = [
-      SMSMessages.creditConfirmationSMS,
-      SMSMessages.paymentConfirmationSMS,
-      SMSMessages.onboardingSMS,
-      SMSMessages.reminderSMS,
+      SMSMessages.creditConfirmationShort,
+      SMSMessages.paymentConfirmationShort,
+      SMSMessages.onboardingShort,
+      SMSMessages.reminderShort,
     ];
 
     return merchantTemplates

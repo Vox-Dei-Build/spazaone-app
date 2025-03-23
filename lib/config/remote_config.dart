@@ -49,4 +49,14 @@ class RemoteConfigService {
   String getString(String key) {
     return _remoteConfig.getString(key);
   }
+
+  double getDouble(String key, {double defaultValue = 0.0}) {
+    return _remoteConfig.getDouble(key) == 0.0
+        ? double.tryParse(_remoteConfig.getString(key)) ?? defaultValue
+        : _remoteConfig.getDouble(key);
+  }
+
+  bool getBool(String key, {bool defaultValue = false}) {
+    return _remoteConfig.getBool(key);
+  }
 }

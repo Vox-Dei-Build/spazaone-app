@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pasella/config/remote_config.dart';
+import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/phone_util.dart';
 
 class TwilioService {
@@ -29,21 +30,6 @@ class TwilioService {
         .doc(customerId)
         .get();
     return doc.exists ? doc.data() : null;
-  }
-
-  bool _isTemplateMessage(String messageText) {
-    List<String> templateKeywords = [
-      "your recent credit of", // Credit template
-      "your recent Credit of", // Credit template
-      "your payment of", // Payment template
-      "your recent Payment of", // Payment template
-      "your account with", // Onboarding template
-      "No more books!", // Onboarding template
-      "any late fees", // reminder template
-      "join the 98% of", // reminder template
-    ];
-
-    return templateKeywords.any((keyword) => messageText.contains(keyword));
   }
 
   /// ✅ Helper: Fetch merchant details from Firestore
@@ -132,7 +118,8 @@ class TwilioService {
         final isWhatsApp = message['isWhatsApp'] ?? false;
 
         bool isTemplateMessage = isWhatsApp
-            ? _isTemplateMessage(messageText) // WhatsApp template detection
+            ? SMSMessages.isTemplateMessage(
+                messageText) // WhatsApp template detection
             : true; // All SMS messages are templates
 
         if (isTemplateMessage) {

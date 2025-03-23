@@ -97,17 +97,26 @@ class MessagingNotificationService {
                   currentUserId, pricingService.whatsappUtilityPrice);
               await storeWhatsAppCheck(normalizedPhone, true);
               await storeNotification(
-                  currentUserId: currentUserId,
-                  customerId: customerId,
-                  message: message,
-                  phoneNumber: phoneNumber,
-                  customerDetails: {
-                    "customerName": customerName,
-                    "amount": amount,
-                    "shopName": shopName,
-                    "balance": formattedBalance,
-                  },
-                  messageCost: pricingService.whatsappUtilityPrice);
+                currentUserId: currentUserId,
+                customerId: customerId,
+                message: _generateRenderedMessage(message, {
+                  "customerName": customerName,
+                  "amount": amount,
+                  "shopName": shopName,
+                  "balance": formattedBalance,
+                }),
+                phoneNumber: phoneNumber,
+                customerDetails: {
+                  "customerName": customerName,
+                  "amount": amount,
+                  "shopName": shopName,
+                  "balance": formattedBalance,
+                },
+                messageCost: pricingService.whatsappUtilityPrice,
+                templateKey: templateSid,
+                templateType: 'whatsapp',
+              );
+
               eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
             } else {
               // If WhatsApp failed, store failure in Firestore
@@ -125,13 +134,15 @@ class MessagingNotificationService {
         await _sendSMSFallback(
             phoneNumber,
             message,
+            amount,
             formattedBalance,
             shopName,
             customerName,
             inAppNotificationMessage,
             currentUserId,
             templateMessageCost,
-            customerId, {
+            customerId,
+            templateSid, {
           "customerName": customerName,
           "amount": amount,
           "shopName": shopName,
@@ -150,12 +161,14 @@ class MessagingNotificationService {
       phoneNumber,
       message,
       formattedBalance,
+      amount,
       shopName,
       customerName,
       inAppNotificationMessage,
       currentUserId,
       messageCost,
       customerId,
+      templateSid,
       variables) async {
     final SMSMessagingService messageService =
         await SMSMessagingService.create();
@@ -167,13 +180,27 @@ class MessagingNotificationService {
     await messageService.sendSMS(phoneNumber, message).then((statusCode) async {
       if (statusCode == 201) {
         await deductBalance(currentUserId, messageCost);
+
         await storeNotification(
-            currentUserId: currentUserId,
-            customerId: customerId,
-            message: message,
-            phoneNumber: phoneNumber,
-            customerDetails: variables,
-            messageCost: messageCost);
+          currentUserId: currentUserId,
+          customerId: customerId,
+          message: _generateRenderedMessage(message, {
+            "customerName": customerName,
+            "amount": amount,
+            "shopName": shopName,
+            "balance": formattedBalance,
+          }),
+          phoneNumber: phoneNumber,
+          customerDetails: {
+            "customerName": customerName,
+            "amount": amount,
+            "shopName": shopName,
+            "balance": formattedBalance,
+          },
+          messageCost: pricingService.whatsappUtilityPrice,
+          templateKey: templateSid,
+          templateType: 'sms',
+        );
         eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
       } else {
         eventBus.fire(SMSEvent(
@@ -201,6 +228,14 @@ class MessagingNotificationService {
     });
   }
 
+  String _generateRenderedMessage(
+      String message, Map<String, String?> variables) {
+    variables.forEach((key, value) {
+      message = message.replaceAll('{{$key}}', value ?? '');
+    });
+    return message;
+  }
+
   Future<void> storeNotification({
     required String currentUserId,
     required String customerId,
@@ -208,6 +243,8 @@ class MessagingNotificationService {
     required String phoneNumber,
     required Map<String, dynamic> customerDetails,
     required double messageCost,
+    String? templateKey, // e.g. 'payment_transaction'
+    String? templateType, // 'sms' or 'whatsapp'
   }) async {
     final notificationRef = FirebaseFirestore.instance
         .collection('notifications')
@@ -221,6 +258,9 @@ class MessagingNotificationService {
       'merchant': currentUserId,
       'customer_details': customerDetails,
       'customer_phone': phoneNumber,
+      'customer_id': customerId,
+      'templateKey': templateKey,
+      'templateType': templateType,
       'dateSent': Timestamp.now(),
     });
   }
@@ -295,14 +335,14 @@ class MessagingNotificationService {
       if (transactionType == 'Credit') {
         templateSid = credit_transaction;
         inAppNotification = InAppNotifications.creditTransactionNotification;
-        message = SMSMessages.creditConfirmationSMS
+        message = SMSMessages.creditConfirmationShort
             .replaceAll('{customerName}', customerName)
             .replaceAll('{amount}', CurrencyUtil.format(amount));
         messageCost = pricingService.smsReminderTemplatePrice;
       } else {
         templateSid = payment_transaction;
         inAppNotification = InAppNotifications.paymentTransactionNotification;
-        message = SMSMessages.paymentConfirmationSMS
+        message = SMSMessages.paymentConfirmationShort
             .replaceAll('{customerName}', customerName)
             .replaceAll('{amount}', CurrencyUtil.format(amount));
         messageCost = pricingService.smsPaymentTemplatePrice;
@@ -335,7 +375,7 @@ class MessagingNotificationService {
           currentUserId,
           customerId,
           customerName,
-          SMSMessages.onboardingSMS,
+          SMSMessages.creditConfirmationShort,
           templateSid,
           mobileNumber,
           '0',
@@ -358,7 +398,7 @@ class MessagingNotificationService {
           currentUserId,
           customerId,
           customerName,
-          SMSMessages.reminderSMS,
+          SMSMessages.reminderShort,
           templateSid,
           mobileNumber,
           '0',
