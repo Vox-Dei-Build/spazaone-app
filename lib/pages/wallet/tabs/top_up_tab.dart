@@ -18,7 +18,7 @@ class TopUpTab extends StatelessWidget {
           // 🔥 Feature-flagged Paystack button
           if (FeatureFlags.enableTopUpPaystack)
             CustomButton(
-              title: 'Top Up via Paystack',
+              title: 'Top up via Paystack',
               onTap: () => walletVM.openPaystackForm(context),
               color: Colors.green,
               fontSize: SizeConfig.textMultiplier * 2,
@@ -28,7 +28,7 @@ class TopUpTab extends StatelessWidget {
           SizedBox(height: SizeConfig.heightMultiplier * 2),
 
           CustomButton(
-            title: 'Top Up via WhatsApp',
+            title: 'Top up via WhatsApp',
             onTap: () => walletVM.sendTopUpWhatsAppMessage(context),
             color: Colors.green,
             icon: Icons.chat,
