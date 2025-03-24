@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/dashboard/dashboard.dart';
 import 'package:provider/provider.dart';
@@ -58,7 +59,8 @@ class BalanceCheckUtil {
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: const Text("Insufficient Balance"),
+            title: Text("Insufficient Balance",
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             content: const Text(
                 "Your balance is too low to send messages. 📩 To keep your customers informed and engaged, please top up now and continue sending important updates seamlessly! 🔄💡"),
             actions: [
@@ -69,14 +71,16 @@ class BalanceCheckUtil {
                       .handleNavigation(context, 3);
                   Navigator.pushNamed(context, Dashboard.id);
                 },
-                child: const Text("Top Up Now"),
+                child: Text("Top Up Now",
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               ),
               TextButton(
                 onPressed: () {
                   Navigator.of(context)
                       .pop(false); // ❌ Cancel → Do NOT send message
                 },
-                child: const Text("Proceed Without Message"),
+                child: Text("Proceed Without Message",
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               ),
             ],
           ),

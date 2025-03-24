@@ -24,7 +24,7 @@ class SuspensionPaywall extends StatelessWidget {
             children: [
               const Icon(Icons.warning_amber_rounded,
                   size: 80, color: Colors.red),
-              const SizedBox(height: 16),
+              SizedBox(height: SizeConfig.heightMultiplier * 4),
               Text(
                 'Account Suspended',
                 style: TextStyle(
@@ -33,7 +33,7 @@ class SuspensionPaywall extends StatelessWidget {
                   fontSize: SizeConfig.textMultiplier * 2.5,
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
               Text(
                 'Your account has been suspended due to missed repayments.',
                 textAlign: TextAlign.center,
@@ -42,7 +42,7 @@ class SuspensionPaywall extends StatelessWidget {
                   fontSize: SizeConfig.textMultiplier * 1.8,
                 ),
               ),
-              const SizedBox(height: 30),
+              SizedBox(height: SizeConfig.heightMultiplier * 7),
               FutureBuilder<String>(
                 future: WalletUtils.calculateAdvanceFee(walletState),
                 builder: (context, snapshot) {

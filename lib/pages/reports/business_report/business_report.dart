@@ -195,11 +195,15 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                   return const CircularProgressIndicator();
                                 } else if (snapshot.hasError) {
                                   print('Error: ${snapshot.error}');
-                                  return const Padding(
-                                      padding: EdgeInsets.all(16.0),
+                                  return Padding(
+                                      padding: const EdgeInsets.all(16.0),
                                       child: Column(children: [
                                         Text(
-                                            'Oops something is wrong, please check your network or refresh the page')
+                                            'Oops something is wrong, please check your network or refresh the page',
+                                            style: TextStyle(
+                                                fontSize:
+                                                    SizeConfig.textMultiplier *
+                                                        2.5))
                                       ]));
                                 } else {
                                   Report report = snapshot.data!;

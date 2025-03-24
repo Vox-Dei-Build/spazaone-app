@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 
 import 'bottom_sheet_button.dart';
 
@@ -14,19 +15,19 @@ class SelectImageBottomSheet extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20.0),
       ),
-      child: const Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Profile photo',
             style: TextStyle(
               fontSize: 18.0,
               fontWeight: FontWeight.w500,
             ),
           ),
-          SizedBox(height: 10.0),
-          Row(
+          SizedBox(height: SizeConfig.heightMultiplier * 2),
+          const Row(
             children: [
               BottomSheetButton(
                 icon: Icons.camera_alt,

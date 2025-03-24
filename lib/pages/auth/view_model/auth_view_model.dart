@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -219,7 +220,8 @@ class AuthViewModel with ChangeNotifier {
         String smsCode = "";
 
         return AlertDialog(
-          title: const Text('Enter SMS Code'),
+          title: Text('Enter SMS Code',
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
           content: SingleChildScrollView(
             child: Container(
               padding: const EdgeInsets.all(16.0), // Add padding if needed
@@ -238,14 +240,16 @@ class AuthViewModel with ChangeNotifier {
           ),
           actions: [
             TextButton(
-              child: const Text('Cancel'),
+              child: Text('Cancel',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 completer.complete();
               },
             ),
             TextButton(
-              child: const Text('Verify'),
+              child: Text('Verify',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               onPressed: () {
                 onVerifyPressed(smsCode);
                 if (Navigator.of(dialogContext).canPop()) {

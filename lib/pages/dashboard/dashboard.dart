@@ -18,8 +18,10 @@ class Dashboard extends StatelessWidget {
     final userId = FirebaseAuth.instance.currentUser?.uid;
 
     if (userId == null) {
-      return const Scaffold(
-        body: Center(child: Text("User not logged in.")),
+      return Scaffold(
+        body: Center(
+            child: Text("User not logged in.",
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5))),
       );
     }
 
@@ -38,8 +40,11 @@ class Dashboard extends StatelessWidget {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
 
         if (data == null) {
-          return const Scaffold(
-            body: Center(child: Text("Wallet data not found.")),
+          return Scaffold(
+            body: Center(
+                child: Text("Wallet data not found.",
+                    style:
+                        TextStyle(fontSize: SizeConfig.textMultiplier * 2.5))),
           );
         }
 

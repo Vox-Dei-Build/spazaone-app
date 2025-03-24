@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 
 class DateHeaderDelegate extends SliverPersistentHeaderDelegate {
   final String date;
@@ -20,7 +21,9 @@ class DateHeaderDelegate extends SliverPersistentHeaderDelegate {
         ),
         child: Text(
           date,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 1.8,
+              fontWeight: FontWeight.w500),
         ),
       ),
     );

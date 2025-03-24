@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 
 enum CustomerActions { edit, sendReminder, viewReport }
 
@@ -13,24 +14,26 @@ class CustomerActionsMenu extends StatelessWidget {
       onSelected: onSelected,
       icon: Icon(Icons.more_vert, color: Theme.of(context).iconTheme.color),
       itemBuilder: (BuildContext context) => <PopupMenuEntry<CustomerActions>>[
-        const PopupMenuItem<CustomerActions>(
+        PopupMenuItem<CustomerActions>(
           value: CustomerActions.edit,
           child: Row(
             children: [
-              Icon(Icons.edit,
+              const Icon(Icons.edit,
                   size: 20.0, color: Colors.grey), // Adjust icon size and color
-              SizedBox(width: 10.0), // Space between icon and text
-              Text('Edit Customer', style: TextStyle(fontSize: 16.0)),
+              const SizedBox(width: 10.0), // Space between icon and text
+              Text('Edit Customer',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             ],
           ),
         ),
-        const PopupMenuItem<CustomerActions>(
+        PopupMenuItem<CustomerActions>(
           value: CustomerActions.sendReminder,
           child: Row(
             children: [
-              Icon(Icons.notifications, size: 20.0, color: Colors.grey),
-              SizedBox(width: 10.0),
-              Text('Send Reminder', style: TextStyle(fontSize: 16.0)),
+              const Icon(Icons.notifications, size: 20.0, color: Colors.grey),
+              const SizedBox(width: 10.0),
+              Text('Send Reminder',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             ],
           ),
         ),

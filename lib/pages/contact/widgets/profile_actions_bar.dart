@@ -78,7 +78,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                     textAlign: TextAlign
                         .start, // Changed to start for better alignment
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: SizeConfig.heightMultiplier * 0.3),
                   if (viewModel.isLoading)
                     Row(
                       children: [
