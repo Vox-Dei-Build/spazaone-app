@@ -49,7 +49,7 @@ class SettingsPage extends StatelessWidget {
                           ),
                           icon: Icons.share,
                           title: 'Share',
-                          subTitle: 'Share with others and get rewards',
+                          subTitle: 'Share with friends and others',
                         ),
                         SettingTile(
                           onTap: () async {

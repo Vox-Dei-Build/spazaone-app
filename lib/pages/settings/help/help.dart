@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pasella/constants/layout_constants.dart';
-import 'package:pasella/pages/settings/chat/chat_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/pages/settings/widgets/setting_tile.dart';
 import 'package:pasella/shared/widgets/vimeo_video_player.dart';
+import 'package:pasella/utils/support_util.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HelpPage extends StatelessWidget {
@@ -23,7 +24,7 @@ class HelpPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Help'),
+      appBar: const CustomAppBar(title: 'Help'),
       body: SafeArea(
         child: Padding(
           padding: LayoutConstants.padding20Horizontal,
@@ -34,7 +35,7 @@ class HelpPage extends StatelessWidget {
                 title: 'How to use Pasella?',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (context) =>
-                      VimeoVideoPage(videoId: '935735574', title: ''),
+                      const VimeoVideoPage(videoId: '935735574', title: ''),
                 )),
               ),
               SettingTile(
@@ -42,14 +43,14 @@ class HelpPage extends StatelessWidget {
                 title: 'How to Capture Sales & Credit?',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (context) =>
-                      VimeoVideoPage(videoId: '951892750', title: ''),
+                      const VimeoVideoPage(videoId: '951892750', title: ''),
                 )),
               ),
               SettingTile(
                 icon: Icons.help,
                 title: 'How to Capture Stock?',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => VimeoVideoPage(
+                  builder: (context) => const VimeoVideoPage(
                       videoId: '951892750',
                       title: 'How to add stock and link it to transactions?'),
                 )),
@@ -62,9 +63,9 @@ class HelpPage extends StatelessWidget {
               ),
               const Spacer(),
               CustomButton(
-                icon: Icons.chat,
-                title: 'Chat with Support',
-                onTap: () => Navigator.pushNamed(context, ChatPage.id),
+                icon: FontAwesomeIcons.whatsapp,
+                title: 'Chat with support',
+                onTap: () => SupportUtil.sendSupportWhatsAppMessage(context),
               ),
               const SizedBox(height: 15.0),
             ],

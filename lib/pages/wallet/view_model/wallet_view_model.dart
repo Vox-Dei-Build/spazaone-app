@@ -394,45 +394,36 @@ class WalletViewModel {
     );
   }
 
-  /// Request a Cash Advance via WhatsApp
-  Future<void> requestCashAdvance(BuildContext context,
-      {double amount = 500.0}) async {
+  Future<void> _sendWhatsAppMessage(
+    BuildContext context, {
+    required String Function(String merchantName, String shopName)
+        messageBuilder,
+  }) async {
     try {
-      // Fetch merchant details
       final String? merchantName = await fetchNameForUser(userId);
       final String? shopName = await fetchShopNameForUser(userId);
-
-      // Fetch WhatsApp Support Number from Remote Config
       final remoteConfigService = await RemoteConfigService.getInstance();
-      final String merchantNumber =
+      final String supportNumber =
           remoteConfigService.getString('WA_SUPPORT_NUMBER');
 
-      if (merchantName == null || shopName == null || merchantNumber.isEmpty) {
+      if (merchantName == null || shopName == null || supportNumber.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not retrieve required details')),
         );
         return;
       }
 
-      // Ensure phone number is correctly formatted
       final String formattedNumber =
-          formatPhoneNumberForWhatsapp(merchantNumber);
-
-      // Construct WhatsApp message
-      final String message = Uri.encodeComponent(
-          "Hi, it's me $merchantName,\n\n"
-          "I'd like to request a *cash advance* for *$shopName* for *R$amount*.\n\n"
-          "Please let me know if this is possible. Thanks! 😊");
-
-      // Construct WhatsApp URL
+          formatPhoneNumberForWhatsapp(supportNumber);
+      final String message =
+          Uri.encodeComponent(messageBuilder(merchantName, shopName));
       final Uri whatsappUri =
           Uri.parse('https://wa.me/$formattedNumber?text=$message');
 
-      // Try launching WhatsApp
       if (await canLaunchUrl(whatsappUri)) {
         await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
       } else {
-        _showCallSnackbar(context, merchantNumber);
+        _showCallSnackbar(context, supportNumber);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -440,58 +431,36 @@ class WalletViewModel {
             content:
                 Text('An error occurred while preparing WhatsApp message')),
       );
-      print('Error sending WhatsApp message: $e');
+      print('WhatsApp Error: $e');
     }
   }
 
-  /// Send a prefilled WhatsApp message with merchant and shop details
+  Future<void> requestCashAdvance(BuildContext context,
+      {double amount = 500.0}) async {
+    await _sendWhatsAppMessage(
+      context,
+      messageBuilder: (merchant, shop) => "Hi, it's me $merchant,\n\n"
+          "I'd like to request a *cash advance* for *$shop* for *R$amount*.\n\n"
+          "Please let me know if this is possible. Thanks! 😊",
+    );
+  }
+
   Future<void> sendTopUpWhatsAppMessage(BuildContext context,
       {double amount = 100.0}) async {
-    try {
-      // Fetch merchant details
-      final String? merchantName = await fetchNameForUser(userId);
-      final String? shopName = await fetchShopNameForUser(userId);
+    await _sendWhatsAppMessage(
+      context,
+      messageBuilder: (merchant, shop) => "Hi, it's me $merchant 😊,\n\n"
+          "I'd like to top up my account at *$shop* with *R$amount*.\n\n"
+          "Can you assist me? Thanks! 😊",
+    );
+  }
 
-      // Fetch WhatsApp Support Number from Remote Config
-      final remoteConfigService = await RemoteConfigService.getInstance();
-      final String merchantNumber =
-          remoteConfigService.getString('WA_SUPPORT_NUMBER');
-
-      if (merchantName == null || shopName == null || merchantNumber.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not retrieve required details')),
-        );
-        return;
-      }
-
-      // Ensure phone number is correctly formatted
-      final String formattedNumber =
-          formatPhoneNumberForWhatsapp(merchantNumber);
-
-      // Construct WhatsApp message
-      final String message = Uri.encodeComponent(
-          "Hi, it's me $merchantName 😊,\n\n"
-          "I'd like to top up my account at *$shopName* with *R$amount*.\n\n"
-          "Can you assist me? Thanks! 😊");
-
-      // Construct WhatsApp URL
-      final Uri whatsappUri =
-          Uri.parse('https://wa.me/$formattedNumber?text=$message');
-
-      // Check if WhatsApp can be launched
-      if (await canLaunchUrl(whatsappUri)) {
-        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
-      } else {
-        _showCallSnackbar(context, merchantNumber);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('An error occurred while preparing WhatsApp message')),
-      );
-      print('Error sending WhatsApp message: $e');
-    }
+  Future<void> sendRepaymentWhatsAppMessage(BuildContext context) async {
+    await _sendWhatsAppMessage(
+      context,
+      messageBuilder: (merchant, shop) => "Hi, it's me $merchant 😊,\n\n"
+          "I'd like to repay my cash advance at *$shop*. Can you assist me with this?\n\nThanks! 😊",
+    );
   }
 
   /// Show a Snackbar with a Call button if WhatsApp isn't available
@@ -517,57 +486,6 @@ class WalletViewModel {
       await launchUrl(callUri);
     } else {
       print('Could not launch call to $phoneNumber');
-    }
-  }
-
-  Future<void> sendRepaymentWhatsAppMessage(BuildContext context) async {
-    try {
-      // Fetch merchant details
-      final String? merchantName = await fetchNameForUser(userId);
-      final String? shopName = await fetchShopNameForUser(userId);
-
-      // Fetch WhatsApp Support Number from Remote Config
-      final remoteConfigService = await RemoteConfigService.getInstance();
-      final String merchantNumber =
-          remoteConfigService.getString('WA_SUPPORT_NUMBER');
-
-      if (merchantName == null || shopName == null || merchantNumber.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not retrieve required details')),
-        );
-        return;
-      }
-
-      // Ensure phone number is correctly formatted
-      final String formattedNumber =
-          formatPhoneNumberForWhatsapp(merchantNumber);
-
-      // Construct WhatsApp message specifically for repayment
-      final String message = Uri.encodeComponent(
-          "Hi, it's me $merchantName 😊,\n\n"
-          "I'd like to repay my cash advance at *$shopName*. Can you assist me with this?\n\nThanks! 😊");
-
-      // Construct WhatsApp URL
-      final Uri whatsappUri =
-          Uri.parse('https://wa.me/$formattedNumber?text=$message');
-
-      // Check if WhatsApp can be launched
-      if (await canLaunchUrl(whatsappUri)) {
-        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'Cannot launch WhatsApp. Please contact $merchantNumber directly.')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('An error occurred while preparing WhatsApp message')),
-      );
-      print('Error sending WhatsApp repayment message: $e');
     }
   }
 

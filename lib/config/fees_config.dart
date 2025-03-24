@@ -20,4 +20,11 @@ class FeesConfig {
   static Future<double> getCashAdvanceMultiplier() async =>
       (await RemoteConfigService.getInstance())
           .getDouble('CASH_ADVANCE_REPAYMENT_MULTIPLIER');
+
+  static Future<double> getMaxCashAdvanceAmount() async =>
+      (await RemoteConfigService.getInstance())
+          .getDouble('MAX_CASH_ADVANCE_AMOUNT');
+
+  static Future<String> getRepaymentTerm() async =>
+      (await RemoteConfigService.getInstance()).getString('REPAYMENT_TERM');
 }

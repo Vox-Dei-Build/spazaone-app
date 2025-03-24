@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -31,7 +32,7 @@ class TopUpTab extends StatelessWidget {
             title: 'Top up via WhatsApp',
             onTap: () => walletVM.sendTopUpWhatsAppMessage(context),
             color: Colors.green,
-            icon: Icons.chat,
+            icon: FontAwesomeIcons.whatsapp,
             fontSize: SizeConfig.textMultiplier * 2,
             width: SizeConfig.imageSizeMultiplier * 60,
           ),

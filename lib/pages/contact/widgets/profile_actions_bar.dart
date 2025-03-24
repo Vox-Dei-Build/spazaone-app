@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
@@ -109,7 +110,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                         Icon(
                           mobileNumber.isNotEmpty
                               ? viewModel.hasWhatsApp
-                                  ? Icons.verified
+                                  ? FontAwesomeIcons.whatsapp
                                   : Icons.sms_outlined
                               : Icons.error,
                           color: mobileNumber.isNotEmpty
@@ -124,7 +125,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                           child: Text(
                             mobileNumber.isNotEmpty
                                 ? viewModel.hasWhatsApp
-                                    ? "WhatsApp"
+                                    ? "Has WhatsApp"
                                     : "Likely Only SMS"
                                 : "No mobile number",
                             style: TextStyle(
