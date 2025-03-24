@@ -45,11 +45,13 @@ void showProfileImageDialog(
                                   fontWeight: FontWeight.w500),
                             ),
                           )),
-                const SizedBox(height: 12),
+                SizedBox(height: SizeConfig.heightMultiplier * 3),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text('Close',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: SizeConfig.textMultiplier * 2)),
                 ),
               ],
             ),

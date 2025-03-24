@@ -124,7 +124,8 @@ class _SalesCalendarViewState extends State<ReportCalendarView> {
           padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 0),
           child: ElevatedButton(
             onPressed: () => _pickCustomDateRange(context),
-            child: const Text("Select Date Range"),
+            child: Text("Select Date Range",
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
           ),
         ),
       ],

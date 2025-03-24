@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
@@ -256,15 +257,19 @@ class CustomerManagementViewModel extends ChangeNotifier {
     return await showDialog(
           context: context,
           builder: (BuildContext context) => AlertDialog(
-            title: const Text('Send Reminder'),
-            content: const Text('Do you want to send a payment reminder?'),
+            title: Text('Send Reminder',
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
+            content: Text('Do you want to send a payment reminder?',
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             actions: <Widget>[
               TextButton(
-                child: const Text('Cancel'),
+                child: Text('Cancel',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
                 onPressed: () => Navigator.of(context).pop(false),
               ),
               TextButton(
-                child: const Text('Send'),
+                child: Text('Send',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
                 onPressed: () => Navigator.of(context).pop(true),
               ),
             ],
@@ -349,12 +354,16 @@ class CustomerManagementViewModel extends ChangeNotifier {
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: const Text("Confirm Deletion"),
-              content: const Text(
-                  "Are you sure you want to delete this customer? This action cannot be undone."),
+              title: Text("Confirm Deletion",
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
+              content: Text(
+                  "Are you sure you want to delete this customer? This action cannot be undone.",
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               actions: <Widget>[
                 TextButton(
-                  child: const Text("Cancel"),
+                  child: Text("Cancel",
+                      style:
+                          TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
                   onPressed: () => Navigator.of(context).pop(false),
                 ),
                 TextButton(
@@ -362,7 +371,9 @@ class CustomerManagementViewModel extends ChangeNotifier {
                     foregroundColor: Colors.red, // Red color for delete
                   ),
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text("Delete"),
+                  child: Text("Delete",
+                      style:
+                          TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
                 ),
               ],
             );

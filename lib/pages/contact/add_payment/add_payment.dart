@@ -12,7 +12,8 @@ class AddPaymentScreen extends StatelessWidget {
   final String customerId;
   final String? mobileNumber;
 
-  AddPaymentScreen({
+  const AddPaymentScreen({
+    super.key,
     required this.customerName,
     required this.customerId,
     this.mobileNumber,
@@ -64,7 +65,9 @@ class AddPaymentScreen extends StatelessWidget {
                                         return null;
                                       },
                                     ),
-                                    SizedBox(height: 16),
+                                    SizedBox(
+                                        height:
+                                            SizeConfig.heightMultiplier * 2),
                                     Row(
                                       children: [
                                         Text(
@@ -105,13 +108,15 @@ class AddPaymentScreen extends StatelessWidget {
                                         ),
                                       ],
                                     ),
-                                    SizedBox(height: 16),
+                                    SizedBox(
+                                        height:
+                                            SizeConfig.heightMultiplier * 2),
                                     TextFormField(
                                       controller: viewModel.remarksController,
                                       maxLines: 3,
                                       decoration: InputDecoration(
                                         labelText: 'Remarks/Notes',
-                                        border: OutlineInputBorder(),
+                                        border: const OutlineInputBorder(),
                                         labelStyle: TextStyle(
                                           fontSize:
                                               SizeConfig.textMultiplier * 2,
@@ -125,7 +130,9 @@ class AddPaymentScreen extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                    SizedBox(height: 16),
+                                    SizedBox(
+                                        height:
+                                            SizeConfig.heightMultiplier * 2),
                                   ],
                                 ),
                               ),
@@ -140,7 +147,7 @@ class AddPaymentScreen extends StatelessWidget {
                                     CustomButton(
                                       title: 'Add Payment',
                                       onTap: viewModel.isLoading
-                                          ? () => null
+                                          ? () {}
                                           : () async {
                                               await viewModel
                                                   .addPaymentTransaction(
@@ -151,7 +158,7 @@ class AddPaymentScreen extends StatelessWidget {
                                       fontSize: SizeConfig.textMultiplier * 2,
                                     ),
                                     if (viewModel.isLoading)
-                                      CircularProgressIndicator(
+                                      const CircularProgressIndicator(
                                         valueColor:
                                             AlwaysStoppedAnimation<Color>(
                                                 Colors.white),

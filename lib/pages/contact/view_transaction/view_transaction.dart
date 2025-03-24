@@ -92,8 +92,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               }
 
               if (!snapshot.hasData || snapshot.hasError) {
-                return const Center(
-                    child: Text('Error loading transaction data.'));
+                return Center(
+                    child: Text(
+                  'Error loading transaction data.',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 3),
+                ));
               }
 
               // Get the transaction data from Firestore
@@ -199,10 +202,14 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                       return const CircularProgressIndicator();
                     }
                     if (snapshot.hasError) {
-                      return Text('Error fetching product with ID: $productId');
+                      return Text('Error fetching product with ID: $productId',
+                          style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 3));
                     }
                     if (!snapshot.hasData || !snapshot.data!.exists) {
-                      return Text('Unknown product with ID: $productId');
+                      return Text('Unknown product with ID: $productId',
+                          style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 3));
                     }
                     final productData =
                         snapshot.data!.data() as Map<String, dynamic>;
