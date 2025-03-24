@@ -61,4 +61,10 @@ class WalletUtils {
 
     return CurrencyUtil.format(total);
   }
+
+  Future<String> getMaxCashAdvanceAmount() async {
+    final double maxAmount = await FeesConfig.getMaxCashAdvanceAmount();
+
+    return CurrencyUtil.format(maxAmount);
+  }
 }

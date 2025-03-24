@@ -1,35 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 class ReferralDashboard extends StatelessWidget {
   final int referralCount;
-  final double rewardsEarned;
+  final double? rewardsEarned;
 
   const ReferralDashboard({
     Key? key,
     required this.referralCount,
-    required this.rewardsEarned,
+    this.rewardsEarned,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: EdgeInsets.all(10),
+      margin: const EdgeInsets.all(10),
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(height: 8),
             Text(
               'Total Referrals: $referralCount',
-              style: TextStyle(fontSize: 16),
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
             ),
-            SizedBox(height: 8),
-            Text(
-              'Rewards Earned: ${CurrencyUtil.format(rewardsEarned)}',
-              style: TextStyle(fontSize: 16),
-            ),
+            if (rewardsEarned != null) ...[
+              SizedBox(height: SizeConfig.heightMultiplier * 2),
+              Text(
+                'Rewards Earned: ${CurrencyUtil.format(rewardsEarned!)}',
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
+              ),
+            ]
           ],
         ),
       ),

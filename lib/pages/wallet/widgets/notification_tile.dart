@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
@@ -23,7 +24,7 @@ class NotificationTile extends StatelessWidget {
 
     return ListTile(
       leading: Icon(
-        type == "WhatsApp" ? Icons.chat : Icons.sms,
+        type == "WhatsApp" ? FontAwesomeIcons.whatsapp : Icons.sms,
         color: type == "WhatsApp" ? Colors.green : Colors.blue,
         size: SizeConfig.textMultiplier * 2,
       ),

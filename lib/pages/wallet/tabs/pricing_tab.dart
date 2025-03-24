@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:pasella/config/fees_config.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/utils/support_util.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/config/size_config.dart';
 
@@ -82,21 +85,49 @@ class _PricingInfoTab extends State<PricingInfoTab> {
             ],
 
             // 🟢 Section 3: Cash Advance (Dynamic)
-            if (FeatureFlags.enableCashAdvance) ...[
-              _sectionTitle('Cash Advance'),
+            if (FeatureFlags.enableCashAdvance)
+              FutureBuilder(
+                future: Future.wait([
+                  FeesConfig.getMaxCashAdvanceAmount(),
+                  FeesConfig.getAdvanceFee(),
+                  FeesConfig.getBankFee(),
+                  FeesConfig.getRepaymentTerm(),
+                ]),
+                builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
+                  if (!snapshot.hasData) {
+                    return const CircularProgressIndicator(); // or SizedBox.shrink()
+                  }
 
-              _buildBulletPoint('💰 Borrow funds instantly & repay in 7 days.'),
-              _buildBulletPoint('📅 10% fee applies for the 7-day advance.'),
+                  final double maxAdvance = snapshot.data![0];
+                  final double advanceFee = snapshot.data![1];
+                  final double bankFee = snapshot.data![2];
+                  final String repaymentTerm = snapshot.data![3];
 
-              _pricingRow('Minimum Advance', 'R100'),
-              _pricingRow('Maximum Advance',
-                  'R${maxCashAdvance.toStringAsFixed(0)}'), // Dynamic
-              _pricingRow('Flat Fee', '10%'),
-              _pricingRow('Repayment Period', '7 Days'),
-              _pricingRow('Instant Payment fee between banks', 'R50'),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _sectionTitle('Cash Advance'),
+                      _buildBulletPoint(
+                          '💰 Borrow funds instantly & repay in $repaymentTerm.'),
+                      _buildBulletPoint(
+                          '📅 ${advanceFee.toStringAsFixed(0)}% fee applies for the $repaymentTerm advance.'),
 
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
-            ],
+                      _pricingRow('Minimum Advance', 'R100'),
+                      _pricingRow('Maximum Advance',
+                          'R${maxAdvance.toStringAsFixed(0)}'),
+                      _pricingRow(
+                          'Flat Fee', '${advanceFee.toStringAsFixed(0)}%'),
+                      _pricingRow(
+                          'Bank Transfer', '${bankFee.toStringAsFixed(0)}%'),
+                      _pricingRow('Repayment Period', repaymentTerm),
+                      _pricingRow('Instant Payment fee between banks',
+                          'R50'), // Hardcoded if not dynamic
+
+                      SizedBox(height: SizeConfig.heightMultiplier * 3),
+                    ],
+                  );
+                },
+              ),
 
             // 🟢 Section 4: Payouts (Dynamic)
             if (FeatureFlags.enableBalancePayout) ...[
@@ -134,15 +165,17 @@ class _PricingInfoTab extends State<PricingInfoTab> {
               _pricingRow('WhatsApp Onboarding',
                   '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
               _divider(),
+              _pricingRow('SMS Promotions', 'Based on length of Msg'),
               _pricingRow('WhatsApp Promotions',
                   '${CurrencyUtil.format(pricingService?.whatsappPromotionPrice ?? 0)}/Msg'),
-              _pricingRow('AI Assistant', 'R0.25/Msg'),
+              _pricingRow('Whatsapp AI Assistant',
+                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice != null ? pricingService!.whatsappUtilityPrice + 0.05 : 0)}/Msg'),
               SizedBox(height: SizeConfig.heightMultiplier * 3),
             ],
 
             // 🟢 Section 6: Need Help?
             _sectionTitle('Need Help?'),
-            _helpOption('💬 WhatsApp Us: 064 837 0009', '0648370009'),
+            _helpOption('0648370009'),
           ],
         ),
       ),
@@ -212,14 +245,13 @@ class _PricingInfoTab extends State<PricingInfoTab> {
   }
 
   // ✅ WhatsApp Help Option
-  Widget _helpOption(String text, String phone) {
-    return GestureDetector(
-      onTap: () => _launchWhatsApp(phone),
-      child: Text(
-        text,
-        style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2, color: Colors.blue),
-      ),
+  Widget _helpOption(String phone) {
+    return FilledButton.icon(
+      onPressed: () => SupportUtil.sendSupportWhatsAppMessage(context),
+      icon:
+          Icon(FontAwesomeIcons.whatsapp, size: SizeConfig.textMultiplier * 2),
+      label: Text("Chat to support",
+          style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
     );
   }
 
