@@ -77,25 +77,29 @@ class TransactionTile extends StatelessWidget {
 
   Widget _buildTitle() {
     var unreadMessageCount = unreadCount ?? 0;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 3.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Flexible(
+          // Wrap the name + badge in Expanded so it doesn't overflow the balance
+          Expanded(
             child: Row(
               children: [
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: SizeConfig.textMultiplier * 1.8,
+                // Wrap name in Flexible to ellipsize correctly
+                Flexible(
+                  child: Text(
+                    name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
                 ),
-                if (unreadMessageCount >
-                    0) // 🔥 Show unread badge only if messages exist
+                if (unreadMessageCount > 0)
                   Padding(
                     padding: EdgeInsets.only(
                         left: SizeConfig.imageSizeMultiplier * 1),
@@ -115,6 +119,8 @@ class TransactionTile extends StatelessWidget {
               ],
             ),
           ),
+          // Balance text should wrap or shrink if needed
+          const SizedBox(width: 8),
           Text(
             CurrencyUtil.format(balance),
             style: TextStyle(
@@ -122,6 +128,7 @@ class TransactionTile extends StatelessWidget {
               fontWeight: FontWeight.bold,
               fontSize: SizeConfig.textMultiplier * 1.8,
             ),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

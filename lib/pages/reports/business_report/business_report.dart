@@ -39,8 +39,9 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
         Provider.of<BalanceSummaryProvider>(context, listen: false);
     balanceSummaryViewModel = BalanceSummaryViewModel(balanceSummaryProvider);
 
-    _startDate = DateTime.now();
-    _endDate = DateTime.now();
+    final now = DateTime.now();
+    _startDate = DateTime(now.year, now.month, now.day);
+    _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
     _selectedDay = _endDate;
 
     balanceSummaryViewModel.fetchBalanceSummaryWithRange(
