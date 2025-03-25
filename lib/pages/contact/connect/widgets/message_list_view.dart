@@ -26,16 +26,27 @@ class _MessagesListViewState extends State<MessagesListView> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => scrollToBottom());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Delay to ensure long lists + sticky headers finish layout
+      Future.delayed(const Duration(milliseconds: 100), scrollToBottom);
+    });
   }
 
-  void scrollToBottom() {
+  void scrollToBottom({int retry = 0}) {
     if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 50),
-        curve: Curves.decelerate,
-      );
+      final position = _scrollController.position;
+      final maxExtent = position.maxScrollExtent;
+      final currentOffset = position.pixels;
+
+      // If not at the bottom, try again (with a small delay)
+      if ((maxExtent - currentOffset).abs() > 50.0 && retry < 3) {
+        Future.delayed(const Duration(milliseconds: 50), () {
+          scrollToBottom(retry: retry + 1);
+        });
+      }
+
+      _scrollController.animateTo(maxExtent,
+          curve: Curves.easeOut, duration: const Duration(milliseconds: 100));
     }
   }
 
