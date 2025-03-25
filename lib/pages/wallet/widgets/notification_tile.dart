@@ -6,6 +6,7 @@ import 'package:pasella/config/size_config.dart';
 
 class NotificationTile extends StatelessWidget {
   final String message;
+  final String templateType;
   final num messageCost;
   final String phone;
   final DateTime date;
@@ -13,6 +14,7 @@ class NotificationTile extends StatelessWidget {
   const NotificationTile({
     super.key,
     required this.message,
+    required this.templateType,
     required this.messageCost,
     required this.phone,
     required this.date,
@@ -20,12 +22,10 @@ class NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final type = message.contains("WhatsApp") ? "WhatsApp" : "SMS";
-
     return ListTile(
       leading: Icon(
-        type == "WhatsApp" ? FontAwesomeIcons.whatsapp : Icons.sms,
-        color: type == "WhatsApp" ? Colors.green : Colors.blue,
+        templateType == "whatsapp" ? FontAwesomeIcons.whatsapp : Icons.sms,
+        color: templateType == "whatsapp" ? Colors.green : Colors.blue,
         size: SizeConfig.textMultiplier * 2,
       ),
       title: Text(

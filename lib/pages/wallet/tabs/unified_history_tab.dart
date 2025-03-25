@@ -24,7 +24,6 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
     super.initState();
     _viewModel = widget.viewModel;
     _transactionsFuture = _viewModel.fetchMergedTransactionHistory();
-    print('🚀 Fetching merged transaction history...');
   }
 
   @override
@@ -69,11 +68,11 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
 
                 case 'message':
                   return NotificationTile(
-                    message: item['message'] ?? 'Message',
-                    messageCost: item['messageCost'] ?? 0,
-                    phone: item['phone'] ?? 'Unknown',
-                    date: timestamp,
-                  );
+                      message: item['message'] ?? 'Message',
+                      messageCost: item['messageCost'] ?? 0,
+                      phone: item['phone'] ?? 'Unknown',
+                      date: timestamp,
+                      templateType: item['templateType'] ?? 'sms');
 
                 case 'payout':
                   return ListTile(

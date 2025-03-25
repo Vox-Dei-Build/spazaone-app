@@ -228,13 +228,35 @@ class WalletViewModel {
       }
 
       for (var notification in notificationsSnap.docs) {
+        final data = notification
+            .data(); // Ensure you're working with a Map<String, dynamic>
+        var message = data['message'] ?? '';
+        var templateType = data['templateType'] ?? 'sms';
+
+        final customerDetails =
+            data['customer_details'] as Map<String, dynamic>?;
+
+        if (customerDetails != null) {
+          final amount = customerDetails['amount']?.toString() ?? '';
+          final balance = customerDetails['balance']?.toString() ?? '';
+          final shopName = customerDetails['shopName']?.toString() ?? '';
+          final customerName = customerDetails['name']?.toString() ?? '';
+
+          message = message
+              .replaceAll('{balance}', balance)
+              .replaceAll('{shopName}', shopName)
+              .replaceAll('{customerName}', customerName)
+              .replaceAll('{amount}', amount);
+        }
+
         mergedList.add({
           'type': 'message',
-          'message': notification['message'] ?? '',
-          'messageCost': (notification['messageCost'] as num?) ?? 0,
-          'phone': notification['customer_phone'] ?? '',
-          'timestamp': (notification['timestamp'] as Timestamp?)?.toDate() ??
-              DateTime.now(),
+          'message': message,
+          'messageCost': (data['messageCost'] as num?) ?? 0,
+          'phone': data['customer_phone']?.toString() ?? '',
+          'timestamp':
+              (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          'templateType': templateType,
         });
       }
 

@@ -119,8 +119,25 @@ class MessagingNotificationService {
 
               eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
             } else {
-              // If WhatsApp failed, store failure in Firestore
+              // If WhatsApp failed, fallback to SMS and store failure in Firestore
               await storeWhatsAppCheck(normalizedPhone, false);
+              await _sendSMSFallback(
+                  phoneNumber,
+                  message,
+                  amount,
+                  formattedBalance,
+                  shopName,
+                  customerName,
+                  inAppNotificationMessage,
+                  currentUserId,
+                  templateMessageCost,
+                  customerId,
+                  templateSid, {
+                "customerName": customerName,
+                "amount": amount,
+                "shopName": shopName,
+                "balance": formattedBalance,
+              });
             }
           });
 
@@ -197,7 +214,7 @@ class MessagingNotificationService {
             "shopName": shopName,
             "balance": formattedBalance,
           },
-          messageCost: pricingService.whatsappUtilityPrice,
+          messageCost: messageCost,
           templateKey: templateSid,
           templateType: 'sms',
         );
@@ -312,6 +329,7 @@ class MessagingNotificationService {
     final querySnapshot = await FirebaseFirestore.instance
         .collection('successfulWhatsAppNumbers')
         .where('phoneNumber', isEqualTo: phoneNumber)
+        .where('hasWhatsApp', isEqualTo: true)
         .limit(1)
         .get();
 
@@ -375,7 +393,7 @@ class MessagingNotificationService {
           currentUserId,
           customerId,
           customerName,
-          SMSMessages.creditConfirmationShort,
+          SMSMessages.onboardingShort,
           templateSid,
           mobileNumber,
           '0',
@@ -390,6 +408,7 @@ class MessagingNotificationService {
     String currentUserId,
     String customerId,
     String customerName,
+    double amount,
     String? mobileNumber,
   ) async {
     try {
@@ -401,7 +420,7 @@ class MessagingNotificationService {
           SMSMessages.reminderShort,
           templateSid,
           mobileNumber,
-          '0',
+          CurrencyUtil.format(amount),
           InAppNotifications.paymentReminderNotification,
           pricingService.smsReminderTemplatePrice);
     } catch (e) {

@@ -58,7 +58,7 @@ class AddContactViewModel extends ChangeNotifier {
       'name': customerName,
       'number': normalizePhoneNumber(mobileNumber),
       'lastTransaction': getDefaultTransaction(),
-      'balance': 50.0,
+      'balance': 0.0,
       'isNPA': false,
     };
 
