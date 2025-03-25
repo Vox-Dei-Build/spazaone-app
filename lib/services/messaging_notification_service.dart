@@ -177,8 +177,8 @@ class MessagingNotificationService {
   Future<void> _sendSMSFallback(
       phoneNumber,
       message,
-      formattedBalance,
       amount,
+      formattedBalance,
       shopName,
       customerName,
       inAppNotificationMessage,

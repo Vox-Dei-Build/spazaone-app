@@ -247,7 +247,8 @@ class _PricingInfoTab extends State<PricingInfoTab> {
   // ✅ WhatsApp Help Option
   Widget _helpOption(String phone) {
     return FilledButton.icon(
-      onPressed: () => SupportUtil.sendSupportWhatsAppMessage(context),
+      onPressed: () =>
+          SupportUtil.sendWhatsAppMessage(context, WhatsAppMessageType.support),
       icon:
           Icon(FontAwesomeIcons.whatsapp, size: SizeConfig.textMultiplier * 2),
       label: Text("Chat to support",

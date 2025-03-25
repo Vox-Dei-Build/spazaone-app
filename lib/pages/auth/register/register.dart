@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
 import 'package:pasella/pages/auth/widgets/logo_display.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/utils/support_util.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -135,16 +136,10 @@ class _RegisterPageState extends State<RegisterPage> {
                 ],
                 SizedBox(height: SizeConfig.heightMultiplier * 1.5),
                 CustomButton(
-                  title: 'How To Video',
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) =>
-                          VimeoVideoPage(videoId: '935735574', title: ''),
-                    ));
-                  },
-                  color: Colors.lightBlue,
-                  icon: Icons.video_library,
-                  fontSize: SizeConfig.textMultiplier * 2,
+                  icon: FontAwesomeIcons.whatsapp,
+                  title: 'Chat with support',
+                  onTap: () => SupportUtil.sendWhatsAppMessage(
+                      context, WhatsAppMessageType.support),
                 ),
                 SizedBox(height: SizeConfig.heightMultiplier * 1),
                 OverflowBar(

@@ -68,7 +68,7 @@ class BalanceCheckUtil {
                 onPressed: () {
                   // Navigator.of(context).pop(false);
                   Provider.of<AppModel>(context, listen: false)
-                      .handleNavigation(context, 3);
+                      .handleNavigation(context, 4);
                   Navigator.pushNamed(context, Dashboard.id);
                 },
                 child: Text("Top Up Now",

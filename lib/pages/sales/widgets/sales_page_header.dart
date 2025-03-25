@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
+import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 
 class SalesPageHeader extends StatelessWidget {
   const SalesPageHeader({super.key});
@@ -11,19 +12,20 @@ class SalesPageHeader extends StatelessWidget {
     return PageHeader(
       actionWidget: Expanded(
         child: IconButton(
-          icon: Icon(Icons.help_outline,
-              color: Colors.black, size: SizeConfig.imageSizeMultiplier * 5),
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => VimeoVideoPage(
-                  videoId: '951892750',
-                  title: 'How to Capture Sales & Credit',
+            icon: Icon(Icons.help_outline,
+                color: Colors.black, size: SizeConfig.imageSizeMultiplier * 5),
+            onPressed: () {
+              final url = TutorialConfig.getTutorialUrl(
+                  TutorialConfig.TUTORIAL_CAPTURE_SALES);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => LoomVideoPage(
+                    loomUrl: url,
+                    title: 'How to Capture Sales',
+                  ),
                 ),
-              ),
-            );
-          },
-        ),
+              );
+            }),
       ),
     );
   }

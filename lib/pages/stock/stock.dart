@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
+import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:provider/provider.dart';
 
 class StockPage extends StatefulWidget {
@@ -85,10 +86,12 @@ class _StockPageState extends State<StockPage>
                                 size: SizeConfig.imageSizeMultiplier * 5,
                               ),
                               onPressed: () {
+                                final url = TutorialConfig.getTutorialUrl(
+                                    TutorialConfig.TUTORIAL_CAPTURE_STOCK);
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (context) => VimeoVideoPage(
-                                      videoId: '951892750',
+                                    builder: (context) => LoomVideoPage(
+                                      loomUrl: url,
                                       title: 'How to Capture Stock',
                                     ),
                                   ),
