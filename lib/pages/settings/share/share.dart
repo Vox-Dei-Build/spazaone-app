@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/settings/share/widget/referral_dashboard.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -67,7 +66,7 @@ class _SharePageState extends State<SharePage> {
 
     String title = name != ''
         ? "$name invites you to join Pasella!"
-        : "Join Pasella and support your local shop!";
+        : "Join Pasella and support the movement!";
 
     buo = BranchUniversalObject(
       canonicalIdentifier: "flutter/branch",
@@ -238,24 +237,6 @@ class _SharePageState extends State<SharePage> {
                     onPressed: () => shareToWhatsApp(detailedMessage),
                   ),
                 ],
-                ElevatedButton.icon(
-                  icon: Icon(
-                      size: textSize, Icons.video_library, color: Colors.white),
-                  label: Text('Watch Tutorial',
-                      style:
-                          TextStyle(fontSize: textSize, color: Colors.white)),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => VimeoVideoPage(
-                        videoId: '935773465',
-                        title: 'How the referral works',
-                      ),
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                  ),
-                ),
                 Padding(
                   padding: EdgeInsets.all(SizeConfig.blockSizeVertical),
                   child: InkWell(
