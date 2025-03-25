@@ -65,7 +65,8 @@ class HelpPage extends StatelessWidget {
               CustomButton(
                 icon: FontAwesomeIcons.whatsapp,
                 title: 'Chat with support',
-                onTap: () => SupportUtil.sendSupportWhatsAppMessage(context),
+                onTap: () => SupportUtil.sendWhatsAppMessage(
+                    context, WhatsAppMessageType.support),
               ),
               const SizedBox(height: 15.0),
             ],

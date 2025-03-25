@@ -40,7 +40,7 @@ class _MessagesListViewState extends State<MessagesListView> {
 
       // If not at the bottom, try again (with a small delay)
       if ((maxExtent - currentOffset).abs() > 50.0 && retry < 3) {
-        Future.delayed(const Duration(milliseconds: 50), () {
+        Future.delayed(const Duration(milliseconds: 100), () {
           scrollToBottom(retry: retry + 1);
         });
       }

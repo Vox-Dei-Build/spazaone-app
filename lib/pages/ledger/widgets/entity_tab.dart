@@ -56,63 +56,6 @@ class _EntityTabState extends State<EntityTab> {
     setState(() {});
   }
 
-  /*  Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
-    final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-
-    if (currentUserId.isEmpty) {
-      return const Stream.empty();
-    }
-
-    Query query = FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUserId)
-        .collection('customers')
-        .where("category", isEqualTo: widget.category);
-
-    final customersStream =
-        query.orderBy("lastTransaction.date", descending: true).snapshots();
-
-    return customersStream.asyncMap((snapshot) async {
-      final entities = await Future.wait(snapshot.docs.map((customerDoc) async {
-        final customerData = customerDoc.data() as Map<String, dynamic>;
-        double balance = customerData['balance'].toDouble() ?? 0.0;
-
-        // 🔥 Fetch unread messages for this customer
-        final customerUnreadSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUserId)
-            .get();
-
-        List unreadMessages = customerUnreadSnapshot.exists
-            ? (customerUnreadSnapshot.data()?['unreadMessages'] ?? [])
-            : [];
-
-        int unreadCount = unreadMessages
-            .where((msg) => msg['customerNumber'] == customerData['number'])
-            .length;
-
-        return CustomerWithTransactions(
-          customer: Customer.fromMap({
-            'id': customerDoc.id,
-            'name': formatStringToCamelCase(customerData['name']),
-            'number': customerData['number'],
-            'category': customerData['category'],
-            'lastTransaction': customerData['lastTransaction'],
-            'balance': balance,
-            'isNPA': customerData['isNPA'],
-            'profileImageUrl':
-                customerData['profileImageUrl'], // Include profile image URL
-          }),
-          transactions: [],
-          unreadCount: unreadCount,
-        );
-      }).toList());
-
-      return entities;
-    });
-  }
- */
-
   Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
     final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 

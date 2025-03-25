@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/contact/connect/connect_manangement.dart';
 import 'package:pasella/pages/contact/transactions_management/transactions_management.dart';
 import 'package:pasella/pages/contact/widgets/profile_actions_bar.dart';
+import 'package:pasella/pages/settings/coming_soon/coming_soon_tab.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:provider/provider.dart';
 import 'view_model/customer_management_view_model.dart';
@@ -44,7 +45,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
         customerBalanceSummaryProvider,
         widget.mobileNumber);
 
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       _tabIndexNotifier.value = _tabController.index;
     });
@@ -64,7 +65,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
     return ChangeNotifierProvider(
       create: (_) => customerManagementViewModel,
       child: DefaultTabController(
-        length: 2,
+        length: 3,
         child: Scaffold(
           appBar: ProfileAppBar(
             customerBalanceSummaryProvider: customerBalanceSummaryProvider,
@@ -85,6 +86,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                   ),
                   tabs: [
                     const Tab(text: 'Transactions'),
+                    const Tab(text: 'Orders'),
                     Consumer<CustomerManagementViewModel>(
                       // 🔥 Wrap this tab with Consumer
                       builder: (context, model, child) {
@@ -129,6 +131,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                         customerId: widget.customerId,
                         mobileNumber: widget.mobileNumber,
                       ),
+                      const ComingSoonTab(),
                       ConnectManagementPage(
                         customerId: widget.customerId,
                         profileImageUrl:

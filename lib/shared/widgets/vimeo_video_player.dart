@@ -43,7 +43,8 @@ class VimeoVideoPage extends StatelessWidget {
               icon: const Icon(FontAwesomeIcons.whatsapp),
               label: Text('Talk to support',
                   style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
-              onPressed: () => SupportUtil.sendSupportWhatsAppMessage(context),
+              onPressed: () => SupportUtil.sendWhatsAppMessage(
+                  context, WhatsAppMessageType.support),
               style: ElevatedButton.styleFrom(
                 padding: EdgeInsets.symmetric(
                   horizontal: SizeConfig.blockSizeHorizontal * 5,
