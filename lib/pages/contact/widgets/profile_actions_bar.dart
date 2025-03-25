@@ -125,7 +125,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                           child: Text(
                             mobileNumber.isNotEmpty
                                 ? viewModel.hasWhatsApp
-                                    ? "Has WhatsApp"
+                                    ? "Uses WhatsApp"
                                     : "Likely Only SMS"
                                 : "No mobile number",
                             style: TextStyle(

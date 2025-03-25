@@ -282,6 +282,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
     sendingReminderNotifier.value = true;
 
     final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    double netBalance =
+        customerBalanceSummaryProvider.customerBalanceSummary.netBalance;
 
     sendingReminderNotifier.value = true;
 
@@ -315,7 +317,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
       MessagingNotificationService notificationService =
           await MessagingNotificationService.create();
       await notificationService.sendReminderMessage(
-          userId, customerId, customerName, mobileNumber);
+          userId, customerId, customerName, netBalance, mobileNumber);
     }).catchError((error) {
       showSnackbar(context, 'Error adding credit. Please retry when online.',
           Colors.red);
