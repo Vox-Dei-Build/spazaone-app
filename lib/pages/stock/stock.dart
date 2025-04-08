@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
+import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:provider/provider.dart';
-import 'widgets/add_product_group_button.dart';
-import 'widgets/product_group_list.dart';
 
 class StockPage extends StatefulWidget {
+  const StockPage({super.key});
+
   @override
   _StockPageState createState() => _StockPageState();
 }
@@ -24,7 +25,7 @@ class _StockPageState extends State<StockPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       _tabIndexNotifier.value = _tabController.index;
     });
@@ -55,7 +56,7 @@ class _StockPageState extends State<StockPage>
                       right: SizeConfig.imageSizeMultiplier * 1,
                     ),
                     child: SizedBox(
-                      height: SizeConfig.heightMultiplier * 8,
+                      height: SizeConfig.heightMultiplier * 7,
                       child: _buildFloatingActionButton(tabIndex, viewModel),
                     ),
                   );
@@ -70,47 +71,49 @@ class _StockPageState extends State<StockPage>
                     children: [
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       PageHeader(
-                        onSearchTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const GlobalSearchPage(),
-                            ),
-                          );
-                        },
-                        actionWidget: IconButton(
-                          icon: Icon(
-                            Icons.help_outline,
-                            color: Colors.black,
-                            size: SizeConfig.imageSizeMultiplier * 7,
-                          ),
-                          onPressed: () {
+                          onSearchTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (context) => VimeoVideoPage(
-                                  videoId: '951892750',
-                                  title: 'How to Capture Stock',
-                                ),
+                                builder: (context) => const GlobalSearchPage(),
                               ),
                             );
                           },
-                        ),
-                      ),
+                          actionWidget: Expanded(
+                            child: IconButton(
+                              icon: Icon(
+                                Icons.help_outline,
+                                color: Colors.black,
+                                size: SizeConfig.imageSizeMultiplier * 5,
+                              ),
+                              onPressed: () {
+                                final url = TutorialConfig.getTutorialUrl(
+                                    TutorialConfig.TUTORIAL_CAPTURE_STOCK);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => LoomVideoPage(
+                                      loomUrl: url,
+                                      title: 'How to Capture Stock',
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          )),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       TabBar(
                         controller: _tabController,
                         labelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 2,
-                          fontWeight: FontWeight.bold,
+                          fontSize: SizeConfig.textMultiplier * 1.8,
+                          fontWeight: FontWeight.normal,
                         ),
                         unselectedLabelStyle: TextStyle(
                           fontSize: SizeConfig.textMultiplier *
-                              2, // Font size for unselected tabs
+                              1.8, // Font size for unselected tabs
                           fontWeight: FontWeight
                               .normal, // Font weight for unselected tabs
                         ),
                         tabs: const [
                           Tab(text: 'PRODUCTS'),
-                          Tab(text: 'GROUPS'),
                           Tab(text: 'REPORT'),
                         ],
                       ),
@@ -123,7 +126,6 @@ class _StockPageState extends State<StockPage>
                               groupName:
                                   null, // Set groupname to null so that all products show up
                             ),
-                            ProductGroupList(viewModel: viewModel),
                             ProductReportsTab(viewModel: viewModel),
                           ],
                         ),
@@ -153,19 +155,17 @@ class _StockPageState extends State<StockPage>
             icon: Icon(
               Icons.add_outlined,
               color: Colors.white,
-              size: SizeConfig.heightMultiplier * 3, // Smaller icon
+              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
             ),
             label: Text(
               'Add Product',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2.5, // Adjust font size
+                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
               ),
             ),
           )
-        : tabIndex == 1
-            ? AddProductGroupButton(viewModel: viewModel)
-            : Container();
+        : Container();
   }
 }
 

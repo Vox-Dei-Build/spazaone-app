@@ -20,7 +20,8 @@ export * from "./contact/fetchUserBalance";
 export * from "./notifications/retention_notifications";
 export * from "./notifications/non_payment_notifications";
 export * from "./stock/scheduledTasks/scheduledLowStockCheck";
-
+export * from "./payments/paystack/createPaystackTransaction";
+export * from "./payments/paystack/verifyPaystackTransaction";
 /* Bot */
 export * from "./customer_hub/fetchCustomerAndMerchantDetails";
 export * from "./customer_hub/sendPromoToActiveCustomers";
@@ -40,3 +41,5 @@ export * from "./merchant_hub/order/airtime/getMerchantAirtimeOrders";
 export * from "./merchant_hub/order/electricity/createElectricityOrder";
 export * from "./merchant_hub/order/electricity/getMerchantElectricityOrders";
 export * from "./merchant_hub/order/updateOrderStatus";
+export * from "./merchant_hub/logUnreadMessage";
+export * from "./merchant_hub/markMessagesAsRead";

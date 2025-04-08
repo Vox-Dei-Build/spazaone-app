@@ -39,7 +39,7 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
     SizeConfig().init(context);
 
     return Scaffold(
-      appBar: CustomAppBar(title: 'Create Account'),
+      appBar: const CustomAppBar(title: 'Create Account'),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
@@ -49,7 +49,7 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
             child: Column(
               children: <Widget>[
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
-                LogoDisplay(),
+                const LogoDisplay(),
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
                 CustomTextField(
                   label: 'Full Name',
@@ -101,7 +101,7 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                         CustomButton(
                           title: 'Create Account',
                           onTap: isLoading
-                              ? () => null
+                              ? () {}
                               : () {
                                   if (authViewModel
                                       .registrationFormKey.currentState!
@@ -115,7 +115,7 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                           icon: Icons.person_add,
                         ),
                         if (isLoading)
-                          CircularProgressIndicator(
+                          const CircularProgressIndicator(
                               valueColor:
                                   AlwaysStoppedAnimation<Color>(Colors.white)),
                       ],
@@ -127,7 +127,7 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                   title: 'How To Video',
                   onTap: () {
                     Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) => VimeoVideoPage(
+                      builder: (context) => const VimeoVideoPage(
                         videoId: '935735574',
                         title: '',
                       ),
@@ -143,13 +143,13 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                     Text('Already have an account?',
                         style: TextStyle(
                           color: Colors.black,
-                          fontSize: SizeConfig.textMultiplier * 2.5,
+                          fontSize: SizeConfig.textMultiplier * 2,
                         )),
                     TextButton(
                       child: Text(
                         'LOGIN',
                         style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                             fontWeight: FontWeight.bold),
                       ),
                       onPressed: () {

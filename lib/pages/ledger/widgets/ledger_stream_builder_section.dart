@@ -4,16 +4,26 @@ import 'package:pasella/shared/widgets/balance_summary/balance_summary_card.dart
 import 'package:provider/provider.dart';
 
 class LedgerStreamBuilderSection extends StatelessWidget {
-  const LedgerStreamBuilderSection({Key? key}) : super(key: key);
+  final DateTime? startDate;
+  final DateTime? endDate;
+
+  const LedgerStreamBuilderSection({
+    Key? key,
+    this.startDate,
+    this.endDate,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final balanceSummary = Provider.of<BalanceSummaryProvider>(context);
 
     if (balanceSummary.isLedgerLoading) {
-      return Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator());
     }
 
-    return BalanceSummaryCard();
+    return BalanceSummaryCard(
+      startDate: startDate,
+      endDate: endDate,
+    );
   }
 }

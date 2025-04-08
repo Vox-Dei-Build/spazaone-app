@@ -101,6 +101,23 @@ class AddSale extends StatelessWidget {
                               ProductSelectionWidget(
                                   viewModel: transactionViewModel),
                               SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              TextFormField(
+                                controller:
+                                    transactionViewModel.remarksController,
+                                maxLines: 3,
+                                decoration: InputDecoration(
+                                  labelText: 'Remarks/Notes',
+                                  border: const OutlineInputBorder(),
+                                  labelStyle: TextStyle(
+                                    fontSize: SizeConfig.textMultiplier * 2,
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: SizeConfig.heightMultiplier * 1.5,
+                                    horizontal:
+                                        SizeConfig.imageSizeMultiplier * 3,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -110,7 +127,7 @@ class AddSale extends StatelessWidget {
                     Text(
                       'Total Amount: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2.5,
+                        fontSize: SizeConfig.textMultiplier * 2,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -125,7 +142,8 @@ class AddSale extends StatelessWidget {
                               : () async {
                                   await transactionViewModel
                                       .addSalesTransaction(context);
-                                  salesViewModel.updateSelectedPeriod('All');
+                                  salesViewModel
+                                      .updateSelectedDate(DateTime.now());
                                 },
                           color: Colors.green,
                           icon: Icons.money,

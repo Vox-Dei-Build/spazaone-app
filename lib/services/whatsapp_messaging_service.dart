@@ -8,13 +8,19 @@ class WhatsAppMessagingService {
   late final String fromNumber;
   late final String messagingServiceSid;
 
-  WhatsAppMessagingService() {
-    final remoteConfigService = RemoteConfigService.createInstance();
-    accountSid = remoteConfigService.getString('TWILIO_ACCOUNT_SID')!;
-    authToken = remoteConfigService.getString('TWILIO_AUTH_TOKEN')!;
-    fromNumber = remoteConfigService.getString('TWILIO_NUMBER')!;
-    messagingServiceSid =
-        remoteConfigService.getString('TWILIO_MESSAGING_SERVICE_ID')!;
+  WhatsAppMessagingService._(this.accountSid, this.authToken, this.fromNumber,
+      this.messagingServiceSid);
+
+  static Future<WhatsAppMessagingService> create() async {
+    final remoteConfigService =
+        await RemoteConfigService.getInstance(); // ✅ Get Singleton
+
+    return WhatsAppMessagingService._(
+      remoteConfigService.getString('TWILIO_ACCOUNT_SID'),
+      remoteConfigService.getString('TWILIO_AUTH_TOKEN'),
+      remoteConfigService.getString('TWILIO_NUMBER'),
+      remoteConfigService.getString('TWILIO_MESSAGING_SERVICE_ID'),
+    );
   }
 
 // Function to send a WhatsApp message using a template
@@ -25,7 +31,7 @@ class WhatsAppMessagingService {
     final headers = {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization':
-          'Basic ' + base64Encode(utf8.encode('$accountSid:$authToken'))
+          'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}'
     };
 
     String encodedVariables = json.encode(variables);
@@ -62,7 +68,7 @@ class WhatsAppMessagingService {
         'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages/$messageSid.json');
     final headers = {
       'Authorization':
-          'Basic ' + base64Encode(utf8.encode('$accountSid:$authToken'))
+          'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}'
     };
 
     int delaySeconds = 1; // Start with 1 seconds

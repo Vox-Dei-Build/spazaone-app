@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
@@ -47,22 +48,27 @@ class PhotoUploadUtil {
     return await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Select an option'),
+        title: Text('Select an option',
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(true);
               },
-              child: Text("Camera"),
+              child: Text("Camera",
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop(false);
               },
-              child: Text("Gallery"),
+              child: Text("Gallery",
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             ),
           ],
         ),

@@ -27,8 +27,8 @@ exports.sendTwilioMessage = functions.https.onRequest(async (req, res) => {
   // Extract phone number, template ID, and optional template parameters from the request
   const { to, templateId, templateParams, botType } = req.body;
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID; // Your Account SID from www.twilio.com/console
-  const authToken = process.env.TWILIO_AUTH_TOKEN; // Your Auth Token from www.twilio.com/console
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
   const messagingServiceID =
     botType === "Merchant"
       ? process.env.TWILIO_MERCHANT_MESSAGING_SERVICE_SID

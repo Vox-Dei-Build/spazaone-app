@@ -9,8 +9,9 @@ class AddCreditPaymentButtons extends StatelessWidget {
   final String customerId;
   final String? mobileNumber;
 
-  AddCreditPaymentButtons(
-      {required this.customerName,
+  const AddCreditPaymentButtons(
+      {super.key,
+      required this.customerName,
       required this.customerId,
       this.mobileNumber});
 
@@ -35,8 +36,12 @@ class AddCreditPaymentButtons extends StatelessWidget {
                 ),
               );
             },
+            height: SizeConfig.heightMultiplier * 5,
             color: Colors.red,
             icon: Icons.arrow_downward,
+            iconSize: SizeConfig.imageSizeMultiplier * 4,
+            margin: EdgeInsets.symmetric(
+                horizontal: SizeConfig.imageSizeMultiplier * 3),
             fontSize: SizeConfig.textMultiplier * 1.8, // Adjust font size
           ),
         ),
@@ -55,9 +60,13 @@ class AddCreditPaymentButtons extends StatelessWidget {
                 ),
               );
             },
+            height: SizeConfig.heightMultiplier * 5,
             color: Colors.green,
+            margin: EdgeInsets.symmetric(
+                horizontal: SizeConfig.imageSizeMultiplier * 3),
             icon: Icons.arrow_upward,
-            fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
+            iconSize: SizeConfig.imageSizeMultiplier * 4,
+            fontSize: SizeConfig.textMultiplier * 1.8, // Adjust font size
           ),
         ),
       ],

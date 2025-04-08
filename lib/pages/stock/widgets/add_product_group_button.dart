@@ -11,28 +11,31 @@ class AddProductGroupButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FloatingActionButton.extended(
-      elevation: 3.0,
-      onPressed: () {
-        showDialog(
-          context: context,
-          builder: (context) {
-            return AddProductGroupDialog(
-              viewModel: viewModel,
-            );
-          },
-        );
-      },
-      icon: Icon(
-        Icons.add_outlined,
-        color: Colors.white,
-        size: SizeConfig.heightMultiplier * 3, // Smaller icon
-      ),
-      label: Text(
-        'Create Group',
-        style: TextStyle(
+    return SizedBox(
+      height: SizeConfig.heightMultiplier * 7,
+      child: FloatingActionButton.extended(
+        elevation: 3.0,
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (context) {
+              return AddProductGroupDialog(
+                viewModel: viewModel,
+              );
+            },
+          );
+        },
+        icon: Icon(
+          Icons.add_outlined,
           color: Colors.white,
-          fontSize: SizeConfig.textMultiplier * 2.5, // Adjust font size
+          size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
+        ),
+        label: Text(
+          'Create Group',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
+          ),
         ),
       ),
     );

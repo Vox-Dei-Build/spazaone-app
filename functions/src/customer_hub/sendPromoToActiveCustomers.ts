@@ -5,9 +5,6 @@ import axios from "axios";
 
 /**
  * Google Cloud Function to send promotional messages to active customers using Twilio.
- */
-/**
- * Google Cloud Function to send promotional messages to active customers using Twilio.
  * Test mode is used to prevent actual sending during testing.
  */
 exports.sendPromoToActiveCustomers = functions.https.onRequest(
@@ -63,7 +60,9 @@ exports.sendPromoToActiveCustomers = functions.https.onRequest(
                 }
 
                 if (excludedCustomerNumbers.includes(phoneNumber)) {
-                  console.log(`Skipping customer with phone number ${phoneNumber}`);
+                  console.log(
+                    `Skipping customer with phone number ${phoneNumber}`,
+                  );
                   return;
                 }
 

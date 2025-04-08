@@ -3,7 +3,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_smartlook/flutter_smartlook.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
@@ -12,9 +14,11 @@ import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/settings/chat/chat_page.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
-import 'package:pasella/shared/services/period_filter_services.dart';
+import 'package:pasella/templates/sms_message.dart';
+import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -22,13 +26,68 @@ import 'package:firebase_core/firebase_core.dart';
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
-import 'pages/wallet/widgets/banking_details.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('Handling a background message: ${message.messageId}');
 }
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+Future<void> setupFlutterNotifications() async {
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@drawable/ic_launcher');
+
+  const InitializationSettings initializationSettings =
+      InitializationSettings(android: initializationSettingsAndroid);
+
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse: (response) {
+      // handle notification tapped logic here
+    },
+  );
+}
+
+Future<void> createNotificationChannel() async {
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'default_channel', // matches manifest EXACTLY
+    'Default Notifications',
+    description: 'Default notification channel for Pasella app.',
+    importance: Importance.high,
+  );
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+}
+
+void showLocalNotification(RemoteMessage message) async {
+  if (message.data.containsKey('unreadCount')) {
+    int unreadCount = int.parse(message.data['unreadCount']);
+    FlutterAppBadger.updateBadgeCount(unreadCount);
+  }
+
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'default_channel',
+    'Default Notifications',
+    channelDescription: 'Default notification channel',
+    importance: Importance.max,
+    priority: Priority.high,
+    icon: '@drawable/ic_launcher',
+  );
+
+  const notificationDetails = NotificationDetails(android: androidDetails);
+
+  await flutterLocalNotificationsPlugin.show(
+    message.hashCode,
+    message.notification?.title,
+    message.notification?.body,
+    notificationDetails,
+  );
+}
 
 Future<void> _firebaseMessagingOnMessageOpenedAppHandler(
     RemoteMessage message) async {
@@ -45,18 +104,30 @@ Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
 
 Future<void> _initializeRemoteConfigAndSmartlook() async {
   try {
-    final remoteConfigService = RemoteConfigService.createInstance();
-    await remoteConfigService.initialize();
+    final remoteConfigService = await RemoteConfigService.getInstance();
 
-    String projectKey =
-        remoteConfigService.getString('SMARTLOOK_PROJECT_KEY') ??
-            dotenv.get('SMARTLOOK_PROJECT_KEY');
+    String projectKey = remoteConfigService.getString('SMARTLOOK_PROJECT_KEY');
 
     final Smartlook smartlook = Smartlook.instance;
     smartlook.start();
     smartlook.preferences.setProjectKey(projectKey);
   } catch (e) {
     print("Error initializing Remote Config or Smartlook: $e");
+  }
+}
+
+void requestNotificationPermission() async {
+  NotificationSettings settings =
+      await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+    print('✅ User granted permission');
+  } else {
+    print('❌ User declined or has not accepted permission');
   }
 }
 
@@ -87,20 +158,38 @@ void main() async {
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);
 
-    await Hive.initFlutter();
-    Hive.registerAdapter(QueuedSMSAdapter());
-    await Hive.openBox<QueuedSMS>('smsQueue');
-    await Hive.openBox('deepLinkBox');
-
     // Initialize and configure Remote Config and Smartlook
     if (kReleaseMode) {
       await _initializeRemoteConfigAndSmartlook();
     }
 
+    await FeatureFlags.loadFlags();
+    await SMSMessages.loadTemplates();
+
+    await Hive.initFlutter();
+    Hive.registerAdapter(QueuedSMSAdapter());
+    await Hive.openBox<QueuedSMS>('smsQueue');
+    await Hive.openBox('deepLinkBox');
+
+    await setupFlutterNotifications();
+    await createNotificationChannel();
+    requestNotificationPermission();
+
     // Firebase Messaging setup
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedAppHandler);
     FirebaseMessaging.instance.getInitialMessage().then(_onInitialMessage);
+
+    // Foreground message listener
+    FirebaseMessaging.onMessage
+        .listen(showLocalNotification); // ✅ listen and display
+
+    // When app is opened from a notification
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (message.data.containsKey('route')) {
+        navigatorKey.currentState?.pushNamed(message.data['route']);
+      }
+    });
   } catch (error) {
     print("Initialization error: $error");
     // Consider showing an error message to the user or sending an error report
@@ -135,9 +224,6 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => BalanceSummaryProvider()),
         ChangeNotifierProvider(
             create: (context) => CustomerBalanceSummaryProvider()),
-        ChangeNotifierProvider<PeriodFilterService>(
-          create: (context) => PeriodFilterService(),
-        ),
         ChangeNotifierProvider<LedgerViewModel>(
             create: (context) =>
                 LedgerViewModel(Provider.of<AppModel>(context, listen: false))),
@@ -153,7 +239,6 @@ class MyApp extends StatelessWidget {
           RegisterAnonymousPage.id: (context) => const RegisterAnonymousPage(),
           Dashboard.id: (context) => const Dashboard(),
           AddContactPage.id: (context) => const AddContactPage(),
-          AddBankingDetailsPage.id: (context) => const AddBankingDetailsPage(),
           SecurityPage.id: (context) => const SecurityPage(),
           ProfilePage.id: (context) => const ProfilePage(),
           BusinessTypePage.id: (context) => const BusinessTypePage(),
@@ -168,6 +253,7 @@ class MyApp extends StatelessWidget {
           HelpPage.id: (context) => const HelpPage(),
           SharePage.id: (context) => const SharePage(),
           SalesPage.id: (context) => const SalesPage(),
+          WalletPage.id: (context) => const WalletPage(),
           FindDefaulterPage.id: (context) => const FindDefaulterPage(),
         },
       ),

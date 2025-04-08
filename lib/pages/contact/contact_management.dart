@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/contact/connect/connect_manangement.dart';
+import 'package:pasella/pages/contact/transactions_management/transactions_management.dart';
 import 'package:pasella/pages/contact/widgets/profile_actions_bar.dart';
+import 'package:pasella/pages/settings/coming_soon/coming_soon_tab.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
-import 'package:pasella/shared/widgets/balance_summary/balance_summary_card.dart';
 import 'package:provider/provider.dart';
 import 'view_model/customer_management_view_model.dart';
-import 'widgets/transactions_list_view.dart';
 
 class CustomerManagementPage extends StatefulWidget {
   final String customerName;
@@ -22,9 +23,12 @@ class CustomerManagementPage extends StatefulWidget {
   _CustomerManagementPageState createState() => _CustomerManagementPageState();
 }
 
-class _CustomerManagementPageState extends State<CustomerManagementPage> {
+class _CustomerManagementPageState extends State<CustomerManagementPage>
+    with SingleTickerProviderStateMixin {
   late CustomerManagementViewModel customerManagementViewModel;
   late CustomerBalanceSummaryProvider customerBalanceSummaryProvider;
+  late TabController _tabController;
+  final ValueNotifier<int> _tabIndexNotifier = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -40,19 +44,17 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
         widget.customerName,
         customerBalanceSummaryProvider,
         widget.mobileNumber);
-  }
 
-  void refreshPage(String? newProfileImageUrl) {
-    if (newProfileImageUrl != null) {
-      setState(() {
-        customerManagementViewModel.profileImageUrl = newProfileImageUrl;
-      });
-    }
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      _tabIndexNotifier.value = _tabController.index;
+    });
   }
 
   @override
   void dispose() {
-    customerManagementViewModel.dispose();
+    _tabController.dispose();
+    _tabIndexNotifier.dispose();
     super.dispose();
   }
 
@@ -60,84 +62,87 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: customerManagementViewModel.sendingReminderNotifier,
-      builder: (context, isSending, child) {
-        return Stack(
-          children: [
-            child!,
-            if (isSending)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black45,
-                  child: const Center(child: CircularProgressIndicator()),
+    return ChangeNotifierProvider(
+      create: (_) => customerManagementViewModel,
+      child: DefaultTabController(
+        length: 3,
+        child: Scaffold(
+          appBar: ProfileAppBar(
+            customerBalanceSummaryProvider: customerBalanceSummaryProvider,
+          ),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0),
+              child: Column(children: [
+                TabBar(
+                  controller: _tabController,
+                  labelStyle: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                    fontWeight: FontWeight.normal,
+                  ),
+                  unselectedLabelStyle: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                    fontWeight: FontWeight.normal,
+                  ),
+                  tabs: [
+                    const Tab(text: 'Transactions'),
+                    const Tab(text: 'Orders'),
+                    Consumer<CustomerManagementViewModel>(
+                      // 🔥 Wrap this tab with Consumer
+                      builder: (context, model, child) {
+                        return Tab(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Messages'),
+                              if (model.unreadMessagesCount >
+                                  0) // 🔥 Show badge only if unread messages exist
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      left: SizeConfig.imageSizeMultiplier * 1),
+                                  child: CircleAvatar(
+                                    radius:
+                                        SizeConfig.imageSizeMultiplier * 2.3,
+                                    backgroundColor: Colors.green,
+                                    child: Text(
+                                      model.unreadMessagesCount.toString(),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-              ),
-          ],
-        );
-      },
-      child: Scaffold(
-        appBar: ProfileAppBar(
-          customerId: widget.customerId,
-          customerName: widget.customerName,
-          customerBalanceSummaryProvider: customerBalanceSummaryProvider,
-          mobileNumber: widget.mobileNumber,
-          onProfileUpdated: refreshPage,
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 5,
-            ),
-            child: Column(
-              children: [
                 Expanded(
-                  child: StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: customerManagementViewModel.streamTransactions(
-                        customerManagementViewModel.userId, widget.customerId),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      } else if (snapshot.hasError) {
-                        return Center(
-                            child: Text(
-                          'Error: ${snapshot.error}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                          textAlign: TextAlign.center,
-                        ));
-                      } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return Center(
-                          child: Text(
-                            'No transactions available.',
-                            style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 2,
-                            ),
-                          ),
-                        );
-                      } else {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Expanded(
-                              child: TransactionsListView(
-                                  customerManagementViewModel:
-                                      customerManagementViewModel,
-                                  transactions: snapshot.data!,
-                                  customerId: widget.customerId,
-                                  customerName: widget.customerName,
-                                  mobileNumber: widget.mobileNumber),
-                            ),
-                          ],
-                        );
-                      }
-                    },
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      TransactionsManagementPage(
+                        customerName: widget.customerName,
+                        customerId: widget.customerId,
+                        mobileNumber: widget.mobileNumber,
+                      ),
+                      const ComingSoonTab(),
+                      ConnectManagementPage(
+                        customerId: widget.customerId,
+                        profileImageUrl:
+                            customerManagementViewModel.profileImageUrl,
+                        customerName: widget.customerName,
+                        mobileNumber: widget.mobileNumber,
+                      ),
+                    ],
                   ),
                 ),
-                BalanceSummaryCard(useCustomerProvider: true),
-              ],
+              ]),
             ),
           ),
         ),

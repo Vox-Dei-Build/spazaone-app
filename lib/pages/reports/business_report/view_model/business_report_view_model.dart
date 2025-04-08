@@ -1,13 +1,11 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
-import 'package:pasella/shared/services/period_filter_services.dart';
 
 class BusinessReportViewModel {
   final String currentUser;
-  final PeriodFilterService periodFilterService;
 
-  BusinessReportViewModel(this.currentUser, this.periodFilterService);
+  BusinessReportViewModel(this.currentUser);
 
   final HttpsCallable reportCallable =
       FirebaseFunctions.instance.httpsCallable('generateCashflowImpactReport');
@@ -16,22 +14,27 @@ class BusinessReportViewModel {
 
   Future<Report>? reportFuture;
   double? totalBalance;
-  int yearly_period = 365;
+  int yearlyPeriod = 365;
 
-  Future<Report> fetchReport() async {
-    var startDate = periodFilterService.getStartDate();
-    var endDate = DateTime.now();
+  /// Old method but now optional args
+  Future<Report> fetchReport({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final DateTime safeStart =
+        startDate ?? DateTime.now().subtract(const Duration(days: 30));
+    final DateTime safeEnd = endDate ?? DateTime.now();
 
-    var periodInDays = endDate.difference(startDate).inDays;
+    final periodInDays = safeEnd.difference(safeStart).inDays;
 
     try {
       final HttpsCallableResult result =
           await reportCallable.call(<String, dynamic>{
         'currentUser': currentUser,
-        'startDate': startDate.toIso8601String(),
-        'endDate': endDate.toIso8601String(),
+        'startDate': safeStart.toIso8601String(),
+        'endDate': safeEnd.toIso8601String(),
         'period': periodInDays,
-        'yearlyPeriod': yearly_period,
+        'yearlyPeriod': yearlyPeriod,
       });
 
       Map<String, dynamic> reportData = result.data as Map<String, dynamic>;
@@ -48,8 +51,11 @@ class BusinessReportViewModel {
     }
   }
 
-  void updateReport() {
-    reportFutureNotifier.value = fetchReport();
+  /// For updating the notifier directly
+  Future<Report> fetchReportWithRange(DateTime start, DateTime end) async {
+    final future = fetchReport(startDate: start, endDate: end);
+    reportFutureNotifier.value = future;
+    return future;
   }
 
   void dispose() {

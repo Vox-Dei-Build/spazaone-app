@@ -80,7 +80,7 @@ class ProductCard extends StatelessWidget {
                 child: Text(
                   'Cost: ${CurrencyUtil.format(product.cost ?? 0)}',
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    fontSize: SizeConfig.textMultiplier * 1.5,
                     color: Colors.black,
                   ),
                 ),
@@ -88,9 +88,9 @@ class ProductCard extends StatelessWidget {
               SizedBox(height: SizeConfig.heightMultiplier * 0.5),
               Flexible(
                 child: Text(
-                  'Selling Price: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
+                  'Price: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    fontSize: SizeConfig.textMultiplier * 1.5,
                     color: Colors.black,
                   ),
                 ),
@@ -100,7 +100,7 @@ class ProductCard extends StatelessWidget {
                 child: Text(
                   '${product.quantity ?? ''} in Stock',
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    fontSize: SizeConfig.textMultiplier * 1.5,
                     color: Colors.blue,
                     fontWeight: FontWeight.bold,
                   ),

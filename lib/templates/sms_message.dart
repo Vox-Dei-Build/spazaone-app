@@ -1,33 +1,44 @@
+import 'dart:convert';
+
+import 'package:pasella/config/remote_config.dart';
+
 class SMSMessages {
-  static const String creditConfirmationSMS = '''
-Dear {customerName}, your recent Credit of -{amount} at {shopName} has been recorded. 
+  static String creditConfirmation = '';
+  static String paymentConfirmation = '';
+  static String onboarding = '';
+  static String reminder = '';
 
-Your current balance is {balance}. Thank you for trusting {shopName}'s business!
+  static String creditConfirmationShort = '';
+  static String paymentConfirmationShort = '';
+  static String onboardingShort = '';
+  static String reminderShort = '';
+  static List<String> templateKeywords = [];
 
-From {shopName}
-''';
+  static Future<void> loadTemplates() async {
+    final rc = await RemoteConfigService.getInstance();
+    final keywordsJson = rc.getString('SMS_TEMPLATE_KEYWORDS');
 
-  static const String paymentConfirmationSMS = '''
-Dear {customerName}, your recent Payment of +{amount} at {shopName} has been recorded. 
+    creditConfirmation = rc.getString('SMS_CREDIT_CONFIRMATION');
+    paymentConfirmation = rc.getString('SMS_PAYMENT_CONFIRMATION');
+    onboarding = rc.getString('SMS_ONBOARDING');
+    reminder = rc.getString('SMS_REMINDER');
 
-Your current balance is {balance}. Thank you for paying {shopName}'s business and for being reliable!
+    creditConfirmationShort = rc.getString('SMS_CREDIT_CONFIRMATION_SHORT');
+    paymentConfirmationShort = rc.getString('SMS_PAYMENT_CONFIRMATION_SHORT');
+    onboardingShort = rc.getString('SMS_ONBOARDING_SHORT');
+    reminderShort = rc.getString('SMS_REMINDER_SHORT');
 
-From {shopName}
-''';
+    try {
+      templateKeywords = List<String>.from(jsonDecode(keywordsJson));
+    } catch (e) {
+      print('⚠️ Failed to parse template keywords: $e');
+      templateKeywords = [];
+    }
+  }
 
-  static const String onboardingSMS = '''
-Welcome to {shopName}, {customerName}! No more books! Your account with {shopName} is now online.
-
-Your current balance is R0,00. Thank you again for choosing {shopName}'s business!
-
-From {shopName} 
-''';
-
-  static const String reminderSMS = '''
-Hi {customerName}, your balance at {shopName} of {balance} is due. 
-
-Please keep up to date with your payments and join the 98% of {customerName}'s customers who pay back on time or penalities will be charged. 
-
-From {shopName}
-''';
+  static bool isTemplateMessage(String messageText) {
+    return templateKeywords.any(
+      (keyword) => messageText.toLowerCase().contains(keyword.toLowerCase()),
+    );
+  }
 }

@@ -15,7 +15,7 @@ class DeleteConfirmationDialog extends StatelessWidget {
       title: Text(
         'Delete Product',
         style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2.5,
+            fontSize: SizeConfig.textMultiplier * 2,
             fontWeight: FontWeight.w600),
       ),
       content: Text(

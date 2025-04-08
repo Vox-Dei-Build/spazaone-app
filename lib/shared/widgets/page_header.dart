@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/settings/settings.dart';
 import 'package:pasella/shared/widgets/connectivity_widget.dart';
 
 class PageHeader extends StatelessWidget {
@@ -34,22 +35,39 @@ class PageHeader extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
+          const Spacer(),
           if (onSearchTap != null)
             Expanded(
               child: IconButton(
                 icon: Icon(Icons.search,
                     color: Colors.black,
-                    size: SizeConfig.imageSizeMultiplier * 7),
+                    size: SizeConfig.imageSizeMultiplier * 5),
                 onPressed: onSearchTap,
                 alignment: Alignment.centerRight,
               ),
             )
           else
-            Spacer(),
+            const Spacer(),
+          const Spacer(),
           if (actionWidget != null) actionWidget!,
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-          ConnectivityIndicator(),
+          const Spacer(),
+          Expanded(
+            child: IconButton(
+              icon: Icon(Icons.settings_outlined,
+                  color: Colors.black,
+                  size: SizeConfig.imageSizeMultiplier * 5),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsPage(),
+                  ),
+                );
+              },
+              alignment: Alignment.centerRight,
+            ),
+          ),
+          const Spacer(),
+          const ConnectivityIndicator(),
         ],
       ),
     );

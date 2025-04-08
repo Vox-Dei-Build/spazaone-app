@@ -57,13 +57,13 @@ class _ProductReportsTabState extends State<ProductReportsTab> {
     return ListView(
       padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
       children: [
-        SummaryCard(title: 'Stock Cost Value', amount: totalCost),
-        SummaryCard(title: 'Stock Sales Value', amount: totalSellingPrice),
+        SummaryCard(title: 'Product(s) Cost Value', amount: totalCost),
+        SummaryCard(title: 'Product(s) Sales Value', amount: totalSellingPrice),
         SummaryCard(
-            title: 'Potential Profit from Stock', amount: potentialProfit),
+            title: 'Potential Profit from Product(s)', amount: potentialProfit),
         ProductSection(
-            title: 'Low Stock Products', products: lowStockProductsTwo),
-        ProductSection(title: 'No Stock Products', products: noStockProducts),
+            title: 'Almost Finished Product(s)', products: lowStockProductsTwo),
+        ProductSection(title: 'Finished Product(s)', products: noStockProducts),
       ],
     );
   }

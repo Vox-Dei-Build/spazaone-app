@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
+import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/date_util.dart';
 
 class CustomersWithBadLoansTile extends StatelessWidget {
   final Future<List<dynamic>>? customersWithBadLoansFuture;
 
-  CustomersWithBadLoansTile({required this.customersWithBadLoansFuture});
+  const CustomersWithBadLoansTile(
+      {super.key, required this.customersWithBadLoansFuture});
 
   bool reminderSentRecently(customer) {
     if (customer['lastReminderSent'] != null) {
@@ -29,7 +31,7 @@ class CustomersWithBadLoansTile extends StatelessWidget {
       future: customersWithBadLoansFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return CircularProgressIndicator();
+          return const CircularProgressIndicator();
         } else if (snapshot.hasError) {
           return Text('Error: ${snapshot.error}');
         } else {
@@ -41,11 +43,13 @@ class CustomersWithBadLoansTile extends StatelessWidget {
               final name = customer['name'];
               final number = customer['number'];
               final id = customer['id'];
+              final profileImageUrl = customer['profileImageUrl'];
 
               return ListTile(
                 contentPadding: const EdgeInsets.all(0.0),
                 visualDensity: const VisualDensity(horizontal: -2),
-                leading: _buildLeadingIcon(kTertiaryColor.value, name, number),
+                leading: profilePicture(
+                    context, name, profileImageUrl, number, true),
                 title: _buildTitle(name, balance),
                 subtitle: Text(
                   CurrencyUtil.format(balance),
@@ -111,51 +115,6 @@ class CustomersWithBadLoansTile extends StatelessWidget {
           );
         }
       },
-    );
-  }
-
-  Widget _buildLeadingIcon(color, name, number) {
-    return Stack(
-      children: [
-        Container(
-          height: SizeConfig.imageSizeMultiplier * 10,
-          width: SizeConfig.imageSizeMultiplier * 10,
-          decoration: BoxDecoration(
-            color: Color(color),
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Text(
-              name.isNotEmpty ? name[0] : '',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-        if (number == null || number.isEmpty)
-          Positioned(
-            left: 0,
-            bottom: 0,
-            child: Icon(
-              Icons.phone_disabled,
-              color: Colors.red,
-              size: SizeConfig.imageSizeMultiplier * 3,
-            ),
-          )
-        else
-          Positioned(
-            left: 0,
-            bottom: 0,
-            child: Icon(
-              Icons.phone_enabled,
-              color: Colors.green,
-              size: SizeConfig.imageSizeMultiplier * 3,
-            ),
-          ),
-      ],
     );
   }
 

@@ -4,7 +4,9 @@ class BalanceSummaryViewModel {
   final BalanceSummaryProvider balanceSummaryProvider;
   BalanceSummaryViewModel(this.balanceSummaryProvider);
 
-  Future<void> fetchBalanceSummary(DateTime? startDate) async {
-    await balanceSummaryProvider.fetchBalanceSummary(startDate: startDate);
+  Future<void> fetchBalanceSummaryWithRange(
+      DateTime start, DateTime end) async {
+    await balanceSummaryProvider.fetchBalanceSummary(
+        startDate: start, endDate: end);
   }
 }

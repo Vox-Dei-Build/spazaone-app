@@ -20,7 +20,7 @@ class ProductSection extends StatelessWidget {
         title: Text(
           title,
           style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2.2,
+            fontSize: SizeConfig.textMultiplier * 2,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -32,7 +32,7 @@ class ProductSection extends StatelessWidget {
             ),
             subtitle: Text(
               'Quantity: ${product.quantity ?? 0}',
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.5),
             ),
             trailing: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -41,14 +41,14 @@ class ProductSection extends StatelessWidget {
                   'Cost: ${CurrencyUtil.format(product.cost ?? 0)}',
                   style: TextStyle(
                     color: Colors.red,
-                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    fontSize: SizeConfig.textMultiplier * 1.5,
                   ),
                 ),
                 Text(
                   'Selling Price: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
                   style: TextStyle(
                     color: Colors.green,
-                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    fontSize: SizeConfig.textMultiplier * 1.5,
                   ),
                 ),
               ],

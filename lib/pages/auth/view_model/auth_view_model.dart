@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -34,7 +35,8 @@ class AuthViewModel with ChangeNotifier {
 
     try {
       String formattedPhoneNumber = formatPhoneNumber(mobileNoController.text);
-      bool isRegistered = await _isUserRegistered(mobileNoController.text);
+      String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
+      bool isRegistered = await _isUserRegistered(normalizedPhoneNumber);
 
       if (!isRegistered) {
         showErrorSnackBar(
@@ -66,7 +68,8 @@ class AuthViewModel with ChangeNotifier {
     try {
       String formattedPhoneNumber =
           formatPhoneNumber(registrationMobileNoController.text);
-      bool isAlreadyRegistered = await _isUserRegistered(formattedPhoneNumber);
+      String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
+      bool isAlreadyRegistered = await _isUserRegistered(normalizedPhoneNumber);
 
       if (isAlreadyRegistered) {
         showErrorSnackBar(
@@ -217,16 +220,17 @@ class AuthViewModel with ChangeNotifier {
         String smsCode = "";
 
         return AlertDialog(
-          title: Text('Enter SMS Code'),
+          title: Text('Enter SMS Code',
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
           content: SingleChildScrollView(
             child: Container(
-              padding: EdgeInsets.all(16.0), // Add padding if needed
+              padding: const EdgeInsets.all(16.0), // Add padding if needed
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     onChanged: (value) => smsCode = value,
-                    decoration: InputDecoration(hintText: "SMS Code"),
+                    decoration: const InputDecoration(hintText: "SMS Code"),
                     keyboardType: TextInputType.number,
                     autofocus: true, // Automatically focus on the TextField
                   ),
@@ -236,14 +240,16 @@ class AuthViewModel with ChangeNotifier {
           ),
           actions: [
             TextButton(
-              child: Text('Cancel'),
+              child: Text('Cancel',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 completer.complete();
               },
             ),
             TextButton(
-              child: Text('Verify'),
+              child: Text('Verify',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               onPressed: () {
                 onVerifyPressed(smsCode);
                 if (Navigator.of(dialogContext).canPop()) {
@@ -341,7 +347,7 @@ class AuthViewModel with ChangeNotifier {
       }
     } catch (e) {
       showErrorSnackBar(context, "Failed to link anonymous account: $e");
-      throw e; // Rethrow if you need further error handling upstream
+      rethrow; // Rethrow if you need further error handling upstream
     } finally {
       stopLoading();
     }
@@ -352,46 +358,75 @@ class AuthViewModel with ChangeNotifier {
     if (user == null) return;
 
     try {
+      // Set root user details
       await _firestore.collection('users').doc(user.uid).set({
         'name': nameController.text,
         'shopName': shopNameController.text,
         'mobileNumber': registrationMobileNoController.text,
-        'virtualBalance': 0.0,
         'referralCount': 0,
-        // Include referrer ID if provided
-        'referrerUserId': referrerUserId ?? ""
-      }, SetOptions(merge: true)); // Use merge to update existing document
+        'referrerUserId': referrerUserId ?? "",
+      }, SetOptions(merge: true));
+
+      // DRY ✅ create wallet doc
+      await _createInitialWallet(user.uid);
 
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (error) {
-      print("Error storing user details after linking: ${error.toString()}");
-      showErrorSnackBar(
-          context, "Error storing user details: ${error.toString()}");
+      print("Error storing user details after linking: $error");
+      showErrorSnackBar(context, "Error storing user details: $error");
     }
   }
 
   Future<void> _storeUserDetails(BuildContext context, User user,
       {String? referrerUserId}) async {
     try {
-      Map<String, dynamic> userData = {
+      final Map<String, dynamic> userData = {
         'name': nameController.text,
         'shopName': shopNameController.text,
         'mobileNumber': registrationMobileNoController.text,
-        'virtualBalance': 0.0,
         'referralCount': 0,
       };
 
-      // Include referrerUserId if not null
       if (referrerUserId != null) {
         userData['referrerUserId'] = referrerUserId;
       }
 
       await _firestore.collection('users').doc(user.uid).set(userData);
+
+      // DRY ✅ create wallet doc
+      await _createInitialWallet(user.uid);
     } catch (error) {
-      print("Error storing user details: ${error.toString()}");
-      showErrorSnackBar(
-          context, "Error storing user details: ${error.toString()}");
+      print("Error storing user details: $error");
+      showErrorSnackBar(context, "Error storing user details: $error");
     }
+  }
+
+  /// 🧠 DRY: Shared helper to create initial wallet doc
+  Future<void> _createInitialWallet(String userId) async {
+    await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('wallet')
+        .doc('current')
+        .set({
+      'virtualBalance': 15.0,
+      'cashAdvanceBalance': 0.0,
+      'cashAdvanceWithdrawn': 0.0,
+      'cashAdvanceDueDate': null,
+      'penaltyFee': 0.0,
+      'accountSuspended': false,
+      'totalCashAdvanceGiven': 0.0,
+      'totalCashAdvanceRepaid': 0.0,
+      'repaymentHistory': [
+        {
+          'date': DateTime.now().toIso8601String(),
+          'amount': 0.0,
+          'method': "N/A",
+          'status': "N/A",
+          'reference': "N/A"
+        }
+      ]
+    });
   }
 
   Future<void> clearDeepLinkData() async {

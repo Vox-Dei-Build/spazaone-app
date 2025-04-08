@@ -10,6 +10,7 @@ import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:provider/provider.dart';
+import 'package:rxdart/rxdart.dart';
 
 class EntityTab extends StatefulWidget {
   final String category;
@@ -18,7 +19,7 @@ class EntityTab extends StatefulWidget {
   final ValueNotifier<String?> searchTextNotifier;
   final ValueNotifier<bool> hasCustomersNotifier;
 
-  EntityTab({
+  const EntityTab({
     required this.searchTextNotifier,
     required this.category,
     required this.emptyAsset,
@@ -59,7 +60,7 @@ class _EntityTabState extends State<EntityTab> {
     final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     if (currentUserId.isEmpty) {
-      return Stream.empty();
+      return Stream.value([]);
     }
 
     Query query = FirebaseFirestore.instance
@@ -71,10 +72,35 @@ class _EntityTabState extends State<EntityTab> {
     final customersStream =
         query.orderBy("lastTransaction.date", descending: true).snapshots();
 
-    return customersStream.map((snapshot) {
-      final entities = snapshot.docs.map((customerDoc) {
+    final unreadMessagesStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
+        return <Map<String,
+            dynamic>>[]; // ✅ Always return a properly typed empty list
+      }
+      return (snapshot.data()?['unreadMessages'] as List<dynamic>)
+          .map((msg) =>
+              msg as Map<String, dynamic>) // ✅ Explicitly cast each item
+          .toList();
+    });
+
+    // ✅ Combine both streams so that unread messages update in real-time
+    return Rx.combineLatest2<QuerySnapshot, List<Map<String, dynamic>>,
+        List<CustomerWithTransactions>>(
+      customersStream,
+      unreadMessagesStream,
+      (customerSnapshot, unreadMessages) =>
+          customerSnapshot.docs.map((customerDoc) {
         final customerData = customerDoc.data() as Map<String, dynamic>;
-        double balance = customerData['balance'].toDouble() ?? 0.0;
+        double balance = customerData['balance']?.toDouble() ?? 0.0;
+
+        // ✅ Filter unread messages for this specific customer
+        int unreadCount = unreadMessages
+            .where((msg) => msg['customerNumber'] == customerData['number'])
+            .length;
 
         return CustomerWithTransactions(
           customer: Customer.fromMap({
@@ -85,15 +111,13 @@ class _EntityTabState extends State<EntityTab> {
             'lastTransaction': customerData['lastTransaction'],
             'balance': balance,
             'isNPA': customerData['isNPA'],
-            'profileImageUrl':
-                customerData['profileImageUrl'], // Include profile image URL
+            'profileImageUrl': customerData['profileImageUrl'],
           }),
           transactions: [],
+          unreadCount: unreadCount, // ✅ UI updates when unread messages change
         );
-      }).toList();
-
-      return entities;
-    });
+      }).toList(), // ✅ Ensure this function returns a List<CustomerWithTransactions>
+    );
   }
 
   @override
@@ -110,7 +134,7 @@ class _EntityTabState extends State<EntityTab> {
           stream: streamEntitiesWithTransactions(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(
+              return const Center(
                 child: CircularProgressIndicator(),
               );
             }
@@ -199,25 +223,26 @@ class _EntityTabState extends State<EntityTab> {
                   }
 
                   return TransactionTile(
-                    color: kTertiaryColor.value,
-                    name: entityWithTransactions.customer.name,
-                    profileImageUrl: entityWithTransactions
-                        .customer.profileImageUrl, // Pass profile image URL
-                    balance: balance,
-                    amount: lastTransaction != null
-                        ? lastTransaction.amount.toDouble()
-                        : 0,
-                    remarks: lastTransaction?.remarks ?? 'No transactions yet',
-                    status: lastTransaction?.status ?? 'DUE',
-                    type: lastTransaction?.type ?? 'Credit',
-                    date: lastTransaction?.date != null
-                        ? DateFormat('y MMM d, h:mm a')
-                            .format(lastTransaction!.date)
-                        : '',
-                    selectedCustomerId: entityWithTransactions.customer.id,
-                    isNPA: entityWithTransactions.customer.isNPA,
-                    number: entityWithTransactions.customer.number,
-                  );
+                      color: kTertiaryColor.value,
+                      name: entityWithTransactions.customer.name,
+                      profileImageUrl: entityWithTransactions
+                          .customer.profileImageUrl, // Pass profile image URL
+                      balance: balance,
+                      amount: lastTransaction != null
+                          ? lastTransaction.amount.toDouble()
+                          : 0,
+                      remarks:
+                          lastTransaction?.remarks ?? 'No transactions yet',
+                      status: lastTransaction?.status ?? 'DUE',
+                      type: lastTransaction?.type ?? 'Credit',
+                      date: lastTransaction?.date != null
+                          ? DateFormat('y MMM d, h:mm a')
+                              .format(lastTransaction!.date)
+                          : '',
+                      selectedCustomerId: entityWithTransactions.customer.id,
+                      isNPA: entityWithTransactions.customer.isNPA,
+                      number: entityWithTransactions.customer.number,
+                      unreadCount: entityWithTransactions.unreadCount);
                 }).toList(),
               ),
             );

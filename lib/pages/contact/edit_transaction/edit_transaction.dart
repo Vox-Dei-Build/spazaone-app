@@ -181,27 +181,24 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                                   ProductSelectionWidget<
                                           EditTransactionViewModel>(
                                       viewModel: viewModel),
-                              ] else ...[
-                                SizedBox(
-                                    height: SizeConfig.heightMultiplier * 1),
-                                TextFormField(
-                                  controller: viewModel.remarksController,
-                                  maxLines: 3,
-                                  decoration: InputDecoration(
-                                    labelText: 'Remarks/Notes',
-                                    border: const OutlineInputBorder(),
-                                    labelStyle: TextStyle(
-                                      fontSize: SizeConfig.textMultiplier * 2,
-                                    ),
-                                    contentPadding: EdgeInsets.symmetric(
-                                      vertical:
-                                          SizeConfig.heightMultiplier * 1.5,
-                                      horizontal:
-                                          SizeConfig.imageSizeMultiplier * 3,
-                                    ),
+                              ],
+                              SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              TextFormField(
+                                controller: viewModel.remarksController,
+                                maxLines: 3,
+                                decoration: InputDecoration(
+                                  labelText: 'Remarks/Notes',
+                                  border: const OutlineInputBorder(),
+                                  labelStyle: TextStyle(
+                                    fontSize: SizeConfig.textMultiplier * 2,
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: SizeConfig.heightMultiplier * 1.5,
+                                    horizontal:
+                                        SizeConfig.imageSizeMultiplier * 3,
                                   ),
                                 ),
-                              ]
+                              ),
                             ],
                           ),
                         ),
@@ -211,7 +208,7 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                         Text(
                           'Total Amount: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
                           style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 2.5,
+                            fontSize: SizeConfig.textMultiplier * 2,
                             fontWeight: FontWeight.bold,
                           ),
                         ),

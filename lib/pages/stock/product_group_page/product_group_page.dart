@@ -11,7 +11,8 @@ class ProductGroupPage extends StatelessWidget {
   final String name;
   final StockViewModel viewModel;
 
-  ProductGroupPage({Key? key, required this.name, required this.viewModel})
+  const ProductGroupPage(
+      {Key? key, required this.name, required this.viewModel})
       : super(key: key);
 
   @override
@@ -24,7 +25,7 @@ class ProductGroupPage extends StatelessWidget {
         ),
         child: SizedBox(
           height: SizeConfig.heightMultiplier *
-              8, // Adjust height as needed FloatingActionButton.extended
+              7, // Adjust height as needed FloatingActionButton.extended
           child: FloatingActionButton.extended(
             elevation: 3.0,
             onPressed: () {
@@ -41,13 +42,13 @@ class ProductGroupPage extends StatelessWidget {
             icon: Icon(
               Icons.add_outlined,
               color: Colors.white,
-              size: SizeConfig.heightMultiplier * 3, // Smaller icon
+              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
             ),
             label: Text(
               'Add Product',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2.5, // Adjust font size
+                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
               ),
             ),
           ),
