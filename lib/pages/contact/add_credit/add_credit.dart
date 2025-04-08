@@ -14,7 +14,8 @@ class AddCreditScreen extends StatelessWidget {
   final String customerId;
   final String? mobileNumber;
 
-  AddCreditScreen({
+  const AddCreditScreen({
+    super.key,
     required this.customerName,
     required this.customerId,
     this.mobileNumber,
@@ -127,18 +128,34 @@ class AddCreditScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            SizedBox(height: SizeConfig.heightMultiplier * 1),
+                            SizedBox(height: SizeConfig.heightMultiplier * 2),
                             ProductSelectionWidget<AddCreditViewModel>(
                                 viewModel: viewModel),
+                            SizedBox(height: SizeConfig.heightMultiplier * 2),
+                            TextFormField(
+                              controller: viewModel.remarksController,
+                              maxLines: 3,
+                              decoration: InputDecoration(
+                                labelText: 'Remarks/Notes',
+                                border: const OutlineInputBorder(),
+                                labelStyle: TextStyle(
+                                  fontSize: SizeConfig.textMultiplier * 2,
+                                ),
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: SizeConfig.heightMultiplier * 1.5,
+                                  horizontal:
+                                      SizeConfig.imageSizeMultiplier * 3,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1),
                     Text(
                       'Total Amount: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2.5,
+                        fontSize: SizeConfig.textMultiplier * 2,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -149,7 +166,7 @@ class AddCreditScreen extends StatelessWidget {
                         CustomButton(
                           title: 'Add Credit',
                           onTap: viewModel.isLoading
-                              ? () => null
+                              ? () {}
                               : () async {
                                   await viewModel.addCreditTransaction(context);
                                 },
@@ -158,7 +175,7 @@ class AddCreditScreen extends StatelessWidget {
                           fontSize: SizeConfig.textMultiplier * 2,
                         ),
                         if (viewModel.isLoading)
-                          CircularProgressIndicator(
+                          const CircularProgressIndicator(
                             valueColor:
                                 AlwaysStoppedAnimation<Color>(Colors.white),
                           ),

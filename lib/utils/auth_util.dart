@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
-import 'package:pasella/shared/services/period_filter_services.dart';
 import 'package:provider/provider.dart';
 
 Future<bool> isAnonymousGate(BuildContext context) async {
@@ -20,13 +20,10 @@ bool isUserAnonymous() {
 }
 
 void logout(BuildContext context) async {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseAuth auth = FirebaseAuth.instance;
   try {
-    await _auth.signOut();
+    await auth.signOut();
     Provider.of<AppModel>(context, listen: false).updateCurrentIndex(0);
-    final periodFilterService =
-        Provider.of<PeriodFilterService>(context, listen: false);
-    periodFilterService.resetPeriodFilter();
     Navigator.pushReplacementNamed(context, '/loginPage');
   } catch (e) {
     print("Error logging out: $e");
@@ -39,19 +36,22 @@ Future<bool> _promptForRegistration(BuildContext context) async {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Register'),
-          content: Text(
+          title: Text('Register',
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
+          content: const Text(
             'Enjoying our app? To fully utilize our features and secure your data, please register. '
             'It’s quick and easy! Note: Data for anonymous users will be cleared after 30 days.',
             textAlign: TextAlign.justify,
           ),
           actions: <Widget>[
             TextButton(
-              child: const Text('Later'),
+              child: Text('Later',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               onPressed: () => Navigator.of(context).pop(false),
             ),
             TextButton(
-              child: const Text('Register'),
+              child: Text('Register',
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               onPressed: () => Navigator.of(context).pop(true),
             ),
           ],

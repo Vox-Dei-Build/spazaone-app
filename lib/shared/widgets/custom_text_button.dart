@@ -14,6 +14,8 @@ class CustomButton extends StatelessWidget {
     this.fontSize,
     this.icon,
     this.radius,
+    this.iconSize,
+    this.isDisabled = false,
   });
 
   final String title;
@@ -25,13 +27,15 @@ class CustomButton extends StatelessWidget {
   final double? fontSize;
   final IconData? icon;
   final double? radius;
+  final double? iconSize;
+  final bool isDisabled;
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: isDisabled ? null : onTap,
       child: Container(
         margin: margin ??
             EdgeInsets.symmetric(
@@ -39,7 +43,7 @@ class CustomButton extends StatelessWidget {
         height: height ?? SizeConfig.heightMultiplier * 7,
         width: width ?? double.infinity,
         decoration: BoxDecoration(
-          color: color ?? kPrimaryColor,
+          color: isDisabled ? Colors.grey.shade400 : (color ?? kPrimaryColor),
           borderRadius: BorderRadius.circular(
               radius ?? SizeConfig.imageSizeMultiplier * 4),
         ),
@@ -53,14 +57,14 @@ class CustomButton extends StatelessWidget {
                 child: Icon(
                   icon,
                   color: Colors.white,
-                  size: SizeConfig.imageSizeMultiplier * 6,
+                  size: iconSize ?? SizeConfig.imageSizeMultiplier * 6,
                 ),
               ),
             Text(
               title,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: fontSize ?? SizeConfig.textMultiplier * 2.5,
+                fontSize: fontSize ?? SizeConfig.textMultiplier * 2,
                 fontWeight: FontWeight.w600,
               ),
             ),

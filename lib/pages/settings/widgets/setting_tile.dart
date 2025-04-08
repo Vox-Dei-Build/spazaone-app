@@ -49,7 +49,7 @@ class SettingTile extends StatelessWidget {
                   title,
                   style: TextStyle(
                     fontWeight: FontWeight.w500,
-                    fontSize: SizeConfig.textMultiplier * 2.5,
+                    fontSize: SizeConfig.textMultiplier * 2,
                   ),
                 )
               : title,

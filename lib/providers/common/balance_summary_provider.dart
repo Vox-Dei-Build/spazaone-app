@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/models/common/balance_summary_model.dart';
-import 'package:pasella/models/common/period_filter_model.dart';
-import 'package:pasella/shared/services/period_filter_services.dart';
-import 'package:provider/provider.dart';
 
 class BalanceSummaryProvider with ChangeNotifier {
   BalanceSummary _balanceSummary = BalanceSummary(
@@ -18,26 +15,27 @@ class BalanceSummaryProvider with ChangeNotifier {
 
   BalanceSummary get balanceSummary => _balanceSummary;
 
-  void updatePeriodFilter(BuildContext context, TimePeriod period) {
-    final periodFilterService =
-        Provider.of<PeriodFilterService>(context, listen: false);
-    periodFilterService.updatePeriodFilter(period);
-    DateTime startDate = periodFilterService.getStartDate();
+  void updateCustomDateRange(
+      BuildContext context, DateTime start, DateTime end) {
     Future.delayed(Duration.zero, () {
-      fetchBalanceSummary(startDate: startDate);
+      fetchBalanceSummary(startDate: start, endDate: end);
     });
   }
 
-  Future<void> fetchBalanceSummary({DateTime? startDate}) async {
+  Future<void> fetchBalanceSummary(
+      {DateTime? startDate, DateTime? endDate}) async {
     if (!_isLedgerLoading) {
       isLedgerLoading = true;
     }
 
-    final parameters =
-        startDate != null ? {'startDate': startDate.toIso8601String()} : {};
+    final parameters = {
+      if (startDate != null) 'startDate': startDate.toIso8601String(),
+      if (endDate != null) 'endDate': endDate.toIso8601String(),
+    };
 
     final HttpsCallable callable =
         FirebaseFunctions.instance.httpsCallable('calculateUserBalance');
+
     try {
       final HttpsCallableResult result = await callable.call(parameters);
 
@@ -51,7 +49,6 @@ class BalanceSummaryProvider with ChangeNotifier {
         owingNumberOfCustomers: result.data['outstandingCustomers'],
       );
 
-      // Only update and notify if the balance summary actually changes
       if (!_balanceSummary.equals(newBalanceSummary)) {
         _balanceSummary = newBalanceSummary;
       }

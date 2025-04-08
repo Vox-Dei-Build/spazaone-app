@@ -22,9 +22,9 @@ import { functions, db } from "../../config/main";
 export const scheduledNPAUpdate = functions.pubsub
   .schedule("every 24 hours")
   .onRun(async () => {
-    console.log("Running scheduled NPA update");
+    console.log("🚀 Running scheduled NPA update...");
     await updateNPAs();
-    console.log("NPA status updated for all customers");
+    console.log("✅ NPA status update completed.");
     return null;
   });
 
@@ -33,69 +33,76 @@ export const scheduledNPAUpdate = functions.pubsub
  */
 async function updateNPAs() {
   const batchSize = 500;
-  const currentDate = new Date();
-  const oneMonthAgo = new Date(
-    currentDate.getFullYear(),
-    currentDate.getMonth() - 1,
-    currentDate.getDate(),
-  );
 
   let lastDoc: QueryDocumentSnapshot<DocumentData> | null = null;
   let moreCustomers = true;
+  let processedCount = 0;
 
   while (moreCustomers) {
-    const query = db
-      .collectionGroup("customers")
-      .orderBy("balance")
-      .startAfter(lastDoc)
-      .limit(batchSize);
+    console.log(`📌 Fetching next batch of up to ${batchSize} customers...`);
+
+    const query = lastDoc
+      ? db
+          .collectionGroup("customers")
+          .where("balance", "<", 0) // ✅ Optimized query to fetch only negative balance customers
+          .orderBy("balance")
+          .startAfter(lastDoc)
+          .limit(batchSize)
+      : db
+          .collectionGroup("customers")
+          .where("balance", "<", 0)
+          .orderBy("balance")
+          .limit(batchSize);
 
     const snapshot: QuerySnapshot<DocumentData> = await query.get();
+
     if (snapshot.empty) {
-      console.log("No more customers to process");
+      console.log("🛑 No more customers to process.");
       moreCustomers = false;
       break;
     }
 
-    // Process each customer in the batch
+    console.log(
+      `🔍 Processing ${snapshot.docs.length} customers in this batch...`,
+    );
+
+    const batch = db.batch(); // ✅ Batch Firestore writes
+
     for (const doc of snapshot.docs) {
-      await checkAndUpdateNPA(doc, oneMonthAgo);
+      try {
+        const isNPA = await checkAndUpdateNPA(doc);
+        batch.update(doc.ref, { isNPA });
+        processedCount++;
+      } catch (error) {
+        console.error(`❌ Error processing customer ${doc.id}:`, error);
+      }
     }
 
-    // Prepare for the next batch
+    await batch.commit(); // ✅ Reduce Firestore writes with batched updates
     lastDoc = snapshot.docs[snapshot.docs.length - 1];
   }
+
+  console.log(`✅ Completed processing ${processedCount} customers.`);
 }
+
 /**
- * Checks and updates the NPA status for a specific customer.
+ * Checks if a customer qualifies as NPA.
  * @param {FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>} customerDoc - The customer document.
- * @param {Date} oneMonthAgo - Date one month before the current date.
+ * @return {Promise<boolean>} - Whether the customer is NPA.
  */
 async function checkAndUpdateNPA(
   customerDoc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>,
-  oneMonthAgo: Date,
-) {
+): Promise<boolean> {
   const customerData = customerDoc.data();
-  const lastTransaction = customerData.lastTransaction;
-  const lastTransactionDate = lastTransaction.date.toDate();
-  let isNPA = false;
+  console.log(`📄 Checking NPA status for customer: ${customerDoc.id}`);
 
   if (customerData.balance < 0) {
-    // Check if the last transaction was a credit transaction that is due and older than a month
-    if (
-      lastTransaction.type === "Credit" &&
-      lastTransaction.status === "DUE" &&
-      lastTransactionDate <= oneMonthAgo
-    ) {
-      isNPA = true;
-    }
+    console.log(`✅ Customer ${customerDoc.id} is NPA (Negative Balance).`);
+    return true;
+  } else {
+    console.log(
+      `❌ Customer ${customerDoc.id} is NOT NPA (Balance is positive).`,
+    );
+    return false;
   }
-
-  console.log("updating to isNPA");
-  console.log(isNPA);
-  console.log("For");
-  console.log(customerData);
-
-  // Update the customer's NPA status
-  await customerDoc.ref.update({ isNPA });
 }

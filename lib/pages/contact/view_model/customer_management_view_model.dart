@@ -4,8 +4,11 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -19,7 +22,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> transactions = [];
   File? _profileImage;
   String? _profileImageUrl;
-
+  late final DynamicPricingService pricingService;
   final ValueNotifier<bool> sendingReminderNotifier =
       ValueNotifier<bool>(false);
   bool isLoading = false;
@@ -27,13 +30,85 @@ class CustomerManagementViewModel extends ChangeNotifier {
   String? get profileImageUrl =>
       _profileImageUrl; // Getter for profile image URL
   final PhotoUploadUtil _photoUploadUtil = PhotoUploadUtil();
-
+  late final MessagingNotificationService notificationService;
+  bool hasWhatsApp = false;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController numberController = TextEditingController();
+  int unreadMessagesCount = 0;
 
   CustomerManagementViewModel(this.customerId, this.customerName,
       this.customerBalanceSummaryProvider, this.mobileNumber) {
     _loadCustomerDetails();
+    _initServices();
+  }
+
+  Future<void> _initServices() async {
+    _setLoading(true);
+    try {
+      notificationService = await MessagingNotificationService.create();
+      pricingService = await DynamicPricingService.initialize();
+      hasWhatsApp = (mobileNumber != null)
+          ? await notificationService
+              .isWhatsAppEnabled(normalizePhoneNumber(mobileNumber))
+          : false;
+      fetchNumberOfUnreadMessages();
+      _setLoading(false);
+    } catch (e) {
+      _setLoading(false);
+    }
+
+    notifyListeners();
+  }
+
+  void fetchNumberOfUnreadMessages() async {
+    try {
+      // ✅ Listen for unread messages from Firestore **for this customer only**
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId) // 🔥 Replace with actual merchant ID
+          .snapshots()
+          .listen((snapshot) {
+        if (snapshot.exists) {
+          var unreadMessages = snapshot.data()?['unreadMessages'] ?? [];
+
+          // 🔥 Filter messages for this specific `customerId`
+          var filteredMessages = unreadMessages
+              .where((msg) => msg['customerNumber'] == mobileNumber)
+              .toList();
+
+          unreadMessagesCount = filteredMessages.length;
+
+          notifyListeners();
+        }
+      });
+    } catch (e) {}
+  }
+
+  /// ✅ **Validation Logic**
+  String? validateName() {
+    if (nameController.text.trim().isEmpty) {
+      return "Name cannot be empty";
+    }
+    if (nameController.text.trim().length < 3) {
+      return "Name must be at least 3 characters";
+    }
+    return null;
+  }
+
+  String? validateNumber() {
+    String trimmedNumber = numberController.text.trim();
+    if (trimmedNumber.isNotEmpty && trimmedNumber.length < 10) {
+      return "Enter a valid mobile number (at least 10 digits)";
+    }
+    return null;
+  }
+
+  /// ✅ **Enables Save Button only if changes are made & values are valid**
+  bool get isSaveEnabled {
+    return validateName() == null &&
+        validateNumber() == null &&
+        (nameController.text.trim() != customerName ||
+            numberController.text.trim() != (mobileNumber ?? ''));
   }
 
   Future<void> _loadCustomerDetails() async {
@@ -92,24 +167,38 @@ class CustomerManagementViewModel extends ChangeNotifier {
     }
   }
 
-  void handleImagePick(BuildContext context) async {
-    await _photoUploadUtil.handleImagePick(context, (pickedImage) {
+  Future<void> handleImagePick(BuildContext context) async {
+    await _photoUploadUtil.handleImagePick(context, (pickedImage) async {
       if (pickedImage != null) {
+        print("📸 New profile image picked: $_profileImage"); // Debug print
         _profileImage = pickedImage;
-        notifyListeners();
+        notifyListeners(); // 🔥 Ensure UI updates
       }
     });
   }
 
   Map<String, List<Map<String, dynamic>>> groupTransactionsByDate() {
     Map<String, List<Map<String, dynamic>>> groupedTransactions = {};
+
     for (var transaction in transactions) {
       if (!groupedTransactions.containsKey(transaction['date'])) {
         groupedTransactions[transaction['date']] = [];
       }
       groupedTransactions[transaction['date']]?.add(transaction);
     }
-    return groupedTransactions;
+
+    // ✅ Sort date keys (ascending order so latest is at the bottom)
+    var sortedKeys = groupedTransactions.keys.toList()..sort();
+
+    // ✅ Sort transactions inside each date group
+    Map<String, List<Map<String, dynamic>>> sortedGroupedTransactions = {};
+    for (var key in sortedKeys) {
+      sortedGroupedTransactions[key] = groupedTransactions[key]!
+        ..sort((a, b) => DateTime.parse(a['date']).compareTo(DateTime.parse(
+            b['date']))); // Ensure transactions are sorted within the group
+    }
+
+    return sortedGroupedTransactions;
   }
 
   Stream<List<Map<String, dynamic>>> streamTransactions(
@@ -125,7 +214,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .map((snapshot) {
       List<Map<String, dynamic>> transactions = [];
       for (var doc in snapshot.docs) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        Map<String, dynamic> data = doc.data();
         data['id'] = doc.id;
         if (data['date'] is Timestamp) {
           data['date'] = (data['date'] as Timestamp).toDate().toIso8601String();
@@ -149,13 +238,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
       return;
     }
 
-    DateTime? lastReminderSent = await _getLastReminderSentDate();
-    if (lastReminderSent != null &&
-        DateTime.now().difference(lastReminderSent).inDays < 30) {
-      showSnackbar(context, 'Reminder already sent this month!', Colors.orange);
-      return;
-    }
-
     bool shouldSend = await _showConfirmationDialog(context);
     if (shouldSend) await _sendReminder(context);
   }
@@ -175,15 +257,19 @@ class CustomerManagementViewModel extends ChangeNotifier {
     return await showDialog(
           context: context,
           builder: (BuildContext context) => AlertDialog(
-            title: Text('Send Reminder'),
-            content: Text('Do you want to send a payment reminder?'),
+            title: Text('Send Reminder',
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
+            content: Text('Do you want to send a payment reminder?',
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             actions: <Widget>[
               TextButton(
-                child: Text('Cancel'),
+                child: Text('Cancel',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
                 onPressed: () => Navigator.of(context).pop(false),
               ),
               TextButton(
-                child: Text('Send'),
+                child: Text('Send',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
                 onPressed: () => Navigator.of(context).pop(true),
               ),
             ],
@@ -196,6 +282,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
     sendingReminderNotifier.value = true;
 
     final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    double netBalance =
+        customerBalanceSummaryProvider.customerBalanceSummary.netBalance;
 
     sendingReminderNotifier.value = true;
 
@@ -211,6 +299,15 @@ class CustomerManagementViewModel extends ChangeNotifier {
       });
     }
 
+    bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+        context, userId, pricingService.smsReminderTemplatePrice);
+
+    if (!canProceed) {
+      SnackbarComponents.showInsufficientBalance(context);
+      sendingReminderNotifier.value = false;
+      return; // Exit early, do NOT send the message
+    }
+
     FirebaseFirestore.instance
         .collection('users')
         .doc(userId)
@@ -218,15 +315,73 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .doc(customerId)
         .update({'lastReminderSent': DateTime.now()}).then((value) async {
       MessagingNotificationService notificationService =
-          MessagingNotificationService();
+          await MessagingNotificationService.create();
       await notificationService.sendReminderMessage(
-          userId, customerId, customerName, mobileNumber);
+          userId, customerId, customerName, netBalance, mobileNumber);
     }).catchError((error) {
       showSnackbar(context, 'Error adding credit. Please retry when online.',
           Colors.red);
     });
 
     sendingReminderNotifier.value = false;
+  }
+
+  Future<void> deleteCustomer(BuildContext context) async {
+    bool confirmDelete = await _showDeleteConfirmationDialog(context);
+    if (!confirmDelete) return;
+
+    _setLoading(true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('customers')
+          .doc(customerId)
+          .delete();
+
+      showSnackbar(context, 'Customer deleted successfully.', Colors.green);
+
+      // Close the screen or navigate back after deletion
+      Navigator.of(context).pop();
+    } catch (error) {
+      showErrorSnackBar(context, "Error deleting customer :(");
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> _showDeleteConfirmationDialog(BuildContext context) async {
+    return await showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text("Confirm Deletion",
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
+              content: Text(
+                  "Are you sure you want to delete this customer? This action cannot be undone.",
+                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+              actions: <Widget>[
+                TextButton(
+                  child: Text("Cancel",
+                      style:
+                          TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+                  onPressed: () => Navigator.of(context).pop(false),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red, // Red color for delete
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text("Delete",
+                      style:
+                          TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
   }
 
   set profileImageUrl(String? url) {

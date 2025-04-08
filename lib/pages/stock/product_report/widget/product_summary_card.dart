@@ -23,13 +23,13 @@ class SummaryCard extends StatelessWidget {
             Text(
               title,
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.2,
+                fontSize: SizeConfig.textMultiplier * 2,
                 fontWeight: FontWeight.bold,
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
             Text(
-              '${CurrencyUtil.format(amount)}',
+              CurrencyUtil.format(amount),
               style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
             ),
           ],

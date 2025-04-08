@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
 import 'package:pasella/pages/ledger/widgets/customer_search_box.dart';
 
@@ -6,7 +7,7 @@ class CustomerTab extends StatelessWidget {
   final ValueNotifier<String?> searchTextNotifier;
   final ValueNotifier<bool> hasCustomersNotifier;
 
-  CustomerTab({
+  const CustomerTab({
     required this.searchTextNotifier,
     required this.hasCustomersNotifier,
     Key? key,
@@ -16,13 +17,13 @@ class CustomerTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const SizedBox(height: 10.0),
+        SizedBox(height: SizeConfig.heightMultiplier * 1),
         ValueListenableBuilder<bool>(
           valueListenable: hasCustomersNotifier,
           builder: (context, hasCustomers, child) {
             return hasCustomers
                 ? CustomerSearchBox(searchTextNotifier: searchTextNotifier)
-                : SizedBox.shrink();
+                : const SizedBox.shrink();
           },
         ),
         Expanded(

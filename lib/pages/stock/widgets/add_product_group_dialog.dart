@@ -41,7 +41,7 @@ class AddProductGroupDialog extends StatelessWidget {
                       Text(
                         "Create Product Group",
                         style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 2.5,
+                          fontSize: SizeConfig.textMultiplier * 2,
                         ),
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
 import 'package:pasella/pages/ledger/widgets/customer_tab.dart';
+import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_tab_bar_with_filter.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:provider/provider.dart';
 
 class LedgerMainContent extends StatelessWidget {
@@ -28,22 +29,25 @@ class LedgerMainContent extends StatelessWidget {
           children: [
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             PageHeader(
-              actionWidget: IconButton(
-                icon: Icon(
-                  Icons.help_outline,
-                  color: Colors.black,
-                  size: SizeConfig.imageSizeMultiplier * 7,
-                ),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => VimeoVideoPage(
-                        videoId: '951892750',
-                        title: 'How to Capture Sales & Credit',
-                      ),
+              actionWidget: Expanded(
+                child: IconButton(
+                    icon: Icon(
+                      Icons.help_outline,
+                      color: Colors.black,
+                      size: SizeConfig.imageSizeMultiplier * 5,
                     ),
-                  );
-                },
+                    onPressed: () {
+                      final url = TutorialConfig.getTutorialUrl(
+                          TutorialConfig.TUTORIAL_CAPTURE_BNPL);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title: 'How to Capture Buy Now Pay Later',
+                          ),
+                        ),
+                      );
+                    }),
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -55,7 +59,7 @@ class LedgerMainContent extends StatelessWidget {
                     searchTextNotifier: ledgerViewModel.searchTextNotifier,
                     hasCustomersNotifier: ledgerViewModel.hasCustomersNotifier,
                   ),
-                  BusinessReportPage(),
+                  const BusinessReportPage(),
                 ],
               ),
             ),

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
-import 'package:pasella/pages/settings/chat/chat_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/pages/settings/widgets/setting_tile.dart';
-import 'package:pasella/shared/widgets/vimeo_video_player.dart';
+import 'package:pasella/shared/widgets/loom_video_page.dart';
+import 'package:pasella/utils/support_util.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HelpPage extends StatelessWidget {
@@ -23,7 +25,7 @@ class HelpPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Help'),
+      appBar: const CustomAppBar(title: 'Help'),
       body: SafeArea(
         child: Padding(
           padding: LayoutConstants.padding20Horizontal,
@@ -31,28 +33,68 @@ class HelpPage extends StatelessWidget {
             children: [
               SettingTile(
                 icon: Icons.help,
-                title: 'How to use Pasella?',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) =>
-                      VimeoVideoPage(videoId: '935735574', title: ''),
-                )),
+                title: 'How to Capture Customers?',
+                onTap: () {
+                  final url = TutorialConfig.getTutorialUrl(
+                      TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => LoomVideoPage(
+                        loomUrl: url, title: 'How to Capture Customers'),
+                  ));
+                },
               ),
               SettingTile(
                 icon: Icons.help,
-                title: 'How to Capture Sales & Credit?',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) =>
-                      VimeoVideoPage(videoId: '951892750', title: ''),
-                )),
+                title: 'How to Capture BNPL?',
+                onTap: () {
+                  final url = TutorialConfig.getTutorialUrl(
+                      TutorialConfig.TUTORIAL_CAPTURE_BNPL);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => LoomVideoPage(
+                        loomUrl: url,
+                        title: 'How to Capture Buy Now Pay Later'),
+                  ));
+                },
               ),
               SettingTile(
                 icon: Icons.help,
                 title: 'How to Capture Stock?',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => VimeoVideoPage(
-                      videoId: '951892750',
-                      title: 'How to add stock and link it to transactions?'),
-                )),
+                onTap: () {
+                  final url = TutorialConfig.getTutorialUrl(
+                      TutorialConfig.TUTORIAL_CAPTURE_STOCK);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => LoomVideoPage(
+                      loomUrl: url,
+                      title: 'How to add stock and link it to transactions',
+                    ),
+                  ));
+                },
+              ),
+              SettingTile(
+                icon: Icons.help,
+                title: 'How to Capture Sales?',
+                onTap: () {
+                  final url = TutorialConfig.getTutorialUrl(
+                      TutorialConfig.TUTORIAL_CAPTURE_SALES);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => LoomVideoPage(
+                        loomUrl: url, title: 'How to Capture Sales'),
+                  ));
+                },
+              ),
+              SettingTile(
+                icon: Icons.help,
+                title: 'Wallet?',
+                onTap: () {
+                  final url = TutorialConfig.getTutorialUrl(
+                      TutorialConfig.TUTORIAL_WALLET);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => LoomVideoPage(
+                      loomUrl: url,
+                      title: 'Everything you need to know about your wallet',
+                    ),
+                  ));
+                },
               ),
               SettingTile(
                 icon: Icons.lock,
@@ -62,9 +104,10 @@ class HelpPage extends StatelessWidget {
               ),
               const Spacer(),
               CustomButton(
-                icon: Icons.chat,
-                title: 'Chat with Support',
-                onTap: () => Navigator.pushNamed(context, ChatPage.id),
+                icon: FontAwesomeIcons.whatsapp,
+                title: 'Chat with support',
+                onTap: () => SupportUtil.sendWhatsAppMessage(
+                    context, WhatsAppMessageType.support),
               ),
               const SizedBox(height: 15.0),
             ],

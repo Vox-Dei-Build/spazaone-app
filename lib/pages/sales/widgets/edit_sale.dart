@@ -125,7 +125,24 @@ class _EditSaleState extends State<EditSale> {
                               ] else
                                 ProductSelectionWidget(
                                     viewModel: transactionViewModel),
-                              SizedBox(height: SizeConfig.heightMultiplier * 2)
+                              SizedBox(height: SizeConfig.heightMultiplier * 2),
+                              TextFormField(
+                                controller:
+                                    transactionViewModel.remarksController,
+                                maxLines: 3,
+                                decoration: InputDecoration(
+                                  labelText: 'Remarks/Notes',
+                                  border: const OutlineInputBorder(),
+                                  labelStyle: TextStyle(
+                                    fontSize: SizeConfig.textMultiplier * 2,
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    vertical: SizeConfig.heightMultiplier * 1.5,
+                                    horizontal:
+                                        SizeConfig.imageSizeMultiplier * 3,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -135,7 +152,7 @@ class _EditSaleState extends State<EditSale> {
                     Text(
                       'Total Amount: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2.5,
+                        fontSize: SizeConfig.textMultiplier * 2,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

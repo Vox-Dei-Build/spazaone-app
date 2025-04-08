@@ -79,38 +79,6 @@ class _ProductFormState extends State<ProductForm> {
                               },
                             ),
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            DropdownButtonFormField<String>(
-                              value: selectedGroup,
-                              items: viewModel.productGroups
-                                  .map((group) => DropdownMenuItem(
-                                        value: group,
-                                        child: Text(
-                                          group,
-                                          style: TextStyle(
-                                            fontSize:
-                                                SizeConfig.textMultiplier * 1.8,
-                                          ),
-                                        ),
-                                      ))
-                                  .toList(),
-                              onChanged: (value) {
-                                viewModel.markUnsavedChanges();
-                                widget.product.group = value;
-                              },
-                              decoration: InputDecoration(
-                                labelText: "Product Group*",
-                                labelStyle: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.8,
-                                ),
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal:
-                                      SizeConfig.imageSizeMultiplier * 2.5,
-                                  vertical: SizeConfig.heightMultiplier * 2,
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: SizeConfig.heightMultiplier * 2),
                             Row(
                               children: [
                                 Expanded(
@@ -229,7 +197,7 @@ class _ProductFormState extends State<ProductForm> {
                                 child: Container(
                                   color: Colors.green.withOpacity(0.1),
                                   child: (viewModel.isLoading)
-                                      ? Center(
+                                      ? const Center(
                                           child: CircularProgressIndicator(),
                                         )
                                       : (viewModel.imageUrl == null)

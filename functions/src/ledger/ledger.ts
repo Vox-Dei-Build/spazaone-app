@@ -30,6 +30,7 @@ exports.calculateUserBalance = functions.https.onCall(async (data, context) => {
 
   const userId = context.auth.uid;
   const startDate = data?.startDate ? new Date(data.startDate) : new Date(2000);
+  const endDate = data?.endDate ? new Date(data.endDate) : new Date(); // default to now if missing
 
   try {
     return await db.runTransaction(async (transaction) => {
@@ -51,7 +52,8 @@ exports.calculateUserBalance = functions.https.onCall(async (data, context) => {
         const transactionsRef = customersRef
           .doc(customerDoc.id)
           .collection("transactions")
-          .where("date", ">=", startDate);
+          .where("date", ">=", startDate)
+          .where("date", "<=", endDate);
         transactionReads.push(transaction.get(transactionsRef));
       });
 

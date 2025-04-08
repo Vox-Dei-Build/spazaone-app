@@ -1,0 +1,101 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
+import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+
+import 'payment_response_screen.dart';
+
+class PaystackWebView extends StatefulWidget {
+  final String url;
+  final String reference;
+  final double amount;
+
+  const PaystackWebView({
+    Key? key,
+    required this.url,
+    required this.reference,
+    required this.amount,
+  }) : super(key: key);
+
+  @override
+  _PaystackWebViewState createState() => _PaystackWebViewState();
+}
+
+class _PaystackWebViewState extends State<PaystackWebView> {
+  final Completer<WebViewController> _controller =
+      Completer<WebViewController>();
+  bool isLoading = true;
+
+  /// 🟢 Handle Payment Result and Navigate to Response Screen
+  void _handlePaymentResult(bool success) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => PaymentResponseScreen(
+          isSuccess: success,
+          message: success
+              ? "Your payment was successfully processed!"
+              : "Oops! Something went wrong with your payment.",
+          amount: widget.amount,
+          reference: widget.reference,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppBar(
+          title: 'Complete Payment',
+          trailing: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () async {
+                  final controller = await _controller.future;
+                  controller.reload(); // Refresh the page
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () async {
+                  Navigator.of(context).pop(); //close webview
+                  Navigator.of(context).pop(); //close paystack form
+                },
+              ),
+            ],
+          )),
+      body: Stack(
+        children: [
+          SizedBox(height: SizeConfig.heightMultiplier * 2),
+          WebView(
+            initialUrl: widget.url,
+            javascriptMode: JavascriptMode.unrestricted,
+            onWebViewCreated: (WebViewController webViewController) {
+              _controller.complete(webViewController);
+            },
+            onPageStarted: (String url) {
+              setState(() => isLoading = true);
+            },
+            onPageFinished: (String url) {
+              setState(() => isLoading = false);
+              if (url == "https://standard.paystack.co/close") {
+                Navigator.pop(context, true); // Payment successful
+              }
+            },
+            navigationDelegate: (NavigationRequest request) {
+              if (request.url == "https://standard.paystack.co/close") {
+                Navigator.of(context).pop(); //close webview
+              }
+
+              return NavigationDecision.navigate;
+            },
+            gestureNavigationEnabled: true,
+          ),
+          if (isLoading) const Center(child: CircularProgressIndicator()),
+        ],
+      ),
+    );
+  }
+}

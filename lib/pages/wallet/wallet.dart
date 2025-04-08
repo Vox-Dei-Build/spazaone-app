@@ -1,256 +1,384 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/constants/constants.dart';
-import 'package:pasella/shared/widgets/page_header.dart';
+import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
+import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
+import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
+import 'package:pasella/pages/wallet/tabs/pricing_tab.dart';
+import 'package:pasella/pages/wallet/tabs/top_up_tab.dart';
+import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
-import 'package:pasella/pages/wallet/widgets/icon_action_button.dart';
-import 'package:pasella/pages/wallet/widgets/info_page.dart';
-import 'package:pasella/pages/wallet/widgets/payout_history_page.dart';
-import 'package:pasella/pages/wallet/widgets/payout_request.dart';
+import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
+import 'package:pasella/shared/widgets/loom_video_page.dart';
+import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'widgets/banking_details.dart';
+import 'package:pasella/utils/feature_flags.dart';
+import 'package:pasella/utils/wallet_utils.dart';
 
 class WalletPage extends StatefulWidget {
-  const WalletPage({Key? key}) : super(key: key);
+  const WalletPage({super.key});
+
+  static const id = '/walletPage';
 
   @override
   _WalletPageState createState() => _WalletPageState();
 }
 
-class _WalletPageState extends State<WalletPage> {
-  late WalletViewModel walletViewModel;
-  bool hasBankAccount = false;
-  bool hasPendingRequest = false;
-  bool isLoading = false;
+class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
+  late TabController _tabController;
+  final WalletViewModel walletVM = WalletViewModel();
 
   @override
   void initState() {
     super.initState();
-    walletViewModel = WalletViewModel();
-    _init();
-  }
-
-  _init() async {
-    setState(() {
-      isLoading = true;
+    _tabController = TabController(length: _getTabCount(), vsync: this);
+    _tabController.addListener(() {
+      setState(() {}); // Rerender when tab changes
     });
-    try {
-      bool localHasBankAccount = await walletViewModel.hasBankAccount();
-      bool localHasPendingRequest =
-          await walletViewModel.hasPendingPayoutRequest() ||
-              await walletViewModel.hasProcessingPayoutRequest();
-
-      setState(() {
-        hasBankAccount = localHasBankAccount;
-        hasPendingRequest = localHasPendingRequest;
-      });
-    } catch (e) {
-      print(e);
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
   }
 
   @override
   void dispose() {
-    walletViewModel.dispose();
+    _tabController.dispose();
     super.dispose();
+  }
+
+  int _getTabCount() {
+    return [
+      FeatureFlags.enableTopUp,
+      FeatureFlags.enableCashAdvance,
+      FeatureFlags.enableTransactionHistory,
+      FeatureFlags.enableBankingDetails,
+      FeatureFlags.enablePricingInfo,
+    ].where((enabled) => enabled).length;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
+    // 🔥 Dynamically generate the tab views based on feature flags
+    final List<Widget> tabViews = [];
+    final List<Tab> tabLabels = [];
+
+    if (FeatureFlags.enableTopUp) {
+      tabLabels.add(const Tab(text: 'Top-Up'));
+      tabViews.add(const TopUpTab());
+    }
+
+    if (FeatureFlags.enableCashAdvance) {
+      tabLabels.add(const Tab(text: 'Cash Advance'));
+      tabViews.add(const CashAdvanceTab());
+    }
+
+    if (FeatureFlags.enableTransactionHistory) {
+      tabLabels.add(const Tab(text: 'Transaction History'));
+      tabViews.add(UnifiedHistoryTab(
+        viewModel: walletVM,
+      ));
+    }
+
+    if (FeatureFlags.enableBankingDetails) {
+      tabLabels.add(const Tab(text: 'Banking Details'));
+      tabViews.add(const BankingDetailsTab());
+    }
+
+    if (FeatureFlags.enablePricingInfo) {
+      tabLabels.add(const Tab(text: 'Info'));
+      tabViews.add(const PricingInfoTab());
+    }
+
+    return DefaultTabController(
+      length: tabLabels.length,
+      child: Scaffold(
+        body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const PageHeader(),
-                  const SizedBox(height: 40.0),
-                  StreamBuilder<double>(
-                    stream: walletViewModel.getVirtualBalanceStream(),
-                    builder: (context, snapshot) {
-                      // Check for errors or lack of data
-                      if (snapshot.hasError) {
-                        return Text("Error: ${snapshot.error}");
-                      } else if (!snapshot.hasData) {
-                        return CircularProgressIndicator(); // or some placeholder
-                      }
-
-                      // Display the balance
-                      double balance = snapshot.data!;
-                      return Column(
-                        children: [
-                          Icon(
-                            Icons.wallet_outlined,
-                            color: kSecondaryColor,
-                            size: 40.0,
+            padding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.imageSizeMultiplier * 4),
+            child: Column(
+              children: [
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                PageHeader(
+                    actionWidget: Expanded(
+                  child: IconButton(
+                      icon: Icon(
+                        Icons.help_outline,
+                        color: Colors.black,
+                        size: SizeConfig.imageSizeMultiplier * 5,
+                      ),
+                      onPressed: () {
+                        final url = TutorialConfig.getTutorialUrl(
+                            TutorialConfig.TUTORIAL_WALLET);
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => LoomVideoPage(
+                              loomUrl: url,
+                              title: 'How to Wallet',
+                            ),
                           ),
-                          SizedBox(height: 8),
-                          Text('Your Balance',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium!
-                                  .copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  )),
-                          SizedBox(height: 10),
-                          Text(CurrencyUtil.format(balance),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineLarge!
-                                  .copyWith(
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.bold)),
-                        ],
-                      );
-                    },
-                  ),
-                  SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconActionButton(
-                          icon: isLoading
-                              ? Icons.pending_rounded
-                              : hasBankAccount
-                                  ? Icons.credit_score_rounded
-                                  : Icons.add_card_rounded,
-                          onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => AddBankingDetailsPage(),
-                                ),
-                              ).then((_) async {
-                                _init();
-                              }),
-                          color: isLoading
-                              ? Colors.green
-                              : hasBankAccount
-                                  ? Colors.green
-                                  : kSecondaryColor,
-                          label:
-                              hasBankAccount ? 'Edit Account' : 'Add Account'),
-                      IconActionButton(
-                        icon: Icons.history_rounded,
-                        color: kSecondaryColor,
-                        disabled: false, // Enabled the button
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => PayoutHistoryPage()),
-                          ).then((_) async {
-                            _init();
-                          });
-                        },
-                        label: 'History',
-                      ),
-                      IconActionButton(
-                        icon: Icons.info_outline_rounded,
-                        color: kSecondaryColor,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const InfoPage()),
-                          );
-                        },
-                        label: 'Info', // Change this to suit your needs
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-                  StreamBuilder<double>(
-                      stream: walletViewModel.getVirtualBalanceStream(),
-                      builder: (context, snapshot) {
-                        // Check for errors or lack of data
-                        if (snapshot.hasError) {
-                          return Text("Error: ${snapshot.error}");
-                        } else if (!snapshot.hasData) {
-                          return CircularProgressIndicator(); // or some placeholder
-                        }
-
-                        double balance = snapshot.data!;
-                        bool requestPayoutCondition =
-                            !hasPendingRequest && hasBankAccount && balance > 0;
-                        String disabledReason =
-                            ""; // This string will hold the reason why the button is disabled
-
-                        if (hasPendingRequest) {
-                          disabledReason =
-                              "A payout request is currently pending.";
-                        } else if (!hasBankAccount) {
-                          disabledReason =
-                              "Please add a bank account to request a payout.";
-                        } else if (balance <= 0) {
-                          disabledReason =
-                              "Insufficient balance to request a payout.";
-                        }
-
-                        return isLoading
-                            ? CircularProgressIndicator(
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.green))
-                            : Column(
-                                children: [
-                                  ElevatedButton(
-                                    onPressed: requestPayoutCondition
-                                        ? () {
-                                            // Navigation to PayoutPage with balance
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    PayoutPage(),
-                                                settings: RouteSettings(
-                                                    arguments: balance),
-                                              ),
-                                            ).then((_) async {
-                                              // Refresh bank account and pending request status after returning from PayoutPage
-                                              _init();
-                                            });
-                                          }
-                                        : null, // Button is disabled
-                                    child: Text('Request Payout'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: requestPayoutCondition
-                                          ? Colors.green
-                                          : Colors
-                                              .grey, // Enabled if balance > 0
-                                      disabledBackgroundColor:
-                                          requestPayoutCondition
-                                              ? Colors.green
-                                              : Colors
-                                                  .grey, // Color when button is disabled
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
-                                  SizedBox(
-                                      height:
-                                          8), // Add some space between the button and the explanation text
-                                  if (!requestPayoutCondition) // Only show this text if the button is disabled
-                                    Text(
-                                      disabledReason,
-                                      style: TextStyle(
-                                          color: Colors.black,
-                                          fontSize:
-                                              14), // Styling for the reason text
-                                      textAlign: TextAlign.center,
-                                    ),
-                                ],
-                              );
+                        );
                       }),
-                ],
-              ),
+                )),
+                SizedBox(height: SizeConfig.heightMultiplier * 3),
+
+                // 🟢 Dynamically show the correct balance based on selected tab
+                StreamBuilder<WalletState>(
+                  stream: walletVM.walletStateStream,
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final walletState = snapshot.data!;
+
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _balanceCard(
+                          title: 'App Balance',
+                          amount: walletState.balance,
+                          description: 'For in-app use only',
+                          color: Colors.green,
+                          icon: Icons.account_balance_wallet,
+                        ),
+                        _balanceCard(
+                          title: 'Cash Advance',
+                          amount: walletState.cashAdvanceBalance,
+                          description: 'Available for withdrawal',
+                          color: Colors.blue,
+                          icon: Icons.account_balance_wallet,
+                        ),
+                        if (walletState.cashAdvanceWithdrawn > 0)
+                          _repaymentCard(walletState),
+                      ],
+                    );
+                  },
+                ),
+
+                // 🟢 Tab Bar
+                TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  labelStyle: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                    fontWeight: FontWeight.normal,
+                  ),
+                  unselectedLabelStyle: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                    fontWeight: FontWeight.normal,
+                  ),
+                  tabs: tabLabels,
+                ),
+
+                // 🟢 Expanded Tab Views
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: tabViews,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 🔥 Optimized & Compact Balance Card UI
+  Widget _balanceCard({
+    required String title,
+    required double amount,
+    required String description,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+          vertical: SizeConfig.heightMultiplier * 2,
+          horizontal: SizeConfig.imageSizeMultiplier * 4),
+      margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.6), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.2),
+            blurRadius: 8,
+            spreadRadius: 1,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // 🔹 Left Section: Icon + Text
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: color.withOpacity(0.2),
+                child: Icon(icon,
+                    size: SizeConfig.textMultiplier * 2.5, color: color),
+              ),
+              SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.4,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // 🔹 Right Section: Balance Amount
+          Text(
+            CurrencyUtil.format(amount),
+            style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 2,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _repaymentCard(WalletState walletState) {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 1),
+      color: Colors.red.shade50,
+      child: ListTile(
+        leading: const Icon(Icons.warning, color: Colors.red),
+        title: FutureBuilder<String>(
+          future:
+              WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
+          builder: (context, snapshot) {
+            final due = snapshot.data ?? '...';
+            return Text("💸 Repayment Due: $due",
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6));
+          },
+        ),
+        trailing: TextButton(
+          onPressed: () => _showRepaymentBottomSheet(context, walletState),
+          child: const Text("View", style: TextStyle(color: Colors.red)),
+        ),
+      ),
+    );
+  }
+
+  void _showRepaymentBottomSheet(
+      BuildContext context, WalletState walletState) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Center(
+                child: Container(
+                  width: 50,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              SizedBox(height: SizeConfig.heightMultiplier * 2),
+              Text('Repayment Details',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: SizeConfig.textMultiplier * 2)),
+              SizedBox(height: SizeConfig.heightMultiplier * 2),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateAdvanceFee(walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoRow('Fee Charged', value);
+                },
+              ),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateBankFee(walletState),
+                builder: (context, snapshot) {
+                  final value = snapshot.data ?? '...';
+                  return _infoRow('Bank Fee', value);
+                },
+              ),
+              _infoRow(
+                  'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
+              FutureBuilder<String>(
+                future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
+                    walletState),
+                builder: (context, snapshot) {
+                  final due = snapshot.data ?? '...';
+                  return _infoRow('Amount Due', due);
+                },
+              ),
+              _infoRow('Due Date', WalletUtils.formatDueDate(walletState)),
+              _infoRow(
+                  'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
+              SizedBox(height: SizeConfig.heightMultiplier * 2),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          FullRepaymentReportPage(walletState: walletState),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('View Full Report',
+                    style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding:
+          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6)),
+          Text(value,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: SizeConfig.textMultiplier * 1.6,
+              )),
+        ],
       ),
     );
   }

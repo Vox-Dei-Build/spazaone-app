@@ -39,9 +39,11 @@ class Customer {
 class CustomerWithTransactions {
   final Customer customer;
   final List<LedgerTransaction> transactions;
+  final int? unreadCount;
 
   CustomerWithTransactions({
     required this.customer,
     required this.transactions,
+    this.unreadCount,
   });
 }

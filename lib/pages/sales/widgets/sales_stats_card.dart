@@ -2,11 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:intl/intl.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 class SalesStatsCard extends StatelessWidget {
   final SalesViewModel viewModel;
+  final DateTime? selectedDay;
+  final DateTime? startDate;
+  final DateTime? endDate;
 
-  SalesStatsCard({required this.viewModel});
+  const SalesStatsCard({
+    super.key,
+    required this.viewModel,
+    this.selectedDay,
+    this.startDate,
+    this.endDate,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,9 +36,9 @@ class SalesStatsCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _buildPeriodText(viewModel.selectedPeriod),
+              _buildPeriodText(),
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.5,
+                fontSize: SizeConfig.textMultiplier * 2,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -69,14 +80,16 @@ class SalesStatsCard extends StatelessWidget {
     );
   }
 
-  String _buildPeriodText(String selectedPeriod) {
-    if (selectedPeriod == "Today") {
-      return 'Sales $selectedPeriod';
-    } else if (selectedPeriod == "All Time") {
-      return '$selectedPeriod Sales';
-    } else {
-      return 'Sales This $selectedPeriod';
+  String _buildPeriodText() {
+    if (startDate != null && endDate != null) {
+      return "Sales from ${DateFormat.yMMMd().format(startDate!)} to ${DateFormat.yMMMd().format(endDate!)}";
     }
+    if (selectedDay != null) {
+      return isSameDay(selectedDay!, DateTime.now())
+          ? "Today's Sales"
+          : "Sales on ${DateFormat.yMMMd().format(selectedDay!)}";
+    }
+    return "Sales Overview";
   }
 
   Widget _buildStatItem(String title, String value, Color color) {
@@ -86,7 +99,7 @@ class SalesStatsCard extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 1.9,
+            fontSize: SizeConfig.textMultiplier * 1.5,
             color: Colors.grey[600],
           ),
         ),
@@ -94,7 +107,7 @@ class SalesStatsCard extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2.3,
+            fontSize: SizeConfig.textMultiplier * 2,
             fontWeight: FontWeight.bold,
             color: color,
           ),

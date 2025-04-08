@@ -18,16 +18,27 @@ String formatPhoneNumber(String? phoneNumber) {
 
   // Convert the number to SA format if it starts with '0'
   if (phoneNumber.length == 10 && phoneNumber.startsWith('0')) {
-    return '+27' + phoneNumber.substring(1);
+    return '+27${phoneNumber.substring(1)}';
   } else if (phoneNumber.startsWith('27') && phoneNumber.length == 11) {
-    return '+' + phoneNumber;
+    return '+$phoneNumber';
   }
 
   return phoneNumber;
 }
 
+String formatForTwilio(String customerNumber, bool isWhatsApp) {
+  // Ensure the number is always in +27 format
+  if (customerNumber.startsWith("0")) {
+    customerNumber = "+27${customerNumber.substring(1)}";
+  } else if (!customerNumber.startsWith("+27")) {
+    customerNumber = "+27$customerNumber";
+  }
+
+  // Append "whatsapp:" for WhatsApp numbers
+  return isWhatsApp ? "whatsapp:$customerNumber" : customerNumber;
+}
+
 String normalizePhoneNumber(String? rawNumber) {
-  print('Normalizing number: $rawNumber');
   if (rawNumber == null || rawNumber.isEmpty) return '';
 
   // Remove all non-digit characters
@@ -35,12 +46,10 @@ String normalizePhoneNumber(String? rawNumber) {
 
   // Remove country code if present and format to local standard
   if (digits.startsWith('27')) {
-    digits = '0' + digits.substring(2);
+    digits = '0${digits.substring(2)}';
   } else if (!digits.startsWith('0')) {
-    digits = '0' + digits.substring(digits.length - 9);
+    digits = '0${digits.substring(digits.length - 9)}';
   }
-
-  print('Normalized to local format: $digits');
   return digits;
 }
 
@@ -51,7 +60,7 @@ String formatPhoneNumberForWhatsapp(String? phoneNumber) {
 
   // Convert the number to SA format if it starts with '0'
   if (phoneNumber.length == 10 && phoneNumber.startsWith('0')) {
-    return '27' + phoneNumber.substring(1);
+    return '27${phoneNumber.substring(1)}';
   } else if (phoneNumber.startsWith('27') && phoneNumber.length == 11) {
     return phoneNumber;
   }
