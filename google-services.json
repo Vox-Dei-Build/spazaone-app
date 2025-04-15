@@ -1,0 +1,62 @@
+{
+  "project_info": {
+    "project_number": "716158514645",
+    "project_id": "pasella-ledger",
+    "storage_bucket": "pasella-ledger.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:716158514645:android:48a72c89aca3052ee5795c",
+        "android_client_info": {
+          "package_name": "com.example.pasella"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "716158514645-14kgfisrv7tf9ccm25k9517rvl6ub9oo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pasella",
+            "certificate_hash": "c0f42c4d13bb6f64de62c802ce70c25a3a9b87c0"
+          }
+        },
+        {
+          "client_id": "716158514645-5o4537v901docbf5ikaill2282pbt3ae.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pasella",
+            "certificate_hash": "0b634abe69ed91796446cfd6f93e75ecc54aae0a"
+          }
+        },
+        {
+          "client_id": "716158514645-etlvl2jrv7fo88d0sprl0tvqcrs6sfuh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyy6jOmbBsuleOKhvpWiTOYLn0kPE2vh8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "716158514645-etlvl2jrv7fo88d0sprl0tvqcrs6sfuh.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "716158514645-51a7rh28r1kf1lrgja6c8mrf5l833tfl.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pasella"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
