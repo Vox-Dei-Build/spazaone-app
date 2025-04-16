@@ -1,53 +1,129 @@
 import { functions, db } from "../config/main";
+import axios from "axios";
+import * as admin from "firebase-admin";
+import { AndroidConfig } from "firebase-admin/messaging";
+
 /**
- * Webhook endpoint for Twilio to notify template approval/rejection events.
- * Listens to content status updates and updates Firestore accordingly.
+ * Scheduled Cloud Function that checks the approval status of WhatsApp templates
+ * submitted to Twilio and updates Firestore accordingly. If a template is approved
+ * or rejected, it sends a push notification to the merchant using Firebase Cloud Messaging.
+ *
+ * Runs every 3 minutes.
+ *
+ * Firestore structure expected:
+ * - messagingTemplates/{templateId}:
+ *   - channels.whatsapp.twilioTemplateId: string
+ *   - channels.whatsapp.approvalStatus: "submitted" | "pending" | "approved" | "rejected"
+ *   - name: string (template name)
+ *   - userId: string (merchant ID)
+ *
+ * - users/{merchantId}:
+ *   - fcmToken: string
  */
-exports.twilioTemplateWebhook = functions.https.onRequest(async (req, res) => {
-  if (req.method !== "POST") {
-    res.status(405).send("Method Not Allowed");
-    return;
-  }
+exports.checkTwilioApprovalStatuses = functions.pubsub
+  .schedule("every 10 minutes") // Based on your WhatsApp approval SLA
+  .onRun(async () => {
+    console.log("🔁 Checking WhatsApp template statuses...");
 
-  const payload = req.body;
-  console.log("Received Twilio webhook:", JSON.stringify(payload));
-
-  const twilioTemplateId = payload.sid;
-  const status = payload.status; // "approved" | "rejected"
-  const reason = payload.rejection_reason || null;
-
-  if (!twilioTemplateId || !status) {
-    res.status(400).send("Missing sid or status");
-    return;
-  }
-
-  try {
-    const querySnapshot = await db
+    const snapshot = await db
       .collection("messagingTemplates")
-      .where("channels.whatsapp.twilioTemplateId", "==", twilioTemplateId)
-      .limit(1)
+      .where("channels.whatsapp.approvalStatus", "in", ["pending", "submitted"])
       .get();
 
-    if (querySnapshot.empty) {
-      console.warn(`No template found for Twilio SID ${twilioTemplateId}`);
-      res.status(404).send("Template not found");
+    if (snapshot.empty) {
+      console.log("✅ No templates pending approval.");
       return;
     }
 
-    const docRef = querySnapshot.docs[0].ref;
-
-    const updateData: any = {
-      "channels.whatsapp.approvalStatus": status,
+    const twilioAuth = {
+      username: functions.config().twilio.sid,
+      password: functions.config().twilio.token,
     };
 
-    if (status === "rejected" && reason) {
-      updateData["channels.whatsapp.rejectionReason"] = reason;
-    }
+    const updates = snapshot.docs.map(async (doc) => {
+      const data = doc.data();
+      const sid = data.channels?.whatsapp?.twilioTemplateId;
+      const merchantId = data.userId;
 
-    await docRef.update(updateData);
-    res.status(200).send("Updated template status");
-  } catch (error) {
-    console.error("Error processing Twilio webhook:", error);
-    res.status(500).send("Internal Server Error");
-  }
-});
+      if (!sid || !merchantId) return;
+
+      try {
+        const res = await axios.get(
+          `https://content.twilio.com/v1/Content/${sid}/ApprovalRequests`,
+          { auth: twilioAuth },
+        );
+
+        const wa = res.data.whatsapp;
+        const status = wa.status.toLowerCase(); // "approved", "rejected", "pending"
+
+        if (["approved", "rejected"].includes(status)) {
+          const update: any = {
+            "channels.whatsapp.approvalStatus": status,
+          };
+
+          if (status === "approved") {
+            update["channels.whatsapp.approved"] = true;
+          }
+
+          if (status === "rejected" && wa.rejection_reason) {
+            update["channels.whatsapp.rejectionReason"] = wa.rejection_reason;
+          }
+
+          await doc.ref.update(update);
+          console.log(`🔄 Updated ${sid} → ${status}`);
+
+          // 🔔 Push notification logic
+          const merchantDoc = await db
+            .collection("users")
+            .doc(merchantId)
+            .get();
+          const token = merchantDoc.data()?.fcmToken;
+
+          if (!token) {
+            console.warn(`⚠️ No FCM token for merchant ${merchantId}`);
+            return;
+          }
+
+          const notification = {
+            title:
+              status === "approved"
+                ? "WhatsApp Template Approved 🎉"
+                : "WhatsApp Template Rejected ❌",
+            body:
+              status === "approved"
+                ? `Your template "${data.name}" is now ready to go live!`
+                : `Your template "${data.name}" was rejected. Reason: ${wa.rejection_reason || "Not provided."}`,
+          };
+
+          const androidConfig: AndroidConfig = {
+            priority: "high",
+            notification: {
+              channelId: "default_channel", // ✅ Correct key for channel ID
+              sound: "default",
+            },
+          };
+
+          const payload = {
+            notification,
+            android: androidConfig,
+            data: {
+              status,
+              templateId: doc.id,
+            },
+            token,
+          };
+
+          try {
+            const sendRes = await admin.messaging().send(payload);
+            console.log("📲 Notification sent:", sendRes);
+          } catch (err) {
+            console.error("❌ Failed to send FCM:", err);
+          }
+        }
+      } catch (err) {
+        console.error(`❌ Failed to fetch status for ${sid}:`, err);
+      }
+    });
+
+    await Promise.all(updates);
+  });

@@ -123,6 +123,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
                 : _mediaUrlController.text.trim(),
             'buttons': [],
             'approved': false,
+            'submittedAt': now,
           },
         if (includeSMS)
           'sms': {
@@ -171,10 +172,6 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       case CreateTemplateStep.basicInfo:
         return BasicInfoStep(
           templateNameController: _templateNameController,
-          includeSMS: includeSMS,
-          includeWhatsApp: includeWhatsApp,
-          onSmsChanged: (val) => setState(() => includeSMS = val),
-          onWhatsAppChanged: (val) => setState(() => includeWhatsApp = val),
           showChannelError: showChannelError, // 👈 Add this
         );
 

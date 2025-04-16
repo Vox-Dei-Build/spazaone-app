@@ -76,6 +76,32 @@ class ReviewStep extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.orange),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Once a template is created, it cannot be edited. Please create a new one if changes are needed.',
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.6,
+                      color: Colors.orange.shade900,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
         Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Text('Template Name: $templateName',
               style: TextStyle(
