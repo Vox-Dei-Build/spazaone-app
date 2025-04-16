@@ -45,3 +45,4 @@ export * from "./merchant_hub/logUnreadMessage";
 export * from "./merchant_hub/markMessagesAsRead";
 export * from "./merchant_hub/submitWhatsAppTemplate";
 export * from "./merchant_hub/twilioTemplateWebhook";
+export * from "./merchant_hub/deleteTwilioTemplate";

@@ -20,7 +20,7 @@ import { functions, db } from "../../config/main";
  *
  */
 export const scheduledNPAUpdate = functions.pubsub
-  .schedule("every 24 hours")
+  .schedule("every 1 hours")
   .onRun(async () => {
     console.log("🚀 Running scheduled NPA update...");
     await updateNPAs();

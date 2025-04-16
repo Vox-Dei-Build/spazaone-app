@@ -55,7 +55,7 @@ class _PromotionsPageState extends State<PromotionsPage>
                       controller: _tabController,
                       labelStyle: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.8,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.normal,
                       ),
                       unselectedLabelStyle: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.8,
