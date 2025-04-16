@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:provider/provider.dart';
-import 'package:pasella/pages/promotions/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:intl/intl.dart';
 
 import 'view_template/template_detail_page.dart';

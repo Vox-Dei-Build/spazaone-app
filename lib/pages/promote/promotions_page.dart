@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/promotions/view_model/promotions_view_model.dart';
-import 'package:pasella/pages/promotions/widgets/create_template/create_template.dart';
-import 'package:pasella/pages/promotions/widgets/promotions_page_header.dart';
-import 'package:pasella/pages/promotions/widgets/templates_tab.dart';
+import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
+import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
 import 'package:pasella/pages/settings/coming_soon/coming_soon_tab.dart';
 import 'package:provider/provider.dart';
 

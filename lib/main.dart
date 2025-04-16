@@ -11,7 +11,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
-import 'package:pasella/pages/promotions/promotions_page.dart';
+import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/settings/chat/chat_page.dart';

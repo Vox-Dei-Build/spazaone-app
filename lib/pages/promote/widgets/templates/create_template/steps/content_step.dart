@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/promotions/widgets/create_template/force_boilerplate.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 

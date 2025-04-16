@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/promotions/promotions_page.dart';
-import 'package:pasella/pages/promotions/view_model/promotions_view_model.dart';
-import 'package:pasella/pages/promotions/widgets/view_template/delete_confirmation_dialog.dart';
+import 'package:pasella/pages/promote/promotions_page.dart';
+import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/templates/view_template/delete_confirmation_dialog.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 
 class TemplateDetailPage extends StatelessWidget {
