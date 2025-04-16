@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/promotions/widgets/create_template/force_boilerplate.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
 
 class ReviewStep extends StatelessWidget {
   final String templateName;

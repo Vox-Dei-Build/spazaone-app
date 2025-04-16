@@ -3,7 +3,7 @@ import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/pages/ledger/ledger.dart';
 import 'package:pasella/pages/ledger/widgets/tab.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pasella/pages/promotions/promotions_page.dart';
+import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/stock/stock.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
