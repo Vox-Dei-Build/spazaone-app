@@ -38,8 +38,8 @@ class PromotionsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteTemplate(
-      BuildContext context, String docID, Map<String, dynamic> template) async {
+  Future<bool> deleteTemplate(
+      String docID, Map<String, dynamic> template) async {
     _isLoading = true;
     notifyListeners();
 
@@ -60,14 +60,10 @@ class PromotionsViewModel extends ChangeNotifier {
           .doc(docID)
           .delete();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Template deleted successfully')),
-      );
+      return true;
     } catch (e) {
       debugPrint('Delete error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to delete template')),
-      );
+      return false;
     } finally {
       _isLoading = false;
       notifyListeners();
