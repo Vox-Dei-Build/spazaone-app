@@ -66,7 +66,7 @@ class WalletViewModel {
   final ValueNotifier<bool> virtualBalance = ValueNotifier<bool>(false);
   // Wallet state stream
   final StreamController<WalletState> _walletStateController =
-      StreamController<WalletState>.broadcast();
+      StreamController<WalletState>();
   Stream<WalletState> get walletStateStream => _walletStateController.stream;
 
   WalletViewModel() {

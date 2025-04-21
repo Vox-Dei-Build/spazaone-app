@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/steps/customer_selection/customer_selection_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/steps/promotion_details/template_and_details_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/steps/review_and_pricing/review_and_pricing_step.dart';
+import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:provider/provider.dart';
 
@@ -29,6 +31,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   bool sendSMS = true;
   bool allCustomers = true;
   bool sending = false;
+  final WalletViewModel walletVM = WalletViewModel();
 
   @override
   void initState() {
@@ -44,6 +47,12 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
         vm.selectAllCustomers();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    walletVM.dispose();
+    super.dispose();
   }
 
   void nextStep() async {
@@ -196,37 +205,97 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     final isLastStep = currentStep == RunPromotionStep.reviewAndPricing;
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
 
-    // 1) Step‐1 is valid if template && (whatsapp||sms)
-    final step1Valid = selectedTemplateId != null && (sendWhatsApp || sendSMS);
-    // 2) Step‐2 is valid if at least one customer
-    final step2Valid = vm.selectedCustomerIds.isNotEmpty;
-    // 3) Step‐3 is always valid (it’s the send screen)
-    final canProceed = currentStep == RunPromotionStep.templateAndDetails
-        ? step1Valid
-        : currentStep == RunPromotionStep.customerSelection
-            ? step2Valid
-            : true;
+    // step‐1 & step‐2 unchanged…
+    if (!isLastStep) {
+      final step1Valid =
+          selectedTemplateId != null && (sendWhatsApp || sendSMS);
+      final step2Valid = vm.selectedCustomerIds.isNotEmpty;
+      final canProceed = currentStep == RunPromotionStep.templateAndDetails
+          ? step1Valid
+          : step2Valid;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        if (currentStep != RunPromotionStep.templateAndDetails)
-          OutlinedButton(onPressed: previousStep, child: const Text('Back')),
-        ElevatedButton(
-          onPressed: (sending || !canProceed)
-              ? null
-              : isLastStep
-                  ? _sendPromotion
-                  : nextStep,
-          child: sending
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(isLastStep ? 'Send Promotion' : 'Next'),
-        ),
-      ],
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          if (currentStep != RunPromotionStep.templateAndDetails)
+            OutlinedButton(onPressed: previousStep, child: const Text('Back')),
+          ElevatedButton(
+            onPressed: (sending || !canProceed) ? null : nextStep,
+            child: sending
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Next'),
+          ),
+        ],
+      );
+    }
+
+    // ── Final review: show inline balance (or “Checking…”), then Send/Top‑Up ──
+    return StreamBuilder<WalletState>(
+      stream: walletVM.walletStateStream,
+      builder: (context, snap) {
+        // grab balance if we have it; otherwise default to 0
+        final loadingBalance = snap.connectionState == ConnectionState.waiting;
+        final balance = snap.data?.balance ?? 0.0;
+        final totalCost = vm.totalPrice;
+        final canAfford = balance >= totalCost;
+
+        // inline status text
+        final statusText = loadingBalance
+            ? 'Checking wallet…'
+            : 'You have R${balance.toStringAsFixed(2)}, need R${totalCost.toStringAsFixed(2)}';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              statusText,
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
+            ),
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                OutlinedButton(
+                    onPressed: previousStep, child: const Text('Back')),
+
+                // If we’re still loading or can’t afford, disable Send
+                if (canAfford)
+                  ElevatedButton(
+                    onPressed: sending ? null : _sendPromotion,
+                    child: sending
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Send Promotion'),
+                  )
+                else
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                      Provider.of<AppModel>(context, listen: false)
+                          .goToBilling(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange),
+                    child: loadingBalance
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Top Up Wallet'),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 
