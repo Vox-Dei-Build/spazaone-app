@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
 import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
 import 'package:pasella/pages/wallet/tabs/pricing_tab.dart';
@@ -90,8 +91,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       child: Scaffold(
         body: SafeArea(
           child: Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 4),
+            padding: LayoutConstants.padding10Horizontal,
             child: Column(
               children: [
                 SizedBox(height: SizeConfig.heightMultiplier * 2),

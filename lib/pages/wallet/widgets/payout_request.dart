@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
@@ -32,7 +33,7 @@ class _PayoutPageState extends State<PayoutPage> {
     return Scaffold(
       appBar: const CustomAppBar(onBack: false, title: 'Request Payout'),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: LayoutConstants.padding10Horizontal,
         child: StreamBuilder<WalletState>(
           stream: walletViewModel.walletStateStream,
           builder: (context, snapshot) {

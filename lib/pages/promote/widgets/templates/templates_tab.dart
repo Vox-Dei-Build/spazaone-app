@@ -17,12 +17,12 @@ class _TemplatesTabState extends State<TemplatesTab> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final viewModel =
           Provider.of<PromotionsViewModel>(context, listen: false);
-      viewModel.fetchTemplates();
-      viewModel.fetchMessageShopName();
-      viewModel.initializePricing();
+      await viewModel.fetchTemplates();
+      await viewModel.fetchMessageShopName();
+      await viewModel.initializePricing();
     });
   }
 
@@ -46,7 +46,6 @@ class _TemplatesTabState extends State<TemplatesTab> {
       itemBuilder: (context, index) {
         final template = templates[index];
         final name = template['name'] ?? "Untitled";
-        final contentType = template['contentType'] ?? "Unknown";
         final channels = template['channels'] as Map<String, dynamic>? ?? {};
         final createdAt = template['createdAt']?.toDate();
         final formattedDate = createdAt != null
@@ -55,9 +54,10 @@ class _TemplatesTabState extends State<TemplatesTab> {
 
         final channelKeys =
             channels.keys.map((key) => key.toUpperCase()).join(', ');
-        final whatsappStatus = channels['whatsapp']?['approved'] == true
-            ? 'Approved ✅'
-            : 'Pending ⏳';
+        final approved = channels['whatsapp']?['approved'] == true;
+        final whatsappStatus =
+            channels['whatsapp']?['approved'] == true ? 'Approved' : 'Pending';
+        final statusColor = approved ? Colors.green : Colors.amber;
         final mediaUrl = channels['whatsapp']?['mediaUrl'];
 
         return Card(
@@ -115,18 +115,36 @@ class _TemplatesTabState extends State<TemplatesTab> {
                       children: [
                         Text(name,
                             style: TextStyle(
-                                fontSize: SizeConfig.textMultiplier * 2,
+                                fontSize: SizeConfig.textMultiplier * 1.8,
                                 fontWeight: FontWeight.bold)),
                         SizedBox(height: SizeConfig.heightMultiplier * 0.2),
-                        Text("Type: $contentType",
-                            style: const TextStyle(color: Colors.grey)),
                         Text("Channels: $channelKeys",
-                            style: const TextStyle(color: Colors.grey)),
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 1.5,
+                            )),
                         if (channels.containsKey('whatsapp'))
-                          Text("Status: $whatsappStatus",
-                              style: const TextStyle(color: Colors.green)),
+                          RichText(
+                            text: TextSpan(
+                              style: TextStyle(
+                                fontSize: SizeConfig.textMultiplier * 1.5,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge!
+                                    .color,
+                              ),
+                              children: [
+                                const TextSpan(text: "Status: "),
+                                TextSpan(
+                                  text: whatsappStatus,
+                                  style: TextStyle(color: statusColor),
+                                ),
+                              ],
+                            ),
+                          ),
                         Text("Created: $formattedDate",
-                            style: const TextStyle(color: Colors.grey)),
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 1.5,
+                            )),
                       ],
                     ),
                   )

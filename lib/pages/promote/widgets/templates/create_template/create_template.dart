@@ -61,16 +61,34 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   }
 
   void nextStep() {
+    // Always grab the form’s current validity & channel state
     final isFormValid = _formKey.currentState?.validate() ?? false;
-    final isChannelValid = includeWhatsApp || includeSMS;
 
-    setState(() => showChannelError = !isChannelValid);
-
-    if (isFormValid && isChannelValid) {
-      setState(() {
-        currentStep = CreateTemplateStep.values[currentStep.index + 1];
-      });
+    // STEP 1: Basic Info → require name & at least one channel
+    if (currentStep == CreateTemplateStep.basicInfo) {
+      if (!isFormValid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a template name.')),
+        );
+        return;
+      }
     }
+
+    // STEP 2: Content → require non‑empty body for each chosen channel
+    if (currentStep == CreateTemplateStep.content) {
+      if (_whatsappContentController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message body is required.')),
+        );
+        return;
+      }
+    }
+
+    // If we passed validation, clear any channel error flag
+    setState(() {
+      showChannelError = false;
+      currentStep = CreateTemplateStep.values[currentStep.index + 1];
+    });
   }
 
   void previousStep() {
@@ -153,7 +171,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         title: 'Create Promotion Template',
       ),
       body: Padding(
-        padding: LayoutConstants.padding20Horizontal,
+        padding: LayoutConstants.padding10Horizontal,
         child: Form(
           key: _formKey,
           child: Column(
@@ -209,25 +227,38 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   }
 
   Widget _buildNavigationButtons() {
-    final isLastStep = currentStep == CreateTemplateStep.review;
+    final isLast = currentStep == CreateTemplateStep.review;
+
+    // Pre‑compute validity per step:
+    final formValid = _formKey.currentState?.validate() ?? false; // name field
+    final channelValid = includeWhatsApp || includeSMS; // basicInfo
+    final whatsappFilled = _whatsappContentController.text.trim().isNotEmpty;
+    final smsFilled = _smsContentController.text.trim().isNotEmpty;
+    final contentValid =
+        (!includeWhatsApp || whatsappFilled) && (!includeSMS || smsFilled);
+
+    final canProceed = currentStep == CreateTemplateStep.basicInfo
+        ? formValid && channelValid
+        : currentStep == CreateTemplateStep.content
+            ? contentValid
+            : true; // review step always allowed
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         if (currentStep != CreateTemplateStep.basicInfo)
-          OutlinedButton(
-            onPressed: previousStep,
-            child: const Text('Back'),
-          ),
+          OutlinedButton(onPressed: previousStep, child: const Text('Back')),
         ElevatedButton(
-          onPressed: saving ? null : (isLastStep ? _saveTemplate : nextStep),
+          onPressed: saving || !canProceed
+              ? null
+              : (isLast ? _saveTemplate : nextStep),
           child: saving
               ? const SizedBox(
                   height: 20,
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Text(isLastStep ? 'Save & Submit' : 'Next'),
+              : Text(isLast ? 'Save & Submit' : 'Next'),
         ),
       ],
     );

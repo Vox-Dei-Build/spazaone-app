@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -224,7 +225,8 @@ class AuthViewModel with ChangeNotifier {
               style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
           content: SingleChildScrollView(
             child: Container(
-              padding: const EdgeInsets.all(16.0), // Add padding if needed
+              padding:
+                  LayoutConstants.padding10Horizontal, // Add padding if needed
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

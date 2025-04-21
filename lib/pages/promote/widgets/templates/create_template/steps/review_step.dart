@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
 
 class ReviewStep extends StatelessWidget {
@@ -32,50 +33,21 @@ class ReviewStep extends StatelessWidget {
   Widget build(BuildContext context) {
     String resolvedMessage(String content, String shopName) {
       return content
-          .replaceAll('{{customerName}}', 'Sibusiso')
+          .replaceAll('{{customerName}}', '[Customer Name]')
           .replaceAll('{{shopName}}', shopName);
     }
 
-    Widget buildMessageCard({
-      required String messageContent,
-      String? mediaUrl,
-    }) {
-      return Card(
-        elevation: 2,
-        margin: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (mediaUrl != null && mediaUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(12),
-                  topRight: Radius.circular(12),
-                ),
-                child: Image.network(
-                  mediaUrl,
-                  height: 160,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text(
-                messageContent,
-                style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.8, height: 1.5),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding:
+          EdgeInsets.symmetric(horizontal: SizeConfig.imageSizeMultiplier * 1),
       children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Text('Name: $templateName',
+              style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 2,
+                  fontWeight: FontWeight.bold)),
+          SizedBox(height: SizeConfig.heightMultiplier * 1),
+        ]),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
           child: Container(
@@ -86,7 +58,11 @@ class ReviewStep extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.info_outline, color: Colors.orange),
+                Icon(
+                  Icons.info_outline,
+                  color: Colors.orange,
+                  size: SizeConfig.textMultiplier * 1.8,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -102,25 +78,26 @@ class ReviewStep extends StatelessWidget {
             ),
           ),
         ),
-        Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Text('Template Name: $templateName',
-              style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 2.5,
-                  fontWeight: FontWeight.bold)),
-          SizedBox(height: SizeConfig.heightMultiplier * 1),
-        ]),
+        Divider(
+          color: Colors.grey,
+          thickness: SizeConfig.heightMultiplier * 0,
+        ),
         if (includeWhatsApp)
           Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('WhatsApp Message Preview',
+              const Text('WhatsApp Preview',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               Text(
                   'WhatsApp Cost: R${whatsappPrice!.toStringAsFixed(2)} per recipient'),
-              buildMessageCard(
-                messageContent: resolvedMessage(
+              MessagePreviewCard(
+                content: resolvedMessage(
                     forceBoilerplate(whatsappContent), shopName),
                 mediaUrl: mediaUrl,
+              ),
+              Divider(
+                color: Colors.grey,
+                thickness: SizeConfig.heightMultiplier * 0,
               ),
             ],
           ),
@@ -128,12 +105,12 @@ class ReviewStep extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('SMS Message Preview',
+              const Text('SMS Preview',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               Text(
                   'SMS Cost: R${(smsSegments * smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
-              buildMessageCard(
-                messageContent: resolvedMessage(smsContent, shopName),
+              MessagePreviewCard(
+                content: resolvedMessage(smsContent, shopName),
               ),
             ],
           ),
@@ -141,7 +118,10 @@ class ReviewStep extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             SizedBox(height: SizeConfig.heightMultiplier * 1),
-            const Divider(),
+            Divider(
+              color: Colors.grey,
+              thickness: SizeConfig.heightMultiplier * 0,
+            ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
             if (includeWhatsApp)
               Text(

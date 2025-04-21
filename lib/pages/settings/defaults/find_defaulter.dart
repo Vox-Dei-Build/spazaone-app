@@ -14,10 +14,10 @@ class FindDefaulterPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Defaulters'),
+      appBar: const CustomAppBar(title: 'Defaulters'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Column(
             children: [
               const Row(

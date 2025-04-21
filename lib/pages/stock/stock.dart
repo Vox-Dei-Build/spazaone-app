@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
@@ -64,9 +65,7 @@ class _StockPageState extends State<StockPage>
               ),
               body: SafeArea(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.imageSizeMultiplier * 4,
-                  ),
+                  padding: LayoutConstants.padding10Horizontal,
                   child: Column(
                     children: [
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -146,11 +145,16 @@ class _StockPageState extends State<StockPage>
         ? FloatingActionButton.extended(
             elevation: 3.0,
             onPressed: () {
-              Navigator.of(context).push(
+              Navigator.of(context)
+                  .push(
                 MaterialPageRoute(
-                  builder: (context) => NewProductPage(),
+                  builder: (context) => const NewProductPage(),
                 ),
-              );
+              )
+                  .then((_) {
+                // snap back to “Product Page” tab when you pop
+                _tabController.animateTo(0);
+              });
             },
             icon: Icon(
               Icons.add_outlined,

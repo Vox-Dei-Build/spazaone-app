@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/reports/widgets/balance_display.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
@@ -7,7 +8,8 @@ class CustomerReportPage extends StatelessWidget {
   final String customerName;
   final String customerId;
 
-  CustomerReportPage({required this.customerName, required this.customerId});
+  const CustomerReportPage(
+      {super.key, required this.customerName, required this.customerId});
 
   @override
   Widget build(BuildContext context) {
@@ -30,32 +32,32 @@ class CustomerReportPage extends StatelessWidget {
               children: [
                 BalanceDisplay(balance: 'R300'),
                 /* MonthlySummaryWidget(), */
-                SizedBox(height: 20),
-                Text(
+                const SizedBox(height: 20),
+                const Text(
                   'Transactions Overview',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 /*  TransactionsBarChart(), */
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 Card(
                   elevation: 4,
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: LayoutConstants.padding10Horizontal,
                     child: Column(
                       children: metrics.entries.map((entry) {
                         return ListTile(
                           title: Text(entry.key),
                           trailing: Text(
                             entry.value,
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         );
                       }).toList(),
                     ),
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 CustomButton(
                   title: 'Download Report',
                   onTap: () {},

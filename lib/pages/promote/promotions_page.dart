@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
+import 'package:pasella/pages/promote/widgets/promotions/steps/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
 import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
@@ -23,7 +26,10 @@ class _PromotionsPageState extends State<PromotionsPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(() {
+        setState(() {});
+      });
   }
 
   @override
@@ -44,8 +50,7 @@ class _PromotionsPageState extends State<PromotionsPage>
             floatingActionButton: _buildFloatingActionButton(viewModel),
             body: SafeArea(
               child: Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.imageSizeMultiplier * 4),
+                padding: LayoutConstants.padding10Horizontal,
                 child: Column(
                   children: [
                     SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -71,9 +76,9 @@ class _PromotionsPageState extends State<PromotionsPage>
                       child: TabBarView(
                         controller: _tabController,
                         children: const [
-                          ComingSoonTab(), // Replace with actual promo launcher
+                          PromotionsTab(),
                           TemplatesTab(),
-                          ComingSoonTab(), // Replace with promo reports
+                          ComingSoonTab(),
                         ],
                       ),
                     ),
@@ -94,7 +99,23 @@ class _PromotionsPageState extends State<PromotionsPage>
           label: 'Run Promotion',
           icon: Icons.campaign_outlined,
           onPressed: () {
-            // TODO: Navigate to Create Promotion Flow
+            Navigator.of(context)
+                .push(
+              MaterialPageRoute(
+                builder: (_) => ChangeNotifierProvider(
+                  create: (_) => PromotionsViewModel()
+                    ..fetchTemplates()
+                    ..fetchMessageShopName()
+                    ..initializePricing()
+                    ..fetchCustomers(),
+                  child: const RunPromotionPage(),
+                ),
+              ),
+            )
+                .then((_) {
+              // snap back to “Promotions” tab when you pop
+              _tabController.animateTo(0);
+            });
           },
         );
       case 1:
@@ -102,13 +123,18 @@ class _PromotionsPageState extends State<PromotionsPage>
           label: 'Create Template',
           icon: Icons.library_books_outlined,
           onPressed: () {
-            Navigator.of(context).push(
+            Navigator.of(context)
+                .push(
               MaterialPageRoute(
                 builder: (context) => CreateTemplatePage(
                   viewModel: viewModel,
                 ),
               ),
-            );
+            )
+                .then((_) {
+              // snap back to Templates tab when you pop
+              _tabController.animateTo(1);
+            });
           },
         );
 

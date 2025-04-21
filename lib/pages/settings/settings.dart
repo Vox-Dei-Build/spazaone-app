@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/settings/help/help.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
@@ -22,8 +23,7 @@ class SettingsPage extends StatelessWidget {
       appBar: const CustomAppBar(title: 'Settings'),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 5),
+          padding: LayoutConstants.padding10Horizontal,
           child: Consumer<AppModel>(
             builder: (context, value, child) {
               return Column(

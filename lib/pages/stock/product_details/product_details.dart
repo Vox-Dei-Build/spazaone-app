@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/product_details/widgets/delete_product_confirmation_dialog.dart';
 import 'package:pasella/pages/stock/widgets/product_form.dart';
@@ -11,7 +12,8 @@ class ProductDetailsPage extends StatefulWidget {
   final Product product;
   final String docID;
 
-  ProductDetailsPage({Key? key, required this.product, required this.docID})
+  const ProductDetailsPage(
+      {Key? key, required this.product, required this.docID})
       : super(key: key);
 
   @override
@@ -28,32 +30,32 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
       child: Consumer<ProductViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
-            floatingActionButton:  Padding(
-                padding: const EdgeInsets.only(
-                  bottom: 35,
-                  right: 5,
-                ),
-                child: FloatingActionButton(
-                  backgroundColor:
-                      viewModel.hasUnsavedChanges ? Colors.green : Colors.grey,
-                  onPressed: viewModel.isLoading || !viewModel.hasUnsavedChanges
-                      ? null
-                      : () async {
-                          if (_formKey.currentState?.validate() ?? false) {
-                            await viewModel.saveProduct(
-                                context, widget.product, widget.docID);
-                          }
-                        },
-                  child: viewModel.isLoading
-                      ? const CircularProgressIndicator(
-                          color: Colors.white,
-                        )
-                      : const Icon(
-                          Icons.done,
-                          color: Colors.white,
-                        ),
-                ),
+            floatingActionButton: Padding(
+              padding: const EdgeInsets.only(
+                bottom: 35,
+                right: 5,
               ),
+              child: FloatingActionButton(
+                backgroundColor:
+                    viewModel.hasUnsavedChanges ? Colors.green : Colors.grey,
+                onPressed: viewModel.isLoading || !viewModel.hasUnsavedChanges
+                    ? null
+                    : () async {
+                        if (_formKey.currentState?.validate() ?? false) {
+                          await viewModel.saveProduct(
+                              context, widget.product, widget.docID);
+                        }
+                      },
+                child: viewModel.isLoading
+                    ? const CircularProgressIndicator(
+                        color: Colors.white,
+                      )
+                    : const Icon(
+                        Icons.done,
+                        color: Colors.white,
+                      ),
+              ),
+            ),
             appBar: CustomAppBar(
               title: "Edit Product",
               trailing: IconButton(
@@ -80,14 +82,14 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
               ),
             ),
             body: SafeArea(
-              child: Container(
+              child: SizedBox(
                 height: double.infinity,
                 width: double.infinity,
                 child: Column(
                   children: [
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: LayoutConstants.padding10Horizontal,
                         child: ProductForm(
                           formKey: _formKey,
                           product: widget.product,

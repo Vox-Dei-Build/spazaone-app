@@ -18,8 +18,9 @@ class PageHeader extends StatelessWidget {
     SizeConfig().init(context);
 
     return Padding(
-      padding:
-          EdgeInsets.symmetric(horizontal: SizeConfig.imageSizeMultiplier * 2),
+      padding: EdgeInsets.symmetric(
+          horizontal: SizeConfig.imageSizeMultiplier * 1,
+          vertical: SizeConfig.heightMultiplier * 0),
       child: Row(
         children: [
           Icon(
