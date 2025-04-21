@@ -10,14 +10,14 @@ class AccountPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return const Scaffold(
       appBar: CustomAppBar(title: 'Account'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Column(
             children: [
-              const AccountCard(
+              AccountCard(
                 icon: Icons.book,
                 accountType: 'Customer',
                 paymentType: 'R',

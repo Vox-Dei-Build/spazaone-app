@@ -42,7 +42,7 @@ class _EditSaleState extends State<EditSale> {
             appBar: const CustomAppBar(title: 'Edit Sale'),
             body: SafeArea(
               child: Padding(
-                padding: LayoutConstants.padding20Horizontal,
+                padding: LayoutConstants.padding10Horizontal,
                 child: Column(
                   children: [
                     Expanded(

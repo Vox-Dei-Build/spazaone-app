@@ -69,7 +69,7 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                 CustomAppBar(title: 'Edit $transactionType for $customerName'),
             body: SafeArea(
               child: Padding(
-                padding: LayoutConstants.padding20Horizontal,
+                padding: LayoutConstants.padding10Horizontal,
                 child: Form(
                   child: Column(
                     children: [

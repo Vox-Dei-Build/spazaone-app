@@ -15,10 +15,10 @@ class SecurityPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Security'),
+      appBar: const CustomAppBar(title: 'Security'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Consumer<AppModel>(
             builder: (context, value, child) {
               return Column(

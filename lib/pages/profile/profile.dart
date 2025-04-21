@@ -23,11 +23,11 @@ class ProfilePage extends StatelessWidget {
     return Consumer<AppModel>(
       builder: (context, value, child) {
         return Scaffold(
-          appBar: CustomAppBar(title: 'Profile'),
+          appBar: const CustomAppBar(title: 'Profile'),
           body: SafeArea(
             child: SingleChildScrollView(
               child: Padding(
-                padding: LayoutConstants.padding20Horizontal,
+                padding: LayoutConstants.padding10Horizontal,
                 child: Column(
                   children: [
                     Hero(

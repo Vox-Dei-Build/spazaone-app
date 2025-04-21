@@ -41,7 +41,11 @@ class ContentStep extends StatelessWidget {
     return ListView(
       children: [
         _buildMessageAppEditor(context),
-        SizedBox(height: SizeConfig.heightMultiplier * 2),
+        SizedBox(height: SizeConfig.heightMultiplier * 1),
+        Divider(
+          color: Colors.grey,
+          thickness: SizeConfig.heightMultiplier * 0,
+        ),
         _buildPricingCard(),
       ],
     );
@@ -51,9 +55,9 @@ class ContentStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Hi {{customerName}},',
+        const Text('Hi [Customer Name],',
             style: TextStyle(fontStyle: FontStyle.italic)),
-        SizedBox(height: SizeConfig.heightMultiplier * 2),
+        SizedBox(height: SizeConfig.heightMultiplier * 1),
         TextFormField(
           controller: whatsappContentController,
           maxLines: 6,
@@ -64,7 +68,7 @@ class ContentStep extends StatelessWidget {
             }
           },
           decoration: const InputDecoration(
-            labelText: 'Main Message Body',
+            labelText: 'Message',
             border: OutlineInputBorder(),
           ),
           validator: (val) => val == null || val.isEmpty || val.trim().isEmpty
@@ -73,7 +77,10 @@ class ContentStep extends StatelessWidget {
         ),
         Text('\nFrom $shopName',
             style: const TextStyle(fontStyle: FontStyle.italic)),
-        SizedBox(height: SizeConfig.heightMultiplier * 2),
+        Divider(
+          color: Colors.grey,
+          thickness: SizeConfig.heightMultiplier * 0,
+        ),
         if (includeWhatsApp) ...[
           _buildMediaSection(context),
         ],
@@ -176,7 +183,9 @@ class ContentStep extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.all(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        padding: EdgeInsets.symmetric(
+            horizontal: SizeConfig.imageSizeMultiplier * 4,
+            vertical: SizeConfig.heightMultiplier * 1),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -188,7 +197,11 @@ class ContentStep extends StatelessWidget {
             if (includeWhatsApp && whatsappPrice != null)
               Row(
                 children: [
-                  const Icon(FontAwesomeIcons.whatsapp, color: Colors.green),
+                  Icon(
+                    FontAwesomeIcons.whatsapp,
+                    color: Colors.green,
+                    size: SizeConfig.textMultiplier * 2,
+                  ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Text('WhatsApp: R${whatsappPrice!.toStringAsFixed(2)}'),
                 ],
@@ -197,7 +210,11 @@ class ContentStep extends StatelessWidget {
             if (includeSMS && smsPricePerSegment != null)
               Row(
                 children: [
-                  const Icon(Icons.sms, color: Colors.blue),
+                  Icon(
+                    Icons.sms,
+                    color: Colors.blue,
+                    size: SizeConfig.textMultiplier * 2,
+                  ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Expanded(
                     child: Text(
@@ -206,10 +223,15 @@ class ContentStep extends StatelessWidget {
                   ),
                 ],
               ),
-            const Divider(),
-            const Text(
+            Divider(
+              color: Colors.grey,
+              thickness: SizeConfig.heightMultiplier * 0,
+            ),
+            Text(
               'This is the cost per customer. Final cost will depend on how many customers you send to.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 1.5,
+                  color: Colors.grey),
             ),
           ],
         ),
