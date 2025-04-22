@@ -1,7 +1,11 @@
+// promotions_tab.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/promotions/view_promotion/view_promotion.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 
 class PromotionsTab extends StatefulWidget {
   const PromotionsTab({Key? key}) : super(key: key);
@@ -11,66 +15,131 @@ class PromotionsTab extends StatefulWidget {
 }
 
 class _PromotionsTabState extends State<PromotionsTab> {
-  List<Map<String, dynamic>> promotions = [];
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final viewModel =
-          Provider.of<PromotionsViewModel>(context, listen: false);
-      final results = await viewModel.fetchPromotionsReports(viewModel.userId);
-      setState(() {
-        promotions = results;
-        loading = false;
-      });
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (promotions.isEmpty) {
-      return const Center(child: Text("No promotions found."));
+    final vm = Provider.of<PromotionsViewModel>(context);
+    if (vm.loadingPromotions) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final promos = vm.promotionsReports;
+    if (promos.isEmpty) {
+      return const Center(child: Text("No saved promotions."));
     }
 
     return ListView.builder(
-      itemCount: promotions.length,
       padding: const EdgeInsets.all(8),
-      itemBuilder: (context, index) {
-        final promo = promotions[index];
-        final createdAt = promo['createdAt']?.toDate();
-        final formattedDate = createdAt != null
-            ? DateFormat('MMM dd, yyyy • hh:mm a').format(createdAt)
-            : "Unknown";
-        final status = promo['status'] ?? 'unknown';
-        final isTest = promo['testMode'] == true;
-        final customersCount = (promo['customerIds'] as List?)?.length ?? 0;
-        final templateId = promo['templateId'] ?? 'N/A';
+      itemCount: promos.length,
+      itemBuilder: (ctx, i) {
+        final promo = promos[i];
+        final created = (promo['createdAt'] as Timestamp).toDate();
+        final date = DateFormat('MMM dd, yyyy').format(created);
+        final status = promo['status'] as String;
+        final statusColor = status == 'saved'
+            ? Colors.blue
+            : status == 'processing'
+                ? Colors.orange
+                : Colors.green;
+
+        // lookup template name
+        final templateId = promo['templateId'] as String;
+        final template = vm.templates.firstWhere(
+          (t) => t['id'] == templateId,
+          orElse: () => {},
+        );
+
+        final channels = template['channels'] as Map<String, dynamic>? ?? {};
+        final name = template['name'] ?? '–';
+        final mediaUrl = channels['whatsapp']?['mediaUrl'];
+        final total = promos.length;
+        final displayIndex = total - i;
 
         return Card(
+          margin: const EdgeInsets.symmetric(vertical: 8),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 3,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          child: ListTile(
-            title: Text("Promo to $customersCount customers",
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("Status: ${status.toUpperCase()}"),
-                Text("Created: $formattedDate"),
-                if (isTest)
-                  const Text("Test Mode",
-                      style: TextStyle(color: Colors.orange)),
-              ],
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          elevation: 4,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
             onTap: () {
-              // Later: navigate to detailed promo view if needed
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ViewPromotionPage(viewModel: vm, promo: promo),
+                ),
+              );
             },
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  if (mediaUrl != null && mediaUrl.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        mediaUrl,
+                        height: 80,
+                        width: 80,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.broken_image, size: 80),
+                      ),
+                    )
+                  else
+                    Container(
+                      height: 80,
+                      width: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.description,
+                          size: 40, color: Colors.grey),
+                    ),
+                  SizedBox(width: SizeConfig.imageSizeMultiplier * 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Promotion $displayIndex: $name',
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 1.8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: SizeConfig.heightMultiplier * 0.3),
+                        RichText(
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 1.5,
+                              color:
+                                  Theme.of(context).textTheme.bodyLarge!.color,
+                            ),
+                            children: [
+                              const TextSpan(text: "Status: "),
+                              TextSpan(
+                                text: status.isNotEmpty
+                                    ? '${status[0].toUpperCase()}${status.substring(1)}'
+                                    : status,
+                                style: TextStyle(color: statusColor),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: SizeConfig.heightMultiplier * 0.2),
+                        Text(
+                          "Date: $date",
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },

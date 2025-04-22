@@ -1,12 +1,9 @@
-import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/phone_util.dart';
-import 'package:http/http.dart' as http;
 
 class PromotionsViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -19,6 +16,8 @@ class PromotionsViewModel extends ChangeNotifier {
   List<String> selectedCustomerIds = [];
   double totalPrice = 0.0;
   List<Map<String, dynamic>> customers = [];
+  bool loadingPromotions = false;
+  List<Map<String, dynamic>> promotionsReports = [];
 
   // -- TEMPLATES
   List<Map<String, dynamic>> _templates = [];
@@ -29,6 +28,26 @@ class PromotionsViewModel extends ChangeNotifier {
   String shopName = '';
 
   Map<String, dynamic> promoBreakdown = {};
+
+  /// call this once on create
+  Future<void> loadInitialData() async {
+    await Future.wait([
+      fetchTemplates(),
+      fetchMessageShopName(),
+      initializePricing(),
+      fetchCustomers(),
+      fetchPromotionsReports(), // if needed
+    ]);
+  }
+
+  /// if templates‐only tab needs less, you can also add:
+  Future<void> loadTemplatesData() async {
+    await Future.wait([
+      fetchTemplates(),
+      fetchMessageShopName(),
+      initializePricing(),
+    ]);
+  }
 
   // initialize pricing, e.g.:
   Future<void> initializePricing() async {
@@ -87,6 +106,8 @@ class PromotionsViewModel extends ChangeNotifier {
           .collection('messagingTemplates')
           .doc(docID)
           .delete();
+
+      await loadTemplatesData();
 
       return true;
     } catch (e) {
@@ -224,70 +245,126 @@ class PromotionsViewModel extends ChangeNotifier {
   bool _sendingPromotion = false;
   bool get sendingPromotion => _sendingPromotion;
 
-  Future<void> sendPromotion({
+  Future<String?> savePromotion({
     required String templateId,
     required List<String> customerIds,
     required Map<String, String> variables,
+    required bool sendWhatsApp,
+    required bool sendSMS,
     required bool testMode,
   }) async {
     _sendingPromotion = true;
     notifyListeners();
-
     try {
-      // Cloud Function call or Firestore write for queued promo
-      final response =
-          await FirebaseFirestore.instance.collection('promotions').add({
+      final docRef = await _firestore.collection('promotions').add({
+        'merchantId': userId,
         'templateId': templateId,
         'customerIds': customerIds,
         'variables': variables,
+        'sendWhatsApp': sendWhatsApp,
+        'sendSMS': sendSMS,
         'testMode': testMode,
-        'status': 'pending',
+        'status': 'saved',
         'createdAt': FieldValue.serverTimestamp(),
       });
-
-      debugPrint('Promotion queued: ${response.id}');
+      await fetchPromotionsReports();
+      return docRef.id; // ← return the new ID
     } catch (e) {
-      debugPrint('Failed to send promotion: $e');
+      debugPrint('Failed to save promotion: $e');
+      return null;
     } finally {
       _sendingPromotion = false;
       notifyListeners();
     }
   }
 
-  Future<void> runPromotion(
-      String merchantId, List<String> customerIds, String templateId) async {
-    final response = await http.post(
-      Uri.parse(
-          "https://us-central1-pasella-ledger.cloudfunctions.net/runMerchantPromotion"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "merchantId": merchantId,
-        "customerIds": customerIds,
-        "templateId": templateId,
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      // handle success
-    } else {
-      // handle failure
+  Future<void> sendSavedPromotion(String promoId) async {
+    final callable =
+        FirebaseFunctions.instance.httpsCallable('runMerchantPromotion');
+    final res = await callable.call({'promotionId': promoId});
+    if ((res.data as Map)['success'] == true) {
+      // optionally update local UI or refetch promos
+      await fetchPromotionsReports();
     }
   }
 
   // -- REPORTS (Simplified)
-  Future<List<Map<String, dynamic>>> fetchPromotionsReports(
-      String userId) async {
-    try {
-      final snapshot = await _firestore
-          .collection('promotions')
-          .where('userId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
-          .get();
+  Future<void> fetchPromotionsReports() async {
+    loadingPromotions = true;
+    notifyListeners();
+    final snap = await _firestore
+        .collection('promotions')
+        .where('merchantId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .get();
+    promotionsReports = snap.docs.map((d) {
+      final m = d.data();
+      m['id'] = d.id;
+      return m;
+    }).toList();
+    loadingPromotions = false;
+    notifyListeners();
+  }
 
-      return snapshot.docs.map((doc) => doc.data()).toList();
+  Future<bool> deletePromotion(String promoId) async {
+    try {
+      await _firestore.collection('promotions').doc(promoId).delete();
+      await fetchPromotionsReports();
+      return true;
     } catch (e) {
-      debugPrint('Failed to fetch promotion reports: $e');
-      return [];
+      debugPrint('Delete error: $e');
+      return false;
     }
+  }
+
+  /// The currently‐selected template’s WhatsApp content
+  String? get currentTemplateContent {
+    final t = templates.firstWhere(
+      (t) => t['id'] == selectedTemplateId,
+      orElse: () => <String, dynamic>{},
+    );
+    return (t['channels']?['whatsapp']?['templateContent']) as String?;
+  }
+
+  /// The currently‐selected template’s WhatsApp media URL
+  String? get currentMediaUrl {
+    final t = templates.firstWhere(
+      (t) => t['id'] == selectedTemplateId,
+      orElse: () => <String, dynamic>{},
+    );
+    return (t['channels']?['whatsapp']?['mediaUrl']) as String?;
+  }
+
+  // Preload a saved promo into your RunPromotionPage state
+  Future<void> loadPromotionIntoState(Map<String, dynamic> promo) async {
+    // 1) template
+    selectedTemplateId = promo['templateId'] as String?;
+
+    // 2) channel flags
+    var sendWhatsApp = promo['sendWhatsApp'] as bool? ?? true;
+    var sendSMS = promo['sendSMS'] as bool? ?? true;
+
+    // 3) customers
+    selectedCustomerIds = List<String>.from(promo['customerIds'] ?? []);
+
+    // 5) extract SMS content from the selected template
+    final template = templates.firstWhere(
+      (t) => t['id'] == selectedTemplateId,
+      orElse: () => <String, dynamic>{},
+    );
+    final smsContent =
+        (template['channels']?['whatsapp']?['templateContent']) as String?;
+
+    // 6) recalc breakdown & total
+    final breakdown = await calculatePriceWithBreakdown(
+      sendWhatsApp,
+      sendSMS,
+      smsContent,
+    );
+
+    promoBreakdown = breakdown;
+    totalPrice = (breakdown['total'] as num).toDouble();
+
+    notifyListeners();
   }
 }

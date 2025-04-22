@@ -5,7 +5,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
-import 'package:pasella/pages/promote/widgets/templates/view_template/delete_confirmation_dialog.dart';
+import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 
 class TemplateDetailPage extends StatelessWidget {
@@ -49,37 +49,36 @@ class TemplateDetailPage extends StatelessWidget {
 
     return Scaffold(
       appBar: CustomAppBar(
-        title: 'Template: ' + name,
+        title: 'Template: $name',
         trailing: IconButton(
-            icon: Icon(Icons.delete, size: SizeConfig.imageSizeMultiplier * 5),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) {
-                  return DeleteConfirmationDialog(
-                    onConfirm: () async {
-                      final success =
-                          await viewModel.deleteTemplate(templateId, template);
-
-                      if (!context.mounted) return;
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(success
-                              ? 'Template deleted successfully'
-                              : 'Failed to delete template'),
-                        ),
-                      );
-
-                      if (success) {
-                        Navigator.pushReplacementNamed(
-                            context, PromotionsPage.id);
-                      }
-                    },
+          icon: Icon(Icons.delete, size: SizeConfig.imageSizeMultiplier * 5),
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (_) => ConfirmationDialog(
+                title: 'Delete Template',
+                message: 'Are you sure you want to delete this template?',
+                confirmLabel: 'Delete',
+                cancelLabel: 'Cancel',
+                onConfirm: () async {
+                  final success =
+                      await viewModel.deleteTemplate(templateId, template);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(success
+                          ? 'Template deleted successfully'
+                          : 'Failed to delete template'),
+                    ),
                   );
+                  if (success) {
+                    Navigator.pushReplacementNamed(context, PromotionsPage.id);
+                  }
                 },
-              );
-            }),
+              ),
+            );
+          },
+        ),
       ),
       body: ListView(
         padding: LayoutConstants.padding10Horizontal,

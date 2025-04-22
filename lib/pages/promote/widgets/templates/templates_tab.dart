@@ -17,13 +17,6 @@ class _TemplatesTabState extends State<TemplatesTab> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final viewModel =
-          Provider.of<PromotionsViewModel>(context, listen: false);
-      await viewModel.fetchTemplates();
-      await viewModel.fetchMessageShopName();
-      await viewModel.initializePricing();
-    });
   }
 
   @override
