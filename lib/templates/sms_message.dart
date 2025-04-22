@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:pasella/config/remote_config.dart';
+import 'package:pasella/services/template_service.dart';
 
 class SMSMessages {
   static String creditConfirmation = '';
@@ -27,6 +28,7 @@ class SMSMessages {
     paymentConfirmationShort = rc.getString('SMS_PAYMENT_CONFIRMATION_SHORT');
     onboardingShort = rc.getString('SMS_ONBOARDING_SHORT');
     reminderShort = rc.getString('SMS_REMINDER_SHORT');
+    await TemplateService().loadTemplatesFromFirestore();
 
     try {
       templateKeywords = List<String>.from(jsonDecode(keywordsJson));
@@ -36,9 +38,14 @@ class SMSMessages {
     }
   }
 
-  static bool isTemplateMessage(String messageText) {
-    return templateKeywords.any(
+  static Future<bool> isTemplateMessage(String messageText) async {
+    final keywordMatch = templateKeywords.any(
       (keyword) => messageText.toLowerCase().contains(keyword.toLowerCase()),
     );
+
+    final merchantTemplateMatch =
+        TemplateService().isMatchWithMerchantTemplates(messageText);
+
+    return keywordMatch || merchantTemplateMatch;
   }
 }

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/promotions/promotion_tab_item.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
-import 'package:pasella/pages/promote/widgets/promotions/steps/run_promotion_page.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
 import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
-import 'package:pasella/pages/settings/coming_soon/coming_soon_tab.dart';
 import 'package:provider/provider.dart';
 
 class PromotionsPage extends StatefulWidget {
@@ -22,11 +22,42 @@ class PromotionsPage extends StatefulWidget {
 class _PromotionsPageState extends State<PromotionsPage>
     with TickerProviderStateMixin {
   late final TabController _tabController;
+  late final List<TabItem> _tabs;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this)
+    _tabs = [
+      TabItem(
+        title: 'Promotions',
+        content: const PromotionsTab(),
+        fabLabel: 'Run Promotion',
+        fabIcon: Icons.campaign_outlined,
+        onTap: (ctx, vm) async {
+          await Navigator.of(ctx).push(MaterialPageRoute(
+            builder: (_) => ChangeNotifierProvider.value(
+              value: vm..loadInitialData(),
+              child: const RunPromotionPage(),
+            ),
+          ));
+          _tabController.animateTo(0);
+        },
+      ),
+      TabItem(
+        title: 'Templates',
+        content: const TemplatesTab(),
+        fabLabel: 'Create Template',
+        fabIcon: Icons.library_books_outlined,
+        onTap: (ctx, vm) async {
+          await Navigator.of(ctx).push(MaterialPageRoute(
+            builder: (_) => CreateTemplatePage(viewModel: vm),
+          ));
+          _tabController.animateTo(1);
+        },
+      ),
+    ];
+
+    _tabController = TabController(length: 2, vsync: this)
       ..addListener(() {
         setState(() {});
       });
@@ -43,11 +74,17 @@ class _PromotionsPageState extends State<PromotionsPage>
     SizeConfig().init(context);
 
     return ChangeNotifierProvider(
-      create: (_) => PromotionsViewModel(),
+      create: (_) {
+        final vm = PromotionsViewModel();
+        vm.loadInitialData(); // load everything once
+        return vm;
+      },
       child: Consumer<PromotionsViewModel>(
         builder: (context, viewModel, _) {
+          final current = _tabs[_tabController.index];
           return Scaffold(
-            floatingActionButton: _buildFloatingActionButton(viewModel),
+            floatingActionButton:
+                _buildFloatingActionButton(viewModel, current),
             body: SafeArea(
               child: Padding(
                 padding: LayoutConstants.padding10Horizontal,
@@ -69,7 +106,6 @@ class _PromotionsPageState extends State<PromotionsPage>
                       tabs: const [
                         Tab(text: 'Promotions'),
                         Tab(text: 'Templates'),
-                        Tab(text: 'Reports'),
                       ],
                     ),
                     Expanded(
@@ -78,7 +114,6 @@ class _PromotionsPageState extends State<PromotionsPage>
                         children: const [
                           PromotionsTab(),
                           TemplatesTab(),
-                          ComingSoonTab(),
                         ],
                       ),
                     ),
@@ -92,55 +127,13 @@ class _PromotionsPageState extends State<PromotionsPage>
     );
   }
 
-  Widget? _buildFloatingActionButton(PromotionsViewModel viewModel) {
-    switch (_tabController.index) {
-      case 0:
-        return _buildFAB(
-          label: 'Run Promotion',
-          icon: Icons.campaign_outlined,
-          onPressed: () {
-            Navigator.of(context)
-                .push(
-              MaterialPageRoute(
-                builder: (_) => ChangeNotifierProvider(
-                  create: (_) => PromotionsViewModel()
-                    ..fetchTemplates()
-                    ..fetchMessageShopName()
-                    ..initializePricing()
-                    ..fetchCustomers(),
-                  child: const RunPromotionPage(),
-                ),
-              ),
-            )
-                .then((_) {
-              // snap back to “Promotions” tab when you pop
-              _tabController.animateTo(0);
-            });
-          },
-        );
-      case 1:
-        return _buildFAB(
-          label: 'Create Template',
-          icon: Icons.library_books_outlined,
-          onPressed: () {
-            Navigator.of(context)
-                .push(
-              MaterialPageRoute(
-                builder: (context) => CreateTemplatePage(
-                  viewModel: viewModel,
-                ),
-              ),
-            )
-                .then((_) {
-              // snap back to Templates tab when you pop
-              _tabController.animateTo(1);
-            });
-          },
-        );
-
-      default:
-        return null;
-    }
+  Widget? _buildFloatingActionButton(
+      PromotionsViewModel viewModel, TabItem current) {
+    return _buildFAB(
+      label: current.fabLabel,
+      icon: current.fabIcon,
+      onPressed: () => current.onTap(context, viewModel),
+    );
   }
 
   Widget _buildFAB({

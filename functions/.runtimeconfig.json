@@ -3,7 +3,8 @@
         "sid": "AC4555ed24659fb0c258812cf13670f816",
         "merchant_messaging_service_sid": "MGc328ed33c4dcc4cd460c7aeccf347734",
         "number": "+27600167119",
-        "token": "eda7d1a8e49350950842bcabf681453e"
+        "token": "eda7d1a8e49350950842bcabf681453e",
+        "customer_messaging_service_sid": "MG9760f567ee61a2af1ae1102dbe3ed02c"
     },
     "email": {
         "adminpass": "ff2e832e898047c028a91fe33a8e6cf3",

@@ -154,6 +154,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       await FirebaseFirestore.instance
           .collection('messagingTemplates')
           .add(data);
+      await viewModel.loadTemplatesData();
       if (context.mounted) Navigator.pop(context);
     } catch (e) {
       debugPrint("Failed to save template: $e");
