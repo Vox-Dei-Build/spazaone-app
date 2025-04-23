@@ -224,9 +224,6 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (context) => AppModel()),
         ChangeNotifierProvider(create: (context) => BalanceSummaryProvider()),
-        /*  ChangeNotifierProvider<WalletViewModel>(
-          create: (_) => WalletViewModel(),
-        ), */
         ChangeNotifierProvider(
             create: (context) => CustomerBalanceSummaryProvider()),
         ChangeNotifierProvider<LedgerViewModel>(
