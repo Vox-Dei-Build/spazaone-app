@@ -38,7 +38,7 @@ class AddCreditScreen extends StatelessWidget {
             appBar: CustomAppBar(title: 'Add Credit for $customerName'),
             body: SafeArea(
               child: Padding(
-                padding: LayoutConstants.padding20Horizontal,
+                padding: LayoutConstants.padding10Horizontal,
                 child: Form(
                   key: viewModel.formKey,
                   child: Column(children: [

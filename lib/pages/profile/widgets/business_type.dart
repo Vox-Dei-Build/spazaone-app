@@ -14,10 +14,10 @@ class BusinessTypePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Select Business Type'),
+      appBar: const CustomAppBar(title: 'Select Business Type'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Consumer<AppModel>(
             builder: (context, value, child) {
               return Column(

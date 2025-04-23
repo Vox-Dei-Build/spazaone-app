@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pasella/config/size_config.dart';
@@ -25,10 +26,7 @@ class LoomVideoPage extends StatelessWidget {
         title: title.isNotEmpty ? title : 'How to use Pasella',
       ),
       body: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.blockSizeHorizontal * 5,
-          vertical: SizeConfig.blockSizeVertical * 2,
-        ),
+        padding: LayoutConstants.padding10Horizontal,
         child: Column(
           children: [
             Center(

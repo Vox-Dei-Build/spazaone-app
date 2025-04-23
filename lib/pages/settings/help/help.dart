@@ -28,7 +28,7 @@ class HelpPage extends StatelessWidget {
       appBar: const CustomAppBar(title: 'Help'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Column(
             children: [
               SettingTile(

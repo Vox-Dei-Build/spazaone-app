@@ -29,7 +29,7 @@ class AddContactPage extends StatelessWidget {
             appBar: const CustomAppBar(title: 'Add Contact'),
             body: SafeArea(
               child: Padding(
-                padding: LayoutConstants.padding20Horizontal,
+                padding: LayoutConstants.padding10Horizontal,
                 child: Consumer<AppModel>(
                   builder: (context, model, child) {
                     return Stack(

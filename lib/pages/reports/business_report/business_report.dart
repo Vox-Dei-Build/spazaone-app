@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_stream_builder_section.dart';
 import 'package:pasella/pages/reports/business_report/view_model/business_report_view_model.dart';
@@ -197,7 +198,8 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                 } else if (snapshot.hasError) {
                                   print('Error: ${snapshot.error}');
                                   return Padding(
-                                      padding: const EdgeInsets.all(16.0),
+                                      padding:
+                                          LayoutConstants.padding10Horizontal,
                                       child: Column(children: [
                                         Text(
                                             'Oops something is wrong, please check your network or refresh the page',

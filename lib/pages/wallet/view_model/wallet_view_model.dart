@@ -42,7 +42,7 @@ class WalletState {
   });
 }
 
-class WalletViewModel {
+class WalletViewModel extends ChangeNotifier {
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
   final FirebaseAuth auth = FirebaseAuth.instance;
 
@@ -520,6 +520,7 @@ class WalletViewModel {
     reference.clear();
   }
 
+  @override
   void dispose() {
     bankName.dispose();
     accountHolderName.dispose();
@@ -530,5 +531,7 @@ class WalletViewModel {
     isProcessing.dispose();
     isProcessingPayoutRequest.dispose();
     _walletStateController.close();
+    _walletStateController.close();
+    super.dispose();
   }
 }

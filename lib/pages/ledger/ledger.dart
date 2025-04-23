@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_floating_action_button.dart';
@@ -63,8 +64,7 @@ class _LedgerPageState extends State<LedgerPage> {
         ),
         body: SafeArea(
           child: Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 4),
+            padding: LayoutConstants.padding10Horizontal,
             child: LedgerMainContent(
               ledgerViewModel: ledgerViewModel,
               tabIndexNotifier: _tabIndexNotifier,

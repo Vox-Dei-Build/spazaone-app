@@ -40,7 +40,7 @@ class AddPaymentScreen extends StatelessWidget {
               appBar: CustomAppBar(title: 'Add Payment for $customerName'),
               body: SafeArea(
                 child: Padding(
-                  padding: LayoutConstants.padding20Horizontal,
+                  padding: LayoutConstants.padding10Horizontal,
                   child: Form(
                     child: LayoutBuilder(
                       builder: (context, constraints) {
