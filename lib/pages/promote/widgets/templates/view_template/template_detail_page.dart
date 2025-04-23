@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
-import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
@@ -52,7 +51,7 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
       ),
     );
     if (success) {
-      Navigator.pushReplacementNamed(context, PromotionsPage.id);
+      Navigator.of(context).pop();
     } else {
       setState(() => _actionLoading = false);
     }

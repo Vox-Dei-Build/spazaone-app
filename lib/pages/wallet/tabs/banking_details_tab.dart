@@ -12,7 +12,7 @@ class BankingDetailsTab extends StatefulWidget {
 }
 
 class _BankingDetailsTabState extends State<BankingDetailsTab> {
-  final WalletViewModel walletViewModel = WalletViewModel();
+  late WalletViewModel walletViewModel = WalletViewModel();
   bool isLoading = true;
 
   @override

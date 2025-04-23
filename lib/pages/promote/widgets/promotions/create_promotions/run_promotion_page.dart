@@ -1,22 +1,13 @@
-// ┌──────────────────────────────────────────────────┐
-// │ 🌟 RUN PROMOTION PAGE                             │
-// │ A three-step wizard for merchants to             │
-// │ save and send promotional messages seamlessly.   │
-// └──────────────────────────────────────────────────┘
-//
-// Steps:
-//   1. Select Template & Channels
-//   2. Choose Customers
-//   3. Review & Pricing
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/customer_selection/customer_selection_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/promotion_details/template_and_details_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
-import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:provider/provider.dart';
 
@@ -65,55 +56,51 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   bool sendWhatsApp = true;
   bool sendSMS = true;
   bool allCustomers = true;
+  final userId = FirebaseAuth.instance.currentUser?.uid;
+  late var userRef;
+  late var walletRef;
 
-  final WalletViewModel walletVM = WalletViewModel();
-
-  // ─────────────────────────────────────────────────
-  // Lifecycle Hooks
-  // ─────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final vm = Provider.of<PromotionsViewModel>(context, listen: false);
-      if (allCustomers) vm.selectAllCustomers();
+    userRef = FirebaseFirestore.instance.collection('users').doc(userId);
+    walletRef = userRef.collection('wallet').doc('current');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (allCustomers) {
+        Provider.of<PromotionsViewModel>(context, listen: false)
+            .selectAllCustomers();
+      }
     });
   }
 
   @override
   void dispose() {
-    walletVM.dispose();
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────────
-  // Navigation: Next & Previous
-  // ─────────────────────────────────────────────────
+  // ────────────────────────────────────────
+  // Navigation
+  // ────────────────────────────────────────
   void nextStep() async {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
 
-    // Step 1: Validate template selection and channels
     if (currentStep == RunPromotionStep.templateAndDetails) {
       if (selectedTemplateId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select a template.')),
-        );
+            const SnackBar(content: Text('Please select a template.')));
         return;
       }
       if (!sendWhatsApp && !sendSMS) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please choose at least one channel.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Please choose at least one channel.')));
         return;
       }
     }
 
-    // Step 2: Validate customer selection and calculate pricing
     if (currentStep == RunPromotionStep.customerSelection) {
       if (vm.selectedCustomerIds.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Select at least one customer.')),
-        );
+            const SnackBar(content: Text('Select at least one customer.')));
         return;
       }
       setState(() => calculating = true);
@@ -127,14 +114,11 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
         sendSMS,
         smsContent,
       );
-      setState(() {
-        vm.totalPrice = breakdown['total'];
-        vm.promoBreakdown = breakdown;
-        calculating = false;
-      });
+      vm.totalPrice = breakdown['total'];
+      vm.promoBreakdown = breakdown;
+      setState(() => calculating = false);
     }
 
-    // Advance
     setState(() {
       currentStep = RunPromotionStep.values[currentStep.index + 1];
     });
@@ -148,13 +132,11 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     }
   }
 
-  // ─────────────────────────────────────────────────
-  // Save & Send Actions
-  // ─────────────────────────────────────────────────
+  // ────────────────────────────────────────
+  // Save & Send
+  // ────────────────────────────────────────
   Future<void> _savePromotion() async {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
-    if (selectedTemplateId == null) return;
-
     setState(() => sending = true);
     final promoId = await vm.savePromotion(
       templateId: selectedTemplateId!,
@@ -167,22 +149,17 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       sendSMS: sendSMS,
       testMode: false,
     );
-    setState(() {
-      sending = false;
-      if (promoId != null) {
-        isSaved = true;
-        savedPromotionId = promoId;
-      }
-    });
-
-    await vm.fetchPromotionsReports();
+    if (promoId != null) {
+      isSaved = true;
+      savedPromotionId = promoId;
+      await vm.fetchPromotionsReports();
+    }
+    setState(() => sending = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          isSaved
-              ? 'Promotion saved. You can send it now.'
-              : 'Failed to save promotion.',
-        ),
+        content: Text(isSaved
+            ? 'Promotion saved. You can send it now.'
+            : 'Failed to save promotion.'),
       ),
     );
   }
@@ -190,26 +167,24 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   Future<void> _runSavedPromotion() async {
     if (savedPromotionId == null) return;
     setState(() => sending = true);
-    final vm = Provider.of<PromotionsViewModel>(context, listen: false);
-    await vm.sendSavedPromotion(savedPromotionId!);
+    await Provider.of<PromotionsViewModel>(context, listen: false)
+        .sendSavedPromotion(savedPromotionId!);
     setState(() => sending = false);
     if (context.mounted) Navigator.pop(context);
   }
 
-  // ─────────────────────────────────────────────────
-  // Build Navigation Buttons
-  // ─────────────────────────────────────────────────
   Widget _buildNavigationButtons() {
-    final isLast = currentStep == RunPromotionStep.reviewAndPricing;
+    final isLastStep = currentStep == RunPromotionStep.reviewAndPricing;
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
 
-    if (!isLast) {
-      final validStep1 =
+    if (!isLastStep) {
+      final step1Valid =
           selectedTemplateId != null && (sendWhatsApp || sendSMS);
-      final validStep2 = vm.selectedCustomerIds.isNotEmpty;
+      final step2Valid = vm.selectedCustomerIds.isNotEmpty;
       final canProceed = currentStep == RunPromotionStep.templateAndDetails
-          ? validStep1
-          : validStep2;
+          ? step1Valid
+          : step2Valid;
+
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -229,68 +204,89 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       );
     }
 
-    // Final step: Save or Send
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(height: SizeConfig.heightMultiplier * 1),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    // ── Final review: balance + Save/Send or Top-Up ──
+    return StreamBuilder<DocumentSnapshot>(
+      stream: walletRef.snapshots(),
+      builder: (context, snap) {
+        final loadingBalance = snap.connectionState == ConnectionState.waiting;
+        final data = snap.data?.data() as Map<String, dynamic>?;
+        final balance = data?['virtualBalance'] ?? 0.0;
+        final totalCost = vm.totalPrice;
+        final canAfford = balance >= totalCost;
+
+        final statusText = loadingBalance
+            ? 'Checking wallet…'
+            : 'You have R${balance.toStringAsFixed(2)}, cost is R${totalCost.toStringAsFixed(2)}';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            OutlinedButton(onPressed: previousStep, child: const Text('Back')),
-            if (!isSaved)
-              ElevatedButton(
-                onPressed: sending ? null : _savePromotion,
-                child: sending
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Save Promotion'),
-              )
-            else
-              ElevatedButton(
-                onPressed: sending ? null : _runSavedPromotion,
-                child: sending
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Send Promotion'),
-              ),
+            Text(
+              statusText,
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
+            ),
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                OutlinedButton(
+                    onPressed: previousStep, child: const Text('Back')),
+
+                // Always allow saving if not saved yet
+                if (!isSaved)
+                  ElevatedButton(
+                    onPressed: sending ? null : _savePromotion,
+                    child: sending
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save Promotion'),
+                  )
+                else
+                  // Once saved, allow sending only if balance suffices
+                  (canAfford
+                      ? ElevatedButton(
+                          onPressed: sending ? null : _runSavedPromotion,
+                          child: sending
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Send Promotion'),
+                        )
+                      : ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(context)
+                                .popUntil((route) => route.isFirst);
+                            Provider.of<AppModel>(context, listen: false)
+                                .goToBilling(context);
+                          },
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange),
+                          child: loadingBalance
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text('Top Up Wallet'),
+                        )),
+              ],
+            ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
-  // ─────────────────────────────────────────────────
-  // Main Build
-  // ─────────────────────────────────────────────────
-  @override
-  Widget build(BuildContext context) {
-    final vm = Provider.of<PromotionsViewModel>(context);
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Run Promotion'),
-      body: vm.loadingTemplates
-          ? const Center(child: CircularProgressIndicator())
-          : calculating
-              ? const Center(child: CircularProgressIndicator())
-              : Padding(
-                  padding: LayoutConstants.padding10Horizontal,
-                  child: Column(
-                    children: [
-                      Expanded(child: _buildStepContent()),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      _buildNavigationButtons(),
-                    ],
-                  ),
-                ),
-    );
-  }
-
+  // ───────────────────────────────────────────────────
+  // Build Steps Content
+  // ───────────────────────────────────────────────────
   Widget _buildStepContent() {
     final vm = Provider.of<PromotionsViewModel>(context);
     switch (currentStep) {
@@ -328,9 +324,8 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
               }
             });
           },
-          onCustomerToggle: (id) {
-            setState(() => vm.toggleCustomerSelection(id));
-          },
+          onCustomerToggle: (id) =>
+              setState(() => vm.toggleCustomerSelection(id)),
         );
 
       case RunPromotionStep.reviewAndPricing:
@@ -350,5 +345,27 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           breakdown: vm.promoBreakdown,
         );
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = Provider.of<PromotionsViewModel>(context);
+    return Scaffold(
+      appBar: const CustomAppBar(title: 'Run Promotion'),
+      body: vm.loadingTemplates
+          ? const Center(child: CircularProgressIndicator())
+          : calculating
+              ? const Center(child: CircularProgressIndicator())
+              : Padding(
+                  padding: LayoutConstants.padding10Horizontal,
+                  child: Column(
+                    children: [
+                      Expanded(child: _buildStepContent()),
+                      SizedBox(height: SizeConfig.heightMultiplier * 2),
+                      _buildNavigationButtons(),
+                    ],
+                  ),
+                ),
+    );
   }
 }
