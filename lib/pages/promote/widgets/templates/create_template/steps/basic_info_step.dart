@@ -17,10 +17,23 @@ class BasicInfoStep extends StatelessWidget {
       children: [
         TextFormField(
           controller: templateNameController,
-          decoration: const InputDecoration(labelText: 'Template Name'),
-          validator: (val) => val == null || val.trim().isEmpty
-              ? 'Template name is required'
-              : null,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          decoration: const InputDecoration(
+            labelText: 'Template Name',
+            hintText: 'e.g. promo_sale_chicken',
+            helperText: 'Lowercase, numbers & underscores only',
+            floatingLabelBehavior: FloatingLabelBehavior.never,
+          ),
+          validator: (val) {
+            if (val == null || val.trim().isEmpty) {
+              return 'Template name is required';
+            }
+            final regex = RegExp(r'^[a-z0-9_]+$');
+            if (!regex.hasMatch(val.trim())) {
+              return 'Only lowercase letters, numbers, and underscores are allowed';
+            }
+            return null;
+          },
         ),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
       ],

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 
-class TemplateAndDetailsStep extends StatelessWidget {
+class TemplateAndDetailsStep extends StatefulWidget {
   final String? selectedTemplateId;
   final ValueChanged<String?> onTemplateChanged;
   final bool sendWhatsApp;
@@ -29,9 +29,24 @@ class TemplateAndDetailsStep extends StatelessWidget {
   });
 
   @override
+  State<TemplateAndDetailsStep> createState() => _TemplateAndDetailsStepState();
+}
+
+class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
+  late List<Map<String, dynamic>> approvedTemplates;
+
+  @override
+  void initState() {
+    super.initState();
+    approvedTemplates = widget.templates
+        .where((t) => t['channels']?['whatsapp']?['approved'] == true)
+        .toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final selected = templates.firstWhere(
-      (t) => t['id'] == selectedTemplateId,
+    final selected = approvedTemplates.firstWhere(
+      (t) => t['id'] == widget.selectedTemplateId,
       orElse: () => {},
     );
 
@@ -44,68 +59,93 @@ class TemplateAndDetailsStep extends StatelessWidget {
     final preview = hasPreview
         ? content
             .replaceAll('{{customerName}}', '[Customer Name]')
-            .replaceAll('{{shopName}}', shopName)
+            .replaceAll('{{shopName}}', widget.shopName)
         : 'No preview available for this template.';
+
+    final hasTemplates = approvedTemplates.isNotEmpty;
 
     return ListView(
       padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.imageSizeMultiplier * 4,
-          vertical: SizeConfig.heightMultiplier * 1),
+        horizontal: SizeConfig.imageSizeMultiplier * 4,
+        vertical: SizeConfig.heightMultiplier * 1,
+      ),
       children: [
-        Text(
-          "Choose a Template",
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
+        Text("Choose a Template",
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold)),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
         DropdownButtonFormField<String>(
-          value: selectedTemplateId,
+          value: widget.selectedTemplateId,
           isExpanded: true,
-          items: templates.map((template) {
-            final name = template['name'] ?? 'Untitled';
-            return DropdownMenuItem<String>(
-              value: template['id'],
-              child: Text(name, overflow: TextOverflow.ellipsis),
-            );
-          }).toList(),
-          onChanged: onTemplateChanged,
+          items: hasTemplates
+              ? approvedTemplates.map((template) {
+                  final name = template['name'] ?? 'Untitled';
+                  return DropdownMenuItem<String>(
+                    value: template['id'],
+                    child: Text(name, overflow: TextOverflow.ellipsis),
+                  );
+                }).toList()
+              : [
+                  const DropdownMenuItem<String>(
+                    value: null,
+                    child: Text("No approved templates",
+                        style: TextStyle(color: Colors.grey)),
+                  )
+                ],
+          onChanged: hasTemplates ? widget.onTemplateChanged : null,
           decoration: InputDecoration(
-            hintText: 'Select a template',
+            hintText: hasTemplates ? 'Select a template' : '—',
             border: const OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 1,
-                vertical: SizeConfig.heightMultiplier * 1),
+            // …
           ),
         ),
+        if (!hasTemplates)
+          Padding(
+            padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 2),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.orange),
+                SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
+                Expanded(
+                  child: Text(
+                    "You need at least one approved template before running a promotion. "
+                    "Head to the “Templates” tab to create and approve one.",
+                    style: TextStyle(
+                      color: Colors.orange.shade800,
+                      fontSize: SizeConfig.textMultiplier * 1.6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
-        Text(
-          "Choose Channels",
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
-        ),
+        Text("Choose Channels",
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold)),
         SizedBox(height: SizeConfig.heightMultiplier * 1),
         CheckboxListTile(
-          value: sendWhatsApp,
-          onChanged: (val) => onWhatsAppChanged(val ?? false),
+          value: widget.sendWhatsApp,
+          onChanged: hasTemplates
+              ? (val) => widget.onWhatsAppChanged(val ?? false)
+              : null,
           title: const Text("WhatsApp"),
           controlAffinity: ListTileControlAffinity.leading,
         ),
         CheckboxListTile(
-          value: sendSMS,
-          onChanged: (val) => onSMSChanged(val ?? false),
+          value: widget.sendSMS,
+          onChanged:
+              hasTemplates ? (val) => widget.onSMSChanged(val ?? false) : null,
           title: const Text("SMS"),
           controlAffinity: ListTileControlAffinity.leading,
         ),
-        Divider(
-          color: Colors.grey,
-          thickness: SizeConfig.heightMultiplier * 0,
-        ),
+        Divider(color: Colors.grey, thickness: SizeConfig.heightMultiplier * 0),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
-        if (sendWhatsApp)
+        if (widget.sendWhatsApp)
           Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -113,20 +153,16 @@ class TemplateAndDetailsStep extends StatelessWidget {
                   style: TextStyle(
                       fontSize: SizeConfig.textMultiplier * 2,
                       fontWeight: FontWeight.bold)),
-              if (selectedTemplateId != null)
+              if (widget.selectedTemplateId != null)
                 Text(
-                    'WhatsApp Cost: R${whatsappPrice!.toStringAsFixed(2)} per recipient'),
-              MessagePreviewCard(
-                content: preview,
-                mediaUrl: mediaUrl,
-              ),
+                    'WhatsApp Cost: R${widget.whatsappPrice!.toStringAsFixed(2)} per recipient'),
+              MessagePreviewCard(content: preview, mediaUrl: mediaUrl),
               Divider(
-                color: Colors.grey,
-                thickness: SizeConfig.heightMultiplier * 0,
-              ),
+                  color: Colors.grey,
+                  thickness: SizeConfig.heightMultiplier * 0),
             ],
           ),
-        if (sendSMS)
+        if (widget.sendSMS)
           Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -134,12 +170,10 @@ class TemplateAndDetailsStep extends StatelessWidget {
                   style: TextStyle(
                       fontSize: SizeConfig.textMultiplier * 2,
                       fontWeight: FontWeight.bold)),
-              if (selectedTemplateId != null)
+              if (widget.selectedTemplateId != null)
                 Text(
-                    'SMS Cost: R${(smsSegments * smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
-              MessagePreviewCard(
-                content: preview,
-              ),
+                    'SMS Cost: R${(smsSegments * widget.smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
+              MessagePreviewCard(content: preview),
             ],
           ),
       ],

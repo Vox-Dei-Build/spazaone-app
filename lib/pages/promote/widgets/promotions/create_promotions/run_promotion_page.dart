@@ -174,6 +174,8 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
         savedPromotionId = promoId;
       }
     });
+
+    await vm.fetchPromotionsReports();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(

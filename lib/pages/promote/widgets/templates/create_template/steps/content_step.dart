@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:path/path.dart' as path;
 
 class ContentStep extends StatelessWidget {
   final bool includeWhatsApp;
@@ -93,21 +94,22 @@ class ContentStep extends StatelessWidget {
       onImageUploadingChanged(true);
       await photoUtil.handleImagePick(context, (file) async {
         if (file != null) {
-          final url = await photoUtil.uploadImage(
-            file,
-            'whatsapp_media/${DateTime.now().millisecondsSinceEpoch}.jpg',
-          );
-          if (url != null) {
-            mediaUrlController.text = url;
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Failed to upload image. Try again.'),
-              ),
-            );
+          final compressedFile = await photoUtil.compressImage(file);
+          if (compressedFile != null) {
+            final uploadPath =
+                'whatsapp_media/${path.basename(compressedFile.path)}';
+            final url = await photoUtil.uploadImage(compressedFile, uploadPath);
+            if (url != null) {
+              mediaUrlController.text = url;
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Failed to upload image. Try again.')),
+              );
+            }
           }
         }
-        onImageUploadingChanged(false); // <-- Moved outside
+        onImageUploadingChanged(false);
       });
     }
 
@@ -142,7 +144,7 @@ class ContentStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('📷 Media (Optional)',
+        const Text('📷 Media (Whatsapp)',
             style: TextStyle(fontWeight: FontWeight.bold)),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
         Row(

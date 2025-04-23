@@ -23,10 +23,12 @@ class _PromotionsPageState extends State<PromotionsPage>
     with TickerProviderStateMixin {
   late final TabController _tabController;
   late final List<TabItem> _tabs;
+  int _previousTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
+
     _tabs = [
       TabItem(
         title: 'Promotions',
@@ -35,10 +37,7 @@ class _PromotionsPageState extends State<PromotionsPage>
         fabIcon: Icons.campaign_outlined,
         onTap: (ctx, vm) async {
           await Navigator.of(ctx).push(MaterialPageRoute(
-            builder: (_) => ChangeNotifierProvider.value(
-              value: vm..loadInitialData(),
-              child: const RunPromotionPage(),
-            ),
+            builder: (_) => const RunPromotionPage(),
           ));
           _tabController.animateTo(0);
         },
@@ -57,15 +56,41 @@ class _PromotionsPageState extends State<PromotionsPage>
       ),
     ];
 
-    _tabController = TabController(length: 2, vsync: this)
-      ..addListener(() {
-        setState(() {});
-      });
+    _tabController = TabController(length: _tabs.length, vsync: this)
+      ..addListener(_onTabChanged);
+
+    // initial load for tab 0
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PromotionsViewModel>().loadInitialData();
+    });
+  }
+
+  void _onTabChanged() {
+    // only fire once per real tab switch
+    if (!_tabController.indexIsChanging &&
+        _tabController.index != _previousTabIndex) {
+      final vm = context.read<PromotionsViewModel>();
+
+      if (_tabController.index == 0) {
+        // Promotions tab
+        vm.loadInitialData();
+      } else {
+        // Templates tab
+        vm.loadTemplatesData();
+      }
+
+      _previousTabIndex = _tabController.index;
+    }
+
+    // update FAB, UI, etc.
+    setState(() {});
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController
+      ..removeListener(_onTabChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -73,15 +98,19 @@ class _PromotionsPageState extends State<PromotionsPage>
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    return ChangeNotifierProvider(
-      create: (_) {
+    return ChangeNotifierProvider<PromotionsViewModel>(
+      create: (context) {
         final vm = PromotionsViewModel();
-        vm.loadInitialData(); // load everything once
+        // Defer to after first frame so notifyListeners() isn't called during build:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          vm.loadInitialData();
+        });
         return vm;
       },
       child: Consumer<PromotionsViewModel>(
         builder: (context, viewModel, _) {
           final current = _tabs[_tabController.index];
+
           return Scaffold(
             floatingActionButton:
                 _buildFloatingActionButton(viewModel, current),
@@ -97,24 +126,18 @@ class _PromotionsPageState extends State<PromotionsPage>
                       controller: _tabController,
                       labelStyle: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.8,
-                        fontWeight: FontWeight.normal,
                       ),
                       unselectedLabelStyle: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.8,
-                        fontWeight: FontWeight.normal,
                       ),
-                      tabs: const [
-                        Tab(text: 'Promotions'),
-                        Tab(text: 'Templates'),
-                      ],
+                      tabs: _tabs
+                          .map((t) => Tab(text: t.title))
+                          .toList(growable: false),
                     ),
                     Expanded(
                       child: TabBarView(
                         controller: _tabController,
-                        children: const [
-                          PromotionsTab(),
-                          TemplatesTab(),
-                        ],
+                        children: _tabs.map((t) => t.content).toList(),
                       ),
                     ),
                   ],
@@ -127,44 +150,60 @@ class _PromotionsPageState extends State<PromotionsPage>
     );
   }
 
-  Widget? _buildFloatingActionButton(
-      PromotionsViewModel viewModel, TabItem current) {
-    return _buildFAB(
-      label: current.fabLabel,
-      icon: current.fabIcon,
-      onPressed: () => current.onTap(context, viewModel),
-    );
-  }
+  Widget _buildFloatingActionButton(
+    PromotionsViewModel vm,
+    TabItem current,
+  ) {
+    final onPromotionsTab = current.title == 'Promotions';
+    final hasApproved = vm.templates.any((t) =>
+        (t['channels']?['whatsapp']?['approved'] == true) ||
+        (t['channels']?['sms']?['approved'] == true));
 
-  Widget _buildFAB({
-    required String label,
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: SizeConfig.heightMultiplier * 1,
-        right: SizeConfig.imageSizeMultiplier * 1,
-      ),
-      child: SizedBox(
-        height: SizeConfig.heightMultiplier * 7,
-        child: FloatingActionButton.extended(
-          elevation: 3.0,
-          onPressed: onPressed,
-          icon: Icon(
-            icon,
-            color: Colors.white,
-            size: SizeConfig.heightMultiplier * 2.5,
-          ),
-          label: Text(
-            label,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: SizeConfig.textMultiplier * 2,
+    return FloatingActionButton.extended(
+      onPressed: () {
+        if (onPromotionsTab && !hasApproved) {
+          // Show dialog instead of running
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('No Approved Templates'),
+              content: const Text(
+                  'You need at least one approved template before you can run a promotion. '
+                  'Head over to the Templates tab to create and approve one.'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    // switch to Templates tab
+                    _tabController.animateTo(1);
+                  },
+                  child: const Text('Go to Templates'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ],
             ),
-          ),
+          );
+        } else {
+          // Normal behavior
+          current.onTap(context, vm);
+        }
+      },
+      icon: Icon(
+        current.fabIcon,
+        size: SizeConfig.heightMultiplier * 2.5,
+        color: Colors.white,
+      ),
+      label: Text(
+        current.fabLabel,
+        style: TextStyle(
+          fontSize: SizeConfig.textMultiplier * 2,
+          color: Colors.white,
         ),
       ),
+      elevation: 3,
     );
   }
 }

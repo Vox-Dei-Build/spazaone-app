@@ -27,6 +27,7 @@ import 'package:firebase_core/firebase_core.dart';
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
+import 'pages/promote/view_model/promotions_view_model.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -228,6 +229,16 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider<LedgerViewModel>(
             create: (context) =>
                 LedgerViewModel(Provider.of<AppModel>(context, listen: false))),
+        ChangeNotifierProvider<PromotionsViewModel>(
+          create: (context) {
+            final vm = PromotionsViewModel();
+            // defer load until after first frame:
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              vm.loadInitialData();
+            });
+            return vm;
+          },
+        ),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
