@@ -14,10 +14,10 @@ class BackupPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Backup'),
+      appBar: const CustomAppBar(title: 'Backup'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Column(
             children: [
               SettingTile(

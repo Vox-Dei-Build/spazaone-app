@@ -11,6 +11,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
+import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/settings/chat/chat_page.dart';
@@ -26,6 +27,7 @@ import 'package:firebase_core/firebase_core.dart';
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
+import 'pages/promote/view_model/promotions_view_model.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -227,6 +229,16 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider<LedgerViewModel>(
             create: (context) =>
                 LedgerViewModel(Provider.of<AppModel>(context, listen: false))),
+        ChangeNotifierProvider<PromotionsViewModel>(
+          create: (context) {
+            final vm = PromotionsViewModel();
+            // defer load until after first frame:
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              vm.loadInitialData();
+            });
+            return vm;
+          },
+        ),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -255,6 +267,7 @@ class MyApp extends StatelessWidget {
           SalesPage.id: (context) => const SalesPage(),
           WalletPage.id: (context) => const WalletPage(),
           FindDefaulterPage.id: (context) => const FindDefaulterPage(),
+          PromotionsPage.id: (context) => const PromotionsPage(),
         },
       ),
     );

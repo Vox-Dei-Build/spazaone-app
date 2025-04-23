@@ -11,10 +11,10 @@ class UpdateNumberPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Update Number'),
+      appBar: const CustomAppBar(title: 'Update Number'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Column(
             children: [
               const SizedBox(height: 70.0),

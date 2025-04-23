@@ -13,10 +13,10 @@ class SubscriptionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppBar(title: 'Profile'),
+      appBar: const CustomAppBar(title: 'Profile'),
       body: SafeArea(
         child: Padding(
-          padding: LayoutConstants.padding20Horizontal,
+          padding: LayoutConstants.padding10Horizontal,
           child: Consumer<AppModel>(
             builder: (context, value, child) {
               return Column(

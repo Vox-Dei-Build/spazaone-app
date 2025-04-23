@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/sales/widgets/add_sale.dart';
 import 'package:pasella/pages/reports/widgets/report_calendar_view.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
@@ -67,12 +68,17 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                       child: FloatingActionButton.extended(
                         elevation: 3.0,
                         onPressed: () {
-                          Navigator.of(context).push(
+                          Navigator.of(context)
+                              .push(
                             MaterialPageRoute(
                               builder: (context) =>
                                   AddSale(salesViewModel: viewModel),
                             ),
-                          );
+                          )
+                              .then((_) {
+                            // snap back to “Sales” tab when you pop
+                            _tabController.animateTo(0);
+                          });
                         },
                         icon: Icon(
                           Icons.add_outlined,
@@ -92,8 +98,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                 : null,
             body: SafeArea(
               child: Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.imageSizeMultiplier * 4),
+                padding: LayoutConstants.padding10Horizontal,
                 child: Column(
                   children: [
                     SizedBox(height: SizeConfig.heightMultiplier * 2),

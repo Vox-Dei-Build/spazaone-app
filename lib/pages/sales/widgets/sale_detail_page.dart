@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/widgets/edit_sale.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -50,8 +51,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 5), // Adjust padding
+          padding: LayoutConstants.padding10Horizontal,
           child: ListView(
             children: [
               Card(

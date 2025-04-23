@@ -14,4 +14,5 @@ class TutorialConfig {
   static const String TUTORIAL_USE_PASELLA = 'TUTORIAL_USE_PASELLA';
   static const String TUTORIAL_WALLET = 'TUTORIAL_WALLET';
   static const String TUTORIAL_CAPTURE_STOCK = 'TUTORIAL_CAPTURE_STOCK';
+  static const String TUTORIAL_RUN_PROMOTIONS = 'TUTORIAL_RUN_PROMOTIONS';
 }

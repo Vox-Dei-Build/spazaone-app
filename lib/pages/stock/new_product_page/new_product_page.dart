@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
 import 'package:pasella/pages/stock/widgets/product_form.dart';
@@ -10,7 +11,8 @@ class NewProductPage extends StatefulWidget {
   final String? group;
   final Function(Product)? onProductAdded;
 
-  NewProductPage({Key? key, this.group, this.onProductAdded}) : super(key: key);
+  const NewProductPage({Key? key, this.group, this.onProductAdded})
+      : super(key: key);
 
   @override
   _NewProductPageState createState() => _NewProductPageState();
@@ -65,7 +67,7 @@ class _NewProductPageState extends State<NewProductPage> {
                       ),
               ),
             ),
-            appBar: CustomAppBar(
+            appBar: const CustomAppBar(
               title: "New Product",
             ),
             body: SafeArea(
@@ -77,7 +79,7 @@ class _NewProductPageState extends State<NewProductPage> {
                   children: [
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: LayoutConstants.padding10Horizontal,
                         child: ProductForm(
                           formKey: _formKey,
                           product: _newProduct,
