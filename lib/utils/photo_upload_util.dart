@@ -20,15 +20,34 @@ class PhotoUploadUtil {
   }
 
   Future<File?> compressImage(File file) async {
+    final ext =
+        path.extension(file.path).toLowerCase(); // .jpg, .jpeg, .png, etc.
     final dir = await getTemporaryDirectory();
+
+    // Determine correct format & extension
+    late CompressFormat format;
+    late String targetExt;
+
+    if (ext == '.jpg' || ext == '.jpeg') {
+      format = CompressFormat.jpeg;
+      targetExt = '.jpg';
+    } else if (ext == '.png') {
+      format = CompressFormat.png;
+      targetExt = '.png';
+    } else {
+      debugPrint('Unsupported image format: $ext');
+      return null;
+    }
+
     final fileName =
-        'compressed_${path.basename(file.path)}'; // Ensure unique target path
+        'compressed_${DateTime.now().millisecondsSinceEpoch}$targetExt';
     final targetPath = path.join(dir.absolute.path, fileName);
 
-    var result = await FlutterImageCompress.compressAndGetFile(
+    final result = await FlutterImageCompress.compressAndGetFile(
       file.absolute.path,
       targetPath,
-      quality: 20,
+      quality: 75,
+      format: format,
     );
 
     return result != null ? File(result.path) : null;

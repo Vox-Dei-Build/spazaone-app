@@ -8,7 +8,7 @@ import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 
-class TemplateDetailPage extends StatelessWidget {
+class TemplateDetailPage extends StatefulWidget {
   final PromotionsViewModel viewModel;
   final Map<String, dynamic> template;
   final String shopName;
@@ -24,30 +24,58 @@ class TemplateDetailPage extends StatelessWidget {
     required this.smsPricePerSegment,
   }) : super(key: key);
 
+  @override
+  State<TemplateDetailPage> createState() => _TemplateDetailPageState();
+}
+
+class _TemplateDetailPageState extends State<TemplateDetailPage> {
+  bool _actionLoading = false;
+
   String resolvedMessage(String content) {
     return content
         .replaceAll('{{customerName}}', '[Customer Name]')
-        .replaceAll('{{shopName}}', shopName);
+        .replaceAll('{{shopName}}', widget.shopName);
+  }
+
+  Future<void> _deleteTemplate() async {
+    setState(() => _actionLoading = true);
+    final templateId = widget.template['id'];
+    final success =
+        await widget.viewModel.deleteTemplate(templateId, widget.template);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success
+            ? 'Template deleted successfully'
+            : 'Failed to delete template'),
+      ),
+    );
+    if (success) {
+      Navigator.pushReplacementNamed(context, PromotionsPage.id);
+    } else {
+      setState(() => _actionLoading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final name = template['name'] ?? 'Untitled';
-    final channels = template['channels'] as Map<String, dynamic>? ?? {};
-    final createdAt = template['createdAt']?.toDate();
+    final t = widget.template;
+    final name = t['name'] ?? 'Untitled';
+    final channels = t['channels'] as Map<String, dynamic>? ?? {};
+    final createdAt = t['createdAt']?.toDate();
     final formattedDate = createdAt != null
         ? DateFormat('MMM dd, yyyy – hh:mm a').format(createdAt)
         : "Unknown";
 
     final whatsapp = channels['whatsapp'] as Map<String, dynamic>?;
     final sms = channels['sms'] as Map<String, dynamic>?;
-    final templateId = template['id'];
-
     final smsSegments = sms != null
         ? ((sms['templateContent'] as String).length / 160).ceil()
         : 1;
 
-    return Scaffold(
+    // Build your normal page content:
+    final pageContent = Scaffold(
       appBar: CustomAppBar(
         title: 'Template: $name',
         trailing: IconButton(
@@ -60,20 +88,9 @@ class TemplateDetailPage extends StatelessWidget {
                 message: 'Are you sure you want to delete this template?',
                 confirmLabel: 'Delete',
                 cancelLabel: 'Cancel',
-                onConfirm: () async {
-                  final success =
-                      await viewModel.deleteTemplate(templateId, template);
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(success
-                          ? 'Template deleted successfully'
-                          : 'Failed to delete template'),
-                    ),
-                  );
-                  if (success) {
-                    Navigator.pushReplacementNamed(context, PromotionsPage.id);
-                  }
+                onConfirm: () {
+                  Navigator.of(context).pop();
+                  _deleteTemplate();
                 },
               ),
             );
@@ -90,7 +107,7 @@ class TemplateDetailPage extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.bold)),
             Text(
-                'WhatsApp Cost: R${whatsappPrice!.toStringAsFixed(2)} per recipient',
+                'WhatsApp Cost: R${widget.whatsappPrice!.toStringAsFixed(2)} per recipient',
                 textAlign: TextAlign.center),
             MessagePreviewCard(
               content: resolvedMessage(whatsapp['templateContent']),
@@ -103,7 +120,7 @@ class TemplateDetailPage extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontWeight: FontWeight.bold)),
             Text(
-              'SMS Cost: R${(smsSegments * smsPricePerSegment!).toStringAsFixed(2)} per recipient',
+              'SMS Cost: R${(smsSegments * widget.smsPricePerSegment!).toStringAsFixed(2)} per recipient',
               textAlign: TextAlign.center,
             ),
             MessagePreviewCard(
@@ -112,6 +129,21 @@ class TemplateDetailPage extends StatelessWidget {
           ],
         ],
       ),
+    );
+
+    return Stack(
+      children: [
+        pageContent,
+        if (_actionLoading)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.4),
+              child: const Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -16,7 +16,7 @@ class PromotionsPageHeader extends StatelessWidget {
                 color: Colors.black, size: SizeConfig.imageSizeMultiplier * 5),
             onPressed: () {
               final url = TutorialConfig.getTutorialUrl(
-                  TutorialConfig.TUTORIAL_CAPTURE_SALES);
+                  TutorialConfig.TUTORIAL_RUN_PROMOTIONS);
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => LoomVideoPage(

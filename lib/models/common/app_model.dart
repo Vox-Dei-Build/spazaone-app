@@ -18,8 +18,8 @@ enum SwitchType {
 class AppModel with ChangeNotifier {
   final List<Widget> _navigationOptions = [
     const LedgerPage(),
-    const PromotionsPage(),
     const StockPage(),
+    const PromotionsPage(),
     const SalesPage(),
     const WalletPage()
   ];

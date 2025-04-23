@@ -21,7 +21,7 @@ import { AndroidConfig } from "firebase-admin/messaging";
  *   - fcmToken: string
  */
 exports.checkTwilioApprovalStatuses = functions.pubsub
-  .schedule("every 10 minutes") // Based on your WhatsApp approval SLA
+  .schedule("every 3 minutes") // Based on your WhatsApp approval SLA
   .onRun(async () => {
     console.log("🔁 Checking WhatsApp template statuses...");
 

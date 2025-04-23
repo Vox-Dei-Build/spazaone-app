@@ -154,8 +154,13 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       await FirebaseFirestore.instance
           .collection('messagingTemplates')
           .add(data);
-      await viewModel.loadTemplatesData();
-      if (context.mounted) Navigator.pop(context);
+
+      // Fire‐and‐forget the reload so we don't hold up the pop
+      widget.viewModel.loadTemplatesData();
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
     } catch (e) {
       debugPrint("Failed to save template: $e");
     } finally {
@@ -227,22 +232,23 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     }
   }
 
+  // 1) Remove any calls to validate() in build:
   Widget _buildNavigationButtons() {
     final isLast = currentStep == CreateTemplateStep.review;
+    final name = _templateNameController.text.trim();
+    final nameValid = name.isNotEmpty && RegExp(r'^[a-z0-9_]+$').hasMatch(name);
 
-    // Pre‑compute validity per step:
-    final formValid = _formKey.currentState?.validate() ?? false; // name field
-    final channelValid = includeWhatsApp || includeSMS; // basicInfo
+    final channelValid = includeWhatsApp || includeSMS;
     final whatsappFilled = _whatsappContentController.text.trim().isNotEmpty;
     final smsFilled = _smsContentController.text.trim().isNotEmpty;
     final contentValid =
         (!includeWhatsApp || whatsappFilled) && (!includeSMS || smsFilled);
 
     final canProceed = currentStep == CreateTemplateStep.basicInfo
-        ? formValid && channelValid
+        ? (nameValid && channelValid)
         : currentStep == CreateTemplateStep.content
             ? contentValid
-            : true; // review step always allowed
+            : true;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -251,8 +257,22 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           OutlinedButton(onPressed: previousStep, child: const Text('Back')),
         ElevatedButton(
           onPressed: saving || !canProceed
+              // 2) On tap, run real Form validation before moving on
               ? null
-              : (isLast ? _saveTemplate : nextStep),
+              : () {
+                  if (currentStep == CreateTemplateStep.basicInfo) {
+                    // validate the form now to show errors if any
+                    if (!_formKey.currentState!.validate()) {
+                      setState(() => showChannelError = !channelValid);
+                      return;
+                    }
+                    nextStep();
+                  } else if (currentStep == CreateTemplateStep.content) {
+                    nextStep();
+                  } else {
+                    _saveTemplate();
+                  }
+                },
           child: saving
               ? const SizedBox(
                   height: 20,

@@ -75,18 +75,18 @@ class Dashboard extends StatelessWidget {
                       label: 'Customers',
                     ),
                     NavigationDestination(
-                      icon: Icon(Icons.mark_email_read_outlined,
-                          size: SizeConfig.imageSizeMultiplier * 5),
-                      selectedIcon: Icon(Icons.mark_email_read_outlined,
-                          size: SizeConfig.imageSizeMultiplier * 5),
-                      label: 'Promote',
-                    ),
-                    NavigationDestination(
                       icon: Icon(Icons.inventory_outlined,
                           size: SizeConfig.imageSizeMultiplier * 5),
                       selectedIcon: Icon(Icons.inventory_outlined,
                           size: SizeConfig.imageSizeMultiplier * 5),
                       label: 'Products',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.mark_email_read_outlined,
+                          size: SizeConfig.imageSizeMultiplier * 5),
+                      selectedIcon: Icon(Icons.mark_email_read_outlined,
+                          size: SizeConfig.imageSizeMultiplier * 5),
+                      label: 'Promote',
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.point_of_sale,
