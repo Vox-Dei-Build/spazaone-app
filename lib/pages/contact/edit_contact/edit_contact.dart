@@ -86,7 +86,7 @@ class _EditCustomerPageState extends State<EditCustomerPage> {
           children: [
             profilePicture(context, viewModel.customerName,
                 viewModel.profileImageUrl, viewModel.mobileNumber, true,
-                displayIcons: false,
+                displayIcons: true,
                 radius: SizeConfig.heightMultiplier * 9,
                 profileImage: viewModel.profileImage),
           ],

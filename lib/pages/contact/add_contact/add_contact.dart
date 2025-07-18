@@ -112,9 +112,10 @@ class AddContactPage extends StatelessWidget {
                                     const CustomDivider(),
                                   ],
                                 ),
-                                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                                SizedBox(
+                                    height: SizeConfig.heightMultiplier * 2),
                                 Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
                                     profilePicture(
                                       context,
@@ -122,19 +123,23 @@ class AddContactPage extends StatelessWidget {
                                       null,
                                       viewModel.numberController.text,
                                       false,
-                                      displayIcons: false,
+                                      displayIcons: true,
                                       radius: SizeConfig.heightMultiplier * 9,
                                       profileImage: viewModel.profileImage,
                                     ),
-                                    SizedBox(height: SizeConfig.heightMultiplier * 1),
+                                    SizedBox(
+                                        height:
+                                            SizeConfig.heightMultiplier * 1),
                                     IconButton(
                                       icon: Icon(
                                         Icons.camera_alt,
-                                        size: SizeConfig.imageSizeMultiplier * 8,
+                                        size:
+                                            SizeConfig.imageSizeMultiplier * 8,
                                         color: Colors.green,
                                       ),
                                       onPressed: () async {
-                                        await viewModel.handleImagePick(context);
+                                        await viewModel
+                                            .handleImagePick(context);
                                       },
                                     ),
                                   ],

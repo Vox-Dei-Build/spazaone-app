@@ -52,7 +52,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
         children: [
           profilePicture(context, customerName, viewModel.profileImageUrl,
               mobileNumber, true,
-              displayIcons: false, profileImage: viewModel.profileImage),
+              displayIcons: true, profileImage: viewModel.profileImage),
           SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
           Expanded(
             child: InkWell(
