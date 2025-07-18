@@ -3,12 +3,15 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'dart:io';
+
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
+import 'package:pasella/utils/photo_upload_util.dart';
 
 class AddContactViewModel extends ChangeNotifier {
   final TextEditingController nameController = TextEditingController();
@@ -17,6 +20,10 @@ class AddContactViewModel extends ChangeNotifier {
   bool _isLoading = false;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   DynamicPricingService? pricingService;
+  final PhotoUploadUtil _photoUploadUtil = PhotoUploadUtil();
+  File? _profileImage;
+
+  File? get profileImage => _profileImage;
 
   bool get isLoading => _isLoading;
 
@@ -69,6 +76,11 @@ class AddContactViewModel extends ChangeNotifier {
           .collection('customers')
           .add(newCustomer)
           .then((docRef) async {
+        if (_profileImage != null) {
+          final url = await _photoUploadUtil.uploadImage(
+              _profileImage!, 'profile_images/$currentUserId/${docRef.id}.jpg');
+          await docRef.update({'profileImageUrl': url});
+        }
         if (mobileNumber.isNotEmpty && pricingService != null) {
           bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
               context, currentUserId, pricingService!.smsReminderTemplatePrice);
@@ -119,6 +131,13 @@ class AddContactViewModel extends ChangeNotifier {
     } catch (e) {
       print(e);
     }
+  }
+
+  Future<void> handleImagePick(BuildContext context) async {
+    await _photoUploadUtil.handleImagePick(context, (pickedImage) {
+      _profileImage = pickedImage;
+      notifyListeners();
+    });
   }
 
   Map<String, dynamic> getDefaultTransaction() {

@@ -11,6 +11,7 @@ import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
+import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/wallet_utils.dart';
@@ -89,6 +90,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     return DefaultTabController(
       length: tabLabels.length,
       child: Scaffold(
+        appBar: const CustomAppBar(title: 'Billing'),
         body: SafeArea(
           child: Padding(
             padding: LayoutConstants.padding10Horizontal,
