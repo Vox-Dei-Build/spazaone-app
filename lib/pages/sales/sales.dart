@@ -35,7 +35,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 4, vsync: this)
+      ..addListener(() {
+        if (mounted) setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   void _onDateSelected(DateTime selectedDay) {
