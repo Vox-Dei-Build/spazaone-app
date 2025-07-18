@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
 import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
@@ -9,8 +8,6 @@ import 'package:pasella/pages/wallet/tabs/top_up_tab.dart';
 import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
-import 'package:pasella/shared/widgets/loom_video_page.dart';
-import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -97,28 +94,6 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
             child: Column(
               children: [
                 SizedBox(height: SizeConfig.heightMultiplier * 2),
-                PageHeader(
-                    actionWidget: Expanded(
-                  child: IconButton(
-                      icon: Icon(
-                        Icons.help_outline,
-                        color: Colors.black,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      onPressed: () {
-                        final url = TutorialConfig.getTutorialUrl(
-                            TutorialConfig.TUTORIAL_WALLET);
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => LoomVideoPage(
-                              loomUrl: url,
-                              title: 'How to Wallet',
-                            ),
-                          ),
-                        );
-                      }),
-                )),
-                SizedBox(height: SizeConfig.heightMultiplier * 3),
 
                 // 🟢 Dynamically show the correct balance based on selected tab
                 StreamBuilder<WalletState>(
