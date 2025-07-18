@@ -3,7 +3,6 @@ import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/pages/ledger/ledger.dart';
 import 'package:pasella/pages/ledger/widgets/tab.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/stock/stock.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
@@ -19,29 +18,16 @@ class AppModel with ChangeNotifier {
   final List<Widget> _navigationOptions = [
     const LedgerPage(),
     const StockPage(),
-    const PromotionsPage(),
     const SalesPage(),
-    const WalletPage()
   ];
 
   void handleNavigation(BuildContext context, int index) {
-    if (index == 2) {
-      if (isUserAnonymous()) {
-        Navigator.of(context).pushNamed('/registerAnonymousPage');
-        return;
-      }
-    }
-    updateCurrentIndex(index); // Update the index if access is allowed
+    updateCurrentIndex(index);
   }
 
   /// public helper to go to billing without worrying about the index
   void goToBilling(BuildContext ctx) {
-    final idx = navigationOptions.indexWhere((w) => w is WalletPage);
-    if (idx != -1) {
-      handleNavigation(ctx, idx);
-    } else {
-      Navigator.pushNamed(ctx, WalletPage.id);
-    }
+    Navigator.pushNamed(ctx, WalletPage.id);
   }
 
   List<Widget> get navigationOptions => _navigationOptions;
