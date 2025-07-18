@@ -31,6 +31,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
               style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
             ),
             onTap: () async {
+              await viewModel.loadProducts();
               await showSearch<Product?>(
                 context: context,
                 delegate: ProductSearchDelegate(viewModel: viewModel),
