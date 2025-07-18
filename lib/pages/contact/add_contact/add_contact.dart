@@ -113,7 +113,7 @@ class AddContactPage extends StatelessWidget {
                                   ],
                                 ),
                                 SizedBox(height: SizeConfig.heightMultiplier * 2),
-                                Row(
+                                Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     profilePicture(
@@ -126,6 +126,7 @@ class AddContactPage extends StatelessWidget {
                                       radius: SizeConfig.heightMultiplier * 9,
                                       profileImage: viewModel.profileImage,
                                     ),
+                                    SizedBox(height: SizeConfig.heightMultiplier * 1),
                                     IconButton(
                                       icon: Icon(
                                         Icons.camera_alt,
