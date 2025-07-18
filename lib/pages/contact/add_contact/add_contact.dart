@@ -14,6 +14,7 @@ import 'package:pasella/pages/contact/add_contact/widgets/section_card.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/shared/widgets/profile_image.dart';
 
 class AddContactPage extends StatelessWidget {
   const AddContactPage({super.key});
@@ -109,6 +110,32 @@ class AddContactPage extends StatelessWidget {
                                               SizeConfig.textMultiplier * 1.8),
                                     ),
                                     const CustomDivider(),
+                                  ],
+                                ),
+                                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    profilePicture(
+                                      context,
+                                      viewModel.nameController.text,
+                                      null,
+                                      viewModel.numberController.text,
+                                      false,
+                                      displayIcons: false,
+                                      radius: SizeConfig.heightMultiplier * 9,
+                                      profileImage: viewModel.profileImage,
+                                    ),
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.camera_alt,
+                                        size: SizeConfig.imageSizeMultiplier * 8,
+                                        color: Colors.green,
+                                      ),
+                                      onPressed: () async {
+                                        await viewModel.handleImagePick(context);
+                                      },
+                                    ),
                                   ],
                                 ),
                                 Column(

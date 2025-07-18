@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/settings/widgets/setting_tile.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 
 import '../../shared/widgets/custom_app_bar.dart';
 import 'share/share.dart';
@@ -50,6 +51,15 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.share,
                           title: 'Share',
                           subTitle: 'Share with friends and others',
+                        ),
+                        SettingTile(
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            WalletPage.id,
+                          ),
+                          icon: Icons.wallet,
+                          title: 'Billing',
+                          subTitle: 'Manage your wallet and payments',
                         ),
                         SettingTile(
                           onTap: () async {
