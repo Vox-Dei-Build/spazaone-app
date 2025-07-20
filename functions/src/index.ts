@@ -47,3 +47,10 @@ export * from "./merchant_hub/submitWhatsAppTemplate";
 export * from "./merchant_hub/twilioTemplateWebhook";
 export * from "./merchant_hub/deleteTwilioTemplate";
 export * from "./merchant_hub/runMerchantPromotion";
+
+/* ---- Ecommerce ---- */
+export * from "./ecommerce/getProducts";
+export * from "./ecommerce/addToCart";
+export * from "./ecommerce/removeFromCart";
+export * from "./ecommerce/getCart";
+export * from "./ecommerce/checkoutCart";
