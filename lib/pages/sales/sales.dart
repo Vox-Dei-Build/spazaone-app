@@ -5,7 +5,6 @@ import 'package:pasella/pages/sales/widgets/add_sale.dart';
 import 'package:pasella/pages/reports/widgets/report_calendar_view.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
-import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:pasella/pages/settings/coming_soon/coming_soon_tab.dart';
 import 'package:provider/provider.dart';
@@ -103,6 +102,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                 child: Column(
                   children: [
                     SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    const SalesPageHeader(),
+                    SizedBox(height: SizeConfig.heightMultiplier * 2),
                     TabBar(
                       controller: _mainController,
                       labelStyle: TextStyle(
@@ -125,11 +126,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                           // Sales Category
                           Column(
                             children: [
-                              SizedBox(
-                                  height: SizeConfig.heightMultiplier * 2),
-                              const SalesPageHeader(),
-                              SizedBox(
-                                  height: SizeConfig.heightMultiplier * 2),
                               TabBar(
                                 controller: _salesController,
                                 labelStyle: TextStyle(
@@ -168,8 +164,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                             onInternalDateSelect: (date) =>
                                                 viewModel
                                                     .updateSelectedDate(date),
-                                            onInternalRangeSelect: (start, end) =>
-                                                viewModel
+                                            onInternalRangeSelect:
+                                                (start, end) => viewModel
                                                     .updateSelectedDateRange(
                                                         start, end),
                                           ),
@@ -189,13 +185,13 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                                       1.5),
                                           ConstrainedBox(
                                             constraints: BoxConstraints(
-                                              maxHeight:
-                                                  MediaQuery.of(context)
-                                                          .size
-                                                          .height *
-                                                      0.5,
+                                              maxHeight: MediaQuery.of(context)
+                                                      .size
+                                                      .height *
+                                                  0.5,
                                             ),
-                                            child: SalesList(viewModel: viewModel),
+                                            child:
+                                                SalesList(viewModel: viewModel),
                                           ),
                                         ],
                                       ),
@@ -210,11 +206,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                           // Marketing Category
                           Column(
                             children: [
-                              SizedBox(
-                                  height: SizeConfig.heightMultiplier * 2),
-                              const PromotionsPageHeader(),
-                              SizedBox(
-                                  height: SizeConfig.heightMultiplier * 2),
                               TabBar(
                                 controller: _marketingController,
                                 labelStyle: TextStyle(
@@ -331,10 +322,10 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
               } else {
                 Navigator.of(context)
                     .push(
-                  MaterialPageRoute(
-                    builder: (_) => const RunPromotionPage(),
-                  ),
-                )
+                      MaterialPageRoute(
+                        builder: (_) => const RunPromotionPage(),
+                      ),
+                    )
                     .then((_) => _marketingController.animateTo(0));
               }
             },
@@ -356,10 +347,10 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
             onPressed: () {
               Navigator.of(context)
                   .push(
-                MaterialPageRoute(
-                  builder: (_) => CreateTemplatePage(viewModel: promoVM),
-                ),
-              )
+                    MaterialPageRoute(
+                      builder: (_) => CreateTemplatePage(viewModel: promoVM),
+                    ),
+                  )
                   .then((_) => _marketingController.animateTo(1));
             },
             icon: Icon(
