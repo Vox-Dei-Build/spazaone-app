@@ -1,3 +1,4 @@
+// All existing imports stay
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
@@ -15,13 +16,16 @@ import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
 
+enum SalesViewType { cash, online }
+
+enum MarketingViewType { promotions, templates }
+
 class SalesPage extends StatefulWidget {
   const SalesPage({Key? key}) : super(key: key);
-
   static const id = '/salesPage';
 
   @override
-  _SalesPageState createState() => _SalesPageState();
+  State<SalesPage> createState() => _SalesPageState();
 }
 
 class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
@@ -30,8 +34,9 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   DateTime? _endDate;
 
   late final TabController _mainController;
-  late final TabController _salesController;
-  late final TabController _marketingController;
+
+  SalesViewType _selectedSalesView = SalesViewType.cash;
+  MarketingViewType _selectedMarketingView = MarketingViewType.promotions;
 
   @override
   void initState() {
@@ -40,21 +45,11 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       ..addListener(() {
         if (mounted) setState(() {});
       });
-    _salesController = TabController(length: 2, vsync: this)
-      ..addListener(() {
-        if (mounted) setState(() {});
-      });
-    _marketingController = TabController(length: 2, vsync: this)
-      ..addListener(() {
-        if (mounted) setState(() {});
-      });
   }
 
   @override
   void dispose() {
     _mainController.dispose();
-    _salesController.dispose();
-    _marketingController.dispose();
     super.dispose();
   }
 
@@ -92,10 +87,9 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
         ),
       ],
       child: Consumer2<SalesViewModel, PromotionsViewModel>(
-        builder: (context, viewModel, promotionsVM, child) {
+        builder: (context, salesVM, promoVM, child) {
           return Scaffold(
-            floatingActionButton:
-                _buildFloatingActionButton(viewModel, promotionsVM),
+            floatingActionButton: _buildFAB(salesVM, promoVM),
             body: SafeArea(
               child: Padding(
                 padding: LayoutConstants.padding10Horizontal,
@@ -108,11 +102,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                       controller: _mainController,
                       labelStyle: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.8,
-                        fontWeight: FontWeight.normal,
-                      ),
-                      unselectedLabelStyle: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.8,
-                        fontWeight: FontWeight.normal,
                       ),
                       tabs: const [
                         Tab(text: 'Sales'),
@@ -123,112 +112,189 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                       child: TabBarView(
                         controller: _mainController,
                         children: [
-                          // Sales Category
+                          // --- SALES ---
                           Column(
                             children: [
-                              TabBar(
-                                controller: _salesController,
-                                labelStyle: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.8,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                                unselectedLabelStyle: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.8,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                                tabs: const [
-                                  Tab(text: 'Cash'),
-                                  Tab(text: 'Online'),
-                                ],
-                              ),
-                              Expanded(
-                                child: TabBarView(
-                                  controller: _salesController,
-                                  children: [
-                                    SingleChildScrollView(
-                                      physics:
-                                          const AlwaysScrollableScrollPhysics(),
-                                      child: Column(
-                                        children: <Widget>[
-                                          SizedBox(
-                                              height:
-                                                  SizeConfig.heightMultiplier *
-                                                      2),
-                                          ReportCalendarView(
-                                            selectedDay: _selectedDay,
-                                            startDate: _startDate,
-                                            endDate: _endDate,
-                                            onDateSelected: _onDateSelected,
-                                            onDateRangeSelected:
-                                                _onDateRangeSelected,
-                                            onInternalDateSelect: (date) =>
-                                                viewModel
-                                                    .updateSelectedDate(date),
-                                            onInternalRangeSelect:
-                                                (start, end) => viewModel
-                                                    .updateSelectedDateRange(
-                                                        start, end),
-                                          ),
-                                          SizedBox(
-                                              height:
-                                                  SizeConfig.heightMultiplier *
-                                                      1.5),
-                                          SalesStatsCard(
-                                            viewModel: viewModel,
-                                            selectedDay: _selectedDay,
-                                            startDate: _startDate,
-                                            endDate: _endDate,
-                                          ),
-                                          SizedBox(
-                                              height:
-                                                  SizeConfig.heightMultiplier *
-                                                      1.5),
-                                          ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                              maxHeight: MediaQuery.of(context)
-                                                      .size
-                                                      .height *
-                                                  0.5,
-                                            ),
-                                            child:
-                                                SalesList(viewModel: viewModel),
-                                          ),
-                                        ],
+                              const SizedBox(height: 16),
+                              Theme(
+                                data: Theme.of(context).copyWith(
+                                  segmentedButtonTheme:
+                                      SegmentedButtonThemeData(
+                                    style: ButtonStyle(
+                                      backgroundColor: MaterialStateProperty
+                                          .resolveWith<Color?>(
+                                        (states) => states.contains(
+                                                MaterialState.selected)
+                                            ? Colors.green
+                                            : Colors.white,
+                                      ),
+                                      foregroundColor: MaterialStateProperty
+                                          .resolveWith<Color?>(
+                                        (states) => states.contains(
+                                                MaterialState.selected)
+                                            ? Colors.white
+                                            : Colors.black87,
                                       ),
                                     ),
-                                    const ComingSoonTab(),
-                                  ],
+                                  ),
                                 ),
+                                child: SegmentedButton<SalesViewType>(
+                                  segments: [
+                                    ButtonSegment(
+                                      value: SalesViewType.cash,
+                                      label: Text('Cash',
+                                          style: TextStyle(
+                                              fontSize:
+                                                  SizeConfig.textMultiplier *
+                                                      1.5,
+                                              fontWeight: FontWeight.bold)),
+                                      icon: Icon(Icons.attach_money,
+                                          size:
+                                              SizeConfig.textMultiplier * 1.5),
+                                    ),
+                                    ButtonSegment(
+                                      value: SalesViewType.online,
+                                      label: Text('Online',
+                                          style: TextStyle(
+                                              fontSize:
+                                                  SizeConfig.textMultiplier *
+                                                      1.5,
+                                              fontWeight: FontWeight.bold)),
+                                      icon: Icon(Icons.wifi,
+                                          size:
+                                              SizeConfig.textMultiplier * 1.5),
+                                    ),
+                                  ],
+                                  selected: {_selectedSalesView},
+                                  onSelectionChanged: (val) {
+                                    setState(() {
+                                      _selectedSalesView = val.first;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Expanded(
+                                child: _selectedSalesView == SalesViewType.cash
+                                    ? SingleChildScrollView(
+                                        child: Column(
+                                          children: [
+                                            SizedBox(
+                                                height: SizeConfig
+                                                        .heightMultiplier *
+                                                    2),
+                                            ReportCalendarView(
+                                              selectedDay: _selectedDay,
+                                              startDate: _startDate,
+                                              endDate: _endDate,
+                                              onDateSelected: _onDateSelected,
+                                              onDateRangeSelected:
+                                                  _onDateRangeSelected,
+                                              onInternalDateSelect:
+                                                  salesVM.updateSelectedDate,
+                                              onInternalRangeSelect: salesVM
+                                                  .updateSelectedDateRange,
+                                            ),
+                                            SizedBox(
+                                                height: SizeConfig
+                                                        .heightMultiplier *
+                                                    1.5),
+                                            SalesStatsCard(
+                                              viewModel: salesVM,
+                                              selectedDay: _selectedDay,
+                                              startDate: _startDate,
+                                              endDate: _endDate,
+                                            ),
+                                            SizedBox(
+                                                height: SizeConfig
+                                                        .heightMultiplier *
+                                                    1.5),
+                                            ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                maxHeight:
+                                                    MediaQuery.of(context)
+                                                            .size
+                                                            .height *
+                                                        0.5,
+                                              ),
+                                              child:
+                                                  SalesList(viewModel: salesVM),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : const ComingSoonTab(),
                               ),
                             ],
                           ),
 
-                          // Marketing Category
+                          // --- MARKETING ---
                           Column(
                             children: [
-                              TabBar(
-                                controller: _marketingController,
-                                labelStyle: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.8,
-                                  fontWeight: FontWeight.normal,
+                              const SizedBox(height: 16),
+                              Theme(
+                                data: Theme.of(context).copyWith(
+                                  segmentedButtonTheme:
+                                      SegmentedButtonThemeData(
+                                    style: ButtonStyle(
+                                      backgroundColor: MaterialStateProperty
+                                          .resolveWith<Color?>(
+                                        (states) => states.contains(
+                                                MaterialState.selected)
+                                            ? Colors.green
+                                            : Colors.white,
+                                      ),
+                                      foregroundColor: MaterialStateProperty
+                                          .resolveWith<Color?>(
+                                        (states) => states.contains(
+                                                MaterialState.selected)
+                                            ? Colors.white
+                                            : Colors.black87,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                                unselectedLabelStyle: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.8,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                                tabs: const [
-                                  Tab(text: 'Promotions'),
-                                  Tab(text: 'Templates'),
-                                ],
-                              ),
-                              Expanded(
-                                child: TabBarView(
-                                  controller: _marketingController,
-                                  children: const [
-                                    PromotionsTab(),
-                                    TemplatesTab(),
+                                child: SegmentedButton<MarketingViewType>(
+                                  segments: [
+                                    ButtonSegment(
+                                      value: MarketingViewType.promotions,
+                                      label: Text('Promotions',
+                                          style: TextStyle(
+                                              fontSize:
+                                                  SizeConfig.textMultiplier *
+                                                      1.5,
+                                              fontWeight: FontWeight.bold)),
+                                      icon: Icon(Icons.campaign_outlined,
+                                          size:
+                                              SizeConfig.textMultiplier * 1.5),
+                                    ),
+                                    ButtonSegment(
+                                      value: MarketingViewType.templates,
+                                      label: Text('Templates',
+                                          style: TextStyle(
+                                              fontSize:
+                                                  SizeConfig.textMultiplier *
+                                                      1.5,
+                                              fontWeight: FontWeight.bold)),
+                                      icon: Icon(Icons.library_books_outlined,
+                                          size:
+                                              SizeConfig.textMultiplier * 1.5),
+                                    ),
                                   ],
+                                  selected: {_selectedMarketingView},
+                                  onSelectionChanged: (val) {
+                                    setState(() {
+                                      _selectedMarketingView = val.first;
+                                    });
+                                  },
                                 ),
+                              ),
+                              const SizedBox(height: 16),
+                              Expanded(
+                                child: _selectedMarketingView ==
+                                        MarketingViewType.promotions
+                                    ? const PromotionsTab()
+                                    : const TemplatesTab(),
                               ),
                             ],
                           ),
@@ -245,130 +311,73 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget? _buildFloatingActionButton(
-      SalesViewModel salesVM, PromotionsViewModel promoVM) {
+  Widget? _buildFAB(SalesViewModel salesVM, PromotionsViewModel promoVM) {
     if (_mainController.index == 0) {
-      switch (_salesController.index) {
-        case 0:
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: SizeConfig.heightMultiplier * 1,
-              right: SizeConfig.imageSizeMultiplier * 1,
-            ),
-            child: SizedBox(
-              height: SizeConfig.heightMultiplier * 7,
-              child: FloatingActionButton.extended(
-                elevation: 3.0,
-                onPressed: () {
-                  Navigator.of(context)
-                      .push(
-                    MaterialPageRoute(
-                      builder: (context) => AddSale(salesViewModel: salesVM),
-                    ),
-                  )
-                      .then((_) {
-                    _salesController.animateTo(0);
-                  });
-                },
-                icon: Icon(
-                  Icons.add_outlined,
-                  color: Colors.white,
-                  size: SizeConfig.heightMultiplier * 2.5,
-                ),
-                label: Text(
-                  'Add Sale',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: SizeConfig.textMultiplier * 2,
-                  ),
-                ),
-              ),
-            ),
-          );
-        default:
-          return null;
-      }
-    } else {
-      switch (_marketingController.index) {
-        case 0:
-          final hasApproved = promoVM.templates.any((t) =>
-              (t['channels']?['whatsapp']?['approved'] == true) ||
-              (t['channels']?['sms']?['approved'] == true));
-          return FloatingActionButton.extended(
-            onPressed: () {
-              if (!hasApproved) {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('No Approved Templates'),
-                    content: const Text(
-                        'You need at least one approved template before you can run a promotion. '
-                        'Head over to the Templates tab to create and approve one.'),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          _marketingController.animateTo(1);
-                        },
-                        child: const Text('Go to Templates'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('Cancel'),
-                      ),
-                    ],
+      return _selectedSalesView == SalesViewType.cash
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AddSale(salesViewModel: salesVM),
                   ),
                 );
-              } else {
-                Navigator.of(context)
-                    .push(
-                      MaterialPageRoute(
-                        builder: (_) => const RunPromotionPage(),
-                      ),
-                    )
-                    .then((_) => _marketingController.animateTo(0));
-              }
-            },
-            icon: Icon(
-              Icons.campaign_outlined,
-              size: SizeConfig.heightMultiplier * 2.5,
-              color: Colors.white,
-            ),
-            label: Text(
-              'Run Promotion',
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2,
-                color: Colors.white,
-              ),
-            ),
-          );
-        case 1:
-          return FloatingActionButton.extended(
-            onPressed: () {
-              Navigator.of(context)
-                  .push(
-                    MaterialPageRoute(
-                      builder: (_) => CreateTemplatePage(viewModel: promoVM),
+              },
+              icon: const Icon(Icons.add_outlined, color: Colors.white),
+              label:
+                  const Text('Add Sale', style: TextStyle(color: Colors.white)),
+            )
+          : null;
+    } else {
+      return _selectedMarketingView == MarketingViewType.promotions
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                final hasApproved = promoVM.templates.any((t) =>
+                    (t['channels']?['whatsapp']?['approved'] == true) ||
+                    (t['channels']?['sms']?['approved'] == true));
+                if (!hasApproved) {
+                  showDialog(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('No Approved Templates'),
+                      content: const Text(
+                          'You need at least one approved template before you can run a promotion.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            setState(() => _selectedMarketingView =
+                                MarketingViewType.templates);
+                          },
+                          child: const Text('Go to Templates'),
+                        ),
+                      ],
                     ),
-                  )
-                  .then((_) => _marketingController.animateTo(1));
-            },
-            icon: Icon(
-              Icons.library_books_outlined,
-              size: SizeConfig.heightMultiplier * 2.5,
-              color: Colors.white,
-            ),
-            label: Text(
-              'Create Template',
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2,
-                color: Colors.white,
-              ),
-            ),
-          );
-        default:
-          return null;
-      }
+                  );
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const RunPromotionPage(),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.campaign_outlined, color: Colors.white),
+              label: const Text('Run Promotion',
+                  style: TextStyle(color: Colors.white)),
+            )
+          : FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CreateTemplatePage(viewModel: promoVM),
+                  ),
+                );
+              },
+              icon:
+                  const Icon(Icons.library_books_outlined, color: Colors.white),
+              label: const Text('Create Template',
+                  style: TextStyle(color: Colors.white)),
+            );
     }
   }
 }
