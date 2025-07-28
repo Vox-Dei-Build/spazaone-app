@@ -54,3 +54,6 @@ export * from "./ecommerce/addToCart";
 export * from "./ecommerce/removeFromCart";
 export * from "./ecommerce/getCart";
 export * from "./ecommerce/checkoutCart";
+export * from "./ecommerce/confirmSalePayment";
+export * from "./ecommerce/getSaleStatus";
+export * from "./ecommerce/getCustomerOrders";
