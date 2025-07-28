@@ -1,4 +1,11 @@
 import { db, functions } from "../config/main";
+/**
+ * HTTP endpoint to list all orders for a customer.
+ *
+ * @param {functions.https.Request} req Express request with `merchantId` and `customerId`.
+ * @param {functions.Response} res Express response containing an array of orders.
+ * @returns {Promise<void>}
+ */
 
 export const getCustomerOrders = functions.https.onRequest(async (req, res) => {
   const merchantId = (req.query.merchantId || req.body.merchantId) as string;

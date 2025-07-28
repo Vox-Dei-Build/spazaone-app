@@ -1,4 +1,11 @@
 import { db, functions } from "../config/main";
+/**
+ * HTTP endpoint to remove a product from a customer's cart.
+ *
+ * @param {functions.https.Request} req Express request containing `merchantId`, `customerId` and `productId`.
+ * @param {functions.Response} res Express response object.
+ * @returns {Promise<void>}
+ */
 
 export const removeFromCart = functions.https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
