@@ -1,4 +1,11 @@
 import { db, functions } from "../config/main";
+/**
+ * HTTP endpoint to fetch all products for a merchant.
+ *
+ * @param {functions.https.Request} req Express request containing `merchantId` in query or body.
+ * @param {functions.Response} res Express response with product list.
+ * @returns {Promise<void>}
+ */
 
 export const getProducts = functions.https.onRequest(async (req, res) => {
   const merchantId = (req.query.merchantId || req.body.merchantId) as string;

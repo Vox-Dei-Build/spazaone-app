@@ -1,4 +1,11 @@
 import { db, functions } from "../config/main";
+/**
+ * HTTP endpoint to retrieve the status of a sale.
+ *
+ * @param {functions.https.Request} req Express request containing `merchantId` and `saleId` in query or body.
+ * @param {functions.Response} res Express response with sale details.
+ * @returns {Promise<void>}
+ */
 
 export const getSaleStatus = functions.https.onRequest(async (req, res) => {
   const merchantId = (req.query.merchantId || req.body.merchantId) as string;

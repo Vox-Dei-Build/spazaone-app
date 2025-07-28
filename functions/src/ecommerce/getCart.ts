@@ -1,4 +1,11 @@
 import { db, functions } from "../config/main";
+/**
+ * HTTP endpoint to fetch a customer's cart and total amount.
+ *
+ * @param {functions.https.Request} req Express request containing `merchantId` and `customerId` either in query or body.
+ * @param {functions.Response} res Express response with items and total.
+ * @returns {Promise<void>}
+ */
 
 export const getCart = functions.https.onRequest(async (req, res) => {
   const merchantId = (req.query.merchantId || req.body.merchantId) as string;

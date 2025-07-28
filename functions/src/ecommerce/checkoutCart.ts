@@ -1,5 +1,13 @@
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
+/**
+ * HTTP endpoint to convert a customer's cart into a sale.
+ * Records payment type, delivery info and marks status based on payment.
+ *
+ * @param {functions.https.Request} req Express request with merchant/customer ids and options.
+ * @param {functions.Response} res Express response with sale id.
+ * @returns {Promise<void>}
+ */
 
 export const checkoutCart = functions.https.onRequest(async (req, res) => {
   if (req.method !== "POST") {

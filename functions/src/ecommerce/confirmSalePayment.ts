@@ -1,4 +1,11 @@
 import { db, functions } from "../config/main";
+/**
+ * HTTP endpoint to mark a sale as paid when payment is confirmed.
+ *
+ * @param {functions.https.Request} req Express request containing `merchantId`, `saleId` and optional `paymentReference`.
+ * @param {functions.Response} res Express response object.
+ * @returns {Promise<void>}
+ */
 
 export const confirmSalePayment = functions.https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
