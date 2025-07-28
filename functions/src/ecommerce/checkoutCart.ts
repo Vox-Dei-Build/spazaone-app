@@ -7,7 +7,13 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     return;
   }
 
-  const { merchantId, customerId, remarks = "" } = req.body;
+  const {
+    merchantId,
+    customerId,
+    paymentType = "Online",
+    deliveryInfo = "",
+    remarks = "",
+  } = req.body;
   if (!merchantId || !customerId) {
     res.status(400).json({ error: "merchantId and customerId are required" });
     return;
@@ -51,10 +57,13 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
 
     const saleData = {
       amount: total,
-      type: "Online",
+      type: paymentType,
+      status: paymentType === "Online" ? "pending" : "paid",
+      customerId,
       dateAdded: admin.firestore.Timestamp.now(),
       products,
       remarks,
+      deliveryInfo,
     };
 
     const saleRef = await db
