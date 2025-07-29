@@ -630,14 +630,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
-  flutter_smartlook:
-    dependency: "direct main"
-    description:
-      name: flutter_smartlook
-      sha256: "073e66d90fd0b42a8a2c27a44db91ad00612b1f82f5dff4723763cf75d6aa4b9"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.1.8"
   flutter_tawk:
     dependency: "direct main"
     description:
