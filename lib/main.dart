@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_smartlook/flutter_smartlook.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/common/queued_sms.dart';
@@ -103,19 +102,6 @@ Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
   }
 }
 
-Future<void> _initializeRemoteConfigAndSmartlook() async {
-  try {
-    final remoteConfigService = await RemoteConfigService.getInstance();
-
-    String projectKey = remoteConfigService.getString('SMARTLOOK_PROJECT_KEY');
-
-    final Smartlook smartlook = Smartlook.instance;
-    smartlook.start();
-    smartlook.preferences.setProjectKey(projectKey);
-  } catch (e) {
-    print("Error initializing Remote Config or Smartlook: $e");
-  }
-}
 
 void requestNotificationPermission() async {
   NotificationSettings settings =
@@ -159,9 +145,9 @@ void main() async {
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);
 
-    // Initialize and configure Remote Config and Smartlook
+    // Initialize Remote Config
     if (kReleaseMode) {
-      await _initializeRemoteConfigAndSmartlook();
+      await RemoteConfigService.getInstance();
     }
 
     await FeatureFlags.loadFlags();

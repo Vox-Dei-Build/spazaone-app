@@ -22,7 +22,6 @@ class RemoteConfigService {
         'TWILIO_ACCOUNT_SID': dotenv.env['TWILIO_ACCOUNT_SID'] ?? '',
         'TWILIO_AUTH_TOKEN': dotenv.env['TWILIO_AUTH_TOKEN'] ?? '',
         'TWILIO_NUMBER': dotenv.env['TWILIO_NUMBER'] ?? '',
-        'SMARTLOOK_PROJECT_KEY': dotenv.env['SMARTLOOK_PROJECT_KEY'] ?? '',
       });
 
       _instance = RemoteConfigService._(remoteConfig);
