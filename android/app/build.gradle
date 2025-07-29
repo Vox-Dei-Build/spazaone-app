@@ -68,13 +68,13 @@ android {
     }
 
     signingConfigs {
-    release {
+        release {
             storeFile file(keystoreProperties['storeFile'])
             storePassword keystoreProperties['storePassword']
             keyAlias keystoreProperties['keyAlias']
             keyPassword keystoreProperties['keyPassword']
         }
-}
+    }
 
 
     buildTypes {
@@ -83,6 +83,9 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
+            shrinkResources true
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
     }
