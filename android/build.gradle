@@ -40,6 +40,14 @@ subprojects {
 }
 
 subprojects {
+    afterEvaluate {
+        if (it.name == ":app:minifyReleaseWithR8") {
+            it.android.buildTypes.release.minifyEnabled = false
+        }
+    }
+}
+
+subprojects {
     project.evaluationDependsOn(':app')
 }
 
