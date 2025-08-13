@@ -25,7 +25,10 @@ export const getCustomerOrders = functions.https.onRequest(async (req, res) => {
       .orderBy("dateAdded", "desc")
       .get();
 
-    const orders = ordersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const orders = ordersSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     res.status(200).json({ orders });
   } catch (error) {
