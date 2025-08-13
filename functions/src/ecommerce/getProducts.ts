@@ -19,7 +19,10 @@ export const getProducts = functions.https.onRequest(async (req, res) => {
       .doc(merchantId)
       .collection("products")
       .get();
-    const products = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const products = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
     res.status(200).json({ products });
   } catch (error) {
     console.error("Error fetching products:", error);
