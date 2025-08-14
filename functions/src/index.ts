@@ -58,3 +58,4 @@ export * from "./ecommerce/confirmSalePayment";
 export * from "./ecommerce/getSaleStatus";
 export * from "./ecommerce/getCustomerOrders";
 export * from "./ecommerce/updateCartItemQuantity";
+export * from "./ecommerce/getMerchantSales";
