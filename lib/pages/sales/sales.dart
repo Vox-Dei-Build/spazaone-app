@@ -7,7 +7,7 @@ import 'package:pasella/pages/reports/widgets/report_calendar_view.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
-import 'package:pasella/pages/settings/coming_soon/coming_soon_tab.dart';
+import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
@@ -223,7 +223,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                           ],
                                         ),
                                       )
-                                    : const ComingSoonTab(),
+                                    : const OnlineSalesList(),
                               ),
                             ],
                           ),

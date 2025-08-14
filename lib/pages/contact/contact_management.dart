@@ -3,7 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/contact/connect/connect_manangement.dart';
 import 'package:pasella/pages/contact/transactions_management/transactions_management.dart';
 import 'package:pasella/pages/contact/widgets/profile_actions_bar.dart';
-import 'package:pasella/pages/settings/coming_soon/coming_soon_tab.dart';
+import 'package:pasella/pages/contact/orders_management/orders_management.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:provider/provider.dart';
 import 'view_model/customer_management_view_model.dart';
@@ -131,7 +131,11 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                         customerId: widget.customerId,
                         mobileNumber: widget.mobileNumber,
                       ),
-                      const ComingSoonTab(),
+                      OrdersManagementPage(
+                        customerId: widget.customerId,
+                        customerName: widget.customerName,
+                        mobileNumber: widget.mobileNumber,
+                      ),
                       ConnectManagementPage(
                         customerId: widget.customerId,
                         profileImageUrl:
