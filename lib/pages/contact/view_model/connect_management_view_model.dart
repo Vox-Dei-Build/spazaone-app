@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:pasella/config/remote_config.dart';
+import 'package:pasella/services/botpress_service.dart';
 import 'package:pasella/services/twilio_service.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:http/http.dart' as http;
@@ -16,14 +17,20 @@ class ConnectManagementViewModel {
   bool isDisposed = false;
   final ValueNotifier<bool> loadingNotifier = ValueNotifier(false);
   late TwilioService _twilioService;
+  late BotpressService _botpressService;
   Timer? _fetchTimer;
 
   ConnectManagementViewModel(this.customerId) {
     _initializeTwilioService();
+    _initializeBotpressService();
   }
 
   Future<void> _initializeTwilioService() async {
     _twilioService = await TwilioService.create();
+  }
+
+  Future<void> _initializeBotpressService() async {
+    _botpressService = await BotpressService.create();
   }
 
   Stream<List<Map<String, dynamic>>> streamMessages() {
@@ -64,7 +71,7 @@ class ConnectManagementViewModel {
         return;
       }
 
-      // 🔥 Fetch outgoing & incoming messages
+      // 🔥 Fetch outgoing, incoming and Botpress messages
       final sentMessages = await _twilioService.fetchMessagesToCustomer(
         customerNumber: customerNumber,
         currentUserId: currentUserId,
@@ -77,19 +84,40 @@ class ConnectManagementViewModel {
         twilioMessagingServiceId: twilioMessagingServiceId,
       );
 
+      final botpressMessages = await _botpressService.fetchBotpressMessages(
+          customerNumber: customerNumber);
+
       final cutOffDate = DateTime(2024, 01, 01);
 
-      // 🔥 Merge, filter & sort messages
-      // 🔥 Merge, filter, and sort messages
-      final allMessages = [...sentMessages, ...receivedMessages].where((msg) {
-        final dateString = msg['dateSent'].toString(); // Ensure it's a String
-        final messageDate = DateTime.parse(dateString); // Convert to DateTime
-        return messageDate.isAfter(cutOffDate);
+      // 🔥 Merge and dedupe messages
+      final Map<String, Map<String, dynamic>> merged = {};
+      for (final msg in [...sentMessages, ...receivedMessages, ...botpressMessages]) {
+        final id = msg['sid'] ?? msg['id'] ??
+            '${msg['dateSent']}-${msg['message']}';
+        merged[id] = msg;
+      }
+
+      final allMessages = merged.values.where((msg) {
+        final date = msg['dateSent'] is DateTime
+            ? msg['dateSent'] as DateTime
+            : DateTime.parse(msg['dateSent'].toString());
+        return date.isAfter(cutOffDate);
       }).toList();
 
+      for (final msg in allMessages) {
+        final isWhatsApp = msg['isWhatsApp'] == true;
+        msg['isWhatsApp'] = isWhatsApp;
+        msg['isSMS'] = msg['isSMS'] ?? !isWhatsApp;
+        msg['isAI'] = msg['isAI'] ?? (isWhatsApp && msg['direction'] == 'outbound');
+      }
+
       allMessages.sort((a, b) {
-        final dateA = DateTime.parse(a['dateSent'].toString());
-        final dateB = DateTime.parse(b['dateSent'].toString());
+        final dateA = a['dateSent'] is DateTime
+            ? a['dateSent'] as DateTime
+            : DateTime.parse(a['dateSent'].toString());
+        final dateB = b['dateSent'] is DateTime
+            ? b['dateSent'] as DateTime
+            : DateTime.parse(b['dateSent'].toString());
         return dateA.compareTo(dateB);
       });
 
