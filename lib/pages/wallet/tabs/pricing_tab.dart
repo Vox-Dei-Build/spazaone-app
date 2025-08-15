@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:pasella/config/fees_config.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
-import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/utils/support_util.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/config/size_config.dart';
@@ -17,16 +15,13 @@ class PricingInfoTab extends StatefulWidget {
 }
 
 class _PricingInfoTab extends State<PricingInfoTab> {
-  final WalletViewModel walletVM = WalletViewModel();
   DynamicPricingService? pricingService;
   bool isLoading = true;
-  double maxCashAdvance = 3000.0; // Default max amount
 
   @override
   void initState() {
     super.initState();
     initialisePricingService();
-    _fetchMaxCashAdvance();
   }
 
   Future<void> initialisePricingService() async {
@@ -34,13 +29,6 @@ class _PricingInfoTab extends State<PricingInfoTab> {
     setState(() {
       pricingService = service;
       isLoading = false;
-    });
-  }
-
-  Future<void> _fetchMaxCashAdvance() async {
-    double fetchedAmount = await walletVM.getMaxCashAdvanceAmount();
-    setState(() {
-      maxCashAdvance = fetchedAmount;
     });
   }
 
@@ -84,52 +72,7 @@ class _PricingInfoTab extends State<PricingInfoTab> {
               SizedBox(height: SizeConfig.heightMultiplier * 3),
             ],
 
-            // 🟢 Section 3: Cash Advance (Dynamic)
-            if (FeatureFlags.enableCashAdvance)
-              FutureBuilder(
-                future: Future.wait([
-                  FeesConfig.getMaxCashAdvanceAmount(),
-                  FeesConfig.getAdvanceFee(),
-                  FeesConfig.getBankFee(),
-                  FeesConfig.getRepaymentTerm(),
-                ]),
-                builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
-                  if (!snapshot.hasData) {
-                    return const CircularProgressIndicator(); // or SizedBox.shrink()
-                  }
-
-                  final double maxAdvance = snapshot.data![0];
-                  final double advanceFee = snapshot.data![1];
-                  final double bankFee = snapshot.data![2];
-                  final String repaymentTerm = snapshot.data![3];
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _sectionTitle('Cash Advance'),
-                      _buildBulletPoint(
-                          '💰 Borrow funds instantly & repay in $repaymentTerm.'),
-                      _buildBulletPoint(
-                          '📅 ${advanceFee.toStringAsFixed(0)}% fee applies for the $repaymentTerm advance.'),
-
-                      _pricingRow('Minimum Advance', 'R100'),
-                      _pricingRow('Maximum Advance',
-                          'R${maxAdvance.toStringAsFixed(0)}'),
-                      _pricingRow(
-                          'Flat Fee', '${advanceFee.toStringAsFixed(0)}%'),
-                      _pricingRow(
-                          'Bank Transfer', '${bankFee.toStringAsFixed(0)}%'),
-                      _pricingRow('Repayment Period', repaymentTerm),
-                      _pricingRow('Instant Payment fee between banks',
-                          'R50'), // Hardcoded if not dynamic
-
-                      SizedBox(height: SizeConfig.heightMultiplier * 3),
-                    ],
-                  );
-                },
-              ),
-
-            // 🟢 Section 4: Payouts (Dynamic)
+            // 🟢 Section 3: Payouts (Dynamic)
             if (FeatureFlags.enableBalancePayout) ...[
               _sectionTitle('Payouts'),
               _buildBulletPoint(
@@ -139,7 +82,7 @@ class _PricingInfoTab extends State<PricingInfoTab> {
               SizedBox(height: SizeConfig.heightMultiplier * 3),
             ],
 
-            // 🟢 Section 5: Messaging Pricing & Fees
+            // 🟢 Section 4: Messaging Pricing & Fees
             if (FeatureFlags.enablePricingInfo) ...[
               _sectionTitle('Messaging Pricing & Fees'),
               _buildBulletPoint(

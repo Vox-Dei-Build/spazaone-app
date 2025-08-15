@@ -14,7 +14,9 @@ class WalletState {
   final double balance;
   final bool hasBankAccount;
   final bool hasPendingPayout;
-  final double cashAdvanceBalance;
+  final double salesBalance;
+
+  double get cashAdvanceBalance => salesBalance;
 
   // 🆕 Repayment-related fields
   final double cashAdvanceWithdrawn;
@@ -31,7 +33,7 @@ class WalletState {
     required this.balance,
     required this.hasBankAccount,
     required this.hasPendingPayout,
-    required this.cashAdvanceBalance,
+    required this.salesBalance,
     required this.cashAdvanceWithdrawn,
     required this.penaltyFee,
     required this.accountSuspended,
@@ -94,7 +96,7 @@ class WalletViewModel extends ChangeNotifier {
       final data = snapshot.data();
 
       final balance = data?['virtualBalance']?.toDouble() ?? 0.0;
-      final cashAdvanceBalance = data?['cashAdvanceBalance']?.toDouble() ?? 0.0;
+      final salesBalance = data?['cashAdvanceBalance']?.toDouble() ?? 0.0;
       final cashAdvanceWithdrawn =
           data?['cashAdvanceWithdrawn']?.toDouble() ?? 0.0;
       final penaltyFee = data?['penaltyFee']?.toDouble() ?? 0.0;
@@ -130,7 +132,7 @@ class WalletViewModel extends ChangeNotifier {
         balance: balance,
         hasBankAccount: hasBankAccount,
         hasPendingPayout: hasPendingPayout,
-        cashAdvanceBalance: cashAdvanceBalance,
+        salesBalance: salesBalance,
         cashAdvanceWithdrawn: cashAdvanceWithdrawn,
         penaltyFee: penaltyFee,
         accountSuspended: accountSuspended,
@@ -147,7 +149,7 @@ class WalletViewModel extends ChangeNotifier {
       balance: (data['virtualBalance'] ?? 0.0).toDouble(),
       hasBankAccount: false,
       hasPendingPayout: false,
-      cashAdvanceBalance: (data['cashAdvanceBalance'] ?? 0.0).toDouble(),
+      salesBalance: (data['cashAdvanceBalance'] ?? 0.0).toDouble(),
       cashAdvanceWithdrawn: (data['cashAdvanceWithdrawn'] ?? 0.0).toDouble(),
       penaltyFee: (data['penaltyFee'] ?? 0.0).toDouble(),
       accountSuspended: data['accountSuspended'] ?? false,
@@ -369,7 +371,7 @@ class WalletViewModel extends ChangeNotifier {
     }
   }
 
-  /// 🔥 Transfer money from Cash Advance to Virtual Balance using wallet subcollection
+  /// 🔥 Transfer money from Sales Balance to Virtual Balance using wallet subcollection
   Future<void> transferToVirtualBalance(
       BuildContext context, double amount) async {
     final walletRef = firestore
@@ -385,21 +387,21 @@ class WalletViewModel extends ChangeNotifier {
       final data = walletSnapshot.data();
 
       double virtualBalance = (data?['virtualBalance'] ?? 0.0).toDouble();
-      double cashAdvanceBalance =
+      double salesBalance =
           (data?['cashAdvanceBalance'] ?? 0.0).toDouble();
 
-      if (cashAdvanceBalance < amount) {
+      if (salesBalance < amount) {
         showSnackbar(
-            context, '❌ Insufficient Cash Advance Balance.', Colors.red);
+            context, '❌ Insufficient Sales Balance.', Colors.red);
         return;
       }
 
       double newVirtualBalance = virtualBalance + amount;
-      double newCashAdvanceBalance = cashAdvanceBalance - amount;
+      double newSalesBalance = salesBalance - amount;
 
       transaction.update(walletRef, {
         'virtualBalance': newVirtualBalance,
-        'cashAdvanceBalance': newCashAdvanceBalance,
+        'cashAdvanceBalance': newSalesBalance,
       });
 
       showSnackbar(
