@@ -99,8 +99,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   return Center(
                     child: Text(
                       'Error loading order.',
-                      style:
-                          TextStyle(fontSize: SizeConfig.textMultiplier * 3),
+                      style: TextStyle(fontSize: SizeConfig.textMultiplier * 3),
                     ),
                   );
                 }
@@ -130,8 +129,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             _buildTile('Status', order['status'] ?? ''),
                             _buildTile(
                                 'Payment Method', order['paymentMethod'] ?? ''),
-                            _buildTile('Payment Status',
-                                order['paymentStatus'] ?? ''),
+                            _buildTile(
+                                'Payment Status', order['paymentStatus'] ?? ''),
                             _buildTile('Collected',
                                 (order['collected'] == true) ? 'Yes' : 'No'),
                             _buildProducts(order),
@@ -220,13 +219,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               if (!snapshot.hasData || !snapshot.data!.exists) {
                 return Text('Unknown product: $productId');
               }
-              final productData =
-                  snapshot.data!.data() as Map<String, dynamic>;
-              final productName =
-                  productData['name'] ?? 'Unnamed product';
+              final productData = snapshot.data!.data() as Map<String, dynamic>;
+              final productName = productData['name'] ?? 'Unnamed product';
               final sellingPrice = productData['sellingPrice'];
-              return _buildProductCard(
-                  productName, quantity, sellingPrice);
+              return _buildProductCard(productName, quantity, sellingPrice);
             },
           );
         }).toList(),
@@ -289,4 +285,3 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 }
-
