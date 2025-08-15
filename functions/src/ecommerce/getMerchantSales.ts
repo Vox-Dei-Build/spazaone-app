@@ -4,14 +4,16 @@ import { db, functions } from "../config/main";
  * List sales for a merchant. Optionally filter by type (e.g., "Online").
  * Returns: { sales: [{ id, status, amount, itemsCount, type, dateAdded, pickupAt, pickupLabel }] }
  */
-export const getMerchantSales = functions.https.onRequest(async (req, res) => {
+export const getMerchantSales = functions.https.onCall(async (data) => {
   try {
-    const merchantId = (req.query.merchantId || req.body?.merchantId) as string;
-    const type = (req.query.type || req.body?.type) as string | undefined;
+    const merchantId = data.merchantId as string;
+    const type = data.type as string | undefined;
 
     if (!merchantId) {
-      res.status(400).json({ error: "merchantId is required" });
-      return;
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "merchantId is required",
+      );
     }
 
     let query = db
@@ -41,9 +43,12 @@ export const getMerchantSales = functions.https.onRequest(async (req, res) => {
       };
     });
 
-    res.status(200).json({ sales });
+    return { sales };
   } catch (error: any) {
     console.error("Error fetching sales:", error?.message || error);
-    res.status(500).json({ error: "Failed to fetch sales" });
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to fetch sales",
+    );
   }
 });
