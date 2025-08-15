@@ -198,8 +198,8 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
         {
           lastSaleTransaction: {
             ...saleData,
-            items: undefined,
-            products: undefined,
+            items: null,
+            products: null,
           },
         },
         { merge: true },
