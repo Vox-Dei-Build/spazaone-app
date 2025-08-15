@@ -42,7 +42,7 @@ class _PayoutPageState extends State<PayoutPage> {
             }
 
             final walletState = snapshot.data!;
-            final double availableBalance = walletState.cashAdvanceBalance;
+            final double availableBalance = walletState.salesBalance;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -62,7 +62,7 @@ class _PayoutPageState extends State<PayoutPage> {
                 if (availableBalance == 0) ...[
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Text(
-                    "⚠️ You have no available balance to withdraw.\nYou need to qualify for a cashadvance first.",
+                    "⚠️ You have no available sales balance to withdraw.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.red,
