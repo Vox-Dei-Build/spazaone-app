@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
-import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
+import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/tabs/sales_balance_tab.dart';
-import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
-import 'package:pasella/pages/wallet/tabs/pricing_tab.dart';
 import 'package:pasella/pages/wallet/tabs/top_up_tab.dart';
-import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -43,13 +40,17 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }
 
   int _getTabCount() {
-    return [
-      FeatureFlags.enableTopUp,
-      FeatureFlags.enableCashAdvance,
-      FeatureFlags.enableTransactionHistory,
-      FeatureFlags.enableBankingDetails,
-      FeatureFlags.enablePricingInfo,
-    ].where((enabled) => enabled).length + 1; // Sales tab
+    // Always show the Sales tab. Top-up is optional and
+    // additional features are grouped under a single Info tab
+    int count = 1; // Sales
+    if (FeatureFlags.enableTopUp) count++;
+    if (FeatureFlags.enableCashAdvance ||
+        FeatureFlags.enableTransactionHistory ||
+        FeatureFlags.enableBankingDetails ||
+        FeatureFlags.enablePricingInfo) {
+      count++; // Info tab
+    }
+    return count;
   }
 
   @override
@@ -57,6 +58,11 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     // 🔥 Dynamically generate the tab views based on feature flags
     final List<Widget> tabViews = [];
     final List<Tab> tabLabels = [];
+
+    final bool hasInfoTab = FeatureFlags.enableCashAdvance ||
+        FeatureFlags.enableTransactionHistory ||
+        FeatureFlags.enableBankingDetails ||
+        FeatureFlags.enablePricingInfo;
 
     if (FeatureFlags.enableTopUp) {
       tabLabels.add(const Tab(text: 'Top-Up'));
@@ -67,26 +73,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     tabLabels.add(const Tab(text: 'Sales'));
     tabViews.add(const SalesBalanceTab());
 
-    if (FeatureFlags.enableCashAdvance) {
-      tabLabels.add(const Tab(text: 'Cash Advance'));
-      tabViews.add(const CashAdvanceTab());
-    }
-
-    if (FeatureFlags.enableTransactionHistory) {
-      tabLabels.add(const Tab(text: 'Transaction History'));
-      tabViews.add(UnifiedHistoryTab(
-        viewModel: walletVM,
-      ));
-    }
-
-    if (FeatureFlags.enableBankingDetails) {
-      tabLabels.add(const Tab(text: 'Banking Details'));
-      tabViews.add(const BankingDetailsTab());
-    }
-
-    if (FeatureFlags.enablePricingInfo) {
+    if (hasInfoTab) {
       tabLabels.add(const Tab(text: 'Info'));
-      tabViews.add(const PricingInfoTab());
+      tabViews.add(InfoCenterTab(walletVM: walletVM));
     }
 
     return DefaultTabController(
