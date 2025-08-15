@@ -1,14 +1,17 @@
 // functions/src/http/updateOrderPayment.ts
 import { db, functions } from "../config/main";
 
-export const updateOrderPayment = functions.https.onRequest(
-  async (req, res) => {
+export const updateOrderPayment = functions.https.onCall(
+  async (data) => {
     try {
-      const { merchantId, orderId, paymentAction } = req.body || {};
+      const merchantId = data.merchantId as string;
+      const orderId = data.orderId as string;
+      const paymentAction = data.paymentAction as string;
       if (!merchantId || !orderId || !paymentAction) {
-        res
-          .status(400)
-          .json({ error: "merchantId, orderId, paymentAction are required" });
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "merchantId, orderId, paymentAction are required",
+        );
       }
 
       const ref = db
@@ -17,10 +20,14 @@ export const updateOrderPayment = functions.https.onRequest(
         .collection("sales")
         .doc(orderId);
       const snap = await ref.get();
-      if (!snap.exists) res.status(404).json({ error: "Order not found" });
+      if (!snap.exists) {
+        throw new functions.https.HttpsError("not-found", "Order not found");
+      }
 
       const now = new Date();
       let patch: Record<string, any> = { updatedAt: now };
+
+      const orderData = snap.data() || {};
 
       switch (paymentAction) {
         case "ACCEPT_BNPL":
@@ -28,8 +35,23 @@ export const updateOrderPayment = functions.https.onRequest(
             ...patch,
             paymentMethod: "BNPL",
             paymentStatus: "approved",
-            status: "paid", // or "bnpl_accepted" then your UI maps to Paid
+            status: "bnpl_outstanding",
+            collected: false,
           };
+          // create credit transaction for customer
+          await db
+            .collection("users")
+            .doc(merchantId)
+            .collection("customers")
+            .doc(orderData.customerId)
+            .collection("transactions")
+            .add({
+              type: "Credit",
+              amount: Number(orderData.amount ?? 0),
+              date: now,
+              status: "DUE",
+              products: orderData.products || {},
+            });
           break;
         case "MARK_CASH_RECEIVED":
           patch = {
@@ -40,15 +62,34 @@ export const updateOrderPayment = functions.https.onRequest(
             cashReceivedAt: now,
           };
           break;
+        case "MARK_COLLECTED":
+          patch = {
+            ...patch,
+            collected: true,
+          };
+          break;
+        case "SETTLE_BNPL":
+          patch = {
+            ...patch,
+            paymentStatus: "paid",
+            status: "paid",
+          };
+          break;
         default:
-          res.status(400).json({ error: "Unknown paymentAction" });
+          throw new functions.https.HttpsError(
+            "invalid-argument",
+            "Unknown paymentAction",
+          );
       }
 
       await ref.update(patch);
-      res.status(200).json({ ok: true });
+      return { ok: true };
     } catch (err: any) {
       console.error("updateOrderPayment", err);
-      res.status(500).json({ error: "Failed to update order" });
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to update order",
+      );
     }
   },
 );

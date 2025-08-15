@@ -1,11 +1,15 @@
 // functions/src/http/getOrderById.ts
 import { db, functions } from "../config/main";
 
-export const getOrderById = functions.https.onRequest(async (req, res) => {
+export const getOrderById = functions.https.onCall(async (data) => {
   try {
-    const { merchantId, orderId } = req.body || {};
+    const merchantId = data.merchantId as string;
+    const orderId = data.orderId as string;
     if (!merchantId || !orderId) {
-      res.status(400).json({ error: "merchantId and orderId are required" });
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "merchantId and orderId are required",
+      );
     }
     const ref = db
       .collection("users")
@@ -13,10 +17,12 @@ export const getOrderById = functions.https.onRequest(async (req, res) => {
       .collection("sales")
       .doc(orderId);
     const snap = await ref.get();
-    if (!snap.exists) res.status(404).json({ error: "Order not found" });
+    if (!snap.exists) {
+      throw new functions.https.HttpsError("not-found", "Order not found");
+    }
 
     const data = snap.data() || {};
-    res.status(200).json({
+    return {
       id: snap.id,
       status: data.status || "pending",
       total: Number(data.amount ?? 0),
@@ -33,10 +39,13 @@ export const getOrderById = functions.https.onRequest(async (req, res) => {
       paymentStatus: data.paymentStatus || "",
       createdAt: data.dateAdded || data.createdAt || null,
       items: Array.isArray(data.items) ? data.items : [],
-      // add any shipping/customer fields as needed
-    });
+      collected: data.collected || false,
+    };
   } catch (err: any) {
     console.error("getOrderById", err);
-    res.status(500).json({ error: "Failed to fetch order" });
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to fetch order",
+    );
   }
 });
