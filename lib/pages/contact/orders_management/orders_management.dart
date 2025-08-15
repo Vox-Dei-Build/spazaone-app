@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/sales/order_model.dart';
+import 'package:pasella/pages/contact/orders_management/order_details_screen.dart';
 
 class OrdersManagementPage extends StatefulWidget {
   final String customerId;
@@ -73,6 +74,23 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
                 title: Text('#${o.id} - ${o.status}'),
                 subtitle: Text(
                     'Total: R${o.total.toStringAsFixed(2)} · Items: ${o.itemsCount}\n$dateStr'),
+                onTap: () async {
+                  final updated = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => OrderDetailScreen(
+                        customerId: widget.customerId,
+                        customerName: widget.customerName,
+                        orderId: o.id,
+                      ),
+                    ),
+                  );
+                  if (updated == true) {
+                    setState(() {
+                      _ordersFuture = _fetchOrders();
+                    });
+                  }
+                },
               );
             },
           );

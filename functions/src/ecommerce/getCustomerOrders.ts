@@ -4,14 +4,16 @@ import { db, functions } from "../config/main";
  * List orders (sales) for a customer with normalized fields for UI.
  * Returns: { orders: [{ id, status, total, itemsCount, createdAt, items? }] }
  */
-export const getCustomerOrders = functions.https.onRequest(async (req, res) => {
+export const getCustomerOrders = functions.https.onCall(async (data) => {
   try {
-    const merchantId = (req.query.merchantId || req.body?.merchantId) as string;
-    const customerId = (req.query.customerId || req.body?.customerId) as string;
+    const merchantId = data.merchantId as string;
+    const customerId = data.customerId as string;
 
     if (!merchantId || !customerId) {
-      res.status(400).json({ error: "merchantId and customerId are required" });
-      return;
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "merchantId and customerId are required",
+      );
     }
 
     const qs = await db
@@ -47,9 +49,12 @@ export const getCustomerOrders = functions.https.onRequest(async (req, res) => {
       };
     });
 
-    res.status(200).json({ orders });
+    return { orders };
   } catch (error: any) {
     console.error("Error fetching orders:", error?.message || error);
-    res.status(500).json({ error: "Failed to fetch orders" });
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to fetch orders",
+    );
   }
 });
