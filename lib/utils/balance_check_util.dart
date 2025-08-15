@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
-import 'package:pasella/pages/dashboard/dashboard.dart';
 import 'package:provider/provider.dart';
 
 // snackbar_messages.dart
@@ -66,10 +65,9 @@ class BalanceCheckUtil {
             actions: [
               TextButton(
                 onPressed: () {
-                  // Navigator.of(context).pop(false);
+                  Navigator.of(context).pop(false);
                   Provider.of<AppModel>(context, listen: false)
-                      .handleNavigation(context, 4);
-                  Navigator.pushNamed(context, Dashboard.id);
+                      .goToBilling(context);
                 },
                 child: Text("Top Up Now",
                     style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
