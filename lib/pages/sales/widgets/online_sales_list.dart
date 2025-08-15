@@ -1,14 +1,11 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/sales/order_model.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 class OnlineSalesList extends StatefulWidget {
   const OnlineSalesList({super.key});
-
   @override
   State<OnlineSalesList> createState() => _OnlineSalesListState();
 }
@@ -19,75 +16,63 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
   @override
   void initState() {
     super.initState();
-    _future = _fetchSales();
+    _future = _fetch();
   }
 
-  Future<List<OrderModel>> _fetchSales() async {
-    final url = Uri.parse(
-      'https://us-central1-pasella-ledger.cloudfunctions.net/getMerchantSales',
-    );
+  Future<List<OrderModel>> _fetch() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw Exception('Not signed in');
+    final callable =
+        FirebaseFunctions.instance.httpsCallable('getMerchantSales');
+    final res = await callable.call({'merchantId': uid, 'type': 'Online'});
+    final list = (res.data['sales'] as List<dynamic>? ?? []);
 
-    final user = FirebaseAuth.instance.currentUser;
-    final idToken = await user?.getIdToken(); // optional but recommended
+    // Adapt if backend not yet normalized
+    final adapted = list.map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      if (!m.containsKey('total') && m.containsKey('amount'))
+        m['total'] = m['amount'];
+      if (!m.containsKey('createdAt') && m.containsKey('dateAdded'))
+        m['createdAt'] = m['dateAdded'];
+      return OrderModel.fromMap(m);
+    }).toList();
 
-    final resp = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        if (idToken != null) 'Authorization': 'Bearer $idToken',
-      },
-      body: jsonEncode({
-        'merchantId': user?.uid,
-        'type': 'Online', // your filter
-      }),
-    );
-
-    if (resp.statusCode != 200) {
-      throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
-    }
-
-    final Map<String, dynamic> json = jsonDecode(resp.body);
-    final List<dynamic> data = (json['sales'] as List?) ?? [];
-
-    return data
-        .map((e) => OrderModel.fromMap(Map<String, dynamic>.from(e)))
-        .toList();
+    return adapted;
   }
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
+    final currency =
+        NumberFormat.currency(locale: 'en_ZA', symbol: 'R', decimalDigits: 2);
     return FutureBuilder<List<OrderModel>>(
       future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      builder: (context, s) {
+        if (s.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
-        } else if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return Center(
-            child: Text(
-              'No online sales available.',
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-            ),
-          );
-        } else {
-          final sales = snapshot.data!;
-          return ListView.builder(
-            itemCount: sales.length,
-            itemBuilder: (context, index) {
-              final s = sales[index];
-              final dateStr = s.createdAt != null
-                  ? DateFormat('dd-MM-yyyy HH:mm').format(s.createdAt!)
-                  : '';
-              return ListTile(
-                title: Text('#${s.id} - ${s.status}'),
-                subtitle: Text(
-                    'Total: R${s.total.toStringAsFixed(2)} · Items: ${s.itemsCount}\n$dateStr'),
-              );
-            },
-          );
         }
+        if (s.hasError) {
+          return Center(child: Text('Failed to load online sales: ${s.error}'));
+        }
+        final items = s.data ?? const <OrderModel>[];
+        if (items.isEmpty) {
+          return const Center(child: Text('No online sales'));
+        }
+        return ListView.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, i) {
+            final o = items[i];
+            final dateStr = o.createdAt != null
+                ? DateFormat('dd MMM yyyy · HH:mm').format(o.createdAt!)
+                : '—';
+            return ListTile(
+              title: Text('#${o.id}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                  'Total ${currency.format(o.total ?? 0)} · ${o.itemsCount} items\n$dateStr'),
+            );
+          },
+        );
       },
     );
   }
