@@ -134,7 +134,6 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                       OrdersManagementPage(
                         customerId: widget.customerId,
                         customerName: widget.customerName,
-                        mobileNumber: widget.mobileNumber,
                       ),
                       ConnectManagementPage(
                         customerId: widget.customerId,

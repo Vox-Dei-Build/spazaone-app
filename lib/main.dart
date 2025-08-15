@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -103,7 +102,6 @@ Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
   }
 }
 
-
 void requestNotificationPermission() async {
   NotificationSettings settings =
       await FirebaseMessaging.instance.requestPermission(
@@ -143,7 +141,7 @@ void main() async {
     // Initialize Firebase
     await Firebase.initializeApp();
 
-    await FirebaseAppCheck.instance.activate(
+    /* await FirebaseAppCheck.instance.activate(
       androidProvider: kReleaseMode
           ? AndroidProvider.playIntegrity
           : AndroidProvider.debug,
@@ -151,7 +149,7 @@ void main() async {
           ? AppleProvider.appAttestWithDeviceCheckFallback
           : AppleProvider.debug,
     );
-
+ */
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);
 
