@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/settings/settings.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/widgets/connectivity_widget.dart';
 
 class PageHeader extends StatelessWidget {
@@ -51,6 +52,22 @@ class PageHeader extends StatelessWidget {
             const Spacer(),
           const Spacer(),
           if (actionWidget != null) actionWidget!,
+          const Spacer(),
+          Expanded(
+            child: IconButton(
+              icon: Icon(Icons.account_balance_wallet_outlined,
+                  color: Colors.black,
+                  size: SizeConfig.imageSizeMultiplier * 5),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const WalletPage(),
+                  ),
+                );
+              },
+              alignment: Alignment.centerRight,
+            ),
+          ),
           const Spacer(),
           Expanded(
             child: IconButton(
