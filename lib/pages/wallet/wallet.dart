@@ -64,17 +64,17 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
         FeatureFlags.enableBankingDetails ||
         FeatureFlags.enablePricingInfo;
 
+    // Sales tab always enabled
+    tabLabels.add(const Tab(text: 'Withdraw'));
+    tabViews.add(const SalesBalanceTab());
+
     if (FeatureFlags.enableTopUp) {
       tabLabels.add(const Tab(text: 'Top-Up'));
       tabViews.add(const TopUpTab());
     }
 
-    // Sales tab always enabled
-    tabLabels.add(const Tab(text: 'Sales'));
-    tabViews.add(const SalesBalanceTab());
-
     if (hasInfoTab) {
-      tabLabels.add(const Tab(text: 'Info'));
+      tabLabels.add(const Tab(text: 'Account'));
       tabViews.add(InfoCenterTab(walletVM: walletVM));
     }
 
