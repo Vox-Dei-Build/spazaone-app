@@ -1,57 +1,127 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart'; // ✅ NEW
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
-import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
 import 'package:pasella/pages/wallet/tabs/pricing_tab.dart';
 import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/utils/feature_flags.dart';
 
-class InfoCenterTab extends StatelessWidget {
-  final WalletViewModel walletVM;
+enum InfoView { history, banking, info }
 
+class InfoCenterTab extends StatefulWidget {
+  final WalletViewModel walletVM;
   const InfoCenterTab({super.key, required this.walletVM});
 
   @override
-  Widget build(BuildContext context) {
-    final List<Tab> tabLabels = [];
-    final List<Widget> tabViews = [];
+  State<InfoCenterTab> createState() => _InfoCenterTabState();
+}
 
-    if (FeatureFlags.enableCashAdvance) {
-      tabLabels.add(const Tab(text: 'Cash Advance'));
-      tabViews.add(const CashAdvanceTab());
-    }
+class _InfoCenterTabState extends State<InfoCenterTab> {
+  late InfoView _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = _initialView();
+  }
+
+  InfoView _initialView() {
+    if (FeatureFlags.enableTransactionHistory) return InfoView.history;
+    if (FeatureFlags.enableBankingDetails) return InfoView.banking;
+    return InfoView.info;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig().init(context); // ✅ ensure SizeConfig is available
+
+    final labelStyle = TextStyle(
+      // ✅ matches Sales tab
+      fontSize: SizeConfig.textMultiplier * 1.5,
+      fontWeight: FontWeight.bold,
+    );
+    final iconSize = SizeConfig.textMultiplier * 1.5; // ✅ matches Sales tab
+
+    final segments = <ButtonSegment<InfoView>>[];
+
     if (FeatureFlags.enableTransactionHistory) {
-      tabLabels.add(const Tab(text: 'Transaction History'));
-      tabViews.add(UnifiedHistoryTab(viewModel: walletVM));
+      segments.add(
+        ButtonSegment(
+          value: InfoView.history,
+          label: Text('History', style: labelStyle), // ✅
+          icon: Icon(Icons.history, size: iconSize), // ✅
+        ),
+      );
     }
     if (FeatureFlags.enableBankingDetails) {
-      tabLabels.add(const Tab(text: 'Banking Details'));
-      tabViews.add(const BankingDetailsTab());
+      segments.add(
+        ButtonSegment(
+          value: InfoView.banking,
+          label: Text('Banking', style: labelStyle), // ✅
+          icon: Icon(Icons.account_balance, size: iconSize), // ✅
+        ),
+      );
     }
     if (FeatureFlags.enablePricingInfo) {
-      tabLabels.add(const Tab(text: 'Info'));
-      tabViews.add(const PricingInfoTab());
+      segments.add(
+        ButtonSegment(
+          value: InfoView.info,
+          label: Text('Info', style: labelStyle), // ✅
+          icon: Icon(Icons.info_outline, size: iconSize), // ✅
+        ),
+      );
     }
 
-    if (tabLabels.isEmpty) {
+    if (segments.isEmpty) {
       return const Center(child: Text('No information available'));
     }
 
-    return DefaultTabController(
-      length: tabLabels.length,
-      child: Column(
-        children: [
-          TabBar(
-            isScrollable: true,
-            tabs: tabLabels,
-          ),
-          Expanded(
-            child: TabBarView(
-              children: tabViews,
+    Widget contentFor(InfoView view) {
+      switch (view) {
+        case InfoView.history:
+          return UnifiedHistoryTab(viewModel: widget.walletVM);
+        case InfoView.banking:
+          return const BankingDetailsTab();
+        case InfoView.info:
+          return const PricingInfoTab();
+      }
+    }
+
+    if (segments.length == 1) {
+      return contentFor(segments.first.value);
+    }
+
+    return Column(
+      children: [
+        const SizedBox(height: 16), // ✅ same top spacing as Sales
+        Theme(
+          data: Theme.of(context).copyWith(
+            segmentedButtonTheme: SegmentedButtonThemeData(
+              style: ButtonStyle(
+                backgroundColor: MaterialStateProperty.resolveWith(
+                  (states) => states.contains(MaterialState.selected)
+                      ? Colors.green
+                      : Colors.white,
+                ),
+                foregroundColor: MaterialStateProperty.resolveWith(
+                  (states) => states.contains(MaterialState.selected)
+                      ? Colors.white
+                      : Colors.black87,
+                ),
+              ),
             ),
           ),
-        ],
-      ),
+          child: SegmentedButton<InfoView>(
+            segments: segments,
+            selected: <InfoView>{_selected},
+            onSelectionChanged: (selection) {
+              setState(() => _selected = selection.first);
+            },
+          ),
+        ),
+        const SizedBox(height: 16), // optional: mirrors Sales layout rhythm
+        Expanded(child: contentFor(_selected)),
+      ],
     );
   }
 }
