@@ -1,3 +1,4 @@
+// UPDATED IMPORTS
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/sales/order_model.dart';
 import 'package:pasella/pages/contact/orders_management/order_details_screen.dart';
+import 'package:pasella/constants/constants.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 class OrdersManagementPage extends StatefulWidget {
   final String customerId;
@@ -110,38 +113,9 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final currency =
-        NumberFormat.currency(locale: 'en_ZA', symbol: 'R', decimalDigits: 2);
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: _SearchField(
-                  controller: _searchCtl,
-                  hint: 'Search by order #...',
-                  onChanged: (txt) {
-                    _query = txt.trim();
-                    _refresh();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                  tooltip: 'Date range',
-                  icon: const Icon(Icons.date_range),
-                  onPressed: _pickDateRange),
-              if (_range != null)
-                IconButton(
-                    tooltip: 'Clear dates',
-                    icon: const Icon(Icons.clear),
-                    onPressed: _clearDateRange),
-            ],
-          ),
-        ),
         _StatusChips(
           selected: _status,
           onSelected: (s) {
@@ -152,22 +126,56 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
             });
           },
         ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            SizeConfig.imageSizeMultiplier * 3,
+            SizeConfig.heightMultiplier * 1.2,
+            SizeConfig.imageSizeMultiplier * 3,
+            0,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _SearchField(
+                  controller: _searchCtl,
+                  hint: 'Search by order #…',
+                  onChanged: (txt) {
+                    _query = txt.trim();
+                    _refresh();
+                  },
+                ),
+              ),
+              SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
+              IconButton(
+                tooltip: 'Date range',
+                icon: const Icon(Icons.date_range),
+                onPressed: _pickDateRange,
+              ),
+              if (_range != null)
+                IconButton(
+                  tooltip: 'Clear dates',
+                  icon: const Icon(Icons.clear),
+                  onPressed: _clearDateRange,
+                ),
+            ],
+          ),
+        ),
         FutureBuilder<List<OrderModel>>(
           future: _ordersFuture,
           builder: (context, snap) {
             final orders = snap.data ?? const <OrderModel>[];
-            final total =
-                orders.fold<double>(0.0, (a, b) => a + (b.total ?? 0));
+            final total = orders.fold<double>(0.0, (a, b) => a + (b.total));
             final rangeText = _range == null
                 ? 'All time'
                 : '${DateFormat('dd MMM').format(_range!.start)} – ${DateFormat('dd MMM').format(_range!.end)}';
             return _SummaryBar(
-                count: orders.length,
-                totalText: currency.format(total),
-                rangeText: rangeText);
+              count: orders.length,
+              totalText: CurrencyUtil.format(total),
+              rangeText: rangeText,
+            );
           },
         ),
-        const Divider(height: 1),
+        const Divider(height: 1, color: kHighLightColor),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _refresh,
@@ -181,30 +189,16 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
                     itemBuilder: (_, __) => const _OrderSkeleton(),
                   );
                 } else if (snapshot.hasError) {
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(height: 48),
-                      _StateMessage(
-                        icon: Icons.error_outline,
-                        title: "Couldn't load orders",
-                        subtitle: 'Please pull to refresh or try again later.',
-                        primaryLabel: 'Retry',
-                      ),
-                    ],
+                  return _buildEmptyState(
+                    asset: "assets/images/error.png",
+                    text:
+                        "Couldn't load orders.\nPull to refresh or try again later.",
                   );
                 } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(height: 48),
-                      _StateMessage(
-                        icon: Icons.inbox_outlined,
-                        title: 'No orders here (yet)',
-                        subtitle: 'Try adjusting filters or date range.',
-                        primaryLabel: 'Clear filters',
-                      ),
-                    ],
+                  return _buildEmptyState(
+                    asset: "assets/images/empty.png",
+                    text:
+                        "No orders yet.\nTry adjusting filters or date range.",
                   );
                 } else {
                   final orders = snapshot.data!;
@@ -212,37 +206,20 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
                     controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: orders.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, __) => const SizedBox(height: 0),
                     itemBuilder: (context, index) {
                       final o = orders[index];
                       final status = _OrderStatusX.fromString(o.status);
                       final dateStr = o.createdAt != null
-                          ? DateFormat('dd MMM yyyy · HH:mm')
-                              .format(o.createdAt!)
-                          : '—';
+                          ? DateFormat('y MMM d, h:mm a').format(o.createdAt!)
+                          : '';
 
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        title: Row(
-                          children: [
-                            Text('#${o.id}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                            const SizedBox(width: 8),
-                            _StatusPill(
-                                text: status.label,
-                                color: status.color(context)),
-                          ],
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6.0),
-                          child: Text(
-                            'Total ${currency.format(o.total ?? 0)} · ${o.itemsCount} items\n$dateStr',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
+                      return _OrderTile(
+                        id: o.id,
+                        status: status,
+                        totalText: CurrencyUtil.format(o.total),
+                        itemsCount: o.itemsCount,
+                        dateText: dateStr,
                         onTap: () async {
                           final updated = await Navigator.push(
                             context,
@@ -267,6 +244,31 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
       ],
     );
   }
+
+  Widget _buildEmptyState({required String asset, required String text}) {
+    return Center(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              asset,
+              width: SizeConfig.imageSizeMultiplier * 60,
+            ),
+            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            Text(
+              text,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: SizeConfig.textMultiplier * 2,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SearchField extends StatelessWidget {
@@ -275,19 +277,23 @@ class _SearchField extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final String? hint;
+
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
+      style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.7),
       decoration: InputDecoration(
         hintText: hint ?? 'Search…',
         prefixIcon: const Icon(Icons.search),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
         isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: SizeConfig.imageSizeMultiplier * 3,
+          vertical: SizeConfig.heightMultiplier * 1.6,
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -330,20 +336,45 @@ class _StatusChips extends StatelessWidget {
   const _StatusChips({required this.selected, required this.onSelected});
   final _OrderStatus selected;
   final ValueChanged<_OrderStatus> onSelected;
+
   @override
   Widget build(BuildContext context) {
     const statuses = _OrderStatus.values;
+    final selColor = Theme.of(context).colorScheme.primary;
+    final unSelBg =
+        Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.6);
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.imageSizeMultiplier * 3,
+        SizeConfig.heightMultiplier * 1.2,
+        SizeConfig.imageSizeMultiplier * 3,
+        SizeConfig.heightMultiplier * 0.8,
+      ),
       child: Row(
         children: [
           for (final s in statuses)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
-                label: Text(s.label),
+                label: Text(
+                  s.label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    color: s == selected ? Colors.white : Colors.black87,
+                  ),
+                ),
                 selected: s == selected,
+                selectedColor: selColor,
+                backgroundColor: unSelBg,
+                shape: StadiumBorder(
+                  side: BorderSide(
+                    color: s == selected ? selColor : Colors.transparent,
+                    width: 0.5,
+                  ),
+                ),
                 onSelected: (_) => onSelected(s),
               ),
             ),
@@ -359,19 +390,187 @@ class _SummaryBar extends StatelessWidget {
   final int count;
   final String totalText;
   final String rangeText;
+
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Row(children: [
-        Expanded(child: Text('$count orders', style: t.titleMedium)),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(totalText,
-              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          Text(rangeText, style: t.bodySmall),
-        ]),
-      ]),
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.imageSizeMultiplier * 3,
+        SizeConfig.heightMultiplier * 1.2,
+        SizeConfig.imageSizeMultiplier * 3,
+        SizeConfig.heightMultiplier * 1.2,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$count orders',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: SizeConfig.textMultiplier * 1.8,
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                totalText,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: SizeConfig.textMultiplier * 2,
+                ),
+              ),
+              Text(
+                rangeText,
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 1.4,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrderTile extends StatelessWidget {
+  const _OrderTile({
+    required this.id,
+    required this.status,
+    required this.totalText,
+    required this.itemsCount,
+    required this.dateText,
+    required this.onTap,
+  });
+
+  final String id;
+  final _OrderStatus status;
+  final String totalText;
+  final int? itemsCount;
+  final String dateText;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig().init(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: SizeConfig.imageSizeMultiplier * 3,
+              vertical: SizeConfig.heightMultiplier * 1.2,
+            ),
+            visualDensity: const VisualDensity(horizontal: -2),
+            leading: _OrderAvatar(color: status.color(context)),
+            title: _buildTitle(context),
+            subtitle: _buildSubtitle(context),
+            trailing: const Icon(Icons.chevron_right),
+          ),
+          const Divider(color: kHighLightColor, height: 5),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTitle(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Order id + status pill
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    '#$id',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                    ),
+                  ),
+                ),
+                SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
+                _StatusPill(
+                  text: status.label,
+                  color: status.color(context),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            totalText,
+            style: TextStyle(
+              color: kPrimaryColor,
+              fontWeight: FontWeight.bold,
+              fontSize: SizeConfig.textMultiplier * 1.8,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubtitle(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: TextStyle(
+                color: status == _OrderStatus.paid ||
+                        status == _OrderStatus.fulfilled
+                    ? kPrimaryColor
+                    : Colors.red,
+                fontWeight: FontWeight.w500,
+                fontSize: SizeConfig.textMultiplier * 1.5,
+              ),
+              children: [
+                TextSpan(text: totalText),
+                TextSpan(
+                  text: ' · ${itemsCount ?? 0} items · ',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                TextSpan(
+                  text: dateText,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OrderAvatar extends StatelessWidget {
+  const _OrderAvatar({required this.color});
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      radius: SizeConfig.imageSizeMultiplier * 4.5,
+      backgroundColor: color.withOpacity(0.12),
+      child: Icon(Icons.shopping_bag_rounded, color: color),
     );
   }
 }
@@ -401,36 +600,6 @@ class _OrderSkeleton extends StatelessWidget {
           box(w: 120),
         ]),
       ),
-    );
-  }
-}
-
-class _StateMessage extends StatelessWidget {
-  const _StateMessage(
-      {required this.icon,
-      required this.title,
-      required this.subtitle,
-      required this.primaryLabel});
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String primaryLabel;
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(children: [
-        Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(height: 12),
-        Text(title, style: t.titleLarge, textAlign: TextAlign.center),
-        const SizedBox(height: 8),
-        Text(subtitle, style: t.bodyMedium, textAlign: TextAlign.center),
-        const SizedBox(height: 16),
-        FilledButton(
-            onPressed: () => Navigator.maybePop(context),
-            child: Text(primaryLabel)),
-      ]),
     );
   }
 }
