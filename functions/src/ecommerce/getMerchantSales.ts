@@ -46,9 +46,6 @@ export const getMerchantSales = functions.https.onCall(async (data) => {
     return { sales };
   } catch (error: any) {
     console.error("Error fetching sales:", error?.message || error);
-    throw new functions.https.HttpsError(
-      "internal",
-      "Failed to fetch sales",
-    );
+    throw new functions.https.HttpsError("internal", "Failed to fetch sales");
   }
 });

@@ -52,9 +52,6 @@ export const getCustomerOrders = functions.https.onCall(async (data) => {
     return { orders };
   } catch (error: any) {
     console.error("Error fetching orders:", error?.message || error);
-    throw new functions.https.HttpsError(
-      "internal",
-      "Failed to fetch orders",
-    );
+    throw new functions.https.HttpsError("internal", "Failed to fetch orders");
   }
 });

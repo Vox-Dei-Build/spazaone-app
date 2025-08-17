@@ -1,7 +1,11 @@
 import { functions } from "../../config/main"; // Firebase or GCP cloud function import
 import axios from "axios";
+// Very first lines in the entry file that imports your handlers
+import * as path from "path";
+import * as dotenv from "dotenv";
+import { defineSecret } from "firebase-functions/params";
+const PAYSTACK_SECRET = defineSecret("PAYSTACK_TEST_SECRET_KEY");
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_TEST_SECRET_KEY; // 🔥 Use live key for production
 
 /**
  * Cloud Function to create a Paystack transaction.
@@ -14,6 +18,26 @@ exports.createPaystackTransaction = functions.https.onRequest(
   async (req: functions.https.Request, res: functions.Response) => {
     try {
       const { userId, amount, email } = req.body;
+// try .env.local first (dev), then fall back to .env
+dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+dotenv.config({ path: path.join(process.cwd(), ".env") });
+      const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_TEST_SECRET_KEY; // 🔥 Use live key for production
+
+
+      console.log("CWD:", process.cwd());
+console.log(
+  "PAYSTACK vars visible:",
+  Object.keys(process.env).filter(k => k.includes("PAYSTACK"))
+);
+console.log("PAYSTACK_TEST_SECRET_KEY:", process.env.PAYSTACK_TEST_SECRET_KEY);
+console.log('PAYSTACK_SECRET.value();', PAYSTACK_SECRET.value())
+
+      if (!PAYSTACK_SECRET_KEY) {
+        console.error("PAYSTACK_TEST_SECRET_KEY is missing");
+        res
+          .status(500)
+          .json({ error: "Server misconfiguration: missing Paystack key" });
+      }
 
       // Validate input
       if (
