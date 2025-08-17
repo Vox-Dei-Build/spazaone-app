@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart'; // ✅ NEW
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
 import 'package:pasella/pages/wallet/tabs/pricing_tab.dart';
 import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
@@ -32,28 +33,43 @@ class _InfoCenterTabState extends State<InfoCenterTab> {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context); // ✅ ensure SizeConfig is available
+
+    final labelStyle = TextStyle(
+      // ✅ matches Sales tab
+      fontSize: SizeConfig.textMultiplier * 1.5,
+      fontWeight: FontWeight.bold,
+    );
+    final iconSize = SizeConfig.textMultiplier * 1.5; // ✅ matches Sales tab
+
     final segments = <ButtonSegment<InfoView>>[];
 
     if (FeatureFlags.enableTransactionHistory) {
-      segments.add(const ButtonSegment(
-        value: InfoView.history,
-        label: Text('Transaction History'),
-        icon: Icon(Icons.history),
-      ));
+      segments.add(
+        ButtonSegment(
+          value: InfoView.history,
+          label: Text('History', style: labelStyle), // ✅
+          icon: Icon(Icons.history, size: iconSize), // ✅
+        ),
+      );
     }
     if (FeatureFlags.enableBankingDetails) {
-      segments.add(const ButtonSegment(
-        value: InfoView.banking,
-        label: Text('Banking Details'),
-        icon: Icon(Icons.account_balance),
-      ));
+      segments.add(
+        ButtonSegment(
+          value: InfoView.banking,
+          label: Text('Banking', style: labelStyle), // ✅
+          icon: Icon(Icons.account_balance, size: iconSize), // ✅
+        ),
+      );
     }
     if (FeatureFlags.enablePricingInfo) {
-      segments.add(const ButtonSegment(
-        value: InfoView.info,
-        label: Text('Info'),
-        icon: Icon(Icons.info_outline),
-      ));
+      segments.add(
+        ButtonSegment(
+          value: InfoView.info,
+          label: Text('Info', style: labelStyle), // ✅
+          icon: Icon(Icons.info_outline, size: iconSize), // ✅
+        ),
+      );
     }
 
     if (segments.isEmpty) {
@@ -77,6 +93,7 @@ class _InfoCenterTabState extends State<InfoCenterTab> {
 
     return Column(
       children: [
+        const SizedBox(height: 16), // ✅ same top spacing as Sales
         Theme(
           data: Theme.of(context).copyWith(
             segmentedButtonTheme: SegmentedButtonThemeData(
@@ -102,6 +119,7 @@ class _InfoCenterTabState extends State<InfoCenterTab> {
             },
           ),
         ),
+        const SizedBox(height: 16), // optional: mirrors Sales layout rhythm
         Expanded(child: contentFor(_selected)),
       ],
     );

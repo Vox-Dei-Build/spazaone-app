@@ -72,7 +72,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     tabViews.add(const SalesBalanceTab());
 
     if (hasInfoTab) {
-      tabLabels.add(const Tab(text: 'Info'));
+      tabLabels.add(const Tab(text: 'Account'));
       tabViews.add(InfoCenterTab(walletVM: walletVM));
     }
 
@@ -242,7 +242,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       child: ListTile(
         leading: const Icon(Icons.warning, color: Colors.red),
         title: FutureBuilder<String>(
-          future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
+          future:
+              WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
           builder: (context, snapshot) {
             final due = snapshot.data ?? '...';
             return Text("💸 Repayment Due: $due",
@@ -301,17 +302,19 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   return _infoRow('Bank Fee', value);
                 },
               ),
-              _infoRow('Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
+              _infoRow(
+                  'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
               FutureBuilder<String>(
-                future:
-                    WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
+                future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
+                    walletState),
                 builder: (context, snapshot) {
                   final due = snapshot.data ?? '...';
                   return _infoRow('Amount Due', due);
                 },
               ),
               _infoRow('Due Date', WalletUtils.formatDueDate(walletState)),
-              _infoRow('Suspended', WalletUtils.formatSuspendedStatus(walletState)),
+              _infoRow(
+                  'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
               SizedBox(height: SizeConfig.heightMultiplier * 2),
               ElevatedButton(
                 onPressed: () {
@@ -341,7 +344,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
   Widget _infoRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.5),
+      padding:
+          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.5),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
