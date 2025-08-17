@@ -110,14 +110,20 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                           icon: Icons.account_balance_wallet,
                         ),
                         _balanceCard(
-                          title: FeatureFlags.enableCashAdvance
-                              ? 'Cash Advance'
-                              : 'Sales Balance',
+                          title: 'Sales Balance',
                           amount: walletState.salesBalance,
                           description: 'Available for withdrawal',
                           color: Colors.blue,
                           icon: Icons.account_balance_wallet,
                         ),
+                        if (FeatureFlags.enableCashAdvance)
+                          _balanceCard(
+                            title: 'Cash Advance',
+                            amount: walletState.cashAdvanceBalance,
+                            description: 'Available for withdrawal',
+                            color: Colors.orange,
+                            icon: Icons.account_balance,
+                          ),
                         if (FeatureFlags.enableCashAdvance &&
                             walletState.cashAdvanceWithdrawn > 0)
                           _repaymentCard(walletState),
@@ -238,7 +244,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       child: ListTile(
         leading: const Icon(Icons.warning, color: Colors.red),
         title: FutureBuilder<String>(
-          future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
+          future:
+              WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
           builder: (context, snapshot) {
             final due = snapshot.data ?? '...';
             return Text("💸 Repayment Due: $due",
@@ -297,17 +304,19 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   return _infoRow('Bank Fee', value);
                 },
               ),
-              _infoRow('Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
+              _infoRow(
+                  'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
               FutureBuilder<String>(
-                future:
-                    WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
+                future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
+                    walletState),
                 builder: (context, snapshot) {
                   final due = snapshot.data ?? '...';
                   return _infoRow('Amount Due', due);
                 },
               ),
               _infoRow('Due Date', WalletUtils.formatDueDate(walletState)),
-              _infoRow('Suspended', WalletUtils.formatSuspendedStatus(walletState)),
+              _infoRow(
+                  'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
               SizedBox(height: SizeConfig.heightMultiplier * 2),
               ElevatedButton(
                 onPressed: () {
@@ -337,7 +346,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
   Widget _infoRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.5),
+      padding:
+          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.5),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
