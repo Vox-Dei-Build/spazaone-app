@@ -44,7 +44,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     // additional features are grouped under a single Info tab
     int count = 1; // Sales
     if (FeatureFlags.enableTopUp) count++;
-    if (FeatureFlags.enableTransactionHistory ||
+    if (FeatureFlags.enableCashAdvance ||
+        FeatureFlags.enableTransactionHistory ||
         FeatureFlags.enableBankingDetails ||
         FeatureFlags.enablePricingInfo) {
       count++; // Info tab
@@ -58,7 +59,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     final List<Widget> tabViews = [];
     final List<Tab> tabLabels = [];
 
-    final bool hasInfoTab = FeatureFlags.enableTransactionHistory ||
+    final bool hasInfoTab = FeatureFlags.enableCashAdvance ||
+        FeatureFlags.enableTransactionHistory ||
         FeatureFlags.enableBankingDetails ||
         FeatureFlags.enablePricingInfo;
 
@@ -72,7 +74,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     tabViews.add(const SalesBalanceTab());
 
     if (hasInfoTab) {
-      tabLabels.add(const Tab(text: 'Account'));
+      tabLabels.add(const Tab(text: 'Info'));
       tabViews.add(InfoCenterTab(walletVM: walletVM));
     }
 
