@@ -481,7 +481,7 @@ class _OrderTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 3.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           // Order id + status pill
           Expanded(
@@ -615,7 +615,9 @@ class _StatusPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration:
           BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
-      child: Text(text, style: const TextStyle(color: fg, fontSize: 12)),
+      child: Text(text,
+          style:
+              TextStyle(color: fg, fontSize: SizeConfig.textMultiplier * 1.5)),
     );
   }
 }
