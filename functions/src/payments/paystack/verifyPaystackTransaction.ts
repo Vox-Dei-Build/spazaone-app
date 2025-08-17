@@ -1,7 +1,7 @@
 import { functions, db } from "../../config/main"; // Firebase config import
 import axios from "axios";
-
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_TEST_SECRET_KEY;
+import * as path from "path";
+import * as dotenv from "dotenv";
 
 /**
  * Webhook function to verify Paystack transactions.
@@ -13,6 +13,9 @@ exports.verifyPaystackTransaction = functions.https.onRequest(
   async (req: functions.https.Request, res: functions.Response) => {
     try {
       const { event, data } = req.body;
+      dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+      dotenv.config({ path: path.join(process.cwd(), ".env") });
+       const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_TEST_SECRET_KEY ||  functions.config().paystack?.secret as string | undefined; // 🔥 Use live key for production
 
       // Check if the event is a successful charge
       if (event !== "charge.success") {
