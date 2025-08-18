@@ -111,7 +111,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                         ),
                         _balanceCard(
                           title: 'Sales Balance',
-                          amount: walletState.salesBalance,
+                          amount: walletState.salesVirtualBalance,
                           description: 'Available for withdrawal',
                           color: Colors.blue,
                           icon: Icons.account_balance_wallet,

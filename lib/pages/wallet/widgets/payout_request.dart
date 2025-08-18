@@ -42,7 +42,7 @@ class _PayoutPageState extends State<PayoutPage> {
             }
 
             final walletState = snapshot.data!;
-            final double availableBalance = walletState.salesBalance;
+            final double availableBalance = walletState.salesVirtualBalance;
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.center,

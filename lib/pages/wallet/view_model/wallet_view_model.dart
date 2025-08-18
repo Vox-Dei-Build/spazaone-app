@@ -14,9 +14,7 @@ class WalletState {
   final double balance;
   final bool hasBankAccount;
   final bool hasPendingPayout;
-  final double salesBalance;
-
-  double get cashAdvanceBalance => salesBalance;
+  final double cashAdvanceBalance;
 
   // 🆕 Repayment-related fields
   final double cashAdvanceWithdrawn;
@@ -25,6 +23,7 @@ class WalletState {
   final DateTime? cashAdvanceDueDate;
   final double totalCashAdvanceGiven;
   final double totalCashAdvanceRepaid;
+  final double salesVirtualBalance;
 
   // 🆕 Repayment history (list of repayments)
   final List<Map<String, dynamic>> repaymentHistory;
@@ -33,7 +32,8 @@ class WalletState {
     required this.balance,
     required this.hasBankAccount,
     required this.hasPendingPayout,
-    required this.salesBalance,
+    required this.cashAdvanceBalance,
+    required this.salesVirtualBalance,
     required this.cashAdvanceWithdrawn,
     required this.penaltyFee,
     required this.accountSuspended,
@@ -96,7 +96,9 @@ class WalletViewModel extends ChangeNotifier {
       final data = snapshot.data();
 
       final balance = data?['virtualBalance']?.toDouble() ?? 0.0;
-      final salesBalance = data?['cashAdvanceBalance']?.toDouble() ?? 0.0;
+      final cashAdvanceBalance = data?['cashAdvanceBalance']?.toDouble() ?? 0.0;
+      final salesVirtualBalance =
+          data?['salesVirtualBalance']?.toDouble() ?? 0.0;
       final cashAdvanceWithdrawn =
           data?['cashAdvanceWithdrawn']?.toDouble() ?? 0.0;
       final penaltyFee = data?['penaltyFee']?.toDouble() ?? 0.0;
@@ -132,7 +134,8 @@ class WalletViewModel extends ChangeNotifier {
         balance: balance,
         hasBankAccount: hasBankAccount,
         hasPendingPayout: hasPendingPayout,
-        salesBalance: salesBalance,
+        cashAdvanceBalance: cashAdvanceBalance,
+        salesVirtualBalance: salesVirtualBalance,
         cashAdvanceWithdrawn: cashAdvanceWithdrawn,
         penaltyFee: penaltyFee,
         accountSuspended: accountSuspended,
@@ -149,7 +152,8 @@ class WalletViewModel extends ChangeNotifier {
       balance: (data['virtualBalance'] ?? 0.0).toDouble(),
       hasBankAccount: false,
       hasPendingPayout: false,
-      salesBalance: (data['cashAdvanceBalance'] ?? 0.0).toDouble(),
+      salesVirtualBalance: data['salesVirtualBalance']?.toDouble() ?? 0.0,
+      cashAdvanceBalance: (data['cashAdvanceBalance'] ?? 0.0).toDouble(),
       cashAdvanceWithdrawn: (data['cashAdvanceWithdrawn'] ?? 0.0).toDouble(),
       penaltyFee: (data['penaltyFee'] ?? 0.0).toDouble(),
       accountSuspended: data['accountSuspended'] ?? false,
@@ -306,7 +310,7 @@ class WalletViewModel extends ChangeNotifier {
           context,
           'Payout request submitted successfully, we will notify you once transferred.',
           Colors.green);
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      Navigator.pushReplacementNamed(context, '/walletPage');
     } catch (e) {
       print('Error submitting payout request: $e');
       showSnackbar(context, 'Failed to submit payout request.', Colors.red);
@@ -371,7 +375,7 @@ class WalletViewModel extends ChangeNotifier {
     }
   }
 
-  /// 🔥 Transfer money from Sales Balance to Virtual Balance using wallet subcollection
+  /// 🔥 Transfer money from Sales Balance to Virtual Balance
   Future<void> transferToVirtualBalance(
       BuildContext context, double amount) async {
     final walletRef = firestore
@@ -381,31 +385,42 @@ class WalletViewModel extends ChangeNotifier {
         .doc('current');
 
     await firestore.runTransaction((transaction) async {
-      final walletSnapshot = await transaction.get(walletRef);
-      if (!walletSnapshot.exists) return;
-
-      final data = walletSnapshot.data();
-
-      double virtualBalance = (data?['virtualBalance'] ?? 0.0).toDouble();
-      double salesBalance =
-          (data?['cashAdvanceBalance'] ?? 0.0).toDouble();
-
-      if (salesBalance < amount) {
-        showSnackbar(
-            context, '❌ Insufficient Sales Balance.', Colors.red);
+      final snap = await transaction.get(walletRef);
+      if (!snap.exists) {
+        showSnackbar(context, 'Wallet not found.', Colors.red);
         return;
       }
 
-      double newVirtualBalance = virtualBalance + amount;
-      double newSalesBalance = salesBalance - amount;
+      final data = snap.data();
 
-      transaction.update(walletRef, {
-        'virtualBalance': newVirtualBalance,
-        'cashAdvanceBalance': newSalesBalance,
-      });
+      final double currentVirtual = (data?['virtualBalance'] ?? 0.0).toDouble();
+
+      // 👇 Prefer the new field; fall back to legacy if needed
+      final double currentSales =
+          (data?['salesVirtualBalance'] ?? data?['cashAdvanceBalance'] ?? 0.0)
+              .toDouble();
+
+      if (currentSales < amount) {
+        showSnackbar(context, '❌ Insufficient Sales Balance.', Colors.red);
+        return;
+      }
+
+      final double newVirtual = currentVirtual + amount;
+      final double newSales = currentSales - amount;
+
+      // ✅ Write to the new field
+      final update = <String, dynamic>{
+        'virtualBalance': newVirtual,
+        'salesVirtualBalance': newSales,
+      };
+
+      transaction.update(walletRef, update);
 
       showSnackbar(
-          context, '✅ R$amount moved to Virtual Balance.', Colors.green);
+        context,
+        '✅ R$amount moved to Virtual Balance.',
+        Colors.green,
+      );
     });
   }
 
@@ -532,7 +547,6 @@ class WalletViewModel extends ChangeNotifier {
     reference.dispose();
     isProcessing.dispose();
     isProcessingPayoutRequest.dispose();
-    _walletStateController.close();
     _walletStateController.close();
     super.dispose();
   }
