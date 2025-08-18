@@ -32,7 +32,7 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
           }
 
           final walletState = snapshot.data!;
-          final double salesBalance = walletState.salesBalance;
+          final double salesBalance = walletState.salesVirtualBalance;
           final bool canWithdraw = salesBalance > 0 &&
               walletState.hasBankAccount &&
               !walletState.hasPendingPayout;
@@ -83,7 +83,7 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
                           child: Text(
                             walletState.hasPendingPayout
                                 ? 'Pending payout request.'
-                                : walletState.salesBalance <= 0
+                                : walletState.salesVirtualBalance <= 0
                                     ? 'Insufficient balance.'
                                     : 'Please add banking details first.',
                             style: TextStyle(
@@ -121,8 +121,8 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
               ),
             ),
             child: Padding(
-              padding: EdgeInsets.symmetric(
-                  vertical: SizeConfig.heightMultiplier),
+              padding:
+                  EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier),
               child: SegmentedButton<SalesView>(
                 segments: const [
                   ButtonSegment(

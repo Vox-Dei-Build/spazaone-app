@@ -413,6 +413,7 @@ class AuthViewModel with ChangeNotifier {
         .set({
       'virtualBalance': 15.0,
       'cashAdvanceBalance': 0.0,
+      'salesVirtualBalance': 0.0,
       'cashAdvanceWithdrawn': 0.0,
       'cashAdvanceDueDate': null,
       'penaltyFee': 0.0,

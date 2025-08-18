@@ -299,7 +299,18 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-enum _OrderStatus { all, pending, paid, fulfilled, cancelled, refunded }
+enum _OrderStatus {
+  all,
+  pending,
+  paid,
+  fulfilled,
+  cancelled,
+  refunded,
+  uncollected,
+  collected,
+  bnplPending,
+  bnplOutstanding,
+}
 
 extension _OrderStatusLabel on _OrderStatus {
   String get label => switch (this) {
@@ -309,6 +320,10 @@ extension _OrderStatusLabel on _OrderStatus {
         _OrderStatus.fulfilled => 'Fulfilled',
         _OrderStatus.cancelled => 'Cancelled',
         _OrderStatus.refunded => 'Refunded',
+        _OrderStatus.uncollected => 'Uncollected',
+        _OrderStatus.collected => 'Collected',
+        _OrderStatus.bnplPending => 'BNPL Pending',
+        _OrderStatus.bnplOutstanding => 'BNPL Outstanding',
       };
 }
 
@@ -319,15 +334,36 @@ extension _OrderStatusX on _OrderStatus {
         _OrderStatus.fulfilled => Colors.blue,
         _OrderStatus.cancelled => Colors.red,
         _OrderStatus.refunded => Colors.purple,
+        _OrderStatus.uncollected => Colors.orange,
+        _OrderStatus.collected => Colors.teal,
+        _OrderStatus.bnplPending => Colors.deepOrange,
+        _OrderStatus.bnplOutstanding => Colors.brown,
         _OrderStatus.all => Theme.of(c).colorScheme.outline,
       };
-  static _OrderStatus fromString(String v) {
-    final x = v.toLowerCase();
+
+  static _OrderStatus fromString(String v,
+      {String? paymentMethod, String? type}) {
+    final x = (v ?? '').toLowerCase();
+    final pm = (paymentMethod ?? '').toLowerCase();
+    final t = (type ?? '').toLowerCase();
+
+    // BNPL detection
+    final isBnpl = pm == 'bnpl' || t == 'bnpl' || x.contains('bnpl');
+    if (isBnpl) {
+      if (x.contains('outstanding') || x.contains('approved')) {
+        return _OrderStatus.bnplOutstanding;
+      }
+      return _OrderStatus.bnplPending;
+    }
+
+    if (x.contains('uncollected')) return _OrderStatus.uncollected;
+    if (x.contains('collected')) return _OrderStatus.collected;
     if (x.contains('refund')) return _OrderStatus.refunded;
     if (x.contains('cancel')) return _OrderStatus.cancelled;
     if (x.contains('fulfill')) return _OrderStatus.fulfilled;
     if (x.contains('paid') || x.contains('complete')) return _OrderStatus.paid;
     if (x.contains('pending') || x.isEmpty) return _OrderStatus.pending;
+
     return _OrderStatus.pending;
   }
 }
@@ -371,7 +407,7 @@ class _StatusChips extends StatelessWidget {
                 backgroundColor: unSelBg,
                 shape: StadiumBorder(
                   side: BorderSide(
-                    color: s == selected ? selColor : Colors.transparent,
+                    color: s == selected ? selColor : Colors.white,
                     width: 0.5,
                   ),
                 ),
@@ -404,7 +440,7 @@ class _SummaryBar extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              '$count orders',
+              '$count order(s)',
               style: TextStyle(
                 fontWeight: FontWeight.w500,
                 fontSize: SizeConfig.textMultiplier * 1.8,

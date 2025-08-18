@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/widgets/payment_response_screen.dart';
-import 'package:pasella/services/paystack_service.dart';
+import 'package:pasella/services/paystack_service.dart'; // uses initializeTopUp(...)
 import 'package:pasella/pages/wallet/widgets/paystack_webview.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
@@ -21,62 +21,99 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
   bool isLoading = false;
 
-  /// Start Paystack transaction
-  void _startTransaction() async {
-    if (amountController.text.isEmpty || emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Please enter email and amount")));
+  /// Start Paystack TOP-UP transaction (purpose = 'topup')
+  Future<void> _startTransaction() async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (amountController.text.trim().isEmpty ||
+        emailController.text.trim().isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Please enter email and amount")),
+      );
       return;
     }
 
-    double amount = double.tryParse(amountController.text) ?? 0;
+    final amount = double.tryParse(amountController.text.trim()) ?? 0;
     if (amount <= 0) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Enter a valid amount")));
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Enter a valid amount")),
+      );
+      return;
+    }
+
+    if (currentUserId.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("You must be signed in")),
+      );
       return;
     }
 
     setState(() => isLoading = true);
 
-    String? checkoutUrl = await PaystackService.initializeTransaction(
-        currentUserId, amount, emailController.text);
+    try {
+      // 🔑 This calls the initializer with purpose: 'topup' and minor units handled inside the service.
+      final init = await PaystackService.initializeTopUp(
+        userId: currentUserId,
+        amount: amount, // rands
+        email: emailController.text.trim(),
+      );
 
-    setState(() => isLoading = false);
+      setState(() => isLoading = false);
 
-    if (checkoutUrl != null) {
-      bool success = await Navigator.push(
+      if (init == null) {
+        // Failed to create link
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PaymentResponseScreen(
+              isSuccess: false,
+              message: "Transaction failed. Please try again.",
+              amount: amount,
+              reference: "—",
+            ),
+          ),
+        );
+        return;
+      }
+
+      // Open Paystack checkout
+      final success = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
           builder: (context) => PaystackWebView(
-            url: checkoutUrl,
-            reference: "ref+$currentUserId",
+            url: init.authorizationUrl,
+            reference: init.reference, // ✅ use real reference from Paystack
             amount: amount,
           ),
         ),
       );
 
+      // You can rely on the webhook to update the wallet;
+      // this screen just shows the UX result.
       if (success == true) {
-        Navigator.push(
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => PaymentResponseScreen(
               isSuccess: true,
-              message: "Your balance has been successfully topped up!",
+              message:
+                  "Your payment was captured. Your balance will update shortly.",
               amount: amount,
-              reference: "ref+$currentUserId",
+              reference: init.reference,
             ),
           ),
         );
       }
-    } else {
-      Navigator.push(
+    } catch (e) {
+      setState(() => isLoading = false);
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => PaymentResponseScreen(
             isSuccess: false,
             message: "Transaction failed. Please try again.",
-            amount: amount,
-            reference: "ref+$currentUserId",
+            amount: double.tryParse(amountController.text.trim()) ?? 0,
+            reference: "—",
           ),
         ),
       );
@@ -99,12 +136,9 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
               textInputType: TextInputType.number,
               maxLength: 20,
               controller: amountController,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
+              validator: (value) => (value == null || value.isEmpty)
+                  ? 'This field is required'
+                  : null,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 1.5),
             CustomTextField(
@@ -113,29 +147,31 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
               label: 'Enter Email *',
               textInputType: TextInputType.emailAddress,
               controller: emailController,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'This field is required';
-                }
-                return null;
-              },
+              validator: (value) => (value == null || value.isEmpty)
+                  ? 'This field is required'
+                  : null,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             Center(
-                child: Stack(alignment: Alignment.center, children: [
-              CustomButton(
-                onTap: isLoading
-                    ? () {}
-                    : () async {
-                        _startTransaction();
-                      },
-                margin: const EdgeInsets.fromLTRB(10, 0, 10, 10.0),
-                title: 'Proceed to Paystack',
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CustomButton(
+                    onTap: isLoading
+                        ? () => ()
+                        : () {
+                            _startTransaction(); // fire & forget
+                          },
+                    margin: const EdgeInsets.fromLTRB(10, 0, 10, 10.0),
+                    title: 'Proceed to Paystack',
+                  ),
+                  if (isLoading)
+                    const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                ],
               ),
-              if (isLoading)
-                const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
-            ])),
+            ),
           ],
         ),
       ),
