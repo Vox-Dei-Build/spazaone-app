@@ -253,7 +253,7 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
           children: [
             Image.asset(
               asset,
-              width: SizeConfig.imageSizeMultiplier * 60,
+              width: SizeConfig.imageSizeMultiplier * 30,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             Text(
