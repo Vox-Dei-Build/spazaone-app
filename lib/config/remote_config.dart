@@ -22,6 +22,18 @@ class RemoteConfigService {
         'TWILIO_ACCOUNT_SID': dotenv.env['TWILIO_ACCOUNT_SID'] ?? '',
         'TWILIO_AUTH_TOKEN': dotenv.env['TWILIO_AUTH_TOKEN'] ?? '',
         'TWILIO_NUMBER': dotenv.env['TWILIO_NUMBER'] ?? '',
+        'TWILIO_ACCEPT_BNPL_TID':
+            dotenv.env['TWILIO_ACCEPT_BNPL_TID'] ?? '',
+        'TWILIO_REJECT_BNPL_TID':
+            dotenv.env['TWILIO_REJECT_BNPL_TID'] ?? '',
+        'TWILIO_MARK_CASH_RECEIVED_TID':
+            dotenv.env['TWILIO_MARK_CASH_RECEIVED_TID'] ?? '',
+        'TWILIO_MARK_COLLECTED_TID':
+            dotenv.env['TWILIO_MARK_COLLECTED_TID'] ?? '',
+        'TWILIO_SETTLE_BNPL_TID':
+            dotenv.env['TWILIO_SETTLE_BNPL_TID'] ?? '',
+        'TWILIO_CANCEL_ORDER_TID':
+            dotenv.env['TWILIO_CANCEL_ORDER_TID'] ?? '',
       });
 
       _instance = RemoteConfigService._(remoteConfig);

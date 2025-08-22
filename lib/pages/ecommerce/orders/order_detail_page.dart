@@ -13,6 +13,7 @@ import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
+import 'package:pasella/services/order_status_messaging_service.dart';
 
 import 'data/order_repository.dart';
 import 'data/payment_service.dart';
@@ -52,6 +53,18 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       orderId: widget.orderId,
       action: action,
     );
+    if (ok) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        final msgSvc = await OrderStatusMessagingService.create();
+        await msgSvc.sendStatusMessage(
+          action: action,
+          merchantId: uid,
+          customerId: widget.customerId,
+          customerName: widget.customerName,
+        );
+      }
+    }
     if (!mounted) return;
     setState(() {
       _updated = ok || _updated;
