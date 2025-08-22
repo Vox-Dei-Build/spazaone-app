@@ -56,7 +56,7 @@ class _EntityTabState extends State<EntityTab> {
     setState(() {});
   }
 
-  Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
+  /* Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
     final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     if (currentUserId.isEmpty) {
@@ -117,6 +117,73 @@ class _EntityTabState extends State<EntityTab> {
           unreadCount: unreadCount, // ✅ UI updates when unread messages change
         );
       }).toList(), // ✅ Ensure this function returns a List<CustomerWithTransactions>
+    );
+  }
+ */
+
+  Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
+    final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (currentUserId.isEmpty) return Stream.value([]);
+
+    Query query = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .collection('customers')
+        .where("category", isEqualTo: widget.category);
+
+    final customersStream =
+        query.orderBy("lastTransaction.date", descending: true).snapshots();
+
+    final unreadMessagesStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
+        return <Map<String, dynamic>>[];
+      }
+      return (snapshot.data()?['unreadMessages'] as List<dynamic>)
+          .map((msg) => msg as Map<String, dynamic>)
+          .toList();
+    });
+
+    return Rx.combineLatest2<QuerySnapshot, List<Map<String, dynamic>>,
+        List<CustomerWithTransactions>>(
+      customersStream,
+      unreadMessagesStream,
+      (customerSnapshot, unreadMessages) =>
+          customerSnapshot.docs.map((customerDoc) {
+        final customerData = customerDoc.data() as Map<String, dynamic>;
+        final double balance =
+            (customerData['balance'] as num?)?.toDouble() ?? 0.0;
+
+        // 🔵 Chat unread per customer (existing)
+        final chatUnread = unreadMessages
+            .where((msg) => msg['customerNumber'] == customerData['number'])
+            .length;
+
+        // 🟠 Orders unread per customer (NEW)
+        final int ordersUnread =
+            (customerData['ordersUnreadCount'] as int?) ?? 0;
+
+        // ✅ Single badge shows combined unread (messages + orders)
+        final int combinedUnread = chatUnread + ordersUnread;
+
+        return CustomerWithTransactions(
+          customer: Customer.fromMap({
+            'id': customerDoc.id,
+            'name': formatStringToCamelCase(customerData['name']),
+            'number': customerData['number'],
+            'category': customerData['category'],
+            'lastTransaction': customerData['lastTransaction'],
+            'balance': balance,
+            'isNPA': customerData['isNPA'],
+            'profileImageUrl': customerData['profileImageUrl'],
+          }),
+          transactions: [],
+          unreadCount: combinedUnread, // 👈 now includes orders
+        );
+      }).toList(),
     );
   }
 

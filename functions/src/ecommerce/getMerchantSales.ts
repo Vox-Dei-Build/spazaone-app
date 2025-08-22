@@ -40,6 +40,8 @@ export const getMerchantSales = functions.https.onCall(async (data) => {
         dateAdded: s.dateAdded || s.createdAt || null,
         pickupAt: s.pickupAt || null,
         pickupLabel: s.pickupLabel || null,
+        paymentMethod: s.paymentMethod || "", // may be set later by actions
+        paymentStatus: s.paymentStatus || "", // "approved" for BNPL approved, "paid" when settled
       };
     });
 
