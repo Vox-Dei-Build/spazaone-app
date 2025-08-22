@@ -83,7 +83,6 @@ class _SalesListState extends State<SalesList> {
                         MaterialPageRoute(
                           builder: (context) => SaleDetailPage(
                             sale: sale,
-                            viewModel: viewModel,
                           ),
                         ),
                       )

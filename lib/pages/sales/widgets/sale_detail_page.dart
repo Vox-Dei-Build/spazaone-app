@@ -6,16 +6,14 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/widgets/edit_sale.dart';
-import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
 
 class SaleDetailPage extends StatefulWidget {
   final Sale sale;
-  final SalesViewModel viewModel;
 
-  const SaleDetailPage({super.key, required this.sale, required this.viewModel});
+  const SaleDetailPage({super.key, required this.sale});
 
   @override
   _SaleDetailPageState createState() => _SaleDetailPageState();
@@ -30,31 +28,6 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
     sale = widget.sale; // Initialize with the passed sale data
   }
 
-  Future<void> _confirmCancel(BuildContext context) async {
-    final shouldCancel = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Cancel Sale'),
-            content:
-                const Text('Are you sure you want to cancel this sale?'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('No')),
-              TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Yes')),
-            ],
-          ),
-        ) ??
-        false;
-
-    if (shouldCancel) {
-      await widget.viewModel.cancelSale(sale, context);
-      if (mounted) Navigator.of(context).pop(true);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
@@ -62,26 +35,18 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
     return Scaffold(
       appBar: CustomAppBar(
         title: 'Sale Details',
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => EditSale(
-                      sale: sale,
-                    ),
-                  ),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.cancel),
-              onPressed: () => _confirmCancel(context),
-            ),
-          ],
+        trailing: IconButton(
+          icon: const Icon(Icons.edit),
+          onPressed: () async {
+            // Navigate to EditSale and await the result
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditSale(
+                  sale: sale,
+                ),
+              ),
+            );
+          },
         ),
       ),
       body: SafeArea(

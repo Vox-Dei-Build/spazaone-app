@@ -314,34 +314,6 @@ class SalesViewModel extends TransactionViewModel {
     }
   }
 
-  Future<void> cancelSale(Sale sale, BuildContext context) async {
-    setLoading(true);
-    try {
-      await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('sales')
-          .doc(sale.id)
-          .delete();
-
-      for (var entry in sale.products.entries) {
-        await firestore
-            .collection('users')
-            .doc(userId)
-            .collection('products')
-            .doc(entry.key)
-            .update({'quantity': FieldValue.increment(entry.value)});
-      }
-
-      showSnackbar(context, 'Sale cancelled successfully.', Colors.green);
-      refreshSales();
-    } catch (e) {
-      showSnackbar(context, 'Error cancelling sale. Please retry.', Colors.red);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   Future<void> _getSales(String period) async {
     try {
       QuerySnapshot snapshot;

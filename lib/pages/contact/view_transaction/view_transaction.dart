@@ -49,66 +49,6 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         .get();
   }
 
-  Future<void> _confirmCancel(BuildContext context) async {
-    final shouldCancel = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Cancel Order'),
-            content: const Text(
-                'Are you sure you want to cancel this order?'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('No')),
-              TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Yes')),
-            ],
-          ),
-        ) ??
-        false;
-
-    if (shouldCancel) {
-      await _cancelTransaction(context);
-    }
-  }
-
-  Future<void> _cancelTransaction(BuildContext context) async {
-    try {
-      final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-      final docRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('customers')
-          .doc(widget.customerId)
-          .collection('transactions')
-          .doc(widget.transactionId);
-
-      await docRef.delete();
-
-      if (widget.transaction['products'] != null &&
-          widget.transaction['products'] is Map) {
-        Map<String, dynamic> products =
-            Map<String, dynamic>.from(widget.transaction['products']);
-        for (var entry in products.entries) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(userId)
-              .collection('products')
-              .doc(entry.key)
-              .update({'quantity': FieldValue.increment(entry.value)});
-        }
-      }
-
-      if (mounted) Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order cancelled successfully.')));
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error cancelling order.')));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
@@ -116,33 +56,26 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     return Scaffold(
       appBar: CustomAppBar(
         title: 'Transaction Details for ${widget.customerName}',
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => EditTransactionScreen(
-                      customerName: widget.customerName,
-                      customerId: widget.customerId,
-                      transactionId: widget.transactionId,
-                      transaction: widget.transaction,
-                      mobileNumber: widget.mobileNumber,
-                    ),
-                  ),
-                );
-                setState(() {
-                  _transactionFuture = loadTransactionDetails();
-                });
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.cancel),
-              onPressed: () => _confirmCancel(context),
-            ),
-          ],
+        trailing: IconButton(
+          icon: const Icon(Icons.edit),
+          onPressed: () async {
+            // Navigate to edit transaction screen and wait for the result
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditTransactionScreen(
+                  customerName: widget.customerName,
+                  customerId: widget.customerId,
+                  transactionId: widget.transactionId,
+                  transaction: widget.transaction,
+                  mobileNumber: widget.mobileNumber,
+                ),
+              ),
+            );
+            // Reload the transaction details after editing
+            setState(() {
+              _transactionFuture = loadTransactionDetails();
+            });
+          },
         ),
       ),
       body: SafeArea(
