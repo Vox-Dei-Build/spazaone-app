@@ -43,7 +43,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
   late final TabController _tabController =
       TabController(length: 2, vsync: this); // 2 tabs now
 
-  Future<void> _callPayment(String action) async {
+  Future<void> _callPayment(String action, Map<String, dynamic> order) async {
     setState(() {
       _actionLoading = true;
       _busyAction = action;
@@ -62,6 +62,11 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           merchantId: uid,
           customerId: widget.customerId,
           customerName: widget.customerName,
+          orderId: widget.orderId,
+          amount:
+              CurrencyUtil.format(OrderRepository.asNum(order['total'])),
+          itemsCount: ((order['items'] as List?)?.length ?? 0).toString(),
+          pickupLocation: (order['pickupLabel'] ?? '').toString(),
         );
       }
     }
@@ -189,7 +194,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 isCollected: isCollected,
                 isBnpl: isBnpl,
                 isBnplApproved: isBnplApproved,
-                onAcceptBnpl: () => _callPayment('ACCEPT_BNPL'),
+                onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
                 onRejectBnpl: () async {
                   final ok = await showDialog<bool>(
                     context: context,
@@ -209,11 +214,11 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                       ],
                     ),
                   );
-                  if (ok == true) _callPayment('REJECT_BNPL');
+                  if (ok == true) _callPayment('REJECT_BNPL', order);
                 },
-                onMarkCash: () => _callPayment('MARK_CASH_RECEIVED'),
-                onSettleBnpl: () => _callPayment('SETTLE_BNPL'),
-                onMarkCollected: () => _callPayment('MARK_COLLECTED'),
+                onMarkCash: () => _callPayment('MARK_CASH_RECEIVED', order),
+                onSettleBnpl: () => _callPayment('SETTLE_BNPL', order),
+                onMarkCollected: () => _callPayment('MARK_COLLECTED', order),
                 busy: _actionLoading,
                 busyAction: _busyAction,
                 showEmptyMessage: false,
