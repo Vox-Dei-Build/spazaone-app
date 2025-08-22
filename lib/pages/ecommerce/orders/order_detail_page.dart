@@ -153,6 +153,13 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               ? OrderRepository.parseTs(order['collectedAt'])
               : null;
 
+          final isCancelled = status.contains('cancel');
+          final isRejected =
+              status.contains('reject') || paymentStatus.toLowerCase() == 'rejected';
+          final showMarkCollected = !isCollected &&
+              !(methodForLogic == 'cash' && !isPaid) &&
+              !(isCancelled || isRejected);
+
           final createdAt = createdAtDt != null
               ? DateFormat('dd MMM yyyy · HH:mm').format(createdAtDt)
               : '—';
@@ -191,7 +198,6 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               child: ActionsBlock(
                 paymentMethod: methodForLogic,
                 isPaid: isPaid,
-                isCollected: isCollected,
                 isBnpl: isBnpl,
                 isBnplApproved: isBnplApproved,
                 onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
@@ -219,6 +225,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 onMarkCash: () => _callPayment('MARK_CASH_RECEIVED', order),
                 onSettleBnpl: () => _callPayment('SETTLE_BNPL', order),
                 onMarkCollected: () => _callPayment('MARK_COLLECTED', order),
+                showMarkCollected: showMarkCollected,
                 busy: _actionLoading,
                 busyAction: _busyAction,
                 showEmptyMessage: false,
