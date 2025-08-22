@@ -41,26 +41,46 @@ class ProductCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  height: SizeConfig.heightMultiplier * 12,
-                  width: double.infinity,
-                  child: (product.image == null)
-                      ? Center(
-                          child: Icon(
-                            Icons.image,
-                            size: SizeConfig.imageSizeMultiplier * 15,
-                            color: Colors.grey.withOpacity(0.5),
-                          ),
-                        )
-                      : CachedNetworkImage(
-                          fit: BoxFit.cover,
-                          imageUrl: product.image!,
-                          errorWidget: (context, url, error) => Icon(
-                            Icons.image,
-                            size: SizeConfig.imageSizeMultiplier * 15,
-                            color: Colors.grey.withOpacity(0.5),
+                child: GestureDetector(
+                  onTap: () {
+                    if (product.image != null) {
+                      showDialog(
+                        context: context,
+                        builder: (context) => Dialog(
+                          child: InteractiveViewer(
+                            child: CachedNetworkImage(
+                              imageUrl: product.image!,
+                              errorWidget: (context, url, error) => const Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                              ),
+                            ),
                           ),
                         ),
+                      );
+                    }
+                  },
+                  child: SizedBox(
+                    height: SizeConfig.heightMultiplier * 12,
+                    width: double.infinity,
+                    child: (product.image == null)
+                        ? Center(
+                            child: Icon(
+                              Icons.image,
+                              size: SizeConfig.imageSizeMultiplier * 15,
+                              color: Colors.grey.withOpacity(0.5),
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            fit: BoxFit.cover,
+                            imageUrl: product.image!,
+                            errorWidget: (context, url, error) => Icon(
+                              Icons.image,
+                              size: SizeConfig.imageSizeMultiplier * 15,
+                              color: Colors.grey.withOpacity(0.5),
+                            ),
+                          ),
+                  ),
                 ),
               ),
               SizedBox(height: SizeConfig.heightMultiplier * 1),
