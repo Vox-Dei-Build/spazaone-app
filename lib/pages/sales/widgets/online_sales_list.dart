@@ -59,11 +59,22 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
         if (items.isEmpty) {
           return const Center(child: Text('No online sales'));
         }
+
+        final summary = <String, _StatusSummary>{};
+        for (final o in items) {
+          final agg = summary.putIfAbsent(o.status, () => _StatusSummary());
+          agg.count++;
+          agg.total += o.total;
+        }
+
         return ListView.separated(
-          itemCount: items.length,
+          itemCount: items.length + 1,
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, i) {
-            final o = items[i];
+            if (i == 0) {
+              return _buildSummaryCard(summary, currency);
+            }
+            final o = items[i - 1];
             final dateStr = o.createdAt != null
                 ? DateFormat('dd MMM yyyy · HH:mm').format(o.createdAt!)
                 : '—';
@@ -78,4 +89,45 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
       },
     );
   }
+
+  Widget _buildSummaryCard(
+      Map<String, _StatusSummary> summary, NumberFormat currency) {
+    return Card(
+      margin: const EdgeInsets.all(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: summary.entries.map((e) {
+            final status = _formatStatus(e.key);
+            final count = e.value.count;
+            final total = currency.format(e.value.total);
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(status,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text('$count · $total'),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  String _formatStatus(String status) {
+    return status
+        .split('_')
+        .map((s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}')
+        .join(' ');
+  }
+}
+
+class _StatusSummary {
+  int count = 0;
+  double total = 0;
 }
