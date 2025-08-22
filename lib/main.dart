@@ -65,9 +65,15 @@ Future<void> createNotificationChannel() async {
 }
 
 void showLocalNotification(RemoteMessage message) async {
+  if (message.data.containsKey('unreadOrdersCount')) {
+    final n = int.tryParse(message.data['unreadOrdersCount'] ?? '') ?? 0;
+    FlutterAppBadger.updateBadgeCount(n);
+  }
+
+  // (kept) Chats badge count from FCM data
   if (message.data.containsKey('unreadCount')) {
-    int unreadCount = int.parse(message.data['unreadCount']);
-    FlutterAppBadger.updateBadgeCount(unreadCount);
+    final n = int.tryParse(message.data['unreadCount'] ?? '') ?? 0;
+    FlutterAppBadger.updateBadgeCount(n);
   }
 
   const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
@@ -141,15 +147,6 @@ void main() async {
     // Initialize Firebase
     await Firebase.initializeApp();
 
-    /* await FirebaseAppCheck.instance.activate(
-      androidProvider: kReleaseMode
-          ? AndroidProvider.playIntegrity
-          : AndroidProvider.debug,
-      appleProvider: kReleaseMode
-          ? AppleProvider.appAttestWithDeviceCheckFallback
-          : AppleProvider.debug,
-    );
- */
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);
 

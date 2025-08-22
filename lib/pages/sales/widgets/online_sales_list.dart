@@ -30,10 +30,12 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
     // Adapt if backend not yet normalized
     final adapted = list.map((e) {
       final m = Map<String, dynamic>.from(e as Map);
-      if (!m.containsKey('total') && m.containsKey('amount'))
+      if (!m.containsKey('total') && m.containsKey('amount')) {
         m['total'] = m['amount'];
-      if (!m.containsKey('createdAt') && m.containsKey('dateAdded'))
+      }
+      if (!m.containsKey('createdAt') && m.containsKey('dateAdded')) {
         m['createdAt'] = m['dateAdded'];
+      }
       return OrderModel.fromMap(m);
     }).toList();
 
@@ -69,7 +71,7 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
               title: Text('#${o.id}',
                   style: const TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Text(
-                  'Total ${currency.format(o.total ?? 0)} · ${o.itemsCount} items\n$dateStr'),
+                  'Total ${currency.format(o.total)} · ${o.itemsCount} items\n$dateStr'),
             );
           },
         );

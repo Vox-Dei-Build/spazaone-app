@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -8,6 +9,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/services/orders_unread_clear.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
@@ -35,6 +37,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController numberController = TextEditingController();
   int unreadMessagesCount = 0;
+  int ordersUnreadCount = 0;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _ordersUnreadSub;
 
   CustomerManagementViewModel(this.customerId, this.customerName,
       this.customerBalanceSummaryProvider, this.mobileNumber) {
@@ -51,12 +55,13 @@ class CustomerManagementViewModel extends ChangeNotifier {
           ? await notificationService
               .isWhatsAppEnabled(normalizePhoneNumber(mobileNumber))
           : false;
-      fetchNumberOfUnreadMessages();
+
+      fetchNumberOfUnreadMessages(); // (messages) already in your code
+      _listenOrdersUnread(); // 👈 NEW: orders
       _setLoading(false);
     } catch (e) {
       _setLoading(false);
     }
-
     notifyListeners();
   }
 
@@ -82,6 +87,35 @@ class CustomerManagementViewModel extends ChangeNotifier {
         }
       });
     } catch (e) {}
+  }
+
+  void _listenOrdersUnread() {
+    // Listen to users/{uid}/customers/{customerId}.ordersUnreadCount
+    final uid = userId;
+    if (uid.isEmpty) return;
+
+    _ordersUnreadSub?.cancel();
+    _ordersUnreadSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('customers')
+        .doc(customerId)
+        .snapshots()
+        .listen((doc) {
+      if (doc.exists) {
+        ordersUnreadCount = (doc.data()?['ordersUnreadCount'] as int?) ?? 0;
+        notifyListeners();
+      }
+    });
+  }
+
+  Future<void> clearOrdersUnread() async {
+    final uid = userId;
+    if (uid.isEmpty) return;
+    await OrdersUnreadClearService.clearForCustomer(
+      merchantId: uid,
+      customerId: customerId,
+    );
   }
 
   /// ✅ **Validation Logic**
@@ -396,6 +430,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _ordersUnreadSub?.cancel();
     sendingReminderNotifier.dispose();
     nameController.dispose();
     numberController.dispose();
