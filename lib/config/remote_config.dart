@@ -22,6 +22,37 @@ class RemoteConfigService {
         'TWILIO_ACCOUNT_SID': dotenv.env['TWILIO_ACCOUNT_SID'] ?? '',
         'TWILIO_AUTH_TOKEN': dotenv.env['TWILIO_AUTH_TOKEN'] ?? '',
         'TWILIO_NUMBER': dotenv.env['TWILIO_NUMBER'] ?? '',
+        'TWILIO_MESSAGING_SERVICE_ID':
+            dotenv.env['TWILIO_MESSAGING_SERVICE_ID'] ?? '',
+        'TWILIO_ACCEPT_BNPL_TID':
+            dotenv.env['TWILIO_ACCEPT_BNPL_TID'] ?? '',
+        'TWILIO_REJECT_BNPL_TID':
+            dotenv.env['TWILIO_REJECT_BNPL_TID'] ?? '',
+        'TWILIO_MARK_CASH_RECEIVED_TID':
+            dotenv.env['TWILIO_MARK_CASH_RECEIVED_TID'] ?? '',
+        'TWILIO_MARK_COLLECTED_TID':
+            dotenv.env['TWILIO_MARK_COLLECTED_TID'] ?? '',
+        'TWILIO_SETTLE_BNPL_TID':
+            dotenv.env['TWILIO_SETTLE_BNPL_TID'] ?? '',
+        'TWILIO_CANCEL_ORDER_TID':
+            dotenv.env['TWILIO_CANCEL_ORDER_TID'] ?? '',
+        'WA_SUPPORT_NUMBER': dotenv.env['WA_SUPPORT_NUMBER'] ?? '',
+        'USD_SMS_REMINDER_PRICE':
+            dotenv.env['USD_SMS_REMINDER_PRICE'] ?? '0',
+        'USD_SMS_PAYMENT_PRICE':
+            dotenv.env['USD_SMS_PAYMENT_PRICE'] ?? '0',
+        'USD_WHATSAPP_UTILITY_PRICE':
+            dotenv.env['USD_WHATSAPP_UTILITY_PRICE'] ?? '0',
+        'USD_WHATSAPP_PROMOTIONAL_PRICE':
+            dotenv.env['USD_WHATSAPP_PROMOTIONAL_PRICE'] ?? '0',
+        'MARKUP_SMS_PERCENTAGE':
+            dotenv.env['MARKUP_SMS_PERCENTAGE'] ?? '0',
+        'MARKUP_WHATSAPP_PERCENTAGE':
+            dotenv.env['MARKUP_WHATSAPP_PERCENTAGE'] ?? '0',
+        'MARKUP_PROMOTIONAL_PERCENTAGE':
+            dotenv.env['MARKUP_PROMOTIONAL_PERCENTAGE'] ?? '0',
+        'USD_ZAR_EXCHANGE_RATE':
+            dotenv.env['USD_ZAR_EXCHANGE_RATE'] ?? '19.0',
       });
 
       _instance = RemoteConfigService._(remoteConfig);

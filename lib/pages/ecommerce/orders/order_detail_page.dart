@@ -13,6 +13,7 @@ import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
+import 'package:pasella/services/order_status_messaging_service.dart';
 
 import 'data/order_repository.dart';
 import 'data/payment_service.dart';
@@ -42,7 +43,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
   late final TabController _tabController =
       TabController(length: 2, vsync: this); // 2 tabs now
 
-  Future<void> _callPayment(String action) async {
+  Future<void> _callPayment(String action, Map<String, dynamic> order) async {
     setState(() {
       _actionLoading = true;
       _busyAction = action;
@@ -52,6 +53,23 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       orderId: widget.orderId,
       action: action,
     );
+    if (ok) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        final msgSvc = await OrderStatusMessagingService.create();
+        await msgSvc.sendStatusMessage(
+          action: action,
+          merchantId: uid,
+          customerId: widget.customerId,
+          customerName: widget.customerName,
+          orderId: widget.orderId,
+          amount:
+              CurrencyUtil.format(OrderRepository.asNum(order['total'])),
+          itemsCount: ((order['items'] as List?)?.length ?? 0).toString(),
+          pickupLocation: (order['pickupLabel'] ?? '').toString(),
+        );
+      }
+    }
     if (!mounted) return;
     setState(() {
       _updated = ok || _updated;
@@ -176,7 +194,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 isCollected: isCollected,
                 isBnpl: isBnpl,
                 isBnplApproved: isBnplApproved,
-                onAcceptBnpl: () => _callPayment('ACCEPT_BNPL'),
+                onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
                 onRejectBnpl: () async {
                   final ok = await showDialog<bool>(
                     context: context,
@@ -196,11 +214,11 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                       ],
                     ),
                   );
-                  if (ok == true) _callPayment('REJECT_BNPL');
+                  if (ok == true) _callPayment('REJECT_BNPL', order);
                 },
-                onMarkCash: () => _callPayment('MARK_CASH_RECEIVED'),
-                onSettleBnpl: () => _callPayment('SETTLE_BNPL'),
-                onMarkCollected: () => _callPayment('MARK_COLLECTED'),
+                onMarkCash: () => _callPayment('MARK_CASH_RECEIVED', order),
+                onSettleBnpl: () => _callPayment('SETTLE_BNPL', order),
+                onMarkCollected: () => _callPayment('MARK_COLLECTED', order),
                 busy: _actionLoading,
                 busyAction: _busyAction,
                 showEmptyMessage: false,
