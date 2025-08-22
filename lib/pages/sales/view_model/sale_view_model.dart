@@ -21,7 +21,11 @@ class SalesViewModel extends TransactionViewModel {
   bool isTransactionLoading = false;
 
   SalesViewModel() {
-    _salesController = StreamController<List<Sale>>.broadcast(sync: true);
+    // Using a single-subscription StreamController ensures that initial sales
+    // data emitted before the UI subscribes is still delivered. A broadcast
+    // controller drops events when there are no listeners, which caused the
+    // sales list to keep showing the loading skeleton on first render.
+    _salesController = StreamController<List<Sale>>(sync: true);
     loadProducts().then((_) {
       productsLoaded = true;
       _getSalesByDate(
