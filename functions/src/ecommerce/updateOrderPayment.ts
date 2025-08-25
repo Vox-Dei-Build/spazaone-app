@@ -43,6 +43,7 @@ async function finalizeInventoryOnce(opts: {
     .doc(merchantId)
     .collection("sales")
     .doc(orderId);
+
   const cartDoc = db
     .collection("users")
     .doc(merchantId)
@@ -50,12 +51,13 @@ async function finalizeInventoryOnce(opts: {
     .doc(customerId);
 
   await db.runTransaction(async (tx) => {
+    // --- READS (all of them) ---
     const saleSnap = await tx.get(saleRef);
     if (!saleSnap.exists) throw new Error("SALE_NOT_FOUND");
 
     const sale = saleSnap.data() || {};
     if (sale.inventoryFinalized) {
-      // Already done – idempotent
+      // Idempotent: already finalized
       return;
     }
 
@@ -64,11 +66,17 @@ async function finalizeInventoryOnce(opts: {
       db.collection("users").doc(merchantId).collection("products").doc(pid),
     );
 
-    // Firestore transaction cannot use getAll; fetch individually
+    // Read all product docs
     const productSnaps = [];
     for (const ref of productRefs) {
       productSnaps.push(await tx.get(ref));
     }
+
+    // Read all cart items (subcollection) BEFORE any write
+    const itemsCol = cartDoc.collection("items");
+    const itemsSnap = await tx.get(itemsCol);
+
+    // --- WRITES (after all reads) ---
 
     // 1) Decrement stock where quantity exists
     for (const snap of productSnaps) {
@@ -85,9 +93,7 @@ async function finalizeInventoryOnce(opts: {
       }
     }
 
-    // 2) Clear cart
-    const itemsCol = cartDoc.collection("items");
-    const itemsSnap = await tx.get(itemsCol);
+    // 2) Clear cart items + reset cart totals
     itemsSnap.docs.forEach((d) => tx.delete(d.ref));
     tx.set(
       cartDoc,
@@ -100,7 +106,7 @@ async function finalizeInventoryOnce(opts: {
       { merge: true },
     );
 
-    // 3) Mark finalized
+    // 3) Mark sale as inventory finalized
     tx.update(saleRef, {
       inventoryFinalized: true,
       inventoryFinalizedAt: admin.firestore.FieldValue.serverTimestamp(),

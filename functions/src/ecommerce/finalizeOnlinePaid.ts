@@ -31,28 +31,44 @@ async function finalizeInventoryOnce(
     .doc(merchantId)
     .collection("sales")
     .doc(orderId);
-  const cartDoc = db
+
+  const cartRef = db
     .collection("users")
     .doc(merchantId)
     .collection("carts")
     .doc(customerId);
 
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
   await db.runTransaction(async (tx) => {
+    // ── PHASE A: READS (no writes here)
     const saleSnap = await tx.get(saleRef);
     if (!saleSnap.exists) throw new Error("SALE_NOT_FOUND");
     const sale = saleSnap.data() || {};
 
-    if (sale.inventoryFinalized) return;
+    // Only finalize ONLINE orders that are paid/successful
     if ((sale.type || "").toLowerCase() !== "online")
       throw new Error("NOT_ONLINE");
-    const st = String(sale.status || sale.paymentStatus || "").toLowerCase();
-    if (
-      !["paid", "completed", "success", "settled", "fulfilled"].includes(st)
-    ) {
-      throw new Error("NOT_PAID");
-    }
+    if (sale.inventoryFinalized) return; // idempotent no-op
 
-    const productIds: string[] = Object.keys(sale.products || {});
+    const st = String(sale.status || sale.paymentStatus || "").toLowerCase();
+    const isPaid = [
+      "paid",
+      "completed",
+      "success",
+      "settled",
+      "fulfilled",
+    ].includes(st);
+    if (!isPaid) throw new Error("NOT_PAID");
+
+    // Gather product updates: read ALL product docs before ANY writes
+    const saleProducts: Record<string, number> = sale.products || {};
+    const productIds = Object.keys(saleProducts);
+    const productReads: Array<{
+      ref: FirebaseFirestore.DocumentReference;
+      qty: number;
+      hasQtyField: boolean;
+    }> = [];
     for (const pid of productIds) {
       const pref = db
         .collection("users")
@@ -60,32 +76,62 @@ async function finalizeInventoryOnce(
         .collection("products")
         .doc(pid);
       const psnap = await tx.get(pref);
-      if (psnap.exists && psnap.get("quantity") !== undefined) {
-        const q = Number((sale.products || {})[pid] || 0);
-        if (q > 0)
-          tx.update(pref, {
-            quantity: admin.firestore.FieldValue.increment(-q),
-          });
+      if (!psnap.exists) continue;
+      const hasQtyField = psnap.get("quantity") !== undefined;
+      const qty = Number(saleProducts[pid] || 0);
+      productReads.push({ ref: pref, qty, hasQtyField });
+    }
+
+    // Read cart doc + possible subcollections (both "items" and "cartItems")
+    const cartSnap = await tx.get(cartRef);
+    const itemsCollRef = cartRef.collection("items");
+    const altItemsCollRef = cartRef.collection("cartItems"); // just in case your schema used this name
+    const [itemsQuerySnap, altItemsQuerySnap] = await Promise.all([
+      tx.get(itemsCollRef),
+      tx.get(altItemsCollRef),
+    ]);
+
+    // ── PHASE B: WRITES (now we can write)
+    // 1) Decrement stock where applicable
+    for (const pr of productReads) {
+      if (pr.hasQtyField && pr.qty > 0) {
+        tx.update(pr.ref, {
+          quantity: admin.firestore.FieldValue.increment(-pr.qty),
+          updatedAt: now,
+        });
       }
     }
 
-    // clear cart and unlock
-    const itemsSnap = await tx.get(cartDoc.collection("items"));
-    itemsSnap.docs.forEach((d) => tx.delete(d.ref));
-    tx.set(
-      cartDoc,
-      {
-        total: 0,
-        itemsCount: 0,
-        lock: admin.firestore.FieldValue.delete(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+    // 2) Clear cart subcollections
+    itemsQuerySnap.docs.forEach((d) => tx.delete(d.ref));
+    altItemsQuerySnap.docs.forEach((d) => tx.delete(d.ref));
 
+    // 3) Clear/normalize cart doc fields (support both array/map shapes)
+    // NOTE: If your UI expects a specific shape, keep that one and drop the other.
+    const clearedFields: Record<string, any> = {
+      items: [], // array shape
+      products: {}, // map shape
+      itemsCount: 0,
+      subtotal: 0,
+      total: 0,
+      discounts: 0,
+      tax: 0,
+      lock: admin.firestore.FieldValue.delete(),
+      lastClearedBecause: "online_payment_finalized",
+      updatedAt: now,
+    };
+    if (cartSnap.exists) {
+      tx.set(cartRef, clearedFields, { merge: true });
+    } else {
+      // Ensure doc exists to make the UI state unambiguous
+      tx.set(cartRef, clearedFields, { merge: true });
+    }
+
+    // 4) Mark sale as finalized
     tx.update(saleRef, {
       inventoryFinalized: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      finalizedAt: now,
+      updatedAt: now,
     });
   });
 }
@@ -117,7 +163,6 @@ export const finalizeOnlinePaid = functions.https.onRequest(
       const msg = e?.message || "";
       const code = ["NOT_PAID", "NOT_ONLINE"].includes(msg) ? 409 : 500;
       res.status(code).json({ error: msg || "Failed to finalize" });
-      return;
     }
   },
 );

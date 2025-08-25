@@ -63,8 +63,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           customerId: widget.customerId,
           customerName: widget.customerName,
           orderId: widget.orderId,
-          amount:
-              CurrencyUtil.format(OrderRepository.asNum(order['total'])),
+          amount: CurrencyUtil.format(OrderRepository.asNum(order['total'])),
           itemsCount: ((order['items'] as List?)?.length ?? 0).toString(),
           pickupLocation: (order['pickupLabel'] ?? '').toString(),
         );
@@ -154,8 +153,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               : null;
 
           final isCancelled = status.contains('cancel');
-          final isRejected =
-              status.contains('reject') || paymentStatus.toLowerCase() == 'rejected';
+          final isRejected = status.contains('reject') ||
+              paymentStatus.toLowerCase() == 'rejected';
           final showMarkCollected = !isCollected &&
               !(methodForLogic == 'cash' && !isPaid) &&
               !(isCancelled || isRejected);
@@ -163,6 +162,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           final createdAt = createdAtDt != null
               ? DateFormat('dd MMM yyyy · HH:mm').format(createdAtDt)
               : '—';
+          final isTerminal = isCancelled || isRejected;
+          final canMarkCash =
+              (methodForLogic == 'cash') && !isPaid && !isTerminal;
 
           final subtotal = OrderRepository.asNum(order['subtotal']);
           final delivery = OrderRepository.asNum(order['deliveryFee']);
@@ -226,6 +228,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 onSettleBnpl: () => _callPayment('SETTLE_BNPL', order),
                 onMarkCollected: () => _callPayment('MARK_COLLECTED', order),
                 showMarkCollected: showMarkCollected,
+                showMarkCash: canMarkCash,
                 busy: _actionLoading,
                 busyAction: _busyAction,
                 showEmptyMessage: false,
