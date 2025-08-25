@@ -13,6 +13,7 @@ class ActionsBlock extends StatelessWidget {
     required this.onSettleBnpl,
     required this.onMarkCollected,
     required this.showMarkCollected,
+    this.showMarkCash,
     this.busy = false,
     this.busyAction,
     this.showEmptyMessage = true,
@@ -29,7 +30,7 @@ class ActionsBlock extends StatelessWidget {
   final VoidCallback onSettleBnpl;
   final VoidCallback onMarkCollected;
   final bool showMarkCollected;
-
+  final bool? showMarkCash;
   final bool busy;
   final String? busyAction;
 
@@ -70,7 +71,9 @@ class ActionsBlock extends StatelessWidget {
       ));
     }
 
-    if (!isPaid && payMethod == 'cash') {
+    final canShowCash =
+        (showMarkCash ?? true) && !isPaid && payMethod == 'cash';
+    if (canShowCash) {
       addGap();
       buttons.add(_ActionBtn(
         label: 'Mark Cash Received',
