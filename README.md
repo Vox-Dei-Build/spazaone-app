@@ -62,3 +62,15 @@ dynamic pricing. Ensure the following keys are configured:
 - `MARKUP_WHATSAPP_PERCENTAGE`
 - `MARKUP_PROMOTIONAL_PERCENTAGE`
 - `USD_ZAR_EXCHANGE_RATE`
+- `PAYSTACK_LOCAL_PERCENT`
+- `PAYSTACK_LOCAL_FLAT`
+- `PAYSTACK_EFT_PERCENT`
+- `PAYSTACK_INT_PERCENT`
+- `PAYSTACK_INT_FLAT`
+- `PAYSTACK_SETTLEMENT_FEE`
+- `PAYSTACK_VAT_PERCENT`
+
+### Payment Provider, Orders & Wallet
+
+Additional notes on the in-app wallet, order payment options, and payment provider markup are documented in
+[`docs/payment_provider_wallet.md`](docs/payment_provider_wallet.md).

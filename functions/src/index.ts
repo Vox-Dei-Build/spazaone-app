@@ -22,6 +22,7 @@ export * from "./notifications/non_payment_notifications";
 export * from "./stock/scheduledTasks/scheduledLowStockCheck";
 export * from "./payments/paystack/createPaystackTransaction";
 export * from "./payments/paystack/verifyPaystackTransaction";
+export * from "./payments/paystack/getPaystackQuote";
 /* Bot */
 export * from "./customer_hub/fetchCustomerAndMerchantDetails";
 export * from "./customer_hub/sendPromoToActiveCustomers";
