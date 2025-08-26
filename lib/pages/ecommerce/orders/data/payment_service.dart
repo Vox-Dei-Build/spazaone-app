@@ -35,6 +35,7 @@ class PaymentService {
         'MARK_CASH_RECEIVED': 'Cash received',
         'MARK_COLLECTED': 'Marked as collected',
         'SETTLE_BNPL': 'Marked as paid',
+        'CANCEL_ORDER': 'Order cancelled',
       };
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(labels[action] ?? 'Updated')),
