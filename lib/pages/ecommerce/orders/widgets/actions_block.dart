@@ -7,11 +7,14 @@ class ActionsBlock extends StatelessWidget {
     required this.isPaid,
     required this.isBnpl,
     required this.isBnplApproved,
+    required this.isCancelled,
+    required this.isRejected,
     required this.onAcceptBnpl,
     required this.onRejectBnpl,
     required this.onMarkCash,
     required this.onSettleBnpl,
     required this.onMarkCollected,
+    required this.onCancelOrder,
     required this.showMarkCollected,
     this.busy = false,
     this.busyAction,
@@ -22,12 +25,15 @@ class ActionsBlock extends StatelessWidget {
   final bool isPaid;
   final bool isBnpl;
   final bool isBnplApproved;
+  final bool isCancelled;
+  final bool isRejected;
 
   final VoidCallback onAcceptBnpl;
   final VoidCallback onRejectBnpl;
   final VoidCallback onMarkCash;
   final VoidCallback onSettleBnpl;
   final VoidCallback onMarkCollected;
+  final VoidCallback onCancelOrder;
   final bool showMarkCollected;
 
   final bool busy;
@@ -77,6 +83,16 @@ class ActionsBlock extends StatelessWidget {
         icon: Icons.payments_outlined,
         onTap: onMarkCash,
         busy: busy && busyAction == 'MARK_CASH_RECEIVED',
+      ));
+    }
+
+    if (!isPaid && !isCancelled && !isRejected && (isBnpl || payMethod == 'cash')) {
+      addGap();
+      buttons.add(_ActionBtn(
+        label: 'Cancel Order',
+        icon: Icons.cancel_outlined,
+        onTap: onCancelOrder,
+        busy: busy && busyAction == 'CANCEL_ORDER',
       ));
     }
 
