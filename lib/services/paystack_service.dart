@@ -19,6 +19,7 @@ class PaystackService {
     required double amountRands,
     required String email,
     required String purpose, // 'topup' | 'sale'
+    String method = 'local_card',
     String? saleId, // required when purpose == 'sale'
   }) async {
     try {
@@ -35,6 +36,7 @@ class PaystackService {
         "email": email,
         "amount": amountMinor,
         "purpose": purpose,
+        "method": method,
         if (saleId != null) "saleId": saleId,
       };
 
@@ -68,12 +70,14 @@ class PaystackService {
     required String userId,
     required double amount, // rands
     required String email,
+    String method = 'local_card',
   }) {
     return _initialize(
       merchantId: userId,
       amountRands: amount,
       email: email,
       purpose: 'topup',
+      method: method,
     );
   }
 
@@ -83,12 +87,14 @@ class PaystackService {
     required String saleId,
     required double amount, // rands
     required String email,
+    String method = 'local_card',
   }) {
     return _initialize(
       merchantId: userId,
       amountRands: amount,
       email: email,
       purpose: 'sale',
+      method: method,
       saleId: saleId,
     );
   }
