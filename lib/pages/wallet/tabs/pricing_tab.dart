@@ -36,6 +36,15 @@ class _PricingInfoTab extends State<PricingInfoTab> {
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
+    final rc = pricingService?.remoteConfigService;
+    final localPercent = rc?.getDouble('PAYSTACK_LOCAL_PERCENT') ?? 0;
+    final localFlat = rc?.getDouble('PAYSTACK_LOCAL_FLAT') ?? 0;
+    final eftPercent = rc?.getDouble('PAYSTACK_EFT_PERCENT') ?? 0;
+    final intPercent = rc?.getDouble('PAYSTACK_INT_PERCENT') ?? 0;
+    final intFlat = rc?.getDouble('PAYSTACK_INT_FLAT') ?? 0;
+    final settlementFee = rc?.getDouble('PAYSTACK_SETTLEMENT_FEE') ?? 0;
+    final vatPercent = rc?.getDouble('PAYSTACK_VAT_PERCENT') ?? 0;
+
     return Scaffold(
       body: SingleChildScrollView(
         padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
@@ -116,12 +125,85 @@ class _PricingInfoTab extends State<PricingInfoTab> {
               SizedBox(height: SizeConfig.heightMultiplier * 3),
             ],
 
+            // 🟢 Section 5: Order Payments & Fees
+            if (FeatureFlags.enablePricingInfo) ...[
+              _sectionTitle('Order Payments & Fees'),
+              _buildBulletPoint(
+                  '🛍️ Cash orders settle immediately with no platform fee.'),
+              _buildBulletPoint(
+                  '💳 Online orders incur a platform fee and transaction fee.'),
+              _buildBulletPoint(
+                  '📲 Wallet balance can be used for in-app purchases.'),
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
+            ],
+
+            // 🟢 Section 6: Paystack Fees (South Africa)
+            if (FeatureFlags.enablePricingInfo) ...[
+              _sectionTitle('Paystack Fees (South Africa)'),
+              _buildBulletPoint(
+                  'Local Payments: ${localPercent.toStringAsFixed(1)}% + R${localFlat.toStringAsFixed(2)} (excl. VAT)'),
+              _buildBulletPoint(
+                  'Bank EFT: ${eftPercent.toStringAsFixed(1)}% (excl. VAT)'),
+              _buildBulletPoint(
+                  'International Payments: ${intPercent.toStringAsFixed(1)}% + R${intFlat.toStringAsFixed(2)} (excl. VAT)'),
+              _buildBulletPoint(
+                  'Settlement (Payouts): R${settlementFee.toStringAsFixed(2)} per transfer (excl. VAT)'),
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
+              _sectionTitle('Worked Examples'),
+              _exampleTransaction(
+                  'Example 1: Local Card Transaction — R1 000 sale',
+                  1000,
+                  localPercent,
+                  localFlat,
+                  vatPercent),
+              _exampleTransaction(
+                  'Example 2: EFT Transaction — R1 000 sale',
+                  1000,
+                  eftPercent,
+                  0,
+                  vatPercent),
+              _exampleTransaction(
+                  'Example 3: International Card — R1 000 sale',
+                  1000,
+                  intPercent,
+                  intFlat,
+                  vatPercent),
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
+            ],
+
             // 🟢 Section 6: Need Help?
             _sectionTitle('Need Help?'),
             _helpOption('0648370009'),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _exampleTransaction(
+      String title, double sale, double percent, double flat, double vat) {
+    final base = sale * percent / 100;
+    final subtotal = base + flat;
+    final vatAmount = subtotal * vat / 100;
+    final total = subtotal + vatAmount;
+    final merchant = sale - total;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildBulletPoint(title),
+        _buildBulletPoint(
+            'Base fee: ${percent.toStringAsFixed(1)}% of ${sale.toStringAsFixed(0)} = R${base.toStringAsFixed(2)}'),
+        if (flat > 0)
+          _buildBulletPoint(
+              'Flat: R${flat.toStringAsFixed(2)} → R${subtotal.toStringAsFixed(2)}'),
+        _buildBulletPoint(
+            'VAT: ${vat.toStringAsFixed(0)}% of R${subtotal.toStringAsFixed(2)} = R${vatAmount.toStringAsFixed(2)}'),
+        _buildBulletPoint('Total fee = R${total.toStringAsFixed(2)}'),
+        _buildBulletPoint(
+            'Merchant receives = R${merchant.toStringAsFixed(2)}'),
+        SizedBox(height: SizeConfig.heightMultiplier * 2),
+      ],
     );
   }
 
