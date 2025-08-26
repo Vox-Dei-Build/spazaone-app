@@ -73,6 +73,27 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
         ? ((sms['templateContent'] as String).length / 160).ceil()
         : 1;
 
+    String? whatsappStatus;
+    Color statusColor = Colors.amber;
+    String? rejectionReason;
+    if (whatsapp != null) {
+      final approvalStatus = whatsapp['approvalStatus'] ?? 'pending';
+      switch (approvalStatus) {
+        case 'approved':
+          whatsappStatus = 'Approved';
+          statusColor = Colors.green;
+          break;
+        case 'rejected':
+          whatsappStatus = 'Rejected';
+          statusColor = Colors.red;
+          rejectionReason = whatsapp['rejectionReason'];
+          break;
+        default:
+          whatsappStatus = 'Pending';
+          statusColor = Colors.amber;
+      }
+    }
+
     // Build your normal page content:
     final pageContent = Scaffold(
       appBar: CustomAppBar(
@@ -100,6 +121,16 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
         padding: LayoutConstants.padding10Horizontal,
         children: [
           Text("Created: $formattedDate", textAlign: TextAlign.center),
+          if (whatsappStatus != null) ...[
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            Text('Status: $whatsappStatus',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: statusColor)),
+            if (rejectionReason != null && rejectionReason.isNotEmpty)
+              Text('Reason: $rejectionReason',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: statusColor)),
+          ],
           SizedBox(height: SizeConfig.heightMultiplier * 2),
           if (whatsapp != null) ...[
             const Text('WhatsApp Preview',
