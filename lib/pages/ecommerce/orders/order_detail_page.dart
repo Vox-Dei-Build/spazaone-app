@@ -200,6 +200,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 isPaid: isPaid,
                 isBnpl: isBnpl,
                 isBnplApproved: isBnplApproved,
+                isCancelled: isCancelled,
+                isRejected: isRejected,
                 onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
                 onRejectBnpl: () async {
                   final ok = await showDialog<bool>(
@@ -225,6 +227,27 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 onMarkCash: () => _callPayment('MARK_CASH_RECEIVED', order),
                 onSettleBnpl: () => _callPayment('SETTLE_BNPL', order),
                 onMarkCollected: () => _callPayment('MARK_COLLECTED', order),
+                onCancelOrder: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Cancel order?'),
+                      content: const Text(
+                          'This will cancel the order and release the cart.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Keep'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Cancel Order'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true) _callPayment('CANCEL_ORDER', order);
+                },
                 showMarkCollected: showMarkCollected,
                 busy: _actionLoading,
                 busyAction: _busyAction,
