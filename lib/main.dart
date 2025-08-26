@@ -36,18 +36,22 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 Future<void> setupFlutterNotifications() async {
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('@drawable/ic_launcher');
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@drawable/ic_launcher');
+    const DarwinInitializationSettings initializationSettingsIOS =
+        DarwinInitializationSettings();
 
-  const InitializationSettings initializationSettings =
-      InitializationSettings(android: initializationSettingsAndroid);
+    const InitializationSettings initializationSettings =
+        InitializationSettings(
+            android: initializationSettingsAndroid,
+            iOS: initializationSettingsIOS);
 
-  await flutterLocalNotificationsPlugin.initialize(
-    initializationSettings,
-    onDidReceiveNotificationResponse: (response) {
-      // handle notification tapped logic here
-    },
-  );
+    await flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (response) {
+        // handle notification tapped logic here
+      },
+    );
 }
 
 Future<void> createNotificationChannel() async {
@@ -70,16 +74,19 @@ void showLocalNotification(RemoteMessage message) async {
     FlutterAppBadger.updateBadgeCount(unreadCount);
   }
 
-  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-    'default_channel',
-    'Default Notifications',
-    channelDescription: 'Default notification channel',
-    importance: Importance.max,
-    priority: Priority.high,
-    icon: '@drawable/ic_launcher',
-  );
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'default_channel',
+      'Default Notifications',
+      channelDescription: 'Default notification channel',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@drawable/ic_launcher',
+    );
 
-  const notificationDetails = NotificationDetails(android: androidDetails);
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
+
+    const notificationDetails =
+        NotificationDetails(android: androidDetails, iOS: iosDetails);
 
   await flutterLocalNotificationsPlugin.show(
     message.hashCode,
