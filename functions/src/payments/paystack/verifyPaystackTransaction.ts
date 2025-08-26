@@ -133,7 +133,7 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           amount,
           currency: "ZAR",
           provider: "paystack",
-          type: "CREDIT",
+          type: "online",
           purpose: "sale",
           createdAt: now,
         });
