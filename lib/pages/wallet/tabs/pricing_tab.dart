@@ -67,20 +67,6 @@ class _PricingInfoTab extends State<PricingInfoTab> {
                   '💰 Request payouts - Withdraw balance whenever needed.'),
             ],
 
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
-
-            // 🟢 Section 2: Top-Up Pricing
-            if (FeatureFlags.enableTopUpPaystack) ...[
-              _sectionTitle('Top-Up Pricing'),
-              _buildBulletPoint(
-                  '🔹 Instant top-ups via Paystack (Card, Bank Transfer, Mobile Money).'),
-              SizedBox(height: SizeConfig.heightMultiplier * 1),
-              _pricingRow('💳 Card Payment', '2.5% + R1.00'),
-              _pricingRow('🏦 Bank Transfer', '1.8%'),
-              _pricingRow('📲 Mobile Money', '3%'),
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
-            ],
-
             // 🟢 Section 3: Payouts (Dynamic)
             if (FeatureFlags.enableBalancePayout) ...[
               _sectionTitle('Payouts'),
@@ -156,21 +142,14 @@ class _PricingInfoTab extends State<PricingInfoTab> {
                   localPercent,
                   localFlat,
                   vatPercent),
-              _exampleTransaction(
-                  'Example 2: EFT Transaction — R1 000 sale',
-                  1000,
-                  eftPercent,
-                  0,
-                  vatPercent),
-              _exampleTransaction(
-                  'Example 3: International Card — R1 000 sale',
-                  1000,
-                  intPercent,
-                  intFlat,
-                  vatPercent),
+              _exampleTransaction('Example 2: EFT Transaction — R1 000 sale',
+                  1000, eftPercent, 0, vatPercent),
+              _exampleTransaction('Example 3: International Card — R1 000 sale',
+                  1000, intPercent, intFlat, vatPercent),
               SizedBox(height: SizeConfig.heightMultiplier * 3),
             ],
 
+            SizedBox(height: SizeConfig.heightMultiplier * 3),
             // 🟢 Section 6: Need Help?
             _sectionTitle('Need Help?'),
             _helpOption('0648370009'),
