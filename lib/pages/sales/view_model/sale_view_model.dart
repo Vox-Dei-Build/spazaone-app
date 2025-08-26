@@ -11,7 +11,8 @@ import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class SalesViewModel extends TransactionViewModel {
-  StreamController<List<Sale>>? _salesController;
+  late final StreamController<List<Sale>> _salesController;
+  List<Sale> _lastEmittedSales = const [];
   double totalSales = 0.0;
   double totalCost = 0.0;
   double totalProfit = 0.0;
@@ -21,11 +22,15 @@ class SalesViewModel extends TransactionViewModel {
   bool isTransactionLoading = false;
 
   SalesViewModel() {
-    // Using a single-subscription StreamController ensures that initial sales
-    // data emitted before the UI subscribes is still delivered. A broadcast
-    // controller drops events when there are no listeners, which caused the
-    // sales list to keep showing the loading skeleton on first render.
-    _salesController = StreamController<List<Sale>>(sync: true);
+    _salesController = StreamController<List<Sale>>.broadcast(
+      sync: true,
+      onListen: () {
+        if (_lastEmittedSales.isNotEmpty) {
+          _salesController.add(_lastEmittedSales);
+        }
+      },
+    );
+
     loadProducts().then((_) {
       productsLoaded = true;
       _getSalesByDate(
@@ -33,7 +38,15 @@ class SalesViewModel extends TransactionViewModel {
     });
   }
 
-  Stream<List<Sale>> get sales => _salesController!.stream;
+  Stream<List<Sale>> get sales => _salesController.stream;
+  List<Sale> get cachedSales => _lastEmittedSales;
+
+  void _emitSales(List<Sale> sales) {
+    _lastEmittedSales = sales;
+    if (!_salesController.isClosed) {
+      _salesController.add(sales);
+    }
+  }
 
   Future<void> updateSelectedDate(DateTime date) async {
     selectedPeriod = DateFormat('yyyy-MM-dd').format(date);
@@ -63,33 +76,38 @@ class SalesViewModel extends TransactionViewModel {
           .orderBy('dateAdded', descending: true)
           .get();
 
-      final sales = snapshot.docs.where((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        final status = (data['status'] ?? '').toString().toLowerCase();
-        final paymentStatus =
-            (data['paymentStatus'] ?? '').toString().toLowerCase();
-        final paymentMethod =
-            (data['paymentMethod'] ?? '').toString().toLowerCase();
+      final sales = snapshot.docs
+          .where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final status = (data['status'] ?? '').toString().toLowerCase();
+            final paymentStatus =
+                (data['paymentStatus'] ?? '').toString().toLowerCase();
+            final paymentMethod =
+                (data['paymentMethod'] ?? '').toString().toLowerCase();
 
-        if (['cancelled', 'rejected'].contains(status)) {
-          return false;
-        }
-        if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
-          return false;
-        }
-        if (paymentMethod == 'cash' && paymentStatus != '' &&
-            paymentStatus != 'paid') {
-          return false;
-        }
-        if (paymentStatus != '' && paymentStatus != 'paid') {
-          return false;
-        }
-        return true;
-      }).map(
-        (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-      ).toList();
+            if (['cancelled', 'rejected'].contains(status)) {
+              return false;
+            }
+            if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
+              return false;
+            }
+            if (paymentMethod == 'cash' &&
+                paymentStatus != '' &&
+                paymentStatus != 'paid') {
+              return false;
+            }
+            if (paymentStatus != '' && paymentStatus != 'paid') {
+              return false;
+            }
+            return true;
+          })
+          .map(
+            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          )
+          .toList();
 
-      _salesController!.add(sales);
+      // _salesController.add(sales);
+      _emitSales(sales);
       _calculateSalesStats(sales);
     } catch (e) {
       print("Error fetching sales for selected date: $e");
@@ -109,33 +127,37 @@ class SalesViewModel extends TransactionViewModel {
           .orderBy('dateAdded', descending: true)
           .get();
 
-      final sales = snapshot.docs.where((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        final status = (data['status'] ?? '').toString().toLowerCase();
-        final paymentStatus =
-            (data['paymentStatus'] ?? '').toString().toLowerCase();
-        final paymentMethod =
-            (data['paymentMethod'] ?? '').toString().toLowerCase();
+      final sales = snapshot.docs
+          .where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final status = (data['status'] ?? '').toString().toLowerCase();
+            final paymentStatus =
+                (data['paymentStatus'] ?? '').toString().toLowerCase();
+            final paymentMethod =
+                (data['paymentMethod'] ?? '').toString().toLowerCase();
 
-        if (['cancelled', 'rejected'].contains(status)) {
-          return false;
-        }
-        if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
-          return false;
-        }
-        if (paymentMethod == 'cash' && paymentStatus != '' &&
-            paymentStatus != 'paid') {
-          return false;
-        }
-        if (paymentStatus != '' && paymentStatus != 'paid') {
-          return false;
-        }
-        return true;
-      }).map(
-        (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-      ).toList();
+            if (['cancelled', 'rejected'].contains(status)) {
+              return false;
+            }
+            if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
+              return false;
+            }
+            if (paymentMethod == 'cash' &&
+                paymentStatus != '' &&
+                paymentStatus != 'paid') {
+              return false;
+            }
+            if (paymentStatus != '' && paymentStatus != 'paid') {
+              return false;
+            }
+            return true;
+          })
+          .map(
+            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          )
+          .toList();
 
-      _salesController!.add(sales);
+      _emitSales(sales);
       _calculateSalesStats(sales);
     } catch (e) {
       print("Error fetching sales by date range: $e");
@@ -433,10 +455,11 @@ class SalesViewModel extends TransactionViewModel {
               (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id))
           .toList();
 
-      _salesController!.add(sales);
+      _salesController.add(sales);
 
       // Ensure products are loaded before calculating stats
       if (productsLoaded) {
+        _emitSales(sales);
         _calculateSalesStats(sales);
       } else {
         print("Products not loaded yet.");
@@ -470,8 +493,7 @@ class SalesViewModel extends TransactionViewModel {
 
   @override
   void dispose() {
-    _salesController?.close();
-    _salesController = null;
+    _salesController.close();
     super.dispose();
   }
 }

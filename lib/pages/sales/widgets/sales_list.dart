@@ -29,6 +29,7 @@ class _SalesListState extends State<SalesList> {
 
     return StreamBuilder<List<Sale>>(
       stream: viewModel.sales,
+      initialData: viewModel.cachedSales,
       builder: (BuildContext context, AsyncSnapshot<List<Sale>> snapshot) {
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
