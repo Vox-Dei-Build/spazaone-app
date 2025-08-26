@@ -47,10 +47,28 @@ class _TemplatesTabState extends State<TemplatesTab> {
 
         final channelKeys =
             channels.keys.map((key) => key.toUpperCase()).join(', ');
-        final approved = channels['whatsapp']?['approved'] == true;
-        final whatsappStatus =
-            channels['whatsapp']?['approved'] == true ? 'Approved' : 'Pending';
-        final statusColor = approved ? Colors.green : Colors.amber;
+        final approvalStatus =
+            channels['whatsapp']?['approvalStatus'] ?? 'pending';
+        String whatsappStatus;
+        Color statusColor;
+        switch (approvalStatus) {
+          case 'approved':
+            whatsappStatus = 'Approved';
+            statusColor = Colors.green;
+            break;
+          case 'rejected':
+            whatsappStatus = 'Rejected';
+            statusColor = Colors.red;
+            break;
+          case 'submitted':
+          case 'pending':
+            whatsappStatus = 'Pending';
+            statusColor = Colors.amber;
+            break;
+          default:
+            whatsappStatus = approvalStatus;
+            statusColor = Colors.grey;
+        }
         final mediaUrl = channels['whatsapp']?['mediaUrl'];
 
         return Card(
