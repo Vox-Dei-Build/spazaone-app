@@ -44,7 +44,7 @@ export * from "./merchant_hub/order/updateOrderStatus";
 export * from "./merchant_hub/logUnreadMessage";
 export * from "./merchant_hub/markMessagesAsRead";
 export * from "./merchant_hub/submitWhatsAppTemplate";
-export * from "./merchant_hub/twilioTemplateWebhook";
+export * from "./merchant_hub/checkTwilioApprovalStatuses";
 export * from "./merchant_hub/deleteTwilioTemplate";
 export * from "./merchant_hub/runMerchantPromotion";
 
