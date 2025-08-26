@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/pages/ecommerce/orders/data/order_repository.dart';
-import 'package:pasella/utils/currency_util.dart';
 
 class OnlineSaleDetailPage extends StatelessWidget {
   final String orderId;
@@ -9,8 +8,8 @@ class OnlineSaleDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currency = NumberFormat.currency(
-        locale: 'en_ZA', symbol: 'R', decimalDigits: 2);
+    final currency =
+        NumberFormat.currency(locale: 'en_ZA', symbol: 'R', decimalDigits: 2);
     return Scaffold(
       appBar: AppBar(title: Text('Order #$orderId')),
       body: StreamBuilder<Map<String, dynamic>>(
@@ -24,8 +23,7 @@ class OnlineSaleDetailPage extends StatelessWidget {
           }
           final order = snapshot.data!;
           final items = (order['items'] as List?) ?? [];
-          final total =
-              currency.format(OrderRepository.asNum(order['total']));
+          final total = currency.format(OrderRepository.asNum(order['total']));
           final status = (order['status'] ?? '').toString();
           final date = OrderRepository.parseTs(order['createdAt']);
           final dateStr = date != null
@@ -42,7 +40,8 @@ class OnlineSaleDetailPage extends StatelessWidget {
               Text('Total: $total',
                   style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              const Text('Items', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('Items',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...items.map<Widget>((i) {
                 final name = (i['name'] ?? '').toString();
