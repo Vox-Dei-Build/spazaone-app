@@ -43,6 +43,10 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       const purpose = (metadata?.purpose || "").toLowerCase(); // 'sale' | 'topup'
       const merchantId: string | undefined = metadata?.merchantId;
       const saleId: string | undefined = metadata?.saleId || undefined;
+      const method = (metadata?.method || "local_card") as
+        | "local_card"
+        | "eft"
+        | "international";
 
       const amountMinor: number = data?.amount ?? 0; // cents/kobo
       const amount = amountMinor / 100; // ZAR
@@ -63,6 +67,36 @@ export const verifyPaystackTransaction = functions.https.onRequest(
         res.status(400).json({ error: "Transaction not successful" });
         return;
       }
+
+      // --- fee calculation
+      const VAT = 0.15;
+      const R1 = 1.0;
+      let pct = 0;
+      let flat = 0;
+
+      switch (method) {
+        case "local_card":
+          pct = 0.029;
+          flat = R1;
+          break;
+        case "eft":
+          pct = 0.02;
+          flat = 0;
+          break;
+        case "international":
+          pct = 0.031;
+          flat = R1;
+          break;
+        default:
+          pct = 0.029;
+          flat = R1;
+      }
+
+      const feeExVat = amount * pct + flat;
+      const vat = feeExVat * VAT;
+      const feeInclVat = feeExVat + vat;
+      const totalFeesInclVat = feeInclVat;
+      const netToMerchant = amount - totalFeesInclVat;
 
       // Idempotency guard
       const processedRef = db
@@ -135,6 +169,9 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           provider: "paystack",
           type: "CREDIT",
           purpose: "sale",
+          fee: feeInclVat,
+          netAmount: netToMerchant,
+          method,
           createdAt: now,
         });
 
@@ -143,7 +180,8 @@ export const verifyPaystackTransaction = functions.https.onRequest(
         batch.set(
           walletRef,
           {
-            salesVirtualBalance: admin.firestore.FieldValue.increment(amount),
+            salesVirtualBalance:
+              admin.firestore.FieldValue.increment(netToMerchant),
             updatedAt: now,
           },
           { merge: true },
@@ -157,6 +195,9 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           saleId,
           reference,
           amount,
+          fee: feeInclVat,
+          netAmount: netToMerchant,
+          method,
           createdAt: now,
         });
 
@@ -184,7 +225,7 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           t.set(
             walletRef,
             {
-              virtualBalance: current + amount,
+              virtualBalance: current + netToMerchant,
               updatedAt: now,
             },
             { merge: true },
@@ -192,9 +233,12 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           t.set(txRef, {
             reference,
             amount,
+            fee: feeInclVat,
+            netAmount: netToMerchant,
             currency: "ZAR",
             status: "success",
             provider: "paystack",
+            method,
             createdAt: now,
           });
           t.set(processedRef, {
@@ -203,6 +247,9 @@ export const verifyPaystackTransaction = functions.https.onRequest(
             merchantId,
             reference,
             amount,
+            fee: feeInclVat,
+            netAmount: netToMerchant,
+            method,
             createdAt: now,
           });
         });

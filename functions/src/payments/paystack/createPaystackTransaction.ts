@@ -14,6 +14,7 @@ import * as dotenv from "dotenv";
  *  - email: string (required)
  *  - amount: number (required, MINOR units, e.g. ZAR cents)
  *  - purpose: 'sale' | 'topup' (required)
+ *  - method?: 'local_card' | 'eft' | 'international' (default: 'local_card')
  *  - saleId?: string (required when purpose === 'sale')
  *
  * Returns: { authorizationUrl, reference }
@@ -39,7 +40,7 @@ export const createPaystackTransaction = functions.https.onRequest(
       }
 
       // --- inputs
-      const { merchantId, email, purpose, saleId } = req.body || {};
+      const { merchantId, email, purpose, saleId, method } = req.body || {};
       let { amount } = req.body || {};
 
       if (!merchantId || !email || !amount || !purpose) {
@@ -59,6 +60,9 @@ export const createPaystackTransaction = functions.https.onRequest(
         return;
       }
 
+      const payMethod =
+        typeof method === "string" && method ? method : "local_card";
+
       amount = amount * 100;
 
       // --- initialize with Paystack (amount in MINOR units)
@@ -72,6 +76,7 @@ export const createPaystackTransaction = functions.https.onRequest(
             merchantId,
             saleId: saleId || null,
             purpose, // 'sale' | 'topup'
+            method: payMethod,
           },
           // callback_url: "https://your-site.example/return" // optional
         },

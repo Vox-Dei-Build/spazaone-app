@@ -53,6 +53,20 @@ class RemoteConfigService {
             dotenv.env['MARKUP_PROMOTIONAL_PERCENTAGE'] ?? '0',
         'USD_ZAR_EXCHANGE_RATE':
             dotenv.env['USD_ZAR_EXCHANGE_RATE'] ?? '19.0',
+        'PAYSTACK_LOCAL_PERCENT':
+            dotenv.env['PAYSTACK_LOCAL_PERCENT'] ?? '2.9',
+        'PAYSTACK_LOCAL_FLAT':
+            dotenv.env['PAYSTACK_LOCAL_FLAT'] ?? '1.0',
+        'PAYSTACK_EFT_PERCENT':
+            dotenv.env['PAYSTACK_EFT_PERCENT'] ?? '2.0',
+        'PAYSTACK_INT_PERCENT':
+            dotenv.env['PAYSTACK_INT_PERCENT'] ?? '3.1',
+        'PAYSTACK_INT_FLAT':
+            dotenv.env['PAYSTACK_INT_FLAT'] ?? '1.0',
+        'PAYSTACK_SETTLEMENT_FEE':
+            dotenv.env['PAYSTACK_SETTLEMENT_FEE'] ?? '3.0',
+        'PAYSTACK_VAT_PERCENT':
+            dotenv.env['PAYSTACK_VAT_PERCENT'] ?? '15.0',
       });
 
       _instance = RemoteConfigService._(remoteConfig);
