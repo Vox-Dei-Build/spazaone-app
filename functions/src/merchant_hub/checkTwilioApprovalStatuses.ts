@@ -56,7 +56,12 @@ exports.checkTwilioApprovalStatuses = functions.pubsub
         const wa = res.data.whatsapp;
         const status = wa.status.toLowerCase(); // "approved", "rejected", "pending"
 
-        if (["approved", "rejected"].includes(status)) {
+        if (status === "pending") {
+          await doc.ref.update({
+            "channels.whatsapp.approvalStatus": "pending",
+          });
+          console.log(`⏳ Updated ${sid} → pending`);
+        } else if (["approved", "rejected"].includes(status)) {
           const update: any = {
             "channels.whatsapp.approvalStatus": status,
           };
