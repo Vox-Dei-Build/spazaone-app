@@ -56,17 +56,38 @@ class SalesViewModel extends TransactionViewModel {
           .collection('users')
           .doc(userId)
           .collection('sales')
+          .where('type', isEqualTo: 'Cash')
           .where('dateAdded',
               isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
           .where('dateAdded', isLessThan: Timestamp.fromDate(endOfDay))
           .orderBy('dateAdded', descending: true)
           .get();
 
-      final sales = snapshot.docs
-          .map(
-            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-          )
-          .toList();
+      final sales = snapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        final paymentStatus =
+            (data['paymentStatus'] ?? '').toString().toLowerCase();
+        final paymentMethod =
+            (data['paymentMethod'] ?? '').toString().toLowerCase();
+
+        if (['cancelled', 'rejected'].contains(status)) {
+          return false;
+        }
+        if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
+          return false;
+        }
+        if (paymentMethod == 'cash' && paymentStatus != '' &&
+            paymentStatus != 'paid') {
+          return false;
+        }
+        if (paymentStatus != '' && paymentStatus != 'paid') {
+          return false;
+        }
+        return true;
+      }).map(
+        (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+      ).toList();
 
       _salesController!.add(sales);
       _calculateSalesStats(sales);
@@ -81,17 +102,38 @@ class SalesViewModel extends TransactionViewModel {
           .collection('users')
           .doc(userId)
           .collection('sales')
+          .where('type', isEqualTo: 'Cash')
           .where('dateAdded', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
           .where('dateAdded',
               isLessThan: Timestamp.fromDate(end.add(const Duration(days: 1))))
           .orderBy('dateAdded', descending: true)
           .get();
 
-      final sales = snapshot.docs
-          .map(
-            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-          )
-          .toList();
+      final sales = snapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        final paymentStatus =
+            (data['paymentStatus'] ?? '').toString().toLowerCase();
+        final paymentMethod =
+            (data['paymentMethod'] ?? '').toString().toLowerCase();
+
+        if (['cancelled', 'rejected'].contains(status)) {
+          return false;
+        }
+        if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
+          return false;
+        }
+        if (paymentMethod == 'cash' && paymentStatus != '' &&
+            paymentStatus != 'paid') {
+          return false;
+        }
+        if (paymentStatus != '' && paymentStatus != 'paid') {
+          return false;
+        }
+        return true;
+      }).map(
+        (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+      ).toList();
 
       _salesController!.add(sales);
       _calculateSalesStats(sales);
@@ -132,6 +174,9 @@ class SalesViewModel extends TransactionViewModel {
             DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
         'products': selectedProducts,
         'remarks': remarksController.text,
+        'status': 'paid',
+        'paymentMethod': 'Cash',
+        'paymentStatus': 'paid',
       };
 
       var connectivityResult = await Connectivity().checkConnectivity();
@@ -144,14 +189,14 @@ class SalesViewModel extends TransactionViewModel {
         });
       }
 
-      await firestore
+      final docRef = await firestore
           .collection('users')
           .doc(userId)
           .collection('sales')
           .add(salesData);
 
       currentSale = Sale(
-        id: '', // This will be replaced by Firestore document ID
+        id: docRef.id,
         amount: amountEntered,
         type: 'Cash',
         products: selectedProducts,

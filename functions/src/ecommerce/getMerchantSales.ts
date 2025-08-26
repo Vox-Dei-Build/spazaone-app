@@ -29,21 +29,33 @@ export const getMerchantSales = functions.https.onCall(async (data) => {
 
     const qs = await query.get();
 
-    const sales = qs.docs.map((d) => {
-      const s: any = d.data() || {};
-      return {
-        id: d.id,
-        status: s.status || "pending",
-        amount: Number(s.amount ?? 0),
-        itemsCount: Number(s.itemsCount ?? 0),
-        type: s.type || "",
-        dateAdded: s.dateAdded || s.createdAt || null,
-        pickupAt: s.pickupAt || null,
-        pickupLabel: s.pickupLabel || null,
-        paymentMethod: s.paymentMethod || "", // may be set later by actions
-        paymentStatus: s.paymentStatus || "", // "approved" for BNPL approved, "paid" when settled
-      };
-    });
+    const sales = qs.docs
+      .map((d) => {
+        const s: any = d.data() || {};
+        return {
+          id: d.id,
+          status: s.status || "pending",
+          amount: Number(s.amount ?? 0),
+          itemsCount: Number(s.itemsCount ?? 0),
+          type: s.type || "",
+          dateAdded: s.dateAdded || s.createdAt || null,
+          pickupAt: s.pickupAt || null,
+          pickupLabel: s.pickupLabel || null,
+          paymentMethod: s.paymentMethod || "",
+          paymentStatus: s.paymentStatus || "",
+        };
+      })
+      .filter((s) => {
+        const status = String(s.status || "").toLowerCase();
+        const paymentStatus = String(s.paymentStatus || "").toLowerCase();
+        const paymentMethod = String(s.paymentMethod || "").toLowerCase();
+
+        if (status === "cancelled" || status === "rejected") return false;
+        if (paymentMethod === "bnpl" && paymentStatus !== "paid") return false;
+        if (paymentMethod === "cash" && paymentStatus !== "paid") return false;
+        if (paymentStatus && paymentStatus !== "paid") return false;
+        return true;
+      });
 
     return { sales };
   } catch (error: any) {

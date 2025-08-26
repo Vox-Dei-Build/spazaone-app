@@ -223,7 +223,44 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                           ],
                                         ),
                                       )
-                                    : const OnlineSalesList(),
+                                    : SingleChildScrollView(
+                                        child: Column(
+                                          children: [
+                                            SizedBox(
+                                                height: SizeConfig
+                                                        .heightMultiplier *
+                                                    2),
+                                            ReportCalendarView(
+                                              selectedDay: _selectedDay,
+                                              startDate: _startDate,
+                                              endDate: _endDate,
+                                              onDateSelected: _onDateSelected,
+                                              onDateRangeSelected:
+                                                  _onDateRangeSelected,
+                                              onInternalDateSelect: (_) {},
+                                              onInternalRangeSelect: (_, __) {},
+                                            ),
+                                            SizedBox(
+                                                height: SizeConfig
+                                                        .heightMultiplier *
+                                                    1.5),
+                                            ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                maxHeight:
+                                                    MediaQuery.of(context)
+                                                            .size
+                                                            .height *
+                                                        0.5,
+                                              ),
+                                              child: OnlineSalesList(
+                                                selectedDay: _selectedDay,
+                                                startDate: _startDate,
+                                                endDate: _endDate,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                               ),
                             ],
                           ),
