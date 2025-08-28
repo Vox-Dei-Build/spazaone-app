@@ -152,6 +152,7 @@ class ConnectManagementViewModel {
     isDisposed = true;
     _fetchTimer?.cancel(); // ✅ Stop fetching immediately
     loadingNotifier.dispose();
+    _botpressService.dispose();
     _controller.close();
   }
 }
