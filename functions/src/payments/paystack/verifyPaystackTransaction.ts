@@ -4,33 +4,32 @@ import * as admin from "firebase-admin";
 import axios from "axios";
 import * as path from "path";
 import * as dotenv from "dotenv";
-// import * as crypto from "crypto"; // (optional) signature verification
 
+/**
+ * Paystack webhook (recommended path: /verifyPaystackTransaction).
+ * Expects JSON body from Paystack. Handles only `charge.success`.
+ *
+ * Behavior:
+ * - Verifies with Paystack /transaction/verify/:reference
+ * - Uses provider-reported `fees` if present; else falls back to local formula
+ * - Marks sale paid (purpose='sale'), writes ledger, increments wallet.salesVirtualBalance
+ * - Idempotent by (provider, reference)
+ */
 export const verifyPaystackTransaction = functions.https.onRequest(
   async (req, res) => {
     try {
-      // --- env / secrets
       dotenv.config({ path: path.join(process.cwd(), ".env.local") });
       dotenv.config({ path: path.join(process.cwd(), ".env") });
+
       const PAYSTACK_SECRET_KEY =
         process.env.PAYSTACK_SECRET_KEY ||
         process.env.PAYSTACK_TEST_SECRET_KEY ||
         (functions.config().paystack?.secret as string | undefined);
+
       if (!PAYSTACK_SECRET_KEY) {
         res.status(500).json({ error: "Missing PAYSTACK_SECRET_KEY" });
         return;
       }
-
-      // (Optional) validate signature:
-      // const signature = req.headers["x-paystack-signature"] as string | undefined;
-      // const computed = crypto
-      //   .createHmac("sha512", PAYSTACK_SECRET_KEY)
-      //   .update(JSON.stringify(req.body))
-      //   .digest("hex");
-      // if (!signature || signature !== computed) {
-      //   res.status(401).json({ error: "Invalid signature" });
-      //   return;
-      // }
 
       const { event, data } = req.body || {};
       if (event !== "charge.success") {
@@ -39,17 +38,10 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       }
 
       const reference: string | undefined = data?.reference;
-      const metadata = data?.metadata || {};
-      const purpose = (metadata?.purpose || "").toLowerCase(); // 'sale' | 'topup'
-      const merchantId: string | undefined = metadata?.merchantId;
-      const saleId: string | undefined = metadata?.saleId || undefined;
-      const method = (metadata?.method || "local_card") as
-        | "local_card"
-        | "eft"
-        | "international";
-
-      const amountMinor: number = data?.amount ?? 0; // cents/kobo
-      const amount = amountMinor / 100; // ZAR
+      const meta = data?.metadata || {};
+      const purpose = (meta?.purpose || "").toLowerCase(); // 'sale' | 'topup'
+      const merchantId: string | undefined = meta?.merchantId;
+      const saleId: string | undefined = meta?.saleId || undefined;
 
       if (!reference || !merchantId || !purpose) {
         res.status(400).json({ error: "Missing transaction details" });
@@ -59,44 +51,43 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       // Cross-check with Paystack
       const verify = await axios.get(
         `https://api.paystack.co/transaction/verify/${reference}`,
-        { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } },
+        {
+          headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+          timeout: 15000,
+        },
       );
-      const success =
-        verify.data?.status && verify.data?.data?.status === "success";
+
+      const v = verify?.data?.data || {};
+      const success = verify?.data?.status && v?.status === "success";
       if (!success) {
         res.status(400).json({ error: "Transaction not successful" });
         return;
       }
 
-      // --- fee calculation
+      // Amounts
+      const amount = Number(v?.amount || 0) / 100; // ZAR
       const VAT = 0.15;
-      const R1 = 1.0;
-      let pct = 0;
-      let flat = 0;
 
-      switch (method) {
-        case "local_card":
-          pct = 0.029;
-          flat = R1;
-          break;
-        case "eft":
-          pct = 0.02;
-          flat = 0;
-          break;
-        case "international":
-          pct = 0.031;
-          flat = R1;
-          break;
-        default:
-          pct = 0.029;
-          flat = R1;
+      // Prefer provider-reported fee, else compute
+      let feeInclVat = Number.isFinite(v?.fees) ? Number(v.fees) / 100 : NaN;
+
+      // Derive method used from channel (card/qr/eft/ussd/etc.)
+      const channel = String(v?.channel || "").toLowerCase();
+      let methodUsed: "local_card" | "eft" | "international" = "local_card";
+      if (channel === "eft") methodUsed = "eft";
+      // (International vs local can't be perfectly inferred; assume 'local_card' for ZAR unless you add extra checks.)
+
+      if (!Number.isFinite(feeInclVat)) {
+        // Fallback fee calc
+        const R1 = 1.0;
+        const pct = methodUsed === "eft" ? 0.02 : 0.029; // 'international' -> 0.031 if you add detection
+        const flat = methodUsed === "eft" ? 0 : R1;
+        const exVat = amount * pct + flat;
+        feeInclVat = exVat * (1 + VAT);
       }
 
-      const feeExVat = amount * pct + flat;
-      const vat = feeExVat * VAT;
-      const feeInclVat = feeExVat + vat;
-      const totalFeesInclVat = feeInclVat;
-      const netToMerchant = amount - totalFeesInclVat;
+      const feeExVat = feeInclVat / (1 + VAT);
+      const netToMerchant = amount - feeInclVat;
 
       // Idempotency guard
       const processedRef = db
@@ -123,7 +114,6 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           .doc(merchantId)
           .collection("sales")
           .doc(saleId);
-
         const walletRef = db
           .collection("users")
           .doc(merchantId)
@@ -137,12 +127,12 @@ export const verifyPaystackTransaction = functions.https.onRequest(
         }
 
         const alreadyPaid =
-          (saleSnap.get("paymentStatus") || "").toLowerCase() === "paid" ||
-          (saleSnap.get("status") || "").toLowerCase() === "paid";
+          String(saleSnap.get("paymentStatus") || "").toLowerCase() ===
+            "paid" ||
+          String(saleSnap.get("status") || "").toLowerCase() === "paid";
 
         const batch = db.batch();
 
-        // a) Mark the sale paid (only if not paid yet)
         if (!alreadyPaid) {
           batch.update(saleRef, {
             paymentMethod: "Online",
@@ -151,32 +141,30 @@ export const verifyPaystackTransaction = functions.https.onRequest(
             paymentReference: reference,
             paidAt: now,
             updatedAt: now,
+            channelUsed: channel,
+            methodUsed,
           });
         }
 
-        // b) Record a sales ledger entry
         const ledgerRef = db
           .collection("users")
           .doc(merchantId)
           .collection("salesLedger")
           .doc(reference);
-
         batch.set(ledgerRef, {
           saleId,
           reference,
-          amount,
+          amount, // customer paid
+          feeInclVat, // provider fee incl VAT
+          feeExVat, // derived
+          netAmount: netToMerchant,
           currency: "ZAR",
           provider: "paystack",
-          type: "online",
-          purpose: "sale",
-          fee: feeInclVat,
-          netAmount: netToMerchant,
-          method,
+          channel: channel,
+          method: methodUsed,
           createdAt: now,
         });
 
-        // c) Increment wallet.salesVirtualBalance (create field if missing)
-        //    Do NOT touch wallet.virtualBalance for sales.
         batch.set(
           walletRef,
           {
@@ -187,7 +175,6 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           { merge: true },
         );
 
-        // d) Mark this reference as processed for idempotency
         batch.set(processedRef, {
           provider: "paystack",
           purpose: "sale",
@@ -195,9 +182,10 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           saleId,
           reference,
           amount,
-          fee: feeInclVat,
+          feeInclVat,
           netAmount: netToMerchant,
-          method,
+          method: methodUsed,
+          channel,
           createdAt: now,
         });
 
@@ -207,7 +195,6 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       }
 
       if (purpose === "topup") {
-        // Top-ups still credit wallet.virtualBalance (app balance)
         const walletRef = db
           .collection("users")
           .doc(merchantId)
@@ -221,24 +208,23 @@ export const verifyPaystackTransaction = functions.https.onRequest(
 
         await db.runTransaction(async (t) => {
           const w = await t.get(walletRef);
-          const current = w.data()?.virtualBalance || 0;
+          const current = (w.data()?.virtualBalance || 0) as number;
           t.set(
             walletRef,
-            {
-              virtualBalance: current + netToMerchant,
-              updatedAt: now,
-            },
+            { virtualBalance: current + netToMerchant, updatedAt: now },
             { merge: true },
           );
           t.set(txRef, {
             reference,
             amount,
-            fee: feeInclVat,
+            feeInclVat,
+            feeExVat,
             netAmount: netToMerchant,
             currency: "ZAR",
             status: "success",
             provider: "paystack",
-            method,
+            channel,
+            method: methodUsed,
             createdAt: now,
           });
           t.set(processedRef, {
@@ -247,9 +233,10 @@ export const verifyPaystackTransaction = functions.https.onRequest(
             merchantId,
             reference,
             amount,
-            fee: feeInclVat,
+            feeInclVat,
             netAmount: netToMerchant,
-            method,
+            method: methodUsed,
+            channel,
             createdAt: now,
           });
         });

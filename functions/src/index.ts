@@ -70,3 +70,4 @@ export * from "./ecommerce/finalizeOnlinePaid";
 export * from "./ecommerce/onSaleCancelledNotify";
 export * from "./ecommerce/cancelOrder";
 export * from "./ecommerce/finalizeOnlinePaid";
+export * from "./ecommerce/getOnlineSalesFromLedger";

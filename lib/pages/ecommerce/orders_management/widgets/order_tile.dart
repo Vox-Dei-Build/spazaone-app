@@ -61,12 +61,19 @@ class OrderTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 3.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, // <— was spaceEvenly
         children: [
+          // LEFT: id + pills (wrap if tight)
           Expanded(
-            child: Row(
+            child: Wrap(
+              spacing: SizeConfig.imageSizeMultiplier * 1.5,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Flexible(
+                // Order id
+                ConstrainedBox(
+                  constraints: const BoxConstraints(
+                      minWidth: 0, maxWidth: double.infinity),
                   child: Text(
                     '#$id',
                     maxLines: 1,
@@ -77,7 +84,6 @@ class OrderTile extends StatelessWidget {
                     ),
                   ),
                 ),
-                SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
 
                 // Primary: resolved order status
                 StatusPill(
@@ -86,26 +92,36 @@ class OrderTile extends StatelessWidget {
                 ),
 
                 // Second: collection pill (only when present)
-                if (showSecond) ...[
-                  SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
+                if (showSecond)
                   StatusPill(
                     text: secondPillText,
                     color: secondPillColor ??
                         Theme.of(context).colorScheme.outline,
                   ),
-                ],
               ],
             ),
           ),
+
           const SizedBox(width: 8),
-          Text(
-            totalText,
-            style: TextStyle(
-              color: kPrimaryColor,
-              fontWeight: FontWeight.bold,
-              fontSize: SizeConfig.textMultiplier * 1.8,
+
+          // RIGHT: total (scales down instead of overflowing)
+          Flexible(
+            flex: 0,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Text(
+                totalText,
+                style: TextStyle(
+                  color: kPrimaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: SizeConfig.textMultiplier * 1.8,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+              ),
             ),
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
