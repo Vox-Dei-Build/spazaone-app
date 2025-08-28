@@ -38,12 +38,12 @@ class LedgerMainContent extends StatelessWidget {
                     ),
                     onPressed: () {
                       final url = TutorialConfig.getTutorialUrl(
-                          TutorialConfig.TUTORIAL_CAPTURE_BNPL);
+                          TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS);
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => LoomVideoPage(
                             loomUrl: url,
-                            title: 'How to Capture Buy Now Pay Later',
+                            title: 'How to Add Customers',
                           ),
                         ),
                       );
