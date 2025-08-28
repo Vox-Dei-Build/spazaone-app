@@ -8,8 +8,7 @@ class OrderSkeleton extends StatelessWidget {
           height: h,
           width: w,
           decoration: BoxDecoration(
-            color:
-                Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.6),
+            color: Colors.grey,
             borderRadius: BorderRadius.circular(8),
           ),
         );

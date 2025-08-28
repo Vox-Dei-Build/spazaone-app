@@ -124,7 +124,8 @@ class _PricingInfoTab extends State<PricingInfoTab> {
             ],
 
             // 🟢 Section 6: Paystack Fees (South Africa)
-            if (FeatureFlags.enablePricingInfo) ...[
+            if (FeatureFlags.enablePricingInfo &&
+                FeatureFlags.enableTopUpPaystack) ...[
               _sectionTitle('Paystack Fees (South Africa)'),
               _buildBulletPoint(
                   'Local Payments: ${localPercent.toStringAsFixed(1)}% + R${localFlat.toStringAsFixed(2)} (excl. VAT)'),

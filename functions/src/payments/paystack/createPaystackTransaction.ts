@@ -5,19 +5,17 @@ import * as path from "path";
 import * as dotenv from "dotenv";
 
 /**
- * Initialize a Paystack transaction for either:
- *  - purpose: 'sale'  (requires saleId)
- *  - purpose: 'topup' (no saleId)
+ * Initialize a Paystack transaction.
  *
- * BODY:
- *  - merchantId: string (required)
- *  - email: string (required)
- *  - amount: number (required, MINOR units, e.g. ZAR cents)
- *  - purpose: 'sale' | 'topup' (required)
- *  - method?: 'local_card' | 'eft' | 'international' (default: 'local_card')
- *  - saleId?: string (required when purpose === 'sale')
+ * Body (JSON):
+ * - merchantId: string (required)
+ * - email: string (required)
+ * - amount: number (required, ZAR *rands*, NOT cents)  ← we convert to cents server-side
+ * - purpose: 'sale' | 'topup' (required)
+ * - saleId?: string (required when purpose === 'sale')
+ * - method?: 'local_card' | 'eft' | 'international' (default 'local_card')
  *
- * Returns: { authorizationUrl, reference }
+ * Returns: { authorizationUrl: string, reference: string }
  */
 export const createPaystackTransaction = functions.https.onRequest(
   async (req, res) => {
@@ -27,26 +25,26 @@ export const createPaystackTransaction = functions.https.onRequest(
         return;
       }
 
-      // --- env / secrets
       dotenv.config({ path: path.join(process.cwd(), ".env.local") });
       dotenv.config({ path: path.join(process.cwd(), ".env") });
+
       const PAYSTACK_SECRET_KEY =
         process.env.PAYSTACK_SECRET_KEY ||
         process.env.PAYSTACK_TEST_SECRET_KEY ||
         (functions.config().paystack?.secret as string | undefined);
+
       if (!PAYSTACK_SECRET_KEY) {
         res.status(500).json({ error: "Missing PAYSTACK_SECRET_KEY" });
         return;
       }
 
-      // --- inputs
-      const { merchantId, email, purpose, saleId, method } = req.body || {};
-      let { amount } = req.body || {};
+      const { merchantId, email, purpose, saleId } = req.body || {};
+      const { amount, method } = req.body || {};
 
       if (!merchantId || !email || !amount || !purpose) {
-        res.status(400).json({
-          error: "merchantId, email, amount, purpose are required",
-        });
+        res
+          .status(400)
+          .json({ error: "merchantId, email, amount, purpose are required" });
         return;
       }
       if (purpose === "sale" && !saleId) {
@@ -63,22 +61,37 @@ export const createPaystackTransaction = functions.https.onRequest(
       const payMethod =
         typeof method === "string" && method ? method : "local_card";
 
-      amount = amount * 100;
+      // Amount is passed in RANDS, convert to cents
+      const amountCents = Math.round(Number(amount) * 100);
+      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+        res.status(400).json({ error: "amount must be > 0 (ZAR rands)" });
+        return;
+      }
 
-      // --- initialize with Paystack (amount in MINOR units)
+      // Restrict channels to the user's chosen method
+      const channels =
+        payMethod === "eft"
+          ? ["eft"]
+          : payMethod === "international"
+            ? ["card"] // Paystack uses 'card'; can't force intl-only here
+            : ["card", "qr"]; // local card + Scan to Pay
+
+      const callbackUrl = process.env.PAYSTACK_CALLBACK_URL || undefined;
+
       const init = await axios.post(
         "https://api.paystack.co/transaction/initialize",
         {
           email,
-          amount, // MINOR units (e.g., ZAR cents)
+          amount: amountCents,
           currency: "ZAR",
+          channels,
+          callback_url: callbackUrl,
           metadata: {
             merchantId,
             saleId: saleId || null,
-            purpose, // 'sale' | 'topup'
+            purpose,
             method: payMethod,
           },
-          // callback_url: "https://your-site.example/return" // optional
         },
         {
           headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },

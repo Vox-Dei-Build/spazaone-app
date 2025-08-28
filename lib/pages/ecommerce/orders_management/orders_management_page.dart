@@ -8,6 +8,7 @@ import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/order_filters.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/orders_repository.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_search_field.dart';
+import 'package:pasella/pages/ecommerce/orders_management/widgets/order_shimmer.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_skeleton.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_status_chips.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_tile.dart';
@@ -127,14 +128,24 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
 
     return Column(
       children: [
-        OrderStatusChips(
-          selected: _status,
-          onSelected: (s) {
-            if (_status == s) return;
-            setState(() {
-              _status = s;
-              _ordersFuture = _fetchOrders();
-            });
+        // AFTER:
+        FutureBuilder<List<OrderModel>>(
+          future: _ordersFuture,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting &&
+                !(snap.hasData && (snap.data?.isNotEmpty ?? false))) {
+              return const OrderStatusChipsSkeleton();
+            }
+            return OrderStatusChips(
+              selected: _status,
+              onSelected: (s) {
+                if (_status == s) return;
+                setState(() {
+                  _status = s;
+                  _ordersFuture = _fetchOrders();
+                });
+              },
+            );
           },
         ),
         Padding(
@@ -179,6 +190,11 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
         FutureBuilder<List<OrderModel>>(
           future: _ordersFuture,
           builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting &&
+                !(snap.hasData && (snap.data?.isNotEmpty ?? false))) {
+              return const OrdersSummaryBarSkeleton();
+            }
+
             final orders = snap.data ?? const <OrderModel>[];
             final total = orders.fold<double>(0.0, (a, b) => a + (b.total));
             final rangeText = _range == null
@@ -191,6 +207,7 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
             );
           },
         ),
+
         const Divider(height: 1, color: kHighLightColor),
         Expanded(
           child: RefreshIndicator(
