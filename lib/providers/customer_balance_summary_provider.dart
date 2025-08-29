@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/models/common/balance_summary_model.dart';
-import 'package:pasella/pages/contact/widgets/action_buttons.dart';
+import 'package:pasella/pages/transactions/widgets/action_buttons.dart';
 import 'package:pasella/utils/transaction_util.dart';
 
 class CustomerBalanceSummaryProvider with ChangeNotifier {

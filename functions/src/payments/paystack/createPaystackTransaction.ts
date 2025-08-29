@@ -1,65 +1,119 @@
-import { functions } from "../../config/main"; // Firebase or GCP cloud function import
+// functions/src/http/createPaystackTransaction.ts
+import { functions } from "../../config/main";
 import axios from "axios";
-
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_TEST_SECRET_KEY; // 🔥 Use live key for production
+import * as path from "path";
+import * as dotenv from "dotenv";
 
 /**
- * Cloud Function to create a Paystack transaction.
+ * Initialize a Paystack transaction.
  *
- * @param {functions.https.Request} req - The HTTP request object.
- * @param {functions.Response} res - The HTTP response object.
- * @returns {Promise<void>} - JSON response with Paystack authorization URL.
+ * Body (JSON):
+ * - merchantId: string (required)
+ * - email: string (required)
+ * - amount: number (required, ZAR *rands*, NOT cents)  ← we convert to cents server-side
+ * - purpose: 'sale' | 'topup' (required)
+ * - saleId?: string (required when purpose === 'sale')
+ * - method?: 'local_card' | 'eft' | 'international' (default 'local_card')
+ *
+ * Returns: { authorizationUrl: string, reference: string }
  */
-exports.createPaystackTransaction = functions.https.onRequest(
-  async (req: functions.https.Request, res: functions.Response) => {
+export const createPaystackTransaction = functions.https.onRequest(
+  async (req, res) => {
     try {
-      const { userId, amount, email } = req.body;
-
-      // Validate input
-      if (
-        !userId ||
-        !amount ||
-        typeof amount !== "number" ||
-        amount <= 0 ||
-        !email
-      ) {
-        res.status(400).json({ error: "Invalid userId, amount, or email" });
+      if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
         return;
       }
 
-      // Call Paystack API to initialize transaction
-      const paystackResponse = await axios.post(
+      dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+      dotenv.config({ path: path.join(process.cwd(), ".env") });
+
+      const PAYSTACK_SECRET_KEY =
+        process.env.PAYSTACK_SECRET_KEY ||
+        process.env.PAYSTACK_TEST_SECRET_KEY ||
+        (functions.config().paystack?.secret as string | undefined);
+
+      if (!PAYSTACK_SECRET_KEY) {
+        res.status(500).json({ error: "Missing PAYSTACK_SECRET_KEY" });
+        return;
+      }
+
+      const { merchantId, email, purpose, saleId } = req.body || {};
+      const { amount, method } = req.body || {};
+
+      if (!merchantId || !email || !amount || !purpose) {
+        res
+          .status(400)
+          .json({ error: "merchantId, email, amount, purpose are required" });
+        return;
+      }
+      if (purpose === "sale" && !saleId) {
+        res
+          .status(400)
+          .json({ error: "saleId is required for purpose 'sale'" });
+        return;
+      }
+      if (purpose !== "sale" && purpose !== "topup") {
+        res.status(400).json({ error: "purpose must be 'sale' or 'topup'" });
+        return;
+      }
+
+      const payMethod =
+        typeof method === "string" && method ? method : "local_card";
+
+      // Amount is passed in RANDS, convert to cents
+      const amountCents = Math.round(Number(amount) * 100);
+      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+        res.status(400).json({ error: "amount must be > 0 (ZAR rands)" });
+        return;
+      }
+
+      // Restrict channels to the user's chosen method
+      const channels =
+        payMethod === "eft"
+          ? ["eft"]
+          : payMethod === "international"
+            ? ["card"] // Paystack uses 'card'; can't force intl-only here
+            : ["card", "qr"]; // local card + Scan to Pay
+
+      const callbackUrl = process.env.PAYSTACK_CALLBACK_URL || undefined;
+
+      const init = await axios.post(
         "https://api.paystack.co/transaction/initialize",
         {
-          email: email,
-          amount: amount * 100, // Convert Rands to cents
+          email,
+          amount: amountCents,
           currency: "ZAR",
-          callback_url: "myapp://payment-success",
-          metadata: { userId },
+          channels,
+          callback_url: callbackUrl,
+          metadata: {
+            merchantId,
+            saleId: saleId || null,
+            purpose,
+            method: payMethod,
+          },
         },
         {
-          headers: {
-            Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+          timeout: 15000,
         },
       );
 
-      if (!paystackResponse.data.status) {
-        throw new Error("Paystack transaction initialization failed");
+      const authorizationUrl =
+        init.data?.data?.authorization_url || init.data?.authorizationUrl;
+      const reference = init.data?.data?.reference || init.data?.reference;
+
+      if (!authorizationUrl || !reference) {
+        res
+          .status(502)
+          .json({ error: "Invalid response from Paystack initialize" });
+        return;
       }
 
-      // ✅ Send response with checkout URL
-      res.status(200).json({
-        success: true,
-        authorizationUrl: paystackResponse.data.data.authorization_url,
-      });
-    } catch (error: any) {
-      console.error("Error creating Paystack transaction:", error);
-      res.status(500).json({
-        error: "Failed to create transaction",
-        details: error.message,
-      });
+      res.status(200).json({ authorizationUrl, reference });
+    } catch (err: any) {
+      console.error("createPaystackTransaction error:", err?.message || err);
+      res.status(500).json({ error: "Failed to create transaction" });
     }
   },
 );

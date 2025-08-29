@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/contact/connect/connect_manangement.dart';
-import 'package:pasella/pages/contact/transactions_management/transactions_management.dart';
+import 'package:pasella/pages/ecommerce/orders_management/orders_management_page.dart';
+import 'package:pasella/pages/transactions/transactions_management/transactions_management.dart';
 import 'package:pasella/pages/contact/widgets/profile_actions_bar.dart';
-import 'package:pasella/pages/contact/orders_management/orders_management.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:provider/provider.dart';
 import 'view_model/customer_management_view_model.dart';
@@ -48,6 +48,14 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       _tabIndexNotifier.value = _tabController.index;
+
+      // ✅ Use the local instance, not Provider.of(...)
+      if (_tabController.indexIsChanging == false &&
+          _tabController.index == 1) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          customerManagementViewModel.clearOrdersUnread();
+        });
+      }
     });
   }
 
@@ -85,8 +93,39 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
                     fontWeight: FontWeight.normal,
                   ),
                   tabs: [
-                    const Tab(text: 'Transactions'),
-                    const Tab(text: 'Orders'),
+                    const Tab(text: 'Pay Later'),
+                    Consumer<CustomerManagementViewModel>(
+                      builder: (context, model, child) {
+                        final count = model.ordersUnreadCount;
+                        return Tab(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Orders'),
+                              if (count > 0)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      left: SizeConfig.imageSizeMultiplier * 1),
+                                  child: CircleAvatar(
+                                    radius:
+                                        SizeConfig.imageSizeMultiplier * 2.3,
+                                    backgroundColor: Colors.red,
+                                    child: Text(
+                                      count.toString(),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                     Consumer<CustomerManagementViewModel>(
                       // 🔥 Wrap this tab with Consumer
                       builder: (context, model, child) {

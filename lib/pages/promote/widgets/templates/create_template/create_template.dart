@@ -159,7 +159,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       widget.viewModel.loadTemplatesData();
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } catch (e) {
       debugPrint("Failed to save template: $e");

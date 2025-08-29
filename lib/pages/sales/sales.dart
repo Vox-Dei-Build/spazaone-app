@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/sales/widgets/add_sale.dart';
-import 'package:pasella/pages/reports/widgets/report_calendar_view.dart';
+import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
-import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
+import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
@@ -35,6 +35,9 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
 
   late final TabController _mainController;
 
+  late final SalesViewModel _salesVM;
+  late final PromotionsViewModel _promoVM;
+
   SalesViewType _selectedSalesView = SalesViewType.cash;
   MarketingViewType _selectedMarketingView = MarketingViewType.promotions;
 
@@ -45,11 +48,22 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       ..addListener(() {
         if (mounted) setState(() {});
       });
+
+    _salesVM = SalesViewModel(); // construct once
+    _promoVM = PromotionsViewModel(); // construct once
+    // Kick off promo loading once
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _promoVM.loadInitialData();
+      // Ensure cash list has fresh data immediately on first show
+      _salesVM.updateSelectedDate(_selectedDay ?? DateTime.now());
+    });
   }
 
   @override
   void dispose() {
     _mainController.dispose();
+    _promoVM.dispose();
+    _salesVM.dispose();
     super.dispose();
   }
 
@@ -69,22 +83,34 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     });
   }
 
+  // Replace your helper with this:
+  double _scrollBottomPadding(BuildContext context) {
+    final m = MediaQuery.of(context);
+
+    // Which FABs are visible?
+    final onSalesTab = _mainController.index == 0;
+    final onMarketingTab = _mainController.index == 1;
+
+    final cashFabVisible =
+        onSalesTab && _selectedSalesView == SalesViewType.cash;
+    final marketingFabVisible =
+        onMarketingTab; // both Marketing views show an extended FAB in your code
+
+    final fabVisible = cashFabVisible || marketingFabVisible;
+
+    // Material defaults: 56 for normal FAB (yours on Sales), ~48–56 for extended.
+    final fabHeight = fabVisible ? 56.0 : 0.0;
+    const fabMargin = 16.0;
+
+    return m.padding.bottom + fabHeight + fabMargin;
+  }
+
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SalesViewModel()),
-        ChangeNotifierProvider(
-          create: (_) {
-            final vm = PromotionsViewModel();
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              vm.loadInitialData();
-            });
-            return vm;
-          },
-        ),
+        ChangeNotifierProvider.value(value: _salesVM),
+        ChangeNotifierProvider.value(value: _promoVM),
       ],
       child: Consumer2<SalesViewModel, PromotionsViewModel>(
         builder: (context, salesVM, promoVM, child) {
@@ -115,7 +141,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                           // --- SALES ---
                           Column(
                             children: [
-                              const SizedBox(height: 16),
+                              SizedBox(height: SizeConfig.heightMultiplier * 2),
                               Theme(
                                 data: Theme.of(context).copyWith(
                                   segmentedButtonTheme:
@@ -170,60 +196,85 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                     setState(() {
                                       _selectedSalesView = val.first;
                                     });
+                                    if (_selectedSalesView ==
+                                        SalesViewType.cash) {
+                                      // refresh using current date/range selection
+                                      if (_selectedDay != null) {
+                                        _salesVM
+                                            .updateSelectedDate(_selectedDay!);
+                                      } else if (_startDate != null &&
+                                          _endDate != null) {
+                                        _salesVM.updateSelectedDateRange(
+                                            _startDate!, _endDate!);
+                                      } else {
+                                        _salesVM
+                                            .updateSelectedDate(DateTime.now());
+                                      }
+                                    }
                                   },
                                 ),
                               ),
-                              const SizedBox(height: 16),
+
+                              DateFilterBar(
+                                selectedDay: _selectedDay,
+                                startDate: _startDate,
+                                endDate: _endDate,
+                                onDaySelect: (d) {
+                                  _onDateSelected(d);
+                                  if (_selectedSalesView ==
+                                      SalesViewType.cash) {
+                                    salesVM.updateSelectedDate(d);
+                                  }
+                                },
+                                onRangeSelect: (s, e) {
+                                  _onDateRangeSelected(s, e);
+                                  if (_selectedSalesView ==
+                                      SalesViewType.cash) {
+                                    salesVM.updateSelectedDateRange(s, e);
+                                  }
+                                },
+                              ),
+
+                              // CASH-ONLY stats card: also loose flex
+                              if (_selectedSalesView == SalesViewType.cash) ...[
+                                SalesStatsCard(
+                                  viewModel: salesVM,
+                                  selectedDay: _selectedDay,
+                                  startDate: _startDate,
+                                  endDate: _endDate,
+                                ),
+                              ],
+
+                              SizedBox(
+                                  height: SizeConfig.heightMultiplier * 1.0),
+
                               Expanded(
                                 child: _selectedSalesView == SalesViewType.cash
-                                    ? SingleChildScrollView(
-                                        child: Column(
-                                          children: [
-                                            SizedBox(
-                                                height: SizeConfig
-                                                        .heightMultiplier *
-                                                    2),
-                                            ReportCalendarView(
-                                              selectedDay: _selectedDay,
-                                              startDate: _startDate,
-                                              endDate: _endDate,
-                                              onDateSelected: _onDateSelected,
-                                              onDateRangeSelected:
-                                                  _onDateRangeSelected,
-                                              onInternalDateSelect:
-                                                  salesVM.updateSelectedDate,
-                                              onInternalRangeSelect: salesVM
-                                                  .updateSelectedDateRange,
-                                            ),
-                                            SizedBox(
-                                                height: SizeConfig
-                                                        .heightMultiplier *
-                                                    1.5),
-                                            SalesStatsCard(
-                                              viewModel: salesVM,
-                                              selectedDay: _selectedDay,
-                                              startDate: _startDate,
-                                              endDate: _endDate,
-                                            ),
-                                            SizedBox(
-                                                height: SizeConfig
-                                                        .heightMultiplier *
-                                                    1.5),
-                                            ConstrainedBox(
-                                              constraints: BoxConstraints(
-                                                maxHeight:
-                                                    MediaQuery.of(context)
-                                                            .size
-                                                            .height *
-                                                        0.5,
-                                              ),
-                                              child:
-                                                  SalesList(viewModel: salesVM),
-                                            ),
-                                          ],
+                                    ? SafeArea(
+                                        top: false,
+                                        left: false,
+                                        right: false,
+                                        bottom: true,
+                                        child: SalesList(
+                                          viewModel: salesVM,
                                         ),
                                       )
-                                    : const OnlineSalesList(),
+                                    : SafeArea(
+                                        top: false,
+                                        left: false,
+                                        right: false,
+                                        bottom: true,
+                                        child: OnlineSalesList(
+                                          key: ValueKey<String>(
+                                            '${_selectedDay?.toIso8601String() ?? ''}|'
+                                            '${_startDate?.toIso8601String() ?? ''}|'
+                                            '${_endDate?.toIso8601String() ?? ''}',
+                                          ),
+                                          selectedDay: _selectedDay,
+                                          startDate: _startDate,
+                                          endDate: _endDate,
+                                          // If Online list scrolls, add a similar bottom padding prop there too.
+                                        )),
                               ),
                             ],
                           ),

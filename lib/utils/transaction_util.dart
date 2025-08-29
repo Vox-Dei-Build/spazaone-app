@@ -1,3 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pasella/utils/currency_util.dart';
+
 class TransactionStats {
   final int paymentCount;
   final double paymentAmount;
@@ -61,4 +64,35 @@ class TransactionService {
 
   Stream<double> get balanceStream =>
       transactionStream.map((transactions) => calculateBalance(transactions));
+}
+
+// ---- Helpers: make all math & formatting type-safe ----
+double toDouble(dynamic v, {double fallback = 0.0}) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v) ?? fallback;
+  return fallback;
+}
+
+int toInt(dynamic v, {int fallback = 0}) {
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v) ?? fallback;
+  return fallback;
+}
+
+double sizeConfigUtil(dynamic v, {double fallback = 1.0}) {
+  // Safely coerce SizeConfig multipliers (which should be num/double) to double.
+  if (v is num) return v.toDouble();
+  return fallback;
+}
+
+String formatDateish(dynamic v) {
+  if (v is Timestamp) return v.toDate().toString();
+  if (v is DateTime) return v.toString();
+  if (v is String && v.isNotEmpty) return v;
+  return '—';
+}
+
+String formatMoney(dynamic v) {
+  // CurrencyUtil.format usually expects num/double
+  return CurrencyUtil.format(toDouble(v));
 }
