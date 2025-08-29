@@ -48,12 +48,24 @@ class MessageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isMerchantMessage = message['direction'] == 'outbound' ||
-        message['direction'] == 'outbound-api';
-    final bool isWhatsApp = message['isWhatsApp'] ?? false;
+    final bool isMerchantMessage =
+        (message['direction']?.toString().toLowerCase() == 'outbound') ||
+            (message['direction']?.toString().toLowerCase() == 'outbound-api');
+    final bool isWhatsApp = (message['isWhatsApp'] as bool?) ?? false;
+    final String? mediaUrl = message['mediaUrl'] as String?;
+    final DateTime dateSent = message['dateSent'] is DateTime
+        ? (message['dateSent'] as DateTime)
+        : DateTime.parse(message['dateSent'].toString());
 
-    // Determine status icon
-    final String statusText = message['status'] ?? 'unknown';
+    // ✅ Status block (yours + read heuristic)
+    String statusText;
+    if (message['direction']?.toString().toLowerCase() == 'inbound' ||
+        message['isRead'] == true) {
+      statusText = 'read';
+    } else {
+      statusText = (message['status'] ?? 'unknown').toString().toLowerCase();
+    }
+
     final double iconSize = SizeConfig.textMultiplier * 2;
     Icon statusIcon;
     switch (statusText) {
@@ -80,9 +92,6 @@ class MessageCard extends StatelessWidget {
         statusIcon =
             Icon(Icons.access_time, color: WaBrandColour.time, size: iconSize);
     }
-
-    final String? mediaUrl = message['mediaUrl'] as String?;
-    final DateTime dateSent = message['dateSent'] as DateTime;
 
     return Row(
       mainAxisAlignment:
@@ -117,7 +126,7 @@ class MessageCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1️⃣ IMAGE (if present & tappable)
+                  // 1️⃣ Media (tap → ImageViewerPage)
                   if (mediaUrl != null && mediaUrl.trim().isNotEmpty) ...[
                     GestureDetector(
                       onTap: () {
@@ -127,31 +136,15 @@ class MessageCard extends StatelessWidget {
                           ),
                         );
                       },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          mediaUrl,
-                          width: double.infinity,
-                          height: 180,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (ctx, child, progress) {
-                            if (progress == null) return child;
-                            return Container(
-                              height: 180,
-                              alignment: Alignment.center,
-                              child: CircularProgressIndicator(
-                                value: progress.expectedTotalBytes != null
-                                    ? progress.cumulativeBytesLoaded /
-                                        progress.expectedTotalBytes!
-                                    : null,
-                              ),
-                            );
-                          },
-                          errorBuilder: (ctx, _, __) => Container(
+                      child: Hero(
+                        tag: mediaUrl,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            mediaUrl,
+                            width: double.infinity,
                             height: 180,
-                            color: Colors.grey[200],
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.broken_image, size: 48),
+                            fit: BoxFit.cover,
                           ),
                         ),
                       ),
@@ -194,7 +187,7 @@ class MessageCard extends StatelessWidget {
 
                   // 3️⃣ Text body
                   Text(
-                    message['message'] as String? ?? '',
+                    (message['message'] as String?) ?? '',
                     style: TextStyle(
                       fontSize: SizeConfig.textMultiplier * 2,
                       color: Colors.black,
@@ -203,7 +196,7 @@ class MessageCard extends StatelessWidget {
 
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
 
-                  // 4️⃣ Timestamp & status
+                  // 4️⃣ Time & status icon
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -215,7 +208,7 @@ class MessageCard extends StatelessWidget {
                         ),
                       ),
                       SizedBox(width: SizeConfig.heightMultiplier * 0.8),
-                      statusIcon,
+                      if (isMerchantMessage) statusIcon,
                     ],
                   ),
                 ],
