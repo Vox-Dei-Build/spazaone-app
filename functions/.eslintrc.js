@@ -23,7 +23,7 @@ module.exports = {
     // Disable JSDoc validation coming from the Google config
     "valid-jsdoc": "off",
     // Optionally disable requiring JSDoc presence as well
-    // "require-jsdoc": "off",
+    "require-jsdoc": "off",
   },
   ignorePatterns: [
     "/lib/**/*", // Ignore built files.

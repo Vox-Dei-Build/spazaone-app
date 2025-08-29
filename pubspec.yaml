@@ -27,6 +27,7 @@ dependencies:
   twilio_flutter: ^0.0.9
   flutter_dotenv: ^5.1.0
   cloud_functions: ^4.4.0
+  package_info_plus: ^4.2.0
   firebase_remote_config: ^4.2.7
   firebase_analytics: ^10.5.1
   change_app_package_name: ^1.1.0

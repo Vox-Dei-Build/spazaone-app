@@ -26,6 +26,9 @@ import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
 import 'pages/promote/view_model/promotions_view_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'services/merchant_heartbeat.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -137,6 +140,42 @@ void requestNotificationPermission() async {
   }
 }
 
+/// Heartbeat: send app version/build once after sign-in and on updates (throttled 24h).
+Future<void> setupMerchantHeartbeatBootHook() async {
+  // Open a small local box to track last heartbeat
+  final box = await Hive.openBox('appBox');
+
+  FirebaseAuth.instance.authStateChanges().listen((user) async {
+    if (user == null) return;
+
+    // Current app version/build
+    final info = await PackageInfo.fromPlatform();
+    final currentVersion = info.version;
+    final currentBuild = int.tryParse(info.buildNumber) ?? 0;
+
+    // Last sent snapshot
+    final lastVersion = box.get('hb_version') as String?;
+    final lastBuild = box.get('hb_build') as int?;
+    final lastAt = box.get('hb_last_ms') as int?;
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final stale = lastAt == null || (nowMs - lastAt) > 24 * 60 * 60 * 1000; // 24h
+    final changed =
+        lastVersion != currentVersion || lastBuild != currentBuild;
+
+    if (stale || changed) {
+      try {
+        await MerchantHeartbeat.instance.send(merchantId: user.uid);
+        await box.put('hb_version', currentVersion);
+        await box.put('hb_build', currentBuild);
+        await box.put('hb_last_ms', nowMs);
+      } catch (e) {
+        // Non-blocking; optionally log to Crashlytics
+      }
+    }
+  });
+}
+
 void _onMessageOpenedAppHandler(RemoteMessage message) {
   _firebaseMessagingOnMessageOpenedAppHandler(message);
 }
@@ -177,6 +216,7 @@ void main() async {
     Hive.registerAdapter(QueuedSMSAdapter());
     await Hive.openBox<QueuedSMS>('smsQueue');
     await Hive.openBox('deepLinkBox');
+    await Hive.openBox('appBox');
 
     await setupFlutterNotifications();
     await createNotificationChannel();
@@ -197,6 +237,9 @@ void main() async {
         navigatorKey.currentState?.pushNamed(message.data['route']);
       }
     });
+
+    // Setup merchant heartbeat boot hook
+    await setupMerchantHeartbeatBootHook();
   } catch (error) {
     print("Initialization error: $error");
     // Consider showing an error message to the user or sending an error report
