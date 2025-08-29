@@ -1,14 +1,10 @@
+// functions/src/http/checkoutCart.ts
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
+import { computeCartSig } from "./cartSig";
 
-/**
- * Convert a customer's cart into a sale (collection-first).
- * - Computes total from product docs (sellingPrice || price || productPrice)
- * - Saves itemsCount, products map, and item snapshots
- * - Sets initial status per paymentType (not "paid" for Cash/BNPL)
- * - Decrements product stock (if product.quantity exists)
- * - Clears the cart items
- */
+type PaymentType = "Cash" | "Online" | "BNPL" | string;
+
 export const checkoutCart = functions.https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
     res.status(405).send("Method Not Allowed");
@@ -24,14 +20,18 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       remarks = "",
       pickupAt = null,
       pickupLabel = null,
+      preview = false, // <— only flag we keep
+      idempotencyKey = null, // optional, for deduping sale creation
     } = (req.body || {}) as {
       merchantId: string;
       customerId: string;
-      paymentType?: "Cash" | "Online" | "BNPL" | string;
+      paymentType?: PaymentType;
       deliveryInfo?: string;
       remarks?: string;
       pickupAt?: string | null;
       pickupLabel?: string | null;
+      preview?: boolean;
+      idempotencyKey?: string | null;
     };
 
     if (!merchantId || !customerId) {
@@ -39,21 +39,22 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       return;
     }
 
+    const ptype = String(paymentType || "").toLowerCase();
+
     const cartDoc = db
       .collection("users")
       .doc(merchantId)
       .collection("carts")
       .doc(customerId);
     const itemsSnap = await cartDoc.collection("items").get();
-
     if (itemsSnap.empty) {
       res.status(400).json({ error: "Cart is empty" });
       return;
     }
 
-    // Collect product refs for a batched fetch
-    const productIds: string[] = [];
+    // Build quantities + fetch products
     const quantities: Record<string, number> = {};
+    const productIds: string[] = [];
     itemsSnap.forEach((d) => {
       const q = Number((d.data() || {}).quantity || 0);
       if (q > 0) {
@@ -62,7 +63,6 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       }
     });
 
-    // Batch fetch product docs to avoid N+1
     const productRefs = productIds.map((pid) =>
       db.collection("users").doc(merchantId).collection("products").doc(pid),
     );
@@ -70,7 +70,6 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       ? await db.getAll(...productRefs)
       : [];
 
-    // Build lines with snapshots
     type SaleItem = {
       productId: string;
       quantity: number;
@@ -89,18 +88,15 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     const items: SaleItem[] = [];
     let total = 0;
     let itemsCount = 0;
-
     for (const snap of productDocs) {
       const pid = snap.id;
       const qty = Number(quantities[pid] || 0);
+      if (qty <= 0) continue;
       itemsCount += qty;
-
       const data = snap.exists ? snap.data() || {} : {};
       const unit =
         Number(data.sellingPrice ?? data.price ?? data.productPrice ?? 0) || 0;
-
       total += unit * qty;
-
       items.push({
         productId: pid,
         quantity: qty,
@@ -120,86 +116,165 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       });
     }
 
-    // Initial status by payment type (merchant/app will update later)
-    const initialStatus = (() => {
-      const t = (paymentType || "").toLowerCase();
-      if (t === "cash") return "awaiting_collection";
-      if (t === "bnpl") return "pending_review";
-      if (t === "online") return "pending_payment";
-      return "pending";
-    })();
-
-    // Sale doc
-    const saleRef = db
-      .collection("users")
-      .doc(merchantId)
-      .collection("sales")
-      .doc();
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
     const productsMap: Record<string, number> = {};
     Object.keys(quantities).forEach(
       (pid) => (productsMap[pid] = Number(quantities[pid] || 0)),
     );
 
-    const saleData = {
-      id: saleRef.id,
-      customerId,
-      type: paymentType,
-      status: initialStatus, // ✅ NOT "paid" for Cash/BNPL
-      amount: total, // ✅ total saved
-      itemsCount, // ✅ count saved
-      currency: "ZAR",
-      products: productsMap, // quick map
-      items, // rich snapshots for UI
-      deliveryInfo: deliveryInfo || "",
-      remarks: remarks || "",
-      pickupAt: pickupAt || null, // optional collection time
-      pickupLabel: pickupLabel || null,
-      dateAdded: now,
-      updatedAt: now,
-    };
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const initialStatus =
+      ptype === "cash"
+        ? "awaiting_collection"
+        : ptype === "bnpl"
+          ? "pending_review"
+          : ptype === "online"
+            ? "pending_payment"
+            : "pending";
 
-    // Write sale
-    await saleRef.set(saleData, { merge: true });
+    // PREVIEW: return computed snapshot only
+    if (preview) {
+      res.status(200).json({
+        success: true,
+        preview: true,
+        total,
+        itemsCount,
+        currency: "ZAR",
+        items,
+      });
+      return;
+    }
 
-    // Decrement stock where product.quantity exists
-    const stockBatch = db.batch();
-    productDocs.forEach((snap) => {
-      if (snap.exists) {
+    // Build normalized items for signature
+    const signables = productDocs
+      .map((snap) => {
         const pid = snap.id;
-        const q = Number(quantities[pid] || 0);
-        if (q > 0 && snap.get("quantity") !== undefined) {
-          stockBatch.update(snap.ref, {
-            quantity: admin.firestore.FieldValue.increment(-q),
+        const qty = Number(quantities[pid] || 0);
+        const data = snap.exists ? snap.data() || {} : {};
+        const unit =
+          Number(data.sellingPrice ?? data.price ?? data.productPrice ?? 0) ||
+          0;
+        return { productId: pid, quantity: qty, unit };
+      })
+      .filter((x) => x.quantity > 0);
+
+    const cartSig = computeCartSig(signables);
+
+    // BEFORE creating a new sale: check for open one
+    const openQ = await db
+      .collection("users")
+      .doc(merchantId)
+      .collection("sales")
+      .where("customerId", "==", customerId)
+      .where("inventoryFinalized", "==", false)
+      .orderBy("dateAdded", "desc")
+      .limit(1)
+      .get();
+
+    const bodySupersede = Boolean((req.body || {}).supersedeOpenSale);
+    const canSupersedeStatuses = new Set(["pending_payment", "pending_review"]);
+
+    if (!openQ.empty) {
+      const os = openQ.docs[0].data();
+      const openStatus = String(os.status || "").toLowerCase();
+      if (
+        [
+          "pending_payment",
+          "awaiting_collection",
+          "pending_review",
+          "bnpl_outstanding",
+        ].includes(openStatus)
+      ) {
+        if (os.cartSig === cartSig) {
+          // same cart → block; client should Resume/Cancel
+          res.status(409).json({
+            error: "OPEN_SALE_SAME_CART",
+            saleId: os.id,
+            status: os.status,
+            total: os.amount,
+          });
+          return;
+        } else {
+          // cart changed
+          if (!bodySupersede || !canSupersedeStatuses.has(openStatus)) {
+            res.status(409).json({
+              error: "OPEN_SALE_CART_CHANGED",
+              saleId: os.id,
+              status: os.status,
+              total: os.amount,
+            });
+            return;
+          }
+          // Supersede: cancel old & drop its cart lock atomically
+          await db.runTransaction(async (tx) => {
+            const prevRef = db
+              .collection("users")
+              .doc(merchantId)
+              .collection("sales")
+              .doc(os.id);
+            tx.update(prevRef, {
+              status: "cancelled",
+              cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+              cancelledReason: "CART_CHANGED",
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            const cartDoc = db
+              .collection("users")
+              .doc(merchantId)
+              .collection("carts")
+              .doc(customerId);
+            tx.set(
+              cartDoc,
+              { lock: admin.firestore.FieldValue.delete() },
+              { merge: true },
+            );
           });
         }
       }
-    });
-    await stockBatch.commit().catch(() => {
-      /* ignore non-fatal stock errors */
-    });
+    }
+    // CREATE SALE RECORD (no stock changes, no cart clearing)
+    const saleRef = db
+      .collection("users")
+      .doc(merchantId)
+      .collection("sales")
+      .doc();
 
-    // Clear cart items (and zero summary if you maintain one)
-    const clearBatch = db.batch();
-    itemsSnap.docs.forEach((d) => clearBatch.delete(d.ref));
-    clearBatch.set(
-      cartDoc,
-      { total: 0, itemsCount: 0, updatedAt: now },
+    await saleRef.set(
+      {
+        id: saleRef.id,
+        customerId,
+        type: paymentType,
+        status: initialStatus,
+        amount: total,
+        itemsCount,
+        currency: "ZAR",
+        products: productsMap,
+        items,
+        cartSig,
+        deliveryInfo: deliveryInfo || "",
+        remarks: remarks || "",
+        pickupAt: pickupAt || null,
+        pickupLabel: pickupLabel || null,
+        dateAdded: now,
+        updatedAt: now,
+        inventoryFinalized: false,
+        idempotencyKey: idempotencyKey || null,
+      },
       { merge: true },
     );
-    await clearBatch.commit();
 
-    // (Optional) merchant snapshot
+    // after creating saleRef and saving the sale (no stock, no clear)
     await db
       .collection("users")
       .doc(merchantId)
+      .collection("carts")
+      .doc(customerId)
       .set(
         {
-          lastSaleTransaction: {
-            ...saleData,
-            items: null,
-            products: null,
+          lock: {
+            saleId: saleRef.id,
+            status: initialStatus,
+            cartSig,
+            lockedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
         },
         { merge: true },
@@ -215,5 +290,6 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
   } catch (error: any) {
     console.error("Error completing checkout:", error?.message || error);
     res.status(500).json({ error: "Failed to checkout" });
+    return;
   }
 });

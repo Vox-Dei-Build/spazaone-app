@@ -48,10 +48,18 @@ class _PromotionsPageState extends State<PromotionsPage>
         fabLabel: 'Create Template',
         fabIcon: Icons.library_books_outlined,
         onTap: (ctx, vm) async {
-          await Navigator.of(ctx).push(MaterialPageRoute(
+          final result = await Navigator.of(ctx).push(MaterialPageRoute(
             builder: (_) => CreateTemplatePage(viewModel: vm),
           ));
           _tabController.animateTo(1);
+          if (result == true) {
+            ScaffoldMessenger.of(ctx).showSnackBar(
+              const SnackBar(
+                content: Text(
+                    'Template submitted to Twilio. Waiting for approval.'),
+              ),
+            );
+          }
         },
       ),
     ];
@@ -156,7 +164,7 @@ class _PromotionsPageState extends State<PromotionsPage>
   ) {
     final onPromotionsTab = current.title == 'Promotions';
     final hasApproved = vm.templates.any((t) =>
-        (t['channels']?['whatsapp']?['approved'] == true) ||
+        (t['channels']?['whatsapp']?['approvalStatus'] == 'approved') ||
         (t['channels']?['sms']?['approved'] == true));
 
     return FloatingActionButton.extended(
