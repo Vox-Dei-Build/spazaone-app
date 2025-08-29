@@ -21,17 +21,15 @@ class BasicInfoStep extends StatelessWidget {
           decoration: const InputDecoration(
             labelText: 'Template Name',
             hintText: 'e.g. promo_sale_chicken',
-            helperText: 'Lowercase, numbers & underscores only',
+            helperText:
+                'Lowercase, numbers & underscores only. We’ll tidy this next step.',
             floatingLabelBehavior: FloatingLabelBehavior.never,
           ),
           validator: (val) {
             if (val == null || val.trim().isEmpty) {
               return 'Template name is required';
             }
-            final regex = RegExp(r'^[a-z0-9_]+$');
-            if (!regex.hasMatch(val.trim())) {
-              return 'Only lowercase letters, numbers, and underscores are allowed';
-            }
+            // Allow any characters here; we sanitize on next step and on save.
             return null;
           },
         ),

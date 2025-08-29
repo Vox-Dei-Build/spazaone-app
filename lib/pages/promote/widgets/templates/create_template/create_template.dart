@@ -72,6 +72,11 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         );
         return;
       }
+      // Sanitize the name when moving to the next step
+      final sanitized = _sanitizeTemplateName(_templateNameController.text);
+      if (sanitized != _templateNameController.text) {
+        _templateNameController.text = sanitized;
+      }
     }
 
     // STEP 2: Content → require non‑empty body for each chosen channel
@@ -108,25 +113,36 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     });
   }
 
+  String _sanitizeTemplateName(String input) {
+    String s = input.toLowerCase();
+    s = s.replaceAll(RegExp(r'[\s-]+'), '_');
+    s = s.replaceAll(RegExp(r'[^a-z0-9_]'), '');
+    s = s.replaceAll(RegExp(r'_+'), '_');
+    s = s.replaceAll(RegExp(r'^_+|_+$'), '');
+    return s;
+  }
+
   Future<void> _saveTemplate() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => saving = true);
 
     final userId = FirebaseAuth.instance.currentUser?.uid ?? "";
     final now = Timestamp.now();
-    final variables = <String>{};
 
-    final whatsappContent = _whatsappContentController.text;
+    // Apply boilerplate (Hi/From) before extracting variables so defaults are included
+    final whatsappContent =
+        includeWhatsApp ? forceBoilerplate(_whatsappContentController.text) : '';
     final smsContent = _smsContentController.text;
 
-    RegExp exp = RegExp(r'{{(.*?)}}');
+    final variables = <String>{};
+    final exp = RegExp('{{\s*([A-Za-z0-9_]+)\s*}}');
     for (final match in exp.allMatches(whatsappContent + smsContent)) {
-      variables.add(match.group(1)!.trim());
+      variables.add(match.group(1)!);
     }
 
     final data = {
       'userId': userId,
-      'name': _templateNameController.text.trim(),
+      'name': _sanitizeTemplateName(_templateNameController.text.trim()),
       'contentType': 'text',
       'variables': variables.toList(),
       'default': false,
@@ -135,7 +151,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       'channels': {
         if (includeWhatsApp)
           'whatsapp': {
-            'templateContent': forceBoilerplate(whatsappContent),
+            'templateContent': whatsappContent,
             'mediaUrl': _mediaUrlController.text.trim().isEmpty
                 ? null
                 : _mediaUrlController.text.trim(),
@@ -236,7 +252,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   Widget _buildNavigationButtons() {
     final isLast = currentStep == CreateTemplateStep.review;
     final name = _templateNameController.text.trim();
-    final nameValid = name.isNotEmpty && RegExp(r'^[a-z0-9_]+$').hasMatch(name);
+    final nameValid = name.isNotEmpty; // Regex removed; we sanitize later
 
     final channelValid = includeWhatsApp || includeSMS;
     final whatsappFilled = _whatsappContentController.text.trim().isNotEmpty;

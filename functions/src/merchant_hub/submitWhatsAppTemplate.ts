@@ -3,89 +3,93 @@ import axios, { AxiosError } from "axios";
 import { firestore } from "firebase-admin";
 
 /**
- * Converts named template placeholders (e.g. `{{customerName}}`) into Twilio-compliant
- * numbered placeholders (e.g. `{{1}}`, `{{2}}`). This is required because the Twilio Content API
- * and WhatsApp only support numeric placeholders.
+ * Parse named placeholders from a template body in first-appearance order,
+ * generate a variables map (for Twilio Content API), and a single-row examples
+ * matrix for WhatsApp approval components.example.body_text.
  *
- * Also returns a mapping of original variable names to their assigned placeholder numbers.
+ * Allowed names: [A-Za-z0-9_], no spaces inside {{ }}.
  *
- * @param {string} template - The original message template string containing named placeholders.
- * @return {{ normalized: string, variableMap: Record<string, number> }}
- * An object containing:
- *  - `normalized`: The template string with all placeholders converted to `{{1}}`, `{{2}}`, etc.
- *  - `variableMap`: A map of the original placeholder names to their corresponding numeric index.
- *
- * @example
- * // Input: "Hi {{customerName}}, your order from {{shopName}} is ready."
- * // Output: {
- * //   normalized: "Hi {{1}}, your order from {{2}} is ready.",
- * //   variableMap: { customerName: 1, shopName: 2 }
- * // }
- * */
-function normalizeTemplateContent(template: string): {
-  normalized: string;
-  variableMap: Record<string, number>;
-} {
-  const matches = [...template.matchAll(/{{(.*?)}}/g)];
-  const seen = new Map<string, number>();
-  let index = 1;
-  let normalized = template;
-
-  for (const match of matches) {
-    const full = match[0];
-    const name = match[1].trim();
-
-    if (!seen.has(name)) {
-      seen.set(name, index++);
-    }
-
-    const numbered = `{{${seen.get(name)}}}`;
-    while (normalized.includes(full)) {
-      normalized = normalized.replace(full, numbered);
-    }
-  }
-
-  const variableMap: Record<string, number> = {};
-  seen.forEach((value, key) => (variableMap[key] = value));
-
-  return { normalized, variableMap };
-}
-
-/**
- * Extracts Twilio-compatible numbered variables from a template string.
- * Twilio only supports numbered variables like {{1}}, {{2}}, etc.
- * This function maps each detected variable to a sample value required for template approval.
- * @param {string} template - The message template string containing {{}} placeholders.
- * @return {Record<string, string>} An object mapping variable numbers to example values.
- * */
-function extractTwilioVariables(template: string): {
+ * @param {string} template - Body with named placeholders (e.g., "Hi {{customerName}}...")
+ * @returns {object} Parsed variables and examples for Twilio/WhatsApp.
+ * @property {string[]} orderedNames - Placeholder names in first-appearance order.
+ * @property {Object<string, string>} variables - Deterministic sample values keyed by name.
+ * @property {string[][]} examplesMatrix - Single-row matrix for WA approval examples.
+ */
+function parseNamedVariables(template: string): {
+  orderedNames: string[];
   variables: Record<string, string>;
-  exampleValues: string[];
+  examplesMatrix: string[][];
 } {
-  const matches = [...template.matchAll(/{{(.*?)}}/g)];
-  const variables: Record<string, string> = {};
-  const exampleValues: string[] = [];
+  const re = /{{\s*([A-Za-z0-9_]+)\s*}}/g;
+  const orderedNames: string[] = [];
   const seen = new Set<string>();
-  let index = 1;
+  let m: RegExpExecArray | null;
 
-  for (const match of matches) {
-    if (!seen.has(match[0])) {
-      const key = `${index}`;
-      variables[key] = `Example ${index}`;
-      exampleValues.push(`Example ${index}`);
-      seen.add(match[0]);
-      index++;
+  while ((m = re.exec(template)) !== null) {
+    const name = m[1];
+    if (!seen.has(name)) {
+      seen.add(name);
+      orderedNames.push(name);
     }
   }
 
-  return { variables, exampleValues };
+  // Deterministic sample generation (tweak as needed)
+  const variables: Record<string, string> = {};
+  const row: string[] = [];
+  orderedNames.forEach((name, i) => {
+    const sample = /amount|price|total/i.test(name)
+      ? "R150"
+      : /balance/i.test(name)
+        ? "0"
+        : /shop/i.test(name)
+          ? "Test Shop"
+          : /name/i.test(name)
+            ? "Tsepo"
+            : "Example " + (i + 1);
+    variables[name] = sample;
+    row.push(sample);
+  });
+
+  return { orderedNames, variables, examplesMatrix: row.length ? [row] : [] };
 }
 
 /**
- *
+ * Soft validation for common WA format pitfalls. We only log warnings, do not block.
+ * @param {string} body - WhatsApp template body text to validate.
+ * @return {string[]} warnings - List of non-blocking warning messages.
+ */
+function validateWhatsAppBody(body: string): string[] {
+  const warnings: string[] = [];
+  const startsWithVar = /^\s*{{\s*[A-Za-z0-9_]+\s*}}/.test(body);
+  // Ends with a bare variable (no trailing non-space punctuation)
+  const endsWithVar = /{{\s*[A-Za-z0-9_]+\s*}}\s*$/.test(body);
+  const adjacentVars = /{{\s*[A-Za-z0-9_]+\s*}}\s+{{\s*[A-Za-z0-9_]+\s*}}/.test(
+    body,
+  );
+
+  if (startsWithVar)
+    warnings.push("Body starts with a variable; ensure samples are provided.");
+  if (endsWithVar)
+    warnings.push(
+      "Body ends with a variable; add punctuation so it doesn't end on a placeholder.",
+    );
+  if (adjacentVars)
+    warnings.push("Body has adjacent variables; ensure samples are provided.");
+  return warnings;
+}
+
+function ensureNonVariableEnding(body: string): string {
+  // If the body ends with a bare variable, add a period to avoid WA review issues
+  if (/{{\s*[A-Za-z0-9_]+\s*}}\s*$/.test(body)) {
+    return body + ".";
+  }
+  return body;
+}
+
+/**
  * Submits a newly created WhatsApp template to Twilio's Content API for approval.
  * Automatically triggers when a new template is created in Firestore under messagingTemplates.
- * */
+ */
 exports.submitWhatsAppTemplate = functions.firestore
   .document("messagingTemplates/{templateId}")
   .onCreate(async (snap: firestore.DocumentSnapshot, context) => {
@@ -105,8 +109,14 @@ exports.submitWhatsAppTemplate = functions.firestore
       return;
     }
 
-    const { normalized: content } = normalizeTemplateContent(rawContent);
-    const { variables, exampleValues } = extractTwilioVariables(content);
+    // Keep named placeholders as-is, but ensure we don't end on a variable
+    const content = ensureNonVariableEnding(rawContent);
+    const { variables, examplesMatrix } = parseNamedVariables(content);
+
+    // Soft warnings (log only)
+    for (const w of validateWhatsAppBody(content)) {
+      console.warn(`[WA template warning] ${w}`);
+    }
 
     const twilioAuth = {
       username: functions.config().twilio.sid,
@@ -120,15 +130,13 @@ exports.submitWhatsAppTemplate = functions.firestore
       types: {
         "twilio/text": { body: content },
         ...(mediaUrl && {
-          "twilio/media": {
-            body: content,
-            media: [mediaUrl],
-          },
+          "twilio/media": { body: content, media: [mediaUrl] },
         }),
       },
       ...(Object.keys(variables).length > 0 && { variables }),
     };
 
+    let approvalPayload: any;
     try {
       const createRes = await axios.post(
         "https://content.twilio.com/v1/Content",
@@ -141,19 +149,14 @@ exports.submitWhatsAppTemplate = functions.firestore
       const sid = createRes.data.sid;
       console.log("✅ Template created:", sid);
 
-      const approvalPayload: any = {
+      approvalPayload = {
         name: templateData.name.toLowerCase().replace(/\s+/g, "_"),
         category: "MARKETING",
       };
 
-      if (exampleValues.length > 0) {
+      if (examplesMatrix.length) {
         approvalPayload.components = [
-          {
-            type: "BODY",
-            example: {
-              body_text: [exampleValues],
-            },
-          },
+          { type: "BODY", example: { body_text: examplesMatrix } },
         ];
       }
 
@@ -174,6 +177,10 @@ exports.submitWhatsAppTemplate = functions.firestore
       console.error(
         "❌ Template creation or approval failed:",
         err.response?.data || err.message,
+      );
+      console.error(
+        "Payloads:",
+        JSON.stringify({ createPayload, approvalPayload }, null, 2),
       );
 
       await db
