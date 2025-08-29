@@ -56,7 +56,7 @@ class ContentStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Hi [Customer Name],',
+        const Text('Hello [Customer Name],',
             style: TextStyle(fontStyle: FontStyle.italic)),
         SizedBox(height: SizeConfig.heightMultiplier * 1),
         TextFormField(
@@ -74,9 +74,12 @@ class ContentStep extends StatelessWidget {
           ),
           validator: (val) => val == null || val.isEmpty || val.trim().isEmpty
               ? 'Message Body is required'
-              : null,
+           : null,
         ),
-        Text('\nFrom $shopName',
+        const SizedBox(height: 8),
+        const Text('Kind regards,',
+            style: TextStyle(fontStyle: FontStyle.italic)),
+        Text('The $shopName team',
             style: const TextStyle(fontStyle: FontStyle.italic)),
         Divider(
           color: Colors.grey,

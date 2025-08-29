@@ -20,6 +20,10 @@ module.exports = {
     "prettier/prettier": "warn", // This will show prettier formatting errors as ESLint errors
     "linebreak-style": 0,
     "import/no-unresolved": 0,
+    // Disable JSDoc validation coming from the Google config
+    "valid-jsdoc": "off",
+    // Optionally disable requiring JSDoc presence as well
+    // "require-jsdoc": "off",
   },
   ignorePatterns: [
     "/lib/**/*", // Ignore built files.
