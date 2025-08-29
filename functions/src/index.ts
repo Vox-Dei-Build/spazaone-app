@@ -71,3 +71,5 @@ export * from "./ecommerce/onSaleCancelledNotify";
 export * from "./ecommerce/cancelOrder";
 export * from "./ecommerce/finalizeOnlinePaid";
 export * from "./ecommerce/getOnlineSalesFromLedger";
+export * from "./ecommerce/getShopContextBotHttp";
+export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";

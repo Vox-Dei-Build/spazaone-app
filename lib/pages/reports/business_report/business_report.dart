@@ -5,7 +5,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_stream_builder_section.dart';
 import 'package:pasella/pages/reports/business_report/view_model/business_report_view_model.dart';
-import 'package:pasella/pages/reports/widgets/report_calendar_view.dart';
+import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/metric_tile.dart';
@@ -169,12 +169,16 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                       ),
                     ),
                     if (_selectedView == ReportView.summary) ...[
-                      ReportCalendarView(
+                      DateFilterBar(
                         selectedDay: _selectedDay,
                         startDate: _startDate,
                         endDate: _endDate,
-                        onDateSelected: _onDateSelected,
-                        onDateRangeSelected: _onDateRangeSelected,
+                        onDaySelect: (d) {
+                          _onDateSelected(d);
+                        },
+                        onRangeSelect: (s, e) {
+                          _onDateRangeSelected(s, e);
+                        },
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       LedgerStreamBuilderSection(
