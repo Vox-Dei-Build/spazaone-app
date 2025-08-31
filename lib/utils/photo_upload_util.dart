@@ -1,33 +1,26 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:pasella/config/size_config.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
 
 class PhotoUploadUtil {
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   Future<File?> pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source);
-    if (pickedFile != null) {
-      return File(pickedFile.path);
-    }
-    return null;
+    final picked = await picker.pickImage(source: source);
+    return picked != null ? File(picked.path) : null;
   }
 
   Future<File?> compressImage(File file) async {
-    final ext =
-        path.extension(file.path).toLowerCase(); // .jpg, .jpeg, .png, etc.
+    final ext = path.extension(file.path).toLowerCase();
     final dir = await getTemporaryDirectory();
 
-    // Determine correct format & extension
     late CompressFormat format;
     late String targetExt;
-
     if (ext == '.jpg' || ext == '.jpeg') {
       format = CompressFormat.jpeg;
       targetExt = '.jpg';
@@ -41,7 +34,7 @@ class PhotoUploadUtil {
 
     final fileName =
         'compressed_${DateTime.now().millisecondsSinceEpoch}$targetExt';
-    final targetPath = path.join(dir.absolute.path, fileName);
+    final targetPath = path.join(dir.path, fileName);
 
     final result = await FlutterImageCompress.compressAndGetFile(
       file.absolute.path,
@@ -49,46 +42,59 @@ class PhotoUploadUtil {
       quality: 75,
       format: format,
     );
-
     return result != null ? File(result.path) : null;
   }
 
+  // NEW: infer content type from extension
+  String _inferContentType(String uploadPath) {
+    final ext = path.extension(uploadPath).toLowerCase();
+    if (ext == '.png') return 'image/png';
+    return 'image/jpeg'; // default
+  }
+
+  /// Upload with correct Content-Type (critical for WhatsApp)
   Future<String?> uploadImage(File imageFile, String uploadPath) async {
     try {
-      final file = await _storage.ref(uploadPath).putFile(imageFile);
-      return await file.ref.getDownloadURL();
+      // Ensure path has a proper extension (default .jpg)
+      var fixedPath = uploadPath;
+      final ext = path.extension(uploadPath).toLowerCase();
+      if (ext != '.jpg' && ext != '.jpeg' && ext != '.png') {
+        fixedPath = '$uploadPath.jpg';
+      }
+
+      final contentType = _inferContentType(fixedPath);
+      final ref = _storage.ref(fixedPath);
+
+      final task = await ref.putFile(
+        imageFile,
+        SettableMetadata(
+          contentType: contentType,
+          cacheControl: 'public, max-age=86400',
+        ),
+      );
+
+      return await task.ref.getDownloadURL();
     } catch (e) {
-      print('Failed to upload image: $e');
+      debugPrint('Failed to upload image: $e');
       return null;
     }
   }
 
   Future<bool?> showCameraOrGalleryPicker(BuildContext context) async {
-    return await showDialog<bool>(
+    return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Select an option',
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
+        title: const Text('Select an option'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop(true);
-              },
-              child: Text("Camera",
-                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
-            ),
-            const SizedBox(height: 20),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Camera')),
+            const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop(false);
-              },
-              child: Text("Gallery",
-                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
-            ),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Gallery')),
           ],
         ),
       ),
@@ -97,17 +103,17 @@ class PhotoUploadUtil {
 
   Future<void> handleImagePick(
       BuildContext context, Function(File?) onImagePicked) async {
-    bool? isCamera = await showCameraOrGalleryPicker(context);
-    if (isCamera != null) {
-      ImageSource source = isCamera ? ImageSource.camera : ImageSource.gallery;
-      File? pickedImage = await pickImage(source);
+    final isCamera = await showCameraOrGalleryPicker(context);
+    if (isCamera == null) return;
 
-      if (pickedImage != null) {
-        File? compressedImage = await compressImage(pickedImage);
-        onImagePicked(compressedImage);
-      } else {
-        onImagePicked(null);
-      }
+    final source = isCamera ? ImageSource.camera : ImageSource.gallery;
+    final picked = await pickImage(source);
+    if (picked == null) {
+      onImagePicked(null);
+      return;
     }
+
+    final compressed = await compressImage(picked);
+    onImagePicked(compressed);
   }
 }

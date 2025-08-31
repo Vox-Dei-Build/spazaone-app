@@ -9,6 +9,7 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 
+
 /* ---- Merchant Android App ---- */
 export * from "./config/main";
 export * from "./ledger/ledger";
@@ -73,3 +74,7 @@ export * from "./ecommerce/finalizeOnlinePaid";
 export * from "./ecommerce/getOnlineSalesFromLedger";
 export * from "./ecommerce/getShopContextBotHttp";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
+/* import { fixProductsContentType } from './utils/fix-content-type'
+
+export const fixPrefixContentTypeImpl = functions.runWith({ timeoutSeconds: 540, memory: '1GB' })
+  .https.onRequest(fixProductsContentType) */
