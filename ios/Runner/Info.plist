@@ -47,7 +47,41 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>NSContactsUsageDescription</key>
-  <string>This app requires contacts access to function properly.</string>
+        <key>NSContactsUsageDescription</key>
+        <string>This app requires contacts access to function properly.</string>
+        <key>NSCameraUsageDescription</key>
+        <string>This app requires camera access to capture photos.</string>
+        <key>NSPhotoLibraryUsageDescription</key>
+        <string>This app requires photo library access to choose photos.</string>
+        <key>NSPhotoLibraryAddUsageDescription</key>
+        <string>This app requires permission to save photos.</string>
+        <key>NSMicrophoneUsageDescription</key>
+        <string>This app uses the microphone to record audio.</string>
+        <key>NSUserTrackingUsageDescription</key>
+        <string>This identifier will be used to deliver personalized ads to you.</string>
+        <key>UIBackgroundModes</key>
+        <array>
+                <string>remote-notification</string>
+                <string>fetch</string>
+        </array>
+        <key>LSApplicationQueriesSchemes</key>
+        <array>
+                <string>tel</string>
+                <string>mailto</string>
+        </array>
+        <key>CFBundleURLTypes</key>
+        <array>
+                <dict>
+                        <key>CFBundleURLSchemes</key>
+                        <array>
+                                <string>pasella</string>
+                        </array>
+                </dict>
+        </array>
+        <key>branch_key</key>
+        <dict>
+                <key>live</key>
+                <string>BRANCH_LIVE_KEY_PLACEHOLDER</string>
+        </dict>
 </dict>
 </plist>
