@@ -11,12 +11,12 @@ if (flutterRoot == null) {
     throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
 }
 
-def flutterVersionCode = '33'
+def flutterVersionCode = '34'
 if (flutterVersionCode == null) {
     flutterVersionCode = '1'
 }
 
-def flutterVersionName = '2.2.1'
+def flutterVersionName = '3.0.0'
 if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
@@ -99,5 +99,8 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'androidx.multidex:multidex:2.0.1'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+
+    // Ensure Material Components classes are available for libraries (e.g., Smartlook)
+    implementation 'com.google.android.material:material:1.12.0'
 
 }
