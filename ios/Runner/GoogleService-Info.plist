@@ -3,12 +3,14 @@
 <plist version="1.0">
 <dict>
   <key>GOOGLE_APP_ID</key>
-  <string>1:1234567890:ios:abcdef123456</string>
+  <string>1:716158514645:ios:88161d9f2706e7c9e5795c</string>
   <key>GCM_SENDER_ID</key>
-  <string>1234567890</string>
+  <string>716158514645</string>
   <key>API_KEY</key>
-  <string>REPLACE_WITH_REAL_API_KEY</string>
+  <string>AIzaSyAyy6jOmbBsuleOKhvpWiTOYLn0kPE2vh8</string>
   <key>PROJECT_ID</key>
-  <string>pasella</string>
+  <string>pasella-ledger</string>
+  <key>BUNDLE_ID</key>
+  <string>com.tsepo.pasella</string>
 </dict>
 </plist>
