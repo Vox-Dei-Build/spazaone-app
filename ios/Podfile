@@ -1,5 +1,6 @@
 # Uncomment this line to define a global platform for your project
-platform :ios, '11.0'
+platform :ios, '13.0'
+use_frameworks! :linkage => :static
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -28,8 +29,6 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
-  use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
@@ -39,6 +38,77 @@ end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
+    # Required Flutter additional settings (search paths, bitcode, etc.)
     flutter_additional_ios_build_settings(target)
+    # Ensure consistent minimum iOS deployment target
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      # Force Swift 5 for all Pods to avoid Swift 6 mode issues on Xcode 15/16
+      config.build_settings['SWIFT_VERSION'] = '5.0'
+      # Relax strict concurrency checks for legacy pods
+      config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+    end
+  end
+
+  # Temporary patch for url_launcher_ios 6.2.4 and Xcode 15+ Swift concurrency
+  # Adds @MainActor @Sendable to the completion handler to match UIApplication.open
+  begin
+    candidates = []
+    # Symlinked plugin path used by CocoaPods
+    candidates += Dir.glob(File.expand_path('../.symlinks/plugins/url_launcher_ios*/ios/Classes/Launcher.swift', __dir__))
+    # Pub cache path(s) that populate the symlink
+    candidates += Dir.glob(File.expand_path('~/.pub-cache/hosted/pub.dev/url_launcher_ios-*/ios/Classes/Launcher.swift', __dir__))
+    candidates.uniq.each do |launcher_path|
+      if File.exist?(launcher_path)
+        content = File.read(launcher_path)
+        fixed = content.gsub(
+          'completionHandler completion: ((Bool) -> Void)?',
+          'completionHandler completion: (@MainActor @Sendable (Bool) -> Void)?'
+        )
+        fixed = fixed.gsub(
+          /^protocol Launcher \{/, # only add once
+          '@preconcurrency protocol Launcher {'
+        )
+        if content != fixed
+          File.write(launcher_path, fixed)
+          puts "Patched url_launcher_ios Launcher.swift at: #{launcher_path}"
+        end
+      end
+    end
+  rescue => e
+    puts "Warning: failed to patch url_launcher_ios Launcher.swift: #{e}"
+  end
+
+  # Patch FirebaseStorage optional existentials under Swift 6 toolchain by force-unwrapping
+  # the optional providers returned by ComponentType.instance(...)
+  begin
+    storage_paths = Dir.glob(File.expand_path('../Pods/FirebaseStorage/FirebaseStorage/Sources/Storage.swift', __dir__))
+    storage_paths.each do |p|
+      next unless File.exist?(p)
+      content = File.read(p)
+      fixed = content
+        .gsub(
+          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)',
+          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)!'
+        )
+        .gsub(
+          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)\n    return provider.storage(for: Storage.bucket(for: app, urlString: url))',
+          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)!\n    return provider.storage(for: Storage.bucket(for: app, urlString: url))'
+        )
+        .gsub(
+          'auth = ComponentType<AuthInterop>.instance(for: AuthInterop.self,\n                                               in: app.container)',
+          'auth = ComponentType<AuthInterop>.instance(for: AuthInterop.self,\n                                               in: app.container)!'
+        )
+        .gsub(
+          'appCheck = ComponentType<AppCheckInterop>.instance(for: AppCheckInterop.self,\n                                                       in: app.container)',
+          'appCheck = ComponentType<AppCheckInterop>.instance(for: AppCheckInterop.self,\n                                                       in: app.container)!'
+        )
+      if fixed != content
+        File.write(p, fixed)
+        puts "Patched FirebaseStorage Storage.swift to unwrap optional providers."
+      end
+    end
+  rescue => e
+    puts "Warning: failed to patch FirebaseStorage Storage.swift: #{e}"
   end
 end
