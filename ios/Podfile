@@ -5,6 +5,10 @@ use_frameworks! :linkage => :static
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# Pin Firebase iOS SDK to a version known to work with this toolchain.
+# You can adjust this to a newer minor if needed.
+$FirebaseSDKVersion = '10.22.0'
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
@@ -80,35 +84,55 @@ post_install do |installer|
   end
 
   # Patch FirebaseStorage optional existentials under Swift 6 toolchain by force-unwrapping
-  # the optional providers returned by ComponentType.instance(...)
+  # ComponentType.instance(...) results. Idempotent and resilient to whitespace/format changes.
   begin
     storage_paths = Dir.glob(File.expand_path('../Pods/FirebaseStorage/FirebaseStorage/Sources/Storage.swift', __dir__))
     storage_paths.each do |p|
       next unless File.exist?(p)
       content = File.read(p)
-      fixed = content
-        .gsub(
-          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)',
-          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)!'
-        )
-        .gsub(
-          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)\n    return provider.storage(for: Storage.bucket(for: app, urlString: url))',
-          'let provider = ComponentType<StorageProvider>.instance(for: StorageProvider.self,                                                           in: app.container)!\n    return provider.storage(for: Storage.bucket(for: app, urlString: url))'
-        )
-        .gsub(
-          'auth = ComponentType<AuthInterop>.instance(for: AuthInterop.self,\n                                               in: app.container)',
-          'auth = ComponentType<AuthInterop>.instance(for: AuthInterop.self,\n                                               in: app.container)!'
-        )
-        .gsub(
-          'appCheck = ComponentType<AppCheckInterop>.instance(for: AppCheckInterop.self,\n                                                       in: app.container)',
-          'appCheck = ComponentType<AppCheckInterop>.instance(for: AppCheckInterop.self,\n                                                       in: app.container)!'
-        )
-      if fixed != content
-        File.write(p, fixed)
-        puts "Patched FirebaseStorage Storage.swift to unwrap optional providers."
+      patched = content.dup
+
+      # StorageProvider lines (both storage(app:) and storage(app:url:))
+      patched.gsub!(/(ComponentType<StorageProvider>\.instance\(for:\s*StorageProvider\.self,\s*in:\s*app\.container\))(?!\s*!)/m, '\\1!')
+
+      # Initializer assignments for AuthInterop and AppCheckInterop
+      patched.gsub!(/(ComponentType<AuthInterop>\.instance\(for:\s*AuthInterop\.self,\s*in:\s*app\.container\))(?!\s*!)/m, '\\1!')
+      patched.gsub!(/(ComponentType<AppCheckInterop>\.instance\(for:\s*AppCheckInterop\.self,\s*in:\s*app\.container\))(?!\s*!)/m, '\\1!')
+
+      # Fallback: if provider is still optional, force unwrap at use sites
+      patched.gsub!(/return\s+provider\.storage\(/, 'return provider!.storage(')
+
+      # Fallback: ensure assignment lines unwrap the instance results
+      patched.gsub!(/(auth\s*=\s*ComponentType<AuthInterop>\.instance\([^\)]*\))(?!\s*!)/m, '\\1!')
+      patched.gsub!(/(appCheck\s*=\s*ComponentType<AppCheckInterop>\.instance\([^\)]*\))(?!\s*!)/m, '\\1!')
+
+      if patched != content
+        File.write(p, patched)
+        puts "Patched FirebaseStorage optional providers in #{p}"
+      else
+        puts "FirebaseStorage already patched or pattern not found at #{p}"
       end
     end
   rescue => e
     puts "Warning: failed to patch FirebaseStorage Storage.swift: #{e}"
   end
+
+  # --- NEW: Remove '-GCC_WARN_INHIBIT_ALL_WARNINGS' from BoringSSL-GRPC compile flags ---
+  begin
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'BoringSSL-GRPC'
+      target.source_build_phase.files.each do |file|
+        if file.settings && file.settings['COMPILER_FLAGS']
+          flags = file.settings['COMPILER_FLAGS'].split
+          flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
+          file.settings['COMPILER_FLAGS'] = flags.join(' ')
+        end
+      end
+    end
+    puts "Cleaned compiler flags for BoringSSL-GRPC"
+  rescue => e
+    puts "Warning: failed to adjust BoringSSL-GRPC compiler flags: #{e}"
+  end
+  # --- END NEW ---
+
 end
