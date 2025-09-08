@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_branch_sdk/flutter_branch_sdk.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/app_imports.dart';
 import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
@@ -21,40 +20,20 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   late AuthViewModel authViewModel;
-  StreamSubscription<Map>? streamSubscriptionDeepLink;
+  // Deep link subscription removed along with Branch SDK.
 
   @override
   void initState() {
     super.initState();
     authViewModel = AuthViewModel();
-    // Initialize deep link listening only if user is not already logged in
-    Future.delayed(Duration.zero, () {
-      if (FirebaseAuth.instance.currentUser == null) {
-        listenDeepLinkData(context);
-      }
-    });
+    // Deep link listening via Branch removed.
   }
 
   @override
   void dispose() {
     authViewModel.dispose();
     super.dispose();
-    streamSubscriptionDeepLink?.cancel();
-  }
-
-  void listenDeepLinkData(BuildContext context) async {
-    streamSubscriptionDeepLink = FlutterBranchSdk.initSession().listen((data) {
-      if (data.containsKey("+clicked_branch_link") &&
-          data["+clicked_branch_link"] == true) {
-        var referrerUserId = data['userId'];
-        print("Referrer User ID: $referrerUserId");
-        // Save referrerUserId for later use when the user decides to register
-        saveDeepLinkData(referrerUserId);
-      }
-    }, onError: (error) {
-      PlatformException platformException = error as PlatformException;
-      print('${platformException.code} - ${platformException.message}');
-    });
+    // No deep link subscription to cancel.
   }
 
   Future<void> saveDeepLinkData(String referrerUserId) async {
