@@ -1,15 +1,12 @@
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:flutter_branch_sdk/flutter_branch_sdk.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/settings/share/widget/referral_dashboard.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
-import 'package:pasella/utils/phone_util.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -23,8 +20,6 @@ class SharePage extends StatefulWidget {
 
 class _SharePageState extends State<SharePage> {
   String? referralLink;
-  BranchUniversalObject? buo;
-  BranchLinkProperties lp = BranchLinkProperties();
   final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
   int referralCount = 0;
 
@@ -35,7 +30,8 @@ class _SharePageState extends State<SharePage> {
   void initState() {
     super.initState();
     fetchUserData();
-    initializeDeepLinkData().then((value) => generateReferralLink());
+    // Load any previously generated referral link; otherwise share without a link.
+    generateReferralLink();
   }
 
   void fetchUserData() async {
@@ -57,39 +53,6 @@ class _SharePageState extends State<SharePage> {
     } catch (e) {
       print("Error fetching referral count: $e");
     }
-  }
-
-  Future<void> initializeDeepLinkData() async {
-    String shopName = await fetchShopNameForUser(userId) ?? '';
-    String mobileNumber = await fetchNumberForUser(userId) ?? '';
-    String name = await fetchNameForUser(userId) ?? '';
-
-    String title = name != ''
-        ? "$name invites you to join Pasella!"
-        : "Join Pasella and support the movement!";
-
-    buo = BranchUniversalObject(
-      canonicalIdentifier: "flutter/branch",
-      title: title,
-      contentDescription: constructShareMessage(),
-      imageUrl:
-          'https://res.cloudinary.com/duz53ygxp/image/upload/v1699541340/Pasella_512x512_dark.png',
-      contentMetadata: BranchContentMetaData()
-        ..addCustomMetadata('userId', userId)
-        ..addCustomMetadata('shopName', shopName)
-        ..addCustomMetadata('mobileNumber', mobileNumber),
-    );
-
-    FlutterBranchSdk.registerView(buo: buo!);
-
-    lp = BranchLinkProperties(
-      channel: 'social',
-      feature: 'referral',
-      campaign: 'boost_referral_program',
-      stage: 'level_1',
-      alias: shopName,
-      tags: ['pasella', 'referral', shopName, name],
-    );
   }
 
   String constructShareMessage() {
@@ -127,17 +90,11 @@ class _SharePageState extends State<SharePage> {
       return;
     }
 
-    BranchResponse response =
-        await FlutterBranchSdk.getShortUrl(buo: buo!, linkProperties: lp);
-    if (response.success) {
-      setState(() {
-        referralLink = response.result;
-      });
-      await linkRef.set(
-          {'link': referralLink, 'createdAt': FieldValue.serverTimestamp()});
-    } else {
-      print('Failed to generate referral link: ${response.errorMessage}');
-    }
+    // No longer generating new referral links via Branch SDK.
+    // If no existing link is found, share message will not include a link.
+    setState(() {
+      referralLink = null;
+    });
   }
 
   void shareToWhatsApp(String message) async {
@@ -194,49 +151,41 @@ class _SharePageState extends State<SharePage> {
                   style: TextStyle(fontSize: subtitleSize),
                 ),
                 SizedBox(height: spacing),
-                referralLink == null
-                    ? Text(
-                        "Generating your unique referral link... Please wait...",
-                        style:
-                            TextStyle(fontSize: textSize, color: Colors.black))
-                    : InkWell(
-                        onTap: () {
-                          Clipboard.setData(
-                              ClipboardData(text: referralLink ?? ''));
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text(
-                                  'Referral link copied to clipboard!',
-                                  style: TextStyle(fontSize: textSize))));
-                        },
-                        child: Text(
-                          referralLink ?? '',
-                          style: TextStyle(
-                              fontSize: textSize,
-                              color: Colors.blue,
-                              decoration: TextDecoration.underline),
-                        ),
-                      ),
+                if (referralLink != null)
+                  InkWell(
+                    onTap: () {
+                      Clipboard.setData(
+                          ClipboardData(text: referralLink ?? ''));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Referral link copied to clipboard!',
+                              style: TextStyle(fontSize: textSize))));
+                    },
+                    child: Text(
+                      referralLink ?? '',
+                      style: TextStyle(
+                          fontSize: textSize,
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline),
+                    ),
+                  ),
                 SizedBox(height: spacing),
-                if (referralLink != null) ...[
-                  ElevatedButton.icon(
-                    icon: Icon(
-                      Icons.share,
-                      size: textSize,
-                    ),
-                    label: Text('Share Link',
-                        style: TextStyle(fontSize: textSize)),
-                    onPressed: () => Share.share(detailedMessage),
+                // Always allow sharing; message includes link only if available.
+                ElevatedButton.icon(
+                  icon: Icon(
+                    Icons.share,
+                    size: textSize,
                   ),
-                  ElevatedButton.icon(
-                    icon: Icon(
-                      FontAwesomeIcons.whatsapp,
-                      size: textSize,
-                    ),
-                    label:
-                        Text('WhatsApp', style: TextStyle(fontSize: textSize)),
-                    onPressed: () => shareToWhatsApp(detailedMessage),
+                  label: Text('Share', style: TextStyle(fontSize: textSize)),
+                  onPressed: () => Share.share(detailedMessage),
+                ),
+                ElevatedButton.icon(
+                  icon: Icon(
+                    FontAwesomeIcons.whatsapp,
+                    size: textSize,
                   ),
-                ],
+                  label: Text('WhatsApp', style: TextStyle(fontSize: textSize)),
+                  onPressed: () => shareToWhatsApp(detailedMessage),
+                ),
                 Padding(
                   padding: EdgeInsets.all(SizeConfig.blockSizeVertical),
                   child: InkWell(

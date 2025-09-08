@@ -38,21 +38,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Branch Deeplinking Intent Filters -->
-            <intent-filter>
-                <data android:scheme="pasella" />
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-            </intent-filter>
-
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="@string/deeplink_live_link" />
-                <data android:scheme="https" android:host="@string/deeplink_alternate_live_link" />
-            </intent-filter>
+            <!-- Removed Branch Deeplinking intent filters -->
 
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -62,13 +48,7 @@
             </intent-filter>
         </activity>
 
-
-        <!-- Branch Live Deeplinking -->
-        <meta-data android:name="io.branch.sdk.BranchKey"
-            android:value="@string/branch_io_sdk_live_branch_key" />
-        <meta-data android:name="io.branch.sdk.BranchKey.test"
-            android:value="@string/branch_io_sdk_live_branch_secret" />
-        <meta-data android:name="io.branch.sdk.TestMode" android:value="false" />
+        <!-- Removed Branch Live Deeplinking configuration -->
 
 
         <!-- Don't delete the meta-data below.
