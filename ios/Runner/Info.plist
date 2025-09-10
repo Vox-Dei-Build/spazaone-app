@@ -69,6 +69,20 @@
                 <string>tel</string>
                 <string>mailto</string>
         </array>
+        
+        <!-- Firebase Auth phone verification callback URL scheme -->
+        <key>CFBundleURLTypes</key>
+        <array>
+                <dict>
+                        <key>CFBundleTypeRole</key>
+                        <string>Editor</string>
+                        <key>CFBundleURLSchemes</key>
+                        <array>
+                                <!-- Derived from GOOGLE_APP_ID in GoogleService-Info.plist with colons replaced by dashes -->
+                                <string>app-1-716158514645-ios-88161d9f2706e7c9e5795c</string>
+                        </array>
+                </dict>
+        </array>
         <!-- Removed Branch URL scheme and key -->
 </dict>
 </plist>

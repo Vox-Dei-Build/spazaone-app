@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class PhotoUploadUtil {
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -27,6 +28,10 @@ class PhotoUploadUtil {
     } else if (ext == '.png') {
       format = CompressFormat.png;
       targetExt = '.png';
+    } else if (ext == '.heic' || ext == '.heif') {
+      // Convert HEIC/HEIF (common from iOS camera) to JPEG for compatibility
+      format = CompressFormat.jpeg;
+      targetExt = '.jpg';
     } else {
       debugPrint('Unsupported image format: $ext');
       return null;
@@ -41,6 +46,7 @@ class PhotoUploadUtil {
       targetPath,
       quality: 75,
       format: format,
+      keepExif: true,
     );
     return result != null ? File(result.path) : null;
   }
@@ -105,6 +111,22 @@ class PhotoUploadUtil {
       BuildContext context, Function(File?) onImagePicked) async {
     final isCamera = await showCameraOrGalleryPicker(context);
     if (isCamera == null) return;
+
+    // If using the camera, ensure runtime permission is granted (Android)
+    if (isCamera) {
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Camera permission is required.')),
+        );
+        // Optionally guide user to settings if permanently denied
+        if (status.isPermanentlyDenied) {
+          await openAppSettings();
+        }
+        onImagePicked(null);
+        return;
+      }
+    }
 
     final source = isCamera ? ImageSource.camera : ImageSource.gallery;
     final picked = await pickImage(source);
