@@ -15,6 +15,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
+import 'package:pasella/utils/permission_prompt.dart';
 
 class AddContactPage extends StatelessWidget {
   const AddContactPage({super.key});
@@ -43,52 +44,44 @@ class AddContactPage extends StatelessWidget {
                               children: [
                                 CustomButton(
                                   onTap: () async {
-                                    PermissionStatus status =
-                                        await Permission.contacts.status;
+                                    final granted = await ensurePermission(
+                                      context,
+                                      Permission.contacts,
+                                      title: 'Contacts Permission Needed',
+                                      message:
+                                          'To pick a contact, please allow contacts access in Settings.',
+                                    );
 
-                                    if (status.isDenied) {
-                                      status =
-                                          await Permission.contacts.request();
-                                    }
+                                    if (!granted) return;
 
-                                    if (status.isGranted) {
-                                      try {
-                                        Contact? contact = await ContactsService
-                                            .openDeviceContactPicker();
-                                        if (contact != null) {
-                                          String? phoneNumber =
-                                              contact.phones?.first.value;
-                                          if (phoneNumber != null &&
-                                              phoneNumber.isNotEmpty) {
-                                            viewModel.nameController.text =
-                                                contact.displayName ?? '';
-                                            viewModel.numberController.text =
-                                                phoneNumber;
-                                          } else {
-                                            SchedulerBinding.instance
-                                                .addPostFrameCallback((_) {
-                                              showErrorSnackBar(context,
-                                                  "This contact does not have a number.",
-                                                  isWarning: true);
-                                            });
-                                          }
+                                    try {
+                                      Contact? contact = await ContactsService
+                                          .openDeviceContactPicker();
+                                      if (contact != null) {
+                                        String? phoneNumber =
+                                            contact.phones?.first.value;
+                                        if (phoneNumber != null &&
+                                            phoneNumber.isNotEmpty) {
+                                          viewModel.nameController.text =
+                                              contact.displayName ?? '';
+                                          viewModel.numberController.text =
+                                              phoneNumber;
+                                        } else {
+                                          SchedulerBinding.instance
+                                              .addPostFrameCallback((_) {
+                                            showErrorSnackBar(context,
+                                                "This contact does not have a number.",
+                                                isWarning: true);
+                                          });
                                         }
-                                      } catch (e) {
-                                        SchedulerBinding.instance
-                                            .addPostFrameCallback((_) {
-                                          showErrorSnackBar(
-                                            context,
-                                            "Failed to get contact :(",
-                                            isWarning: true,
-                                          );
-                                        });
                                       }
-                                    } else {
+                                    } catch (e) {
                                       SchedulerBinding.instance
                                           .addPostFrameCallback((_) {
                                         showErrorSnackBar(
                                           context,
-                                          "Contacts permission not granted :(",
+                                          "Failed to get contact :(",
+                                          isWarning: true,
                                         );
                                       });
                                     }

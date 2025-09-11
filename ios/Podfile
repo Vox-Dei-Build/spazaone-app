@@ -51,6 +51,12 @@ post_install do |installer|
       config.build_settings['SWIFT_VERSION'] = '5.0'
       # Relax strict concurrency checks for legacy pods
       config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+      # Ensure dSYM generation for Release/Profile to include symbols in archives
+      if config.name == 'Release' || config.name == 'Profile'
+        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+      else
+        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf'
+      end
     end
   end
 
