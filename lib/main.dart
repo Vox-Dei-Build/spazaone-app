@@ -21,7 +21,6 @@ import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter_smartlook/flutter_smartlook.dart';
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
@@ -120,15 +119,10 @@ Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
 
 Future<void> _initializeRemoteConfigAndSmartlook() async {
   try {
-    final remoteConfigService = await RemoteConfigService.getInstance();
-
-    String projectKey = remoteConfigService.getString('SMARTLOOK_PROJECT_KEY');
-
-    final Smartlook smartlook = Smartlook.instance;
-    smartlook.start();
-    smartlook.preferences.setProjectKey(projectKey);
+    // Keep Remote Config initialization; Smartlook is disabled/removed.
+    await RemoteConfigService.getInstance();
   } catch (e) {
-    print("Error initializing Remote Config or Smartlook: $e");
+    print("Error initializing Remote Config: $e");
   }
 }
 

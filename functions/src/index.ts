@@ -9,7 +9,6 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 
-
 /* ---- Merchant Android App ---- */
 export * from "./config/main";
 export * from "./ledger/ledger";
@@ -35,6 +34,7 @@ export * from "./community/status-callback";
 export * from "./customer_hub/addCredit";
 export * from "./customer_hub/fetchUserBalance";
 export * from "./customer_hub/fetchTransactionHistory";
+export * from "./customer_hub/fetchMerchantCandidates";
 
 /* ---- Merchant Bot ---- */
 export * from "./merchant_hub/order/airtime/createAirtimeOrder";

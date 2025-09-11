@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -20,10 +22,45 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>app-1-716158514645-ios-17eba128d70a92a7e5795c</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>mailto</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access to capture photos.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>This app requires contacts access to function properly.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app uses the microphone to record audio.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app requires permission to save photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app requires photo library access to choose photos.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>This identifier will be used to deliver personalized ads to you.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -43,46 +80,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-        <key>NSContactsUsageDescription</key>
-        <string>This app requires contacts access to function properly.</string>
-        <key>NSCameraUsageDescription</key>
-        <string>This app requires camera access to capture photos.</string>
-        <key>NSPhotoLibraryUsageDescription</key>
-        <string>This app requires photo library access to choose photos.</string>
-        <key>NSPhotoLibraryAddUsageDescription</key>
-        <string>This app requires permission to save photos.</string>
-        <key>NSMicrophoneUsageDescription</key>
-        <string>This app uses the microphone to record audio.</string>
-        <key>NSUserTrackingUsageDescription</key>
-        <string>This identifier will be used to deliver personalized ads to you.</string>
-        <key>UIBackgroundModes</key>
-        <array>
-                <string>remote-notification</string>
-                <string>fetch</string>
-        </array>
-        <key>LSApplicationQueriesSchemes</key>
-        <array>
-                <string>tel</string>
-                <string>mailto</string>
-        </array>
-        
-        <!-- Firebase Auth phone verification callback URL scheme -->
-        <key>CFBundleURLTypes</key>
-        <array>
-                <dict>
-                        <key>CFBundleTypeRole</key>
-                        <string>Editor</string>
-                        <key>CFBundleURLSchemes</key>
-                        <array>
-                                <!-- Derived from GOOGLE_APP_ID in GoogleService-Info.plist with colons replaced by dashes -->
-                                <string>app-1-716158514645-ios-88161d9f2706e7c9e5795c</string>
-                        </array>
-                </dict>
-        </array>
-        <!-- Removed Branch URL scheme and key -->
 </dict>
 </plist>

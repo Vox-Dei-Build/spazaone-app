@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:pasella/utils/permission_prompt.dart';
 
 class PhotoUploadUtil {
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -112,17 +113,16 @@ class PhotoUploadUtil {
     final isCamera = await showCameraOrGalleryPicker(context);
     if (isCamera == null) return;
 
-    // If using the camera, ensure runtime permission is granted (Android)
+    // Ensure camera permission; if denied, prompt to open Settings.
     if (isCamera) {
-      final status = await Permission.camera.request();
-      if (!status.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Camera permission is required.')),
-        );
-        // Optionally guide user to settings if permanently denied
-        if (status.isPermanentlyDenied) {
-          await openAppSettings();
-        }
+      final granted = await ensurePermission(
+        context,
+        Permission.camera,
+        title: 'Camera Permission Needed',
+        message:
+            'To take a photo, please allow camera access in Settings.',
+      );
+      if (!granted) {
         onImagePicked(null);
         return;
       }
