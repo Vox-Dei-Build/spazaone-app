@@ -51,6 +51,14 @@ post_install do |installer|
       config.build_settings['SWIFT_VERSION'] = '5.0'
       # Relax strict concurrency checks for legacy pods
       config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+      defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+      defs = Array(defs)
+      defs << '$(inherited)'
+      defs << 'PERMISSION_CAMERA=1'
+      defs << 'PERMISSION_CONTACTS=1'
+      defs << 'PERMISSION_PHOTOS=1'
+      defs << 'PERMISSION_PHOTOS_ADD_ONLY=1'
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs.uniq
       # Ensure dSYM generation for Release/Profile to include symbols in archives
       if config.name == 'Release' || config.name == 'Profile'
         config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'

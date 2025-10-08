@@ -11,6 +11,7 @@ import 'package:pasella/pages/wallet/wallet.dart';
 
 import '../../shared/widgets/custom_app_bar.dart';
 import 'share/share.dart';
+import 'delete/delete_account_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -60,6 +61,15 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.wallet,
                           title: 'Billing',
                           subTitle: 'Manage your wallet and payments',
+                        ),
+                        SettingTile(
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            DeleteAccountPage.id,
+                          ),
+                          icon: Icons.delete_forever,
+                          title: 'Delete Account',
+                          subTitle: 'Permanently remove your data',
                         ),
                         SettingTile(
                           onTap: () async {

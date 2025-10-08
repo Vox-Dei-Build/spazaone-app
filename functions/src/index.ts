@@ -49,6 +49,7 @@ export * from "./merchant_hub/submitWhatsAppTemplate";
 export * from "./merchant_hub/checkTwilioApprovalStatuses";
 export * from "./merchant_hub/deleteTwilioTemplate";
 export * from "./merchant_hub/runMerchantPromotion";
+export * from "./services/deleteUserAccount";
 
 /* ---- Ecommerce ---- */
 export * from "./ecommerce/getProducts";

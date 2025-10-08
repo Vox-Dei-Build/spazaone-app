@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/utils/text_sanitizer.dart';
 
 import 'view_template/template_detail_page.dart';
 
@@ -38,15 +39,15 @@ class _TemplatesTabState extends State<TemplatesTab> {
       itemCount: templates.length,
       itemBuilder: (context, index) {
         final template = templates[index];
-        final name = template['name'] ?? "Untitled";
+        final name = sanitizeMalformedUtf16(template['name'] as String? ?? "Untitled");
         final channels = template['channels'] as Map<String, dynamic>? ?? {};
         final createdAt = template['createdAt']?.toDate();
         final formattedDate = createdAt != null
             ? DateFormat('MMM dd, yyyy').format(createdAt)
             : "Unknown";
 
-        final channelKeys =
-            channels.keys.map((key) => key.toUpperCase()).join(', ');
+        final channelKeys = sanitizeMalformedUtf16(
+            channels.keys.map((key) => key.toUpperCase()).join(', '));
         final approvalStatus =
             channels['whatsapp']?['approvalStatus'] ?? 'pending';
         String whatsappStatus;
@@ -69,6 +70,7 @@ class _TemplatesTabState extends State<TemplatesTab> {
             whatsappStatus = approvalStatus;
             statusColor = Colors.grey;
         }
+        whatsappStatus = sanitizeMalformedUtf16(whatsappStatus);
         final mediaUrl = channels['whatsapp']?['mediaUrl'];
 
         return Card(

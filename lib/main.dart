@@ -13,6 +13,7 @@ import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/settings/chat/chat_page.dart';
+import 'package:pasella/pages/settings/delete/delete_account_page.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
@@ -313,6 +314,7 @@ class MyApp extends StatelessWidget {
           BackupPage.id: (context) => const BackupPage(),
           HelpPage.id: (context) => const HelpPage(),
           SharePage.id: (context) => const SharePage(),
+          DeleteAccountPage.id: (context) => const DeleteAccountPage(),
           SalesPage.id: (context) => const SalesPage(),
           WalletPage.id: (context) => const WalletPage(),
           FindDefaulterPage.id: (context) => const FindDefaulterPage(),

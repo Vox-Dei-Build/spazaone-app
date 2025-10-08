@@ -40,6 +40,8 @@ class _PromotionsPageState extends State<PromotionsPage>
             builder: (_) => const RunPromotionPage(),
           ));
           _tabController.animateTo(0);
+          if (!mounted) return;
+          await vm.fetchPromotionsReports();
         },
       ),
       TabItem(
@@ -53,7 +55,9 @@ class _PromotionsPageState extends State<PromotionsPage>
           ));
           _tabController.animateTo(1);
           if (result == true) {
-            ScaffoldMessenger.of(ctx).showSnackBar(
+            if (!mounted) return;
+            await vm.loadTemplatesData();
+            ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text(
                     'Template submitted to Twilio. Waiting for approval.'),

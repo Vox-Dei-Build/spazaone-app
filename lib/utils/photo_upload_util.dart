@@ -5,8 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:pasella/utils/permission_prompt.dart';
+import 'package:pasella/utils/permission_helper.dart';
 
 class PhotoUploadUtil {
   final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -113,19 +112,13 @@ class PhotoUploadUtil {
     final isCamera = await showCameraOrGalleryPicker(context);
     if (isCamera == null) return;
 
-    // Ensure camera permission; if denied, prompt to open Settings.
-    if (isCamera) {
-      final granted = await ensurePermission(
-        context,
-        Permission.camera,
-        title: 'Camera Permission Needed',
-        message:
-            'To take a photo, please allow camera access in Settings.',
-      );
-      if (!granted) {
-        onImagePicked(null);
-        return;
-      }
+    final granted = isCamera
+        ? await PermissionHelper.requestCamera(context)
+        : await PermissionHelper.requestPhotos(context);
+
+    if (!granted) {
+      onImagePicked(null);
+      return;
     }
 
     final source = isCamera ? ImageSource.camera : ImageSource.gallery;
