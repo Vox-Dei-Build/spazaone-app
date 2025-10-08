@@ -337,6 +337,12 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                     setState(() {
                                       _selectedMarketingView = val.first;
                                     });
+                                    if (_selectedMarketingView ==
+                                        MarketingViewType.promotions) {
+                                      promoVM.fetchPromotionsReports();
+                                    } else {
+                                      promoVM.loadTemplatesData();
+                                    }
                                   },
                                 ),
                               ),
@@ -381,7 +387,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     } else {
       return _selectedMarketingView == MarketingViewType.promotions
           ? FloatingActionButton.extended(
-              onPressed: () {
+              onPressed: () async {
                 final hasApproved = promoVM.templates.any((t) =>
                     (t['channels']?['whatsapp']?['approved'] == true) ||
                     (t['channels']?['sms']?['approved'] == true));
@@ -398,6 +404,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                             Navigator.of(context).pop();
                             setState(() => _selectedMarketingView =
                                 MarketingViewType.templates);
+                            promoVM.loadTemplatesData();
                           },
                           child: const Text('Go to Templates'),
                         ),
@@ -405,11 +412,13 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                     ),
                   );
                 } else {
-                  Navigator.of(context).push(
+                  await Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const RunPromotionPage(),
                     ),
                   );
+                  if (!mounted) return;
+                  await promoVM.fetchPromotionsReports();
                 }
               },
               icon: const Icon(Icons.campaign_outlined, color: Colors.white),
@@ -417,12 +426,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                   style: TextStyle(color: Colors.white)),
             )
           : FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.of(context).push(
+              onPressed: () async {
+                final result = await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => CreateTemplatePage(viewModel: promoVM),
                   ),
                 );
+                if (!mounted) return;
+                if (result == true) {
+                  await promoVM.loadTemplatesData();
+                }
               },
               icon:
                   const Icon(Icons.library_books_outlined, color: Colors.white),

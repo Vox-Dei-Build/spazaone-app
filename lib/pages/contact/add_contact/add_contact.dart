@@ -11,11 +11,10 @@ import 'package:provider/provider.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/shared/widgets/custom_divider.dart';
 import 'package:pasella/pages/contact/add_contact/widgets/section_card.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
-import 'package:pasella/utils/permission_prompt.dart';
+import 'package:pasella/utils/permission_helper.dart';
 
 class AddContactPage extends StatelessWidget {
   const AddContactPage({super.key});
@@ -44,13 +43,8 @@ class AddContactPage extends StatelessWidget {
                               children: [
                                 CustomButton(
                                   onTap: () async {
-                                    final granted = await ensurePermission(
-                                      context,
-                                      Permission.contacts,
-                                      title: 'Contacts Permission Needed',
-                                      message:
-                                          'To pick a contact, please allow contacts access in Settings.',
-                                    );
+                                    final granted = await PermissionHelper
+                                        .requestContacts(context);
 
                                     if (!granted) return;
 

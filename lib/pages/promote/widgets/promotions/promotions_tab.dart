@@ -6,6 +6,7 @@ import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/view_promotion/view_promotion.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/utils/text_sanitizer.dart';
 
 class PromotionsTab extends StatefulWidget {
   const PromotionsTab({Key? key}) : super(key: key);
@@ -33,7 +34,7 @@ class _PromotionsTabState extends State<PromotionsTab> {
         final promo = promos[i];
         final created = (promo['createdAt'] as Timestamp).toDate();
         final date = DateFormat('MMM dd, yyyy').format(created);
-        final status = promo['status'] as String;
+        final status = sanitizeMalformedUtf16(promo['status'] as String? ?? '');
         final statusColor = status == 'saved'
             ? Colors.blue
             : status == 'processing'
@@ -48,7 +49,7 @@ class _PromotionsTabState extends State<PromotionsTab> {
         );
 
         final channels = template['channels'] as Map<String, dynamic>? ?? {};
-        final name = template['name'] ?? '–';
+        final name = sanitizeMalformedUtf16(template['name'] as String? ?? '–');
         final mediaUrl = channels['whatsapp']?['mediaUrl'];
         final total = promos.length;
         final displayIndex = total - i;
@@ -102,7 +103,7 @@ class _PromotionsTabState extends State<PromotionsTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Promotion $displayIndex: $name',
+                          sanitizeMalformedUtf16('Promotion $displayIndex: $name'),
                           style: TextStyle(
                             fontSize: SizeConfig.textMultiplier * 1.8,
                             fontWeight: FontWeight.bold,
@@ -120,7 +121,9 @@ class _PromotionsTabState extends State<PromotionsTab> {
                               const TextSpan(text: "Status: "),
                               TextSpan(
                                 text: status.isNotEmpty
-                                    ? '${status[0].toUpperCase()}${status.substring(1)}'
+                                    ? sanitizeMalformedUtf16(
+                                        '${status[0].toUpperCase()}${status.substring(1)}',
+                                      )
                                     : status,
                                 style: TextStyle(color: statusColor),
                               ),

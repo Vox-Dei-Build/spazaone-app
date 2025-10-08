@@ -1,0 +1,76 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+class PermissionHelper {
+  PermissionHelper._();
+
+  static Future<bool> requestCamera(BuildContext context) async {
+    if (kIsWeb) return true;
+    return _requestPermission(
+      context,
+      Permission.camera,
+      rationaleTitle: 'Allow Camera Access',
+      rationaleMessage:
+          'Pasella needs camera access so you can take photos of your products to share and sell.',
+    );
+  }
+
+  static Future<bool> requestPhotos(BuildContext context) async {
+    if (kIsWeb) return true;
+    final permission = Platform.isIOS ? Permission.photos : Permission.storage;
+    return _requestPermission(
+      context,
+      permission,
+      rationaleTitle: 'Allow Photo Library Access',
+      rationaleMessage:
+          'Pasella needs photo library access so you can choose existing product photos to share with customers.',
+      treatLimitedAsGranted: true,
+    );
+  }
+
+  static Future<bool> requestContacts(BuildContext context) async {
+    if (kIsWeb) return true;
+    return _requestPermission(
+      context,
+      Permission.contacts,
+      rationaleTitle: 'Allow Contacts Access',
+      rationaleMessage:
+          'Pasella needs contacts access so you can quickly message customers from your address book.',
+    );
+  }
+
+  static Future<bool> _requestPermission(
+    BuildContext context,
+    Permission permission, {
+    required String rationaleTitle,
+    required String rationaleMessage,
+    bool treatLimitedAsGranted = false,
+  }) async {
+    var status = await permission.status;
+
+    if (_isEffectivelyGranted(status, treatLimitedAsGranted)) {
+      return true;
+    }
+
+    if (status.isDenied || status.isRestricted) {
+      status = await permission.request();
+      if (_isEffectivelyGranted(status, treatLimitedAsGranted)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  static bool _isEffectivelyGranted(
+    PermissionStatus status,
+    bool treatLimitedAsGranted,
+  ) {
+    if (status.isGranted) return true;
+    if (treatLimitedAsGranted && status.isLimited) return true;
+    return false;
+  }
+}

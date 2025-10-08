@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/utils/text_sanitizer.dart';
 
 class SettingTile extends StatelessWidget {
   const SettingTile({
@@ -46,7 +47,7 @@ class SettingTile extends StatelessWidget {
               : const SizedBox.shrink(),
           title: title is String
               ? Text(
-                  title,
+                  (title as String).sanitized(),
                   style: TextStyle(
                     fontWeight: FontWeight.w500,
                     fontSize: SizeConfig.textMultiplier * 2,
@@ -55,7 +56,7 @@ class SettingTile extends StatelessWidget {
               : title,
           subtitle: subTitle is String
               ? Text(
-                  subTitle!,
+                  (subTitle as String).sanitized(),
                   style: kSubTitleStyle.copyWith(
                       fontSize: SizeConfig.textMultiplier * 1.8),
                   maxLines: 1,
