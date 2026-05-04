@@ -15,10 +15,20 @@ import 'package:contacts_service/contacts_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/permission_helper.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AddContactPage extends StatelessWidget {
   const AddContactPage({super.key});
   static const id = '/addContactPage';
+  static const _privacyPolicyUrl =
+      'https://docs.google.com/document/d/1Oz4M_j8u0YwQBzIyDB-IAl_wYBNdrQ5k_Fx6qR7uPAQ/edit?tab=t.0';
+
+  Future<void> _openPrivacyPolicy() async {
+    final uri = Uri.parse(_privacyPolicyUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +53,15 @@ class AddContactPage extends StatelessWidget {
                               children: [
                                 CustomButton(
                                   onTap: () async {
+                                    if (!viewModel.contactConsentAccepted) {
+                                      showSnackbar(
+                                        context,
+                                        'Please confirm you have permission to store this contact before continuing.',
+                                        Colors.orange,
+                                      );
+                                      return;
+                                    }
+
                                     final granted = await PermissionHelper
                                         .requestContacts(context);
 
@@ -85,6 +104,28 @@ class AddContactPage extends StatelessWidget {
                                 ),
                                 SizedBox(
                                     height: SizeConfig.heightMultiplier * 2),
+                                CheckboxListTile(
+                                  value: viewModel.contactConsentAccepted,
+                                  onChanged: (value) => viewModel
+                                      .setContactConsent(value ?? false),
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  contentPadding: EdgeInsets.zero,
+                                  title: const Text(
+                                    'I confirm I have consent to upload this contact and understand Pasella securely stores the details so I can message the customer later.',
+                                  ),
+                                  subtitle: GestureDetector(
+                                    onTap: _openPrivacyPolicy,
+                                    child: const Text(
+                                      'View Privacy Policy',
+                                      style: TextStyle(
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                    height: SizeConfig.heightMultiplier * 1.5),
                                 Row(
                                   children: [
                                     const CustomDivider(),

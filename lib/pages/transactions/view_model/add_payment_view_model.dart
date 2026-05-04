@@ -4,9 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class AddPaymentViewModel extends TransactionViewModel {
   final String customerName;
@@ -79,8 +81,13 @@ class AddPaymentViewModel extends TransactionViewModel {
           .collection('transactions')
           .add(transactionData);
 
+      final paymentMessageCost = SMSPricingUtil.calculateCost(
+        text: SMSMessages.paymentConfirmationShort,
+        unitCost: pricingService.smsPaymentTemplatePrice,
+      );
+
       bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-          context, userId, pricingService.smsPaymentTemplatePrice);
+          context, userId, paymentMessageCost);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,

@@ -8,6 +8,7 @@ import 'package:pasella/templates/in_app_notification.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/phone_util.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class MessagingNotificationService {
   late final String welcome_message;
@@ -42,6 +43,7 @@ class MessagingNotificationService {
     String? amount,
     String inAppNotificationMessage,
     double templateMessageCost,
+    String? smsMessageOverride,
   ) async {
     try {
       // Fetch required data in parallel
@@ -131,6 +133,7 @@ class MessagingNotificationService {
                   inAppNotificationMessage,
                   currentUserId,
                   templateMessageCost,
+                  smsMessageOverride,
                   customerId,
                   templateSid, {
                 "customerName": customerName,
@@ -158,6 +161,7 @@ class MessagingNotificationService {
             inAppNotificationMessage,
             currentUserId,
             templateMessageCost,
+            smsMessageOverride,
             customerId,
             templateSid, {
           "customerName": customerName,
@@ -184,24 +188,30 @@ class MessagingNotificationService {
       inAppNotificationMessage,
       currentUserId,
       messageCost,
+      smsMessageOverride,
       customerId,
       templateSid,
       variables) async {
     final SMSMessagingService messageService =
         await SMSMessagingService.create();
 
-    message = message.replaceAll('{balance}', formattedBalance);
-    message = message.replaceAll('{shopName}', shopName);
-    message = message.replaceAll('{customerName}', customerName);
+    final smsMessage = (smsMessageOverride ?? message)
+        .replaceAll('{balance}', formattedBalance)
+        .replaceAll('{shopName}', shopName)
+        .replaceAll('{customerName}', customerName);
+    final smsCost = SMSPricingUtil.calculateCost(
+      text: smsMessage,
+      unitCost: (messageCost as num).toDouble(),
+    );
 
-    await messageService.sendSMS(phoneNumber, message).then((statusCode) async {
+    await messageService.sendSMS(phoneNumber, smsMessage).then((statusCode) async {
       if (statusCode == 201) {
-        await deductBalance(currentUserId, messageCost);
+        await deductBalance(currentUserId, smsCost);
 
         await storeNotification(
           currentUserId: currentUserId,
           customerId: customerId,
-          message: _generateRenderedMessage(message, {
+          message: _generateRenderedMessage(smsMessage, {
             "customerName": customerName,
             "amount": amount,
             "shopName": shopName,
@@ -214,7 +224,7 @@ class MessagingNotificationService {
             "shopName": shopName,
             "balance": formattedBalance,
           },
-          messageCost: messageCost,
+          messageCost: smsCost,
           templateKey: templateSid,
           templateType: 'sms',
         );
@@ -375,7 +385,8 @@ class MessagingNotificationService {
           mobileNumber,
           CurrencyUtil.format(amount),
           inAppNotification,
-          messageCost);
+          messageCost,
+          message);
     } catch (e) {
       print('Error occurred while sending confirmation SMS: $e');
     }
@@ -398,7 +409,8 @@ class MessagingNotificationService {
           mobileNumber,
           '0',
           InAppNotifications.onboardingSuccessNotification,
-          pricingService.smsReminderTemplatePrice);
+          pricingService.smsReminderTemplatePrice,
+          SMSMessages.onboardingShort);
     } catch (e) {
       print('Error occurred while sending confirmation SMS: $e');
     }
@@ -422,7 +434,8 @@ class MessagingNotificationService {
           mobileNumber,
           CurrencyUtil.format(amount),
           InAppNotifications.paymentReminderNotification,
-          pricingService.smsReminderTemplatePrice);
+          pricingService.smsReminderTemplatePrice,
+          SMSMessages.reminderShort);
     } catch (e) {
       print('Error occurred while sending confirmation SMS: $e');
     }
