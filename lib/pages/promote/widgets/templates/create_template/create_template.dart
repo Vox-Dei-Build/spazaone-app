@@ -11,6 +11,7 @@ import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 enum CreateTemplateStep {
   basicInfo,
@@ -104,12 +105,8 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   }
 
   void _calculateSmsPricing(String text) {
-    final isUnicode = text.runes.any((r) => r > 127);
-    final segmentLength = isUnicode ? 70 : 160;
     setState(() {
-      _smsSegments = text.length <= segmentLength
-          ? 1
-          : (text.length / (segmentLength - 7)).ceil();
+      _smsSegments = SMSPricingUtil.calculateSegments(text);
     });
   }
 

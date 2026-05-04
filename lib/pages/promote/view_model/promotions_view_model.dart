@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/phone_util.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class PromotionsViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -176,7 +177,7 @@ class PromotionsViewModel extends ChangeNotifier {
   }
 
   int calculateSmsSegments(String text) {
-    return ((text).length / 160).ceil();
+    return SMSPricingUtil.calculateSegments(text);
   }
 
   Future<Map<String, dynamic>> calculatePriceWithBreakdown(

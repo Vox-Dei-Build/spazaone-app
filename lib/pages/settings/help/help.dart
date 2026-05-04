@@ -100,7 +100,7 @@ class HelpPage extends StatelessWidget {
                 icon: Icons.lock,
                 title: 'Privacy Policy & Security',
                 onTap: () => openLink(
-                    'https://docs.google.com/document/d/1ZDN6urTnKex9i01IbwO5qv3NHv1FuE54XiyKa1FRJlY/edit?usp=sharing'),
+                    'https://docs.google.com/document/d/1Oz4M_j8u0YwQBzIyDB-IAl_wYBNdrQ5k_Fx6qR7uPAQ/edit?tab=t.0'),
               ),
               const Spacer(),
               CustomButton(

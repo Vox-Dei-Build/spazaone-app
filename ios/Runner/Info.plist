@@ -43,13 +43,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Pasella needs camera access so you can take photos of your customers or products to share and sell.</string>
+	<string>Pasella needs camera access so you can take photos of your products to share and sell.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Pasella uses your contacts so you can send notifications, orders and promotions to your customers.</string>
+	<string>Pasella uses your contacts so you can send notifications, orders and promotions to your customers. With your consent, Pasella securely stores the selected contact details on our servers so you can reach them later.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Pasella saves the photos you take so they appear in your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Pasella needs photo library access so you can select existing customer or product photos to share with customers.</string>
+	<string>Pasella needs photo library access so you can select existing product photos to share with customers.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

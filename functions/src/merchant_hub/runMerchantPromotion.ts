@@ -5,6 +5,21 @@ import twilio from "twilio";
 import { FieldValue } from "firebase-admin/firestore";
 import { DynamicPricingService } from "../services/dynamic_pricing_service";
 
+function calculateSmsSegments(text: string): number {
+  const content = (text || "").trim();
+  if (!content) return 1;
+
+  const isUnicode = [...content].some((char) => char.charCodeAt(0) > 127);
+  const singleSegmentLength = isUnicode ? 70 : 160;
+  const multipartSegmentLength = isUnicode ? 67 : 153;
+
+  if (content.length <= singleSegmentLength) {
+    return 1;
+  }
+
+  return Math.ceil(content.length / multipartSegmentLength);
+}
+
 const {
   sid: ACCOUNT_SID,
   token: AUTH_TOKEN,
@@ -286,18 +301,25 @@ export const runMerchantPromotion = functions.https.onCall(
           const smsBody = smsRaw
             .replaceAll("{{customerName}}", cust.name)
             .replaceAll("{{shopName}}", shopName);
-          console.log(`[SMS] ${custId} ➡️ trying SMS @ R${unitSMS}`);
+          const smsSegments = calculateSmsSegments(smsBody);
+          const smsCost = Math.round(unitSMS * smsSegments * 100) / 100;
+          console.log(
+            `[SMS] ${custId} ➡️ trying SMS @ R${unitSMS} × ${smsSegments} = R${smsCost}`,
+          );
           if (!promo.testMode) {
             await twilioClient.messages.create({
               to: smsTo,
               from: SMS_NUMBER,
               body: smsBody,
             });
-            totalCost += unitSMS;
-            await recordSend(merchantId, custId, num, unitSMS, "sms", smsRaw);
+            totalCost += smsCost;
+            await recordSend(merchantId, custId, num, smsCost, "sms", smsBody);
           } else {
-            totalCost += unitSMS;
-            console.log(`[TEST] SMS ${custId} @ R${unitSMS}`, smsBody);
+            totalCost += smsCost;
+            console.log(
+              `[TEST] SMS ${custId} @ R${unitSMS} × ${smsSegments} = R${smsCost}`,
+              smsBody,
+            );
           }
         }
       } catch (e) {

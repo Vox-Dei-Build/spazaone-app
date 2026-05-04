@@ -14,6 +14,8 @@ import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
+import 'package:pasella/templates/sms_message.dart';
 
 class CustomerManagementViewModel extends ChangeNotifier {
   final String customerName;
@@ -333,8 +335,13 @@ class CustomerManagementViewModel extends ChangeNotifier {
       });
     }
 
+    final reminderMessageCost = SMSPricingUtil.calculateCost(
+      text: SMSMessages.reminderShort,
+      unitCost: pricingService.smsReminderTemplatePrice,
+    );
+
     bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-        context, userId, pricingService.smsReminderTemplatePrice);
+        context, userId, reminderMessageCost);
 
     if (!canProceed) {
       SnackbarComponents.showInsufficientBalance(context);

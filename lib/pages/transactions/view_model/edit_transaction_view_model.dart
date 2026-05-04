@@ -6,8 +6,10 @@ import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class EditTransactionViewModel extends TransactionViewModel {
   final String customerName;
@@ -188,12 +190,17 @@ class EditTransactionViewModel extends TransactionViewModel {
         }
       }
 
+      final messageCost = SMSPricingUtil.calculateCost(
+        text: transactionType == "Credit"
+            ? SMSMessages.creditConfirmationShort
+            : SMSMessages.paymentConfirmationShort,
+        unitCost: transactionType == "Credit"
+            ? pricingService.smsReminderTemplatePrice
+            : pricingService.smsPaymentTemplatePrice,
+      );
+
       bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-          context,
-          currentUserId,
-          transactionType == "Credit"
-              ? pricingService.smsReminderTemplatePrice
-              : pricingService.smsPaymentTemplatePrice);
+          context, currentUserId, messageCost);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,

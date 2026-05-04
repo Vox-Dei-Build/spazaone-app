@@ -8,10 +8,12 @@ import 'dart:io';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class AddContactViewModel extends ChangeNotifier {
   final TextEditingController nameController = TextEditingController();
@@ -22,6 +24,7 @@ class AddContactViewModel extends ChangeNotifier {
   DynamicPricingService? pricingService;
   final PhotoUploadUtil _photoUploadUtil = PhotoUploadUtil();
   File? _profileImage;
+  bool _contactConsentAccepted = false;
 
   File? get profileImage => _profileImage;
 
@@ -36,8 +39,25 @@ class AddContactViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool get contactConsentAccepted => _contactConsentAccepted;
+
+  void setContactConsent(bool value) {
+    if (_contactConsentAccepted == value) return;
+    _contactConsentAccepted = value;
+    notifyListeners();
+  }
+
   Future<void> addCustomerToFirestore(
       BuildContext context, AppModel model) async {
+    if (!_contactConsentAccepted) {
+      showSnackbar(
+        context,
+        'Please confirm you have permission to store this contact before continuing.',
+        Colors.orange,
+      );
+      return;
+    }
+
     _setLoading(true);
 
     final customerName = nameController.text;
@@ -82,8 +102,13 @@ class AddContactViewModel extends ChangeNotifier {
           await docRef.update({'profileImageUrl': url});
         }
         if (mobileNumber.isNotEmpty && pricingService != null) {
+          final onboardingMessageCost = SMSPricingUtil.calculateCost(
+            text: SMSMessages.onboardingShort,
+            unitCost: pricingService!.smsReminderTemplatePrice,
+          );
+
           bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-              context, currentUserId, pricingService!.smsReminderTemplatePrice);
+              context, currentUserId, onboardingMessageCost);
 
           if (canProceed) {
             await _sendSMS(
