@@ -59,7 +59,8 @@ android {
         applicationId "com.tsepo.pasella"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdkVersion 21
+        // Bumped from 21 to 23 for posthog_flutter (Android min SDK 23).
+        minSdkVersion 23
         // targetSdkVersion flutter.targetSdkVersion
         targetSdkVersion 35
         versionCode flutterVersionCode.toInteger()
@@ -100,7 +101,7 @@ dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
-    // Ensure Material Components classes are available for libraries (e.g., Smartlook)
-    implementation 'com.google.android.material:material:1.12.0'
+    // Material Components are pulled in transitively by Flutter; no extra
+    // implementation entry is required after the Smartlook removal.
 
 }

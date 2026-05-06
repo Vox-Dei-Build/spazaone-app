@@ -393,6 +393,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.10.0"
+  firebase_crashlytics:
+    dependency: "direct main"
+    description:
+      name: firebase_crashlytics
+      sha256: "5125b7f3fcef2bfdd7e071afe7edcefd9597968003e44e073456c773d91694ee"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.4.9"
+  firebase_crashlytics_platform_interface:
+    dependency: transitive
+    description:
+      name: firebase_crashlytics_platform_interface
+      sha256: "359197344def001589c84f8d1d57c05f6e2e773f559205610ce58c25e2045a57"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.6.16"
   firebase_messaging:
     dependency: "direct main"
     description:
@@ -1016,6 +1032,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.7.3"
+  posthog_flutter:
+    dependency: "direct main"
+    description:
+      name: posthog_flutter
+      sha256: "2a74b86306b3e1b27ad227aeeb5d63374afb03aa50e87af5062fec1341824b3b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.11.0"
   provider:
     dependency: "direct main"
     description:

@@ -6,6 +6,12 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- PostHog: disable auto-init; TelemetryService gates SDK setup on consent. -->
+	<key>com.posthog.posthog.AUTO_INIT</key>
+	<false/>
+	<!-- Firebase Crashlytics: defer collection until consent confirmed at runtime. -->
+	<key>FirebaseCrashlyticsCollectionEnabled</key>
+	<false/>
 	<key>CFBundleDisplayName</key>
 	<string>Pasella</string>
 	<key>CFBundleExecutable</key>
