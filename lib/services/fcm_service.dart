@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class FCMService {
@@ -67,8 +68,15 @@ class FCMService {
           'fcmToken': newToken,
         }, SetOptions(merge: true)).then((_) {
           print('FCM Token updated in Firestore for user $userId');
-        }).catchError((error) {
-          print('Error updating FCM Token for user $userId: $error');
+        }).catchError((error, stack) {
+          // Network/Firestore failure writing the token. Non-fatal: the next
+          // launch will retry via handleToken() and notifications simply
+          // won't arrive until then.
+          CrashService.instance.recordNonFatal(
+            error,
+            stack is StackTrace ? stack : StackTrace.current,
+            reason: 'fcm handleToken update failed',
+          );
         });
       } else {
         print('FCM Token is up-to-date for user $userId');
@@ -99,8 +107,12 @@ class FCMService {
         showSnackbar(context, 'Notification settings updated successfully :)',
             Colors.green);
       }
-    } catch (e) {
-      print('Error updating FCM Token: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'fcm updateTokenOnServer failed',
+      );
       showErrorSnackBar(context, "Failed to update notification settings.");
     }
   }

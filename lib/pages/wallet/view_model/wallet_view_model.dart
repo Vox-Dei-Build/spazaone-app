@@ -5,6 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/wallet/banking_detail_model.dart';
 import 'package:pasella/pages/wallet/widgets/paystack_form.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/banking_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -287,7 +290,11 @@ class WalletViewModel extends ChangeNotifier {
       print('✅ Merged transaction history ready. Total: ${mergedList.length}');
       return mergedList;
     } catch (e, st) {
-      print('🔥 Error fetching merged history: $e\n$st');
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'getMergedTransactionHistory failed',
+      );
       return [];
     }
   }
@@ -306,13 +313,30 @@ class WalletViewModel extends ChangeNotifier {
         'repaymentStatus': 'pending'
       });
 
+      // Backend transitions payoutStatus async; we only see the request here.
+      // PayoutCompleted/PayoutFailed (post-transition) must be emitted server-side.
+      await TelemetryService.instance.capture(
+        PayoutRequested(amountBucket: amountBucketZAR(amount)),
+      );
+
       showSnackbar(
           context,
           'Payout request submitted successfully, we will notify you once transferred.',
           Colors.green);
       Navigator.pushReplacementNamed(context, '/walletPage');
-    } catch (e) {
-      print('Error submitting payout request: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'requestPayout submission failed',
+      );
+      // Submission-time failure (e.g. Firestore unreachable). The merchant
+      // never reached the pending state, so emit PayoutFailed with a fixed
+      // failure_code so the funnel can distinguish it from server rejections.
+      await TelemetryService.instance.capture(PayoutFailed(
+        amountBucket: amountBucketZAR(amount),
+        failureCode: 'client_submit_error',
+      ));
       showSnackbar(context, 'Failed to submit payout request.', Colors.red);
     } finally {
       isProcessingPayoutRequest.value = false;
@@ -368,8 +392,12 @@ class WalletViewModel extends ChangeNotifier {
             .doc(editingDocumentId)
             .update(bankingDetails.toJson());
       }
-    } catch (e) {
-      print('Error saving banking details: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'saveBankingDetails failed',
+      );
     } finally {
       isProcessing.value = false;
     }
@@ -464,13 +492,17 @@ class WalletViewModel extends ChangeNotifier {
       } else {
         _showCallSnackbar(context, supportNumber);
       }
-    } catch (e) {
+    } catch (e, st) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
             content:
                 Text('An error occurred while preparing WhatsApp message')),
       );
-      print('WhatsApp Error: $e');
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: '_sendWhatsAppMessage launchUrl failed',
+      );
     }
   }
 

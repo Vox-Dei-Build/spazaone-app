@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/widgets/private_region.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'payment_response_screen.dart';
@@ -69,29 +70,34 @@ class _PaystackWebViewState extends State<PaystackWebView> {
       body: Stack(
         children: [
           SizedBox(height: SizeConfig.heightMultiplier * 2),
-          WebView(
-            initialUrl: widget.url,
-            javascriptMode: JavascriptMode.unrestricted,
-            onWebViewCreated: (WebViewController webViewController) {
-              _controller.complete(webViewController);
-            },
-            onPageStarted: (String url) {
-              setState(() => isLoading = true);
-            },
-            onPageFinished: (String url) {
-              setState(() => isLoading = false);
-              if (url == "https://standard.paystack.co/close") {
-                Navigator.pop(context, true); // Payment successful
-              }
-            },
-            navigationDelegate: (NavigationRequest request) {
-              if (request.url == "https://standard.paystack.co/close") {
-                Navigator.of(context).pop(); //close webview
-              }
+          // Mask the Paystack card form -- PAN, CVV, expiry must never appear
+          // in session replay. Wrapping just the WebView (not the AppBar /
+          // spinner) keeps the chrome visible for diagnosing UX issues.
+          PrivateRegion(
+            child: WebView(
+              initialUrl: widget.url,
+              javascriptMode: JavascriptMode.unrestricted,
+              onWebViewCreated: (WebViewController webViewController) {
+                _controller.complete(webViewController);
+              },
+              onPageStarted: (String url) {
+                setState(() => isLoading = true);
+              },
+              onPageFinished: (String url) {
+                setState(() => isLoading = false);
+                if (url == "https://standard.paystack.co/close") {
+                  Navigator.pop(context, true); // Payment successful
+                }
+              },
+              navigationDelegate: (NavigationRequest request) {
+                if (request.url == "https://standard.paystack.co/close") {
+                  Navigator.of(context).pop(); //close webview
+                }
 
-              return NavigationDecision.navigate;
-            },
-            gestureNavigationEnabled: true,
+                return NavigationDecision.navigate;
+              },
+              gestureNavigationEnabled: true,
+            ),
           ),
           if (isLoading) const Center(child: CircularProgressIndicator()),
         ],

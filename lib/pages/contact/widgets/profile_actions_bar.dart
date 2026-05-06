@@ -7,6 +7,7 @@ import 'package:pasella/pages/contact/view_model/customer_management_view_model.
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/auth_util.dart';
+import 'package:pasella/widgets/private_region.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -64,11 +65,14 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                   ),
                 );
               },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    customerName,
+              // Customer name in the AppBar pairs with balances elsewhere on
+              // this page; mask the visible identity but keep tap handling.
+              child: PrivateRegion(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customerName,
                     style: TextStyle(
                       fontSize:
                           SizeConfig.textMultiplier * 2, // Responsive font size
@@ -138,6 +142,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                       ],
                     )
                 ],
+                ),
               ),
             ),
           ),

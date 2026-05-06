@@ -5,8 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 enum VerificationPurpose { login, registration, linkAnonymous }
 
@@ -96,6 +100,12 @@ class AuthViewModel with ChangeNotifier {
             if (user != null) {
               await _storeUserDetails(context, user,
                   referrerUserId: referrerUserId);
+              // Phone-OTP signup completed (manual code entry path).
+              // We identify the merchant immediately so subsequent events
+              // attach to a person profile rather than the anonymous id.
+              await TelemetryService.instance.identify(merchantId: user.uid);
+              await TelemetryService.instance
+                  .capture(const SignupCompleted(method: 'phone'));
               handleSuccessfulLogin(context);
             } else {
               showErrorSnackBar(context,
@@ -107,8 +117,12 @@ class AuthViewModel with ChangeNotifier {
         showErrorSnackBar(context,
             "No verification ID received, potentially auto-signed in.");
       }
-    } catch (e) {
-      print("An error occurred during registration: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'phone registration failed',
+      );
       showErrorSnackBar(
           context, 'Something went wrong during registration: $e');
     } finally {
@@ -182,10 +196,25 @@ class AuthViewModel with ChangeNotifier {
     try {
       await auth.signInWithCredential(credential);
       if (onSuccess != null) {
+        // Caller (registration) takes over -- they fire the signup event.
         onSuccess();
+      } else {
+        // No onSuccess callback means this is a login flow (manual OTP entry).
+        // Identify the merchant and fire the signin event.
+        final user = auth.currentUser;
+        if (user != null) {
+          await TelemetryService.instance.identify(merchantId: user.uid);
+          await TelemetryService.instance
+              .capture(const SigninCompleted(method: 'phone'));
+        }
       }
       handleSuccessfulLogin(context);
-    } catch (e) {
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'signInWithCredential failed',
+      );
       showErrorSnackBar(context, "Failed to authenticate: $e");
     } finally {
       stopLoading();
@@ -198,14 +227,26 @@ class AuthViewModel with ChangeNotifier {
       final UserCredential userCredential =
           await FirebaseAuth.instance.signInAnonymously();
 
-      print("Signed in anonymously as ${userCredential.user?.uid}");
+      final user = userCredential.user;
+      if (user != null) {
+        // Anonymous "Explore" signup. We still call identify() so the merchant
+        // has a person profile keyed by their anonymous Firebase UID; if they
+        // later upgrade to a phone account that UID survives via linking.
+        await TelemetryService.instance.identify(merchantId: user.uid);
+        await TelemetryService.instance
+            .capture(const SignupCompleted(method: 'anonymous'));
+      }
 
       stopLoading();
 
       // Navigate to the main part of your app
       handleSuccessfulLogin(context);
-    } catch (e) {
-      print("Anonymous sign-in failed: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'anonymous sign-in failed',
+      );
       showErrorSnackBar(context, "Failed to sign in anonymously.");
     } finally {
       stopLoading();
@@ -235,11 +276,13 @@ class AuthViewModel with ChangeNotifier {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    onChanged: (value) => smsCode = value,
-                    decoration: const InputDecoration(hintText: "SMS Code"),
-                    keyboardType: TextInputType.number,
-                    autofocus: true, // Automatically focus on the TextField
+                  PrivateRegion(
+                    child: TextField(
+                      onChanged: (value) => smsCode = value,
+                      decoration: const InputDecoration(hintText: "SMS Code"),
+                      keyboardType: TextInputType.number,
+                      autofocus: true, // Automatically focus on the TextField
+                    ),
                   ),
                 ],
               ),
@@ -292,8 +335,12 @@ class AuthViewModel with ChangeNotifier {
           .get();
 
       return bothSnapshots.docs.isNotEmpty;
-    } catch (e) {
-      print('Something went wrong while checking registered user: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'isUserRegistered lookup failed',
+      );
       return false; // Return false here within the catch block
     }
   }
@@ -314,14 +361,26 @@ class AuthViewModel with ChangeNotifier {
                 // Store user details before navigation
                 await _storeUserDetails(context, user,
                     referrerUserId: referrerUserId);
+                // Auto-verified phone registration -- identify and fire signup.
+                await TelemetryService.instance
+                    .identify(merchantId: user.uid);
+                await TelemetryService.instance
+                    .capture(const SignupCompleted(method: 'phone'));
                 handleSuccessfulLogin(context);
                 break;
               case VerificationPurpose.login:
-                // Directly navigate to the dashboard
+                // Auto-verified login. identify() in case this is the first
+                // session for this merchant on this device.
+                await TelemetryService.instance
+                    .identify(merchantId: user.uid);
+                await TelemetryService.instance
+                    .capture(const SigninCompleted(method: 'phone'));
                 handleSuccessfulLogin(context);
                 break;
               case VerificationPurpose.linkAnonymous:
-                // Link account and then navigate
+                // Link account and then navigate. The signup event is fired
+                // inside linkPhoneNumberWithAnonymousAccount once the link
+                // resolves successfully (single source of truth for that path).
                 await linkPhoneNumberWithAnonymousAccount(
                     credential, context, referrerUserId);
                 break;
@@ -360,10 +419,21 @@ class AuthViewModel with ChangeNotifier {
         // Assuming you want to store additional user details on successful link
         await _storeUserDetailsAfterLinking(context, user,
             referrerUserId: referrerUserId);
+        // Anonymous account upgraded to a phone account. The Firebase UID is
+        // unchanged across the link so we re-identify (idempotent) and fire
+        // SignupCompleted with method: 'phone' to mark the upgrade in funnels.
+        await TelemetryService.instance.identify(merchantId: user.uid);
+        await TelemetryService.instance
+            .capture(const SignupCompleted(method: 'phone'));
         handleSuccessfulLogin(
             context); // Navigate or perform other actions post successful link
       }
-    } catch (e) {
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'link anonymous to phone failed',
+      );
       showErrorSnackBar(context, "Failed to link anonymous account: $e");
       rethrow; // Rethrow if you need further error handling upstream
     } finally {
@@ -392,8 +462,12 @@ class AuthViewModel with ChangeNotifier {
       await _createInitialWallet(user.uid);
 
       Navigator.of(context).popUntil((route) => route.isFirst);
-    } catch (error) {
-      print("Error storing user details after linking: $error");
+    } catch (error, st) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        st,
+        reason: 'store user details after linking failed',
+      );
       showErrorSnackBar(context, "Error storing user details: $error");
     }
   }
@@ -424,8 +498,12 @@ class AuthViewModel with ChangeNotifier {
 
       // DRY ✅ create wallet doc
       await _createInitialWallet(user.uid);
-    } catch (error) {
-      print("Error storing user details: $error");
+    } catch (error, st) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        st,
+        reason: 'store user details failed',
+      );
       showErrorSnackBar(context, "Error storing user details: $error");
     }
   }

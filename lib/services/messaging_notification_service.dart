@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/common/sms_event.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/sms_messaging_service.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/services/whatsapp_messaging_service.dart';
 import 'package:pasella/templates/in_app_notification.dart';
 import 'package:pasella/templates/sms_message.dart';
@@ -94,6 +97,14 @@ class MessagingNotificationService {
           // Fire and forget → Poll for delivery status in the background
           whatsappService.pollMessageStatus(messageId).then((delivered) async {
             if (delivered) {
+              // WhatsApp delivery confirmed by Twilio poll. This is the
+              // billable event -- balance is deducted in the same block, so
+              // CommsSent fires exactly when the merchant is charged.
+              await TelemetryService.instance.capture(CommsSent(
+                channel: 'whatsapp',
+                templateId: templateSid,
+                recipientCount: 1,
+              ));
               // If delivered, deduct balance and update Firestore
               await deductBalance(
                   currentUserId, pricingService.whatsappUtilityPrice);
@@ -170,8 +181,12 @@ class MessagingNotificationService {
           "balance": formattedBalance,
         });
       }
-    } catch (e) {
-      print('Error while sending message: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'sendFormattedMessage failed',
+      );
       eventBus.fire(SMSEvent(
           "Notification was unsuccessful, please try again later",
           success: false));
@@ -206,6 +221,14 @@ class MessagingNotificationService {
 
     await messageService.sendSMS(phoneNumber, smsMessage).then((statusCode) async {
       if (statusCode == 201) {
+        // Twilio accepted the SMS for delivery (201). We treat acceptance as
+        // the billable signal because the SMS layer does not surface a later
+        // delivery callback; balance is deducted on the same branch.
+        await TelemetryService.instance.capture(CommsSent(
+          channel: 'sms',
+          templateId: templateSid,
+          recipientCount: 1,
+        ));
         await deductBalance(currentUserId, smsCost);
 
         await storeNotification(
@@ -387,8 +410,12 @@ class MessagingNotificationService {
           inAppNotification,
           messageCost,
           message);
-    } catch (e) {
-      print('Error occurred while sending confirmation SMS: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'sendConfirmationMessage failed',
+      );
     }
   }
 
@@ -411,8 +438,12 @@ class MessagingNotificationService {
           InAppNotifications.onboardingSuccessNotification,
           pricingService.smsReminderTemplatePrice,
           SMSMessages.onboardingShort);
-    } catch (e) {
-      print('Error occurred while sending confirmation SMS: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'sendOnboardingMessage failed',
+      );
     }
   }
 
@@ -436,8 +467,12 @@ class MessagingNotificationService {
           InAppNotifications.paymentReminderNotification,
           pricingService.smsReminderTemplatePrice,
           SMSMessages.reminderShort);
-    } catch (e) {
-      print('Error occurred while sending confirmation SMS: $e');
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'sendReminderMessage failed',
+      );
     }
   }
 }

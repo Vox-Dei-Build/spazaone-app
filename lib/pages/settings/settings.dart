@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/settings/help/help.dart';
+import 'package:pasella/pages/settings/privacy/privacy_page.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/models/common/app_model.dart';
@@ -61,6 +62,15 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.wallet,
                           title: 'Billing',
                           subTitle: 'Manage your wallet and payments',
+                        ),
+                        SettingTile(
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            PrivacyPage.id,
+                          ),
+                          icon: Icons.shield_outlined,
+                          title: 'Privacy',
+                          subTitle: 'Crash reports, analytics, session replay',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(
