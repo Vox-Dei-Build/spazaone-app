@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -118,10 +121,24 @@ class AddCreditViewModel extends TransactionViewModel {
         'lastTransaction': transactionData,
       });
 
+      // Credit-on-ledger sale (BNPL). The customer is bound by construction
+      // (this view model takes a customerId/customerName), so customerIsExisting
+      // is always true.
+      await TelemetryService.instance.capture(SaleCompleted(
+        amountBucket: amountBucketZAR(amountEntered),
+        isCredit: true,
+        customerIsExisting: true,
+      ));
+
       SchedulerBinding.instance.addPostFrameCallback((_) {
         resetFormAndNavigateAway(context);
       });
-    } catch (error) {
+    } catch (error, st) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        st,
+        reason: 'addCreditTransaction failed',
+      );
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showErrorSnackBar(
           context,

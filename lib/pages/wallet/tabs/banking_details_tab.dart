@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/add_banking_details.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class BankingDetailsTab extends StatefulWidget {
   const BankingDetailsTab({super.key});
@@ -82,21 +83,24 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
   }
 
   Widget _bankingDetailsSummary(WalletViewModel viewModel) {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1.5),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _infoRow("Bank", viewModel.bankName.text),
-            _infoRow("Account Holder Name", viewModel.accountHolderName.text),
-            _infoRow("Account Number", viewModel.accountNumber.text),
-            _infoRow("Account Type", viewModel.accountType.text),
-            _infoRow("Branch Code", viewModel.branchCode.text),
-            _infoRow("Reference", viewModel.reference.text),
-          ],
+    // Read-only summary -- account number etc. visible. Mask the whole Card.
+    return PrivateRegion(
+      child: Card(
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: Padding(
+          padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1.5),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _infoRow("Bank", viewModel.bankName.text),
+              _infoRow("Account Holder Name", viewModel.accountHolderName.text),
+              _infoRow("Account Number", viewModel.accountNumber.text),
+              _infoRow("Account Type", viewModel.accountType.text),
+              _infoRow("Branch Code", viewModel.branchCode.text),
+              _infoRow("Reference", viewModel.reference.text),
+            ],
+          ),
         ),
       ),
     );

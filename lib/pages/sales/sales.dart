@@ -8,6 +8,8 @@ import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
@@ -373,6 +375,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       return _selectedSalesView == SalesViewType.cash
           ? FloatingActionButton.extended(
               onPressed: () {
+                TelemetryService.instance
+                    .capture(const SaleStarted(entryPoint: 'fab'));
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => AddSale(salesViewModel: salesVM),

@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class AccountDeletionException implements Exception {
   AccountDeletionException(this.message, {this.code});
@@ -184,16 +185,18 @@ class AccountDeletionService {
                 children: [
                   Text('Enter the password for $email to continue.'),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    obscureText: obscure,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      suffixIcon: IconButton(
-                        icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () => setState(() => obscure = !obscure),
+                  PrivateRegion(
+                    child: TextField(
+                      controller: controller,
+                      obscureText: obscure,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        suffixIcon: IconButton(
+                          icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+                          onPressed: () => setState(() => obscure = !obscure),
+                        ),
                       ),
                     ),
                   ),
@@ -235,13 +238,15 @@ class AccountDeletionService {
             children: [
               Text('Enter the code sent to $phoneNumber.'),
               const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: const InputDecoration(
-                  labelText: '6-digit code',
-                  counterText: '',
+              PrivateRegion(
+                child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: '6-digit code',
+                    counterText: '',
+                  ),
                 ),
               ),
             ],

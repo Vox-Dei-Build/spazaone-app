@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pasella/config/remote_config.dart';
+import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/phone_util.dart';
 
@@ -147,8 +148,11 @@ class TwilioService {
       filteredMessages.sort((a, b) => a['dateSent'].compareTo(b['dateSent']));
       return filteredMessages;
     } catch (e, stackTrace) {
-      print("🔥 Error processing messages: $e");
-      print("📜 StackTrace: $stackTrace");
+      await CrashService.instance.recordNonFatal(
+        e,
+        stackTrace,
+        reason: 'twilio fetchMessagesToCustomer failed',
+      );
       return [];
     }
   }
@@ -194,8 +198,12 @@ class TwilioService {
               })),
         );
       } else {
-        print(
-            "❌ Twilio SMS API Error: ${smsResponse.statusCode} - ${smsResponse.body}");
+        await CrashService.instance.recordNonFatal(
+          'Twilio SMS API non-200',
+          StackTrace.current,
+          reason: 'twilio fetchMessagesFromCustomer SMS API error',
+          context: {'status_code': smsResponse.statusCode},
+        );
       }
 
       // ✅ Fetch WhatsApp messages
@@ -228,8 +236,12 @@ class TwilioService {
                   })),
         );
       } else {
-        print(
-            "❌ Twilio WhatsApp API Error: ${whatsappResponse.statusCode} - ${whatsappResponse.body}");
+        await CrashService.instance.recordNonFatal(
+          'Twilio WhatsApp API non-200',
+          StackTrace.current,
+          reason: 'twilio fetchMessagesFromCustomer WhatsApp API error',
+          context: {'status_code': whatsappResponse.statusCode},
+        );
       }
 
       // 1️⃣ First, convert the string "num_media" into an integer field
@@ -264,8 +276,11 @@ class TwilioService {
 
       return allMessages;
     } catch (e, stackTrace) {
-      print("🔥 Error fetching messages: $e");
-      print("📜 StackTrace: $stackTrace");
+      await CrashService.instance.recordNonFatal(
+        e,
+        stackTrace,
+        reason: 'twilio fetchMessagesFromCustomer failed',
+      );
       return [];
     }
   }
@@ -320,7 +335,12 @@ class TwilioService {
                 msg['to'].contains('whatsapp'),
           }));
     } else {
-      print("❌ Twilio API Error: ${response.statusCode} - ${response.body}");
+      await CrashService.instance.recordNonFatal(
+        'Twilio API non-200',
+        StackTrace.current,
+        reason: 'twilio _fetchTwilioMessages API error',
+        context: {'status_code': response.statusCode},
+      );
       return [];
     }
   }

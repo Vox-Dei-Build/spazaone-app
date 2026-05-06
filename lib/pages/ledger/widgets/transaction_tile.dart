@@ -4,6 +4,7 @@ import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class TransactionTile extends StatelessWidget {
   const TransactionTile({
@@ -53,24 +54,29 @@ class TransactionTile extends StatelessWidget {
           ),
         );
       },
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.all(0.0),
-            visualDensity: const VisualDensity(horizontal: -2),
-            leading: Stack(
-              children: [
-                profilePicture(context, name, profileImageUrl, number, isNPA),
-              ],
+      // Most privacy-sensitive list in the app: customer name + outstanding
+      // balance on every row. Mask the rendered Column so replays show
+      // shapes but no PII; GestureDetector stays outside so taps record.
+      child: PrivateRegion(
+        child: Column(
+          children: [
+            ListTile(
+              contentPadding: const EdgeInsets.all(0.0),
+              visualDensity: const VisualDensity(horizontal: -2),
+              leading: Stack(
+                children: [
+                  profilePicture(context, name, profileImageUrl, number, isNPA),
+                ],
+              ),
+              title: _buildTitle(),
+              subtitle: _buildSubtitle(),
             ),
-            title: _buildTitle(),
-            subtitle: _buildSubtitle(),
-          ),
-          const Divider(
-            color: kHighLightColor,
-            height: 5,
-          ),
-        ],
+            const Divider(
+              color: kHighLightColor,
+              height: 5,
+            ),
+          ],
+        ),
       ),
     );
   }

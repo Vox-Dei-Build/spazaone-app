@@ -9,6 +9,7 @@ import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class RegisterAnonymousPage extends StatefulWidget {
   const RegisterAnonymousPage({Key? key}) : super(key: key);
@@ -51,45 +52,51 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
                 const LogoDisplay(),
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
-                CustomTextField(
-                  label: 'Full Name',
-                  hintText: 'Enter Full Name',
-                  prefixIcon: Icons.person,
-                  controller: authViewModel.nameController,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Full Name is required';
-                    }
-                    return null;
-                  },
+                PrivateRegion(
+                  child: CustomTextField(
+                    label: 'Full Name',
+                    hintText: 'Enter Full Name',
+                    prefixIcon: Icons.person,
+                    controller: authViewModel.nameController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Full Name is required';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
-                CustomTextField(
-                  label: 'Shop Name',
-                  hintText: 'Enter Shop Name',
-                  prefixIcon: Icons.store,
-                  controller: authViewModel.shopNameController,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Shop Name is required';
-                    }
-                    return null;
-                  },
+                PrivateRegion(
+                  child: CustomTextField(
+                    label: 'Shop Name',
+                    hintText: 'Enter Shop Name',
+                    prefixIcon: Icons.store,
+                    controller: authViewModel.shopNameController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Shop Name is required';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
-                CustomTextField(
-                  label: 'Mobile Number',
-                  hintText: 'Enter Mobile Number',
-                  prefixIcon: Icons.phone,
-                  controller: authViewModel.registrationMobileNoController,
-                  textInputType: TextInputType.phone,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Mobile Number is required';
-                    }
-                    if (!isValidSAPhoneNumber(value)) {
-                      return 'Enter a valid SA mobile number';
-                    }
-                    return null;
-                  },
+                PrivateRegion(
+                  child: CustomTextField(
+                    label: 'Mobile Number',
+                    hintText: 'Enter Mobile Number',
+                    prefixIcon: Icons.phone,
+                    controller: authViewModel.registrationMobileNoController,
+                    textInputType: TextInputType.phone,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Mobile Number is required';
+                      }
+                      if (!isValidSAPhoneNumber(value)) {
+                        return 'Enter a valid SA mobile number';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
                 SizedBox(height: SizeConfig.heightMultiplier * 2),
                 ValueListenableBuilder<bool>(
