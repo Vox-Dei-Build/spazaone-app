@@ -63,8 +63,8 @@ class ReviewAndPricingStep extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             Text(
-              "$whatsappCount via WhatsApp @ "
-              "R${whatsappUnit.toStringAsFixed(2)} = "
+              "$whatsappCount WhatsApp recipient${whatsappCount == 1 ? '' : 's'} "
+              "@ R${whatsappUnit.toStringAsFixed(2)} = "
               "R${(whatsappCount * whatsappUnit).toStringAsFixed(2)}",
               textAlign: TextAlign.center,
             ),
@@ -86,14 +86,45 @@ class ReviewAndPricingStep extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             Text(
-              "$smsCount via SMS @ "
-              "R${smsUnit.toStringAsFixed(2)} × $smsSegments = "
+              "$smsCount SMS recipient${smsCount == 1 ? '' : 's'} × "
+              "$smsSegments segment${smsSegments == 1 ? '' : 's'} "
+              "@ R${smsUnit.toStringAsFixed(2)} = "
               "R${(smsCount * smsUnit * smsSegments).toStringAsFixed(2)}",
               textAlign: TextAlign.center,
             ),
+            if (smsSegments > 1)
+              Padding(
+                padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 0.5),
+                child: Text(
+                  "This SMS is long enough to be sent as $smsSegments segments, "
+                  "so each recipient is charged for $smsSegments messages.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.4,
+                    color: Colors.grey.shade700,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
             MessagePreviewCard(content: resolved),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
           ],
+
+          // Channel-fallback explainer (only when both channels are on)
+          if (sendWhatsApp && sendSMS)
+            Padding(
+              padding: EdgeInsets.symmetric(
+                vertical: SizeConfig.heightMultiplier * 0.5,
+              ),
+              child: Text(
+                "Each recipient receives WhatsApp if available, otherwise SMS.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 1.4,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ),
 
           // Recipients list (shrink‑wrapped inside)
           if (customers != null && selectedCustomerIds != null) ...[
