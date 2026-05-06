@@ -44,6 +44,7 @@ exports.sendTwilioMessage = functions.https.onRequest(async (req, res) => {
     res
       .status(400)
       .json({ error: "Please provide a valid phone number and template ID." });
+    return;
   }
 
   try {

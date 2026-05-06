@@ -4,6 +4,11 @@ import { functions, db } from "../config/main";
 import twilio from "twilio";
 import { FieldValue } from "firebase-admin/firestore";
 import { DynamicPricingService } from "../services/dynamic_pricing_service";
+import {
+  formatPhoneNumber,
+  isValidSAPhoneNumber,
+  normalizePhoneNumber,
+} from "../utils/phoneUtils";
 
 function calculateSmsSegments(text: string): number {
   const content = (text || "").trim();
@@ -26,27 +31,6 @@ const {
   customer_messaging_service_sid: CUSTOMER_WA_SID,
   number: SMS_NUMBER,
 } = functions.config().twilio;
-
-/**
- * Normalize any South African‐style phone number into the local 0XXXXXXXXX form.
- *
- * @param {string} rawNumber - The raw input, e.g. "+27 82 123 4567" or "0821234567".
- * @return {string} A local‑format number, e.g. "0821234567", or empty string if invalid.
- */
-function normalizePhoneNumber(rawNumber: string): string {
-  if (!rawNumber) return "";
-  // Strip non‑digits
-  let digits = rawNumber.replace(/\D/g, "");
-  // If it starts with '27', drop that and prepend '0'
-  if (digits.startsWith("27")) {
-    digits = "0" + digits.slice(2);
-  }
-  // If it doesn't start with '0', take last 9 digits (in case someone passed e.g. '820123456')
-  else if (!digits.startsWith("0")) {
-    digits = "0" + digits.slice(-9);
-  }
-  return digits;
-}
 
 // initialize once
 const twilioClient = twilio(ACCOUNT_SID, AUTH_TOKEN);
@@ -241,10 +225,15 @@ export const runMerchantPromotion = functions.https.onCall(
           continue;
         }
 
-        // Normalize
-        let num = cust.number.replace(/\D/g, "");
-        if (num.startsWith("0")) num = "+27" + num.slice(1);
-        else if (num.startsWith("27")) num = "+" + num;
+        // Validate & normalize. Reject anything not a valid SA mobile so
+        // we never hand junk to Twilio (which silently fails per-customer).
+        if (!isValidSAPhoneNumber(cust.number)) {
+          console.warn(
+            `Skipping ${custId}: invalid SA phone number "${cust.number}"`,
+          );
+          continue;
+        }
+        const num = formatPhoneNumber(cust.number); // E.164 "+27..."
         const waTo = `whatsapp:${num}`;
         const smsTo = num;
 
