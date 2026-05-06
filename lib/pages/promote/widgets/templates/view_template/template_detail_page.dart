@@ -6,6 +6,7 @@ import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class TemplateDetailPage extends StatefulWidget {
   final PromotionsViewModel viewModel;
@@ -70,7 +71,7 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
     final whatsapp = channels['whatsapp'] as Map<String, dynamic>?;
     final sms = channels['sms'] as Map<String, dynamic>?;
     final smsSegments = sms != null
-        ? ((sms['templateContent'] as String).length / 160).ceil()
+        ? SMSPricingUtil.calculateSegments(sms['templateContent'] as String? ?? '')
         : 1;
 
     String? whatsappStatus;

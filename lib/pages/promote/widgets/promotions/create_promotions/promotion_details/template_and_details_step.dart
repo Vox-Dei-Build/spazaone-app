@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class TemplateAndDetailsStep extends StatefulWidget {
   final String? selectedTemplateId;
@@ -53,8 +54,9 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
     final content = selected['channels']?['whatsapp']?['templateContent'];
     final hasPreview = content is String && content.isNotEmpty;
     final mediaUrl = selected['channels']?['whatsapp']?['mediaUrl'];
-    final smsSegments =
-        content != null ? ((content as String).length / 160).ceil() : 1;
+    final smsSegments = content is String && content.isNotEmpty
+        ? SMSPricingUtil.calculateSegments(content)
+        : 1;
 
     final preview = hasPreview
         ? content
@@ -172,7 +174,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
                       fontWeight: FontWeight.bold)),
               if (widget.selectedTemplateId != null)
                 Text(
-                    'SMS Cost: R${(smsSegments * widget.smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
+                    'SMS Cost: $smsSegments segment${smsSegments == 1 ? '' : 's'} × R${widget.smsPricePerSegment!.toStringAsFixed(2)} = R${(smsSegments * widget.smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
               MessagePreviewCard(content: preview),
             ],
           ),
