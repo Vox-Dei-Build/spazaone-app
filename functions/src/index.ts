@@ -70,6 +70,7 @@ export * from "./ecommerce/getOpenSale";
 export * from "./ecommerce/cartSig";
 export * from "./ecommerce/finalizeOnlinePaid";
 export * from "./ecommerce/onSaleCancelledNotify";
+export * from "./ecommerce/onSaleCreatedNotify";
 export * from "./ecommerce/cancelOrder";
 export * from "./ecommerce/finalizeOnlinePaid";
 export * from "./ecommerce/getOnlineSalesFromLedger";
