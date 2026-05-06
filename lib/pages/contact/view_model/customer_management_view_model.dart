@@ -132,9 +132,11 @@ class CustomerManagementViewModel extends ChangeNotifier {
   }
 
   String? validateNumber() {
-    String trimmedNumber = numberController.text.trim();
-    if (trimmedNumber.isNotEmpty && trimmedNumber.length < 10) {
-      return "Enter a valid mobile number (at least 10 digits)";
+    final String trimmed = numberController.text.trim();
+    // Optional field: empty is OK (matches add-contact behavior).
+    if (trimmed.isEmpty) return null;
+    if (!isValidSAPhoneNumber(trimmed)) {
+      return 'Enter a valid SA mobile number';
     }
     return null;
   }

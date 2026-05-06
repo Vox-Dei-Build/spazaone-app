@@ -11,70 +11,80 @@ Future<T?> firestoreExceptionHandler<T>(
   }
 }
 
+/// Strict SA mobile number detection.
+///
+/// All conversions in this file are SA-only and never silently mangle
+/// non-SA input. If the input cannot be confidently identified as a SA
+/// mobile number, an empty string is returned and downstream validators
+/// will reject it via [isValidSAPhoneNumber].
+///
+/// Accepted SA mobile prefixes: 6, 7, 8, 9 (per ICASA, including the
+/// 9-prefix range allocated from 2024 onwards).
+
+// Local 10-digit SA mobile, e.g. 0821234567
+final RegExp _saLocalRegex = RegExp(r'^0[6-9][0-9]{8}$');
+// E.164 SA mobile, e.g. +27821234567
+final RegExp _saE164Regex = RegExp(r'^\+27[6-9][0-9]{8}$');
+// 11-digit SA mobile without +, e.g. 27821234567
+final RegExp _saCcDigitsRegex = RegExp(r'^27[6-9][0-9]{8}$');
+
+/// Returns the number in E.164 format (`+27XXXXXXXXX`) if it is a valid
+/// SA mobile, otherwise an empty string. Never blindly prepends `+27`.
 String formatPhoneNumber(String? phoneNumber) {
   if (phoneNumber == null || phoneNumber.isEmpty) return '';
 
-  phoneNumber = cleanPhoneNumber(phoneNumber);
+  // Preserve the original prefix to distinguish "+27..." from raw digits.
+  final String trimmed = phoneNumber.trim();
+  final bool hasPlusPrefix = trimmed.startsWith('+');
+  final String digits = cleanPhoneNumber(trimmed);
 
-  // Convert the number to SA format if it starts with '0'
-  if (phoneNumber.length == 10 && phoneNumber.startsWith('0')) {
-    return '+27${phoneNumber.substring(1)}';
-  } else if (phoneNumber.startsWith('27') && phoneNumber.length == 11) {
-    return '+$phoneNumber';
+  if (_saLocalRegex.hasMatch(digits)) {
+    return '+27${digits.substring(1)}';
   }
-
-  return phoneNumber;
+  if (_saCcDigitsRegex.hasMatch(digits)) {
+    // Accept "27821234567" or "+27821234567" — both safe.
+    return '+$digits';
+  }
+  if (hasPlusPrefix && _saE164Regex.hasMatch('+$digits')) {
+    return '+$digits';
+  }
+  // Anything else (international, malformed, junk) — refuse to guess.
+  return '';
 }
 
+/// Formats a customer number for Twilio. Returns empty string for
+/// non-SA / invalid numbers — callers MUST guard against this.
 String formatForTwilio(String customerNumber, bool isWhatsApp) {
-  // Ensure the number is always in +27 format
-  if (customerNumber.startsWith("0")) {
-    customerNumber = "+27${customerNumber.substring(1)}";
-  } else if (!customerNumber.startsWith("+27")) {
-    customerNumber = "+27$customerNumber";
-  }
-
-  // Append "whatsapp:" for WhatsApp numbers
-  return isWhatsApp ? "whatsapp:$customerNumber" : customerNumber;
+  final String e164 = formatPhoneNumber(customerNumber);
+  if (e164.isEmpty) return '';
+  return isWhatsApp ? 'whatsapp:$e164' : e164;
 }
 
+/// Normalizes to local SA form (`0XXXXXXXXX`). Returns empty string
+/// if the number is not a valid SA mobile, rather than silently
+/// fabricating a number from the last 9 digits of arbitrary input.
 String normalizePhoneNumber(String? rawNumber) {
   if (rawNumber == null || rawNumber.isEmpty) return '';
 
-  // Remove all non-digit characters
-  String digits = rawNumber.replaceAll(RegExp(r'\D'), '');
-
-  // Remove country code if present and format to local standard
-  if (digits.startsWith('27')) {
-    digits = '0${digits.substring(2)}';
-  } else if (!digits.startsWith('0')) {
-    digits = '0${digits.substring(digits.length - 9)}';
-  }
-  return digits;
+  final String e164 = formatPhoneNumber(rawNumber);
+  if (e164.isEmpty) return '';
+  // e164 is "+27XXXXXXXXX"; local form is "0XXXXXXXXX".
+  return '0${e164.substring(3)}';
 }
 
+/// Returns the WhatsApp-style `27XXXXXXXXX` (no `+`) if SA-valid,
+/// otherwise empty string.
 String formatPhoneNumberForWhatsapp(String? phoneNumber) {
   if (phoneNumber == null || phoneNumber.isEmpty) return '';
 
-  phoneNumber = cleanPhoneNumber(phoneNumber);
-
-  // Convert the number to SA format if it starts with '0'
-  if (phoneNumber.length == 10 && phoneNumber.startsWith('0')) {
-    return '27${phoneNumber.substring(1)}';
-  } else if (phoneNumber.startsWith('27') && phoneNumber.length == 11) {
-    return phoneNumber;
-  }
-
-  return phoneNumber;
+  final String e164 = formatPhoneNumber(phoneNumber);
+  if (e164.isEmpty) return '';
+  return e164.substring(1); // drop leading '+'
 }
 
 bool isValidSAPhoneNumber(String? phoneNumber) {
   if (phoneNumber == null || phoneNumber.isEmpty) return false;
-
-  phoneNumber = formatPhoneNumber(phoneNumber);
-
-  final RegExp regex = RegExp(r'^(?:\+27)[6-8][0-9]{8}$');
-  return regex.hasMatch(phoneNumber);
+  return formatPhoneNumber(phoneNumber).isNotEmpty;
 }
 
 Future<String?> fetchAndFormatPhoneNumber(
