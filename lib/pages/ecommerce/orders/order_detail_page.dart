@@ -9,6 +9,8 @@ import 'package:pasella/pages/ecommerce/orders/widgets/header_card.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/products_section_enhanced.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/section.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/timeline_row.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -40,6 +42,10 @@ class _OrderDetailPageState extends State<OrderDetailPage>
   bool _actionLoading = false;
   String? _busyAction;
 
+  /// Guards `BnplOfferShown` so it fires once per page instance even though
+  /// the StreamBuilder rebuilds on every Firestore snapshot.
+  bool _bnplShownFired = false;
+
   late final TabController _tabController =
       TabController(length: 2, vsync: this); // 2 tabs now
 
@@ -54,6 +60,22 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       action: action,
     );
     if (ok) {
+      // Fire BNPL accept/reject events as soon as the cloud function confirms
+      // the status change. termDays is not in the order document and the
+      // reject dialog has no reason dropdown -- pass 0 / null and revisit
+      // when those fields are introduced backend-side.
+      final amountBucket =
+          amountBucketZAR(OrderRepository.asNum(order['total']));
+      if (action == 'ACCEPT_BNPL') {
+        await TelemetryService.instance.capture(BnplOfferAccepted(
+          amountBucket: amountBucket,
+          termDays: 0,
+        ));
+      } else if (action == 'REJECT_BNPL') {
+        await TelemetryService.instance
+            .capture(BnplOfferRejected(amountBucket: amountBucket));
+      }
+
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
         final msgSvc = await OrderStatusMessagingService.create();
@@ -171,6 +193,18 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           final discount = OrderRepository.asNum(order['discount']);
           final total = OrderRepository.asNum(order['total']);
           final List items = (order['items'] as List?) ?? const [];
+
+          // Fire BnplOfferShown once when the merchant first sees a pending
+          // BNPL request. We defer to the next frame because we cannot fire
+          // analytics events directly from inside a build method.
+          if (isBnpl && !isBnplApproved && !isBnplRejected && !_bnplShownFired) {
+            _bnplShownFired = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              TelemetryService.instance.capture(
+                BnplOfferShown(amountBucket: amountBucketZAR(total)),
+              );
+            });
+          }
 
           final st = resolveOrderStatus(
             status: status,

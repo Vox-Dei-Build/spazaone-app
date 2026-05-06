@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/services/crash_service.dart';
 
 class ReportingService {
   final String currentUserId;
@@ -32,8 +33,12 @@ class ReportingService {
           .collection('customers')
           .get()
           .then((snapshot) => snapshot.docs);
-    } catch (e) {
-      print("Error fetching customers: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error fetching customers',
+      );
       return [];
     }
   }
@@ -54,8 +59,12 @@ class ReportingService {
       }
 
       return await query.get().then((snapshot) => snapshot.docs);
-    } catch (e) {
-      print("Error fetching transactions for customer: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error fetching transactions for customer',
+      );
       return [];
     }
   }
@@ -89,8 +98,12 @@ class ReportingService {
         for (DocumentSnapshot transaction in transactions) {
           processTransaction(transaction);
         }
-      } catch (e) {
-        print("Error processing transactions: $e");
+      } catch (e, st) {
+        await CrashService.instance.recordNonFatal(
+          e,
+          st,
+          reason: 'reporting: Error processing transactions',
+        );
       }
     }
   }
@@ -183,8 +196,12 @@ class ReportingService {
   Future<int> getTotalCustomers(List<DocumentSnapshot> customerDocs) async {
     try {
       return customerDocs.length;
-    } catch (e) {
-      print("Error fetching total customers: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error fetching total customers',
+      );
       return 0;
     }
   }
@@ -223,8 +240,12 @@ class ReportingService {
         }
       }
       return monthNames[maxMonth.month - 1];
-    } catch (e) {
-      print("Error determining month with highest loan issuance: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error determining month with highest loan issuance',
+      );
       return "Error";
     }
   }
@@ -246,8 +267,12 @@ class ReportingService {
             .get();
         totalReminders += reminderSnapshots.docs.length;
       }
-    } catch (e) {
-      print("Error fetching total reminders sent: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error fetching total reminders sent',
+      );
       return Future.error("Error fetching total reminders sent: $e");
     }
     return totalReminders;
@@ -262,8 +287,12 @@ class ReportingService {
         Map<String, dynamic> data = transaction.data() as Map<String, dynamic>;
         totalPayments += (data['amount'] as num).toDouble();
       });
-    } catch (e) {
-      print("Error calculating total payments received: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating total payments received',
+      );
     }
     return totalPayments;
   }
@@ -277,8 +306,12 @@ class ReportingService {
         Map<String, dynamic> data = transaction.data() as Map<String, dynamic>;
         totalCredit += (data['amount'] as num).toDouble();
       });
-    } catch (e) {
-      print("Error calculating credit size: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating credit size',
+      );
     }
     return totalCredit;
   }
@@ -295,8 +328,12 @@ class ReportingService {
           peakCreditSize = currentCredit;
         }
       });
-    } catch (e) {
-      print("Error calculating peak credit size: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating peak credit size',
+      );
     }
     return peakCreditSize;
   }
@@ -326,8 +363,12 @@ class ReportingService {
 
       // Fetch customer names
       return await fetchCustomerNames(npaCustomerIds, currentUserId);
-    } catch (e) {
-      print("Error fetching customers with NPAs: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error fetching customers with NPAs',
+      );
       return [];
     }
   }
@@ -358,8 +399,12 @@ class ReportingService {
           Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
           customerNames.add(data['name'] ?? 'Unknown Name');
         }
-      } catch (e) {
-        print('Error fetching customer names for chunk $i: $e');
+      } catch (e, st) {
+        await CrashService.instance.recordNonFatal(
+          e,
+          st,
+          reason: 'reporting: Error fetching customer names for chunk',
+        );
         customerNames.add('Error Fetching Customer');
       }
     }
@@ -415,8 +460,12 @@ class ReportingService {
       double totalPayments =
           await getTotalPaymentsReceived(customerDocs, startDate, endDate);
       return totalLoans - totalPayments;
-    } catch (e) {
-      print("Error calculating total outstanding amount: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating total outstanding amount',
+      );
       return 0.0;
     }
   }
@@ -432,8 +481,12 @@ class ReportingService {
           totalLoanTransactions++;
         });
       }
-    } catch (e) {
-      print("Error fetching total loan transactions: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error fetching total loan transactions',
+      );
       return 0;
     }
 
@@ -449,8 +502,12 @@ class ReportingService {
           await getTotalLoanTransactions(customerDocs, startDate, endDate);
       if (totalLoanTransactions == 0) return 0.0; // Avoid division by zero
       return totalLoans / totalLoanTransactions;
-    } catch (e) {
-      print("Error calculating average loan amount: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating average loan amount',
+      );
       return 0.0;
     }
   }
@@ -474,8 +531,12 @@ class ReportingService {
       if (totalPaymentTransactions == 0) return 0.0; // Avoid division by zero
 
       return totalPaymentAmount / totalPaymentTransactions;
-    } catch (e) {
-      print("Error calculating average payment amount: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating average payment amount',
+      );
       return 0.0;
     }
   }
@@ -509,8 +570,12 @@ class ReportingService {
       if (totalTransactions == 0) return 0.0; // Avoid division by zero
 
       return totalTransactionAmount / totalTransactions;
-    } catch (e) {
-      print("Error calculating average transaction value: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating average transaction value',
+      );
       return 0.0;
     }
   }
@@ -536,8 +601,12 @@ class ReportingService {
       double averageTransactions =
           totalTransactions / daysDifference.toDouble();
       return double.parse(averageTransactions.toStringAsFixed(2));
-    } catch (e) {
-      print("Error calculating average transactions per day: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating average transactions per day',
+      );
       return 0.0;
     }
   }
@@ -569,8 +638,12 @@ class ReportingService {
       }
 
       return DateFormat('MMMM d, y').format(maxDate);
-    } catch (e) {
-      print("Error determining date with highest transactions: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error determining date with highest transactions',
+      );
       return '';
     }
   }
@@ -613,8 +686,12 @@ class ReportingService {
       if (repaymentDurations.isEmpty) return 0;
       int totalRepaymentDays = repaymentDurations.reduce((a, b) => a + b);
       return totalRepaymentDays ~/ repaymentDurations.length;
-    } catch (e) {
-      print("Error calculating average repayment time: $e");
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'reporting: Error calculating average repayment time',
+      );
       return 0;
     }
   }

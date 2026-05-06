@@ -54,6 +54,13 @@ dependencies:
   flutter_local_notifications: ^17.2.4
   flutter_app_badger: ^1.5.0
 
+  # Observability (see docs/observability.md)
+  # PostHog 4.11.0 is the last release before Dart >=3.3 floor (5.0.0).
+  # Keep pinned exactly until we upgrade Flutter past 3.27.
+  posthog_flutter: 4.11.0
+  # Crashlytics 3.x is the last major compatible with firebase_core ^2.15.1.
+  firebase_crashlytics: ^3.4.9
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

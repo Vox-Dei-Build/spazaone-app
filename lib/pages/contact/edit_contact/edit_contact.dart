@@ -6,6 +6,7 @@ import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class EditCustomerPage extends StatefulWidget {
   final CustomerManagementViewModel viewModel;
@@ -29,23 +30,27 @@ class _EditCustomerPageState extends State<EditCustomerPage> {
             child: Column(
               children: [
                 _buildProfileImageSection(context, viewModel),
-                CustomTextField(
-                  controller: viewModel.nameController,
-                  hintText: 'Customer Name',
-                  prefixIcon: Icons.person,
-                  label: 'Customer Name',
-                  textInputType: TextInputType.name,
-                  maxLength: 20,
-                  validator: (_) => viewModel.validateName(),
+                PrivateRegion(
+                  child: CustomTextField(
+                    controller: viewModel.nameController,
+                    hintText: 'Customer Name',
+                    prefixIcon: Icons.person,
+                    label: 'Customer Name',
+                    textInputType: TextInputType.name,
+                    maxLength: 20,
+                    validator: (_) => viewModel.validateName(),
+                  ),
                 ),
-                CustomTextField(
-                  controller: viewModel.numberController,
-                  hintText: 'Mobile Number',
-                  prefixIcon: Icons.phone,
-                  label: 'Mobile Number',
-                  textInputType: TextInputType.phone,
-                  maxLength: 20,
-                  validator: (_) => viewModel.validateNumber(),
+                PrivateRegion(
+                  child: CustomTextField(
+                    controller: viewModel.numberController,
+                    hintText: 'Mobile Number',
+                    prefixIcon: Icons.phone,
+                    label: 'Mobile Number',
+                    textInputType: TextInputType.phone,
+                    maxLength: 20,
+                    validator: (_) => viewModel.validateNumber(),
+                  ),
                 ),
                 Stack(
                   alignment: Alignment.center,

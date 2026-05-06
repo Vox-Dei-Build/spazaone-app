@@ -2,6 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:provider/provider.dart';
 
 Future<bool> isAnonymousGate(BuildContext context) async {
@@ -23,10 +26,20 @@ void logout(BuildContext context) async {
   final FirebaseAuth auth = FirebaseAuth.instance;
   try {
     await auth.signOut();
+    // Fire signout BEFORE reset() so the event still has the identified user.
+    // TelemetryService.reset() also runs in main.dart's auth listener but
+    // that happens after this -- we only need to make sure the event is
+    // captured while we still have an identity.
+    await TelemetryService.instance.capture(const SignoutCompleted());
+    await TelemetryService.instance.reset();
     Provider.of<AppModel>(context, listen: false).updateCurrentIndex(0);
     Navigator.pushReplacementNamed(context, '/loginPage');
-  } catch (e) {
-    print("Error logging out: $e");
+  } catch (e, st) {
+    await CrashService.instance.recordNonFatal(
+      e,
+      st,
+      reason: 'logout failed',
+    );
   }
 }
 
