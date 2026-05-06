@@ -32,6 +32,9 @@ class AuthViewModel with ChangeNotifier {
   }
 
   Future<void> handleLogin(BuildContext context) async {
+    // Guard against re-entry (e.g. double-tap of the Login button) which would
+    // otherwise trigger two verifyPhoneNumber calls and two SMS messages.
+    if (isLoading.value) return;
     startLoading();
 
     try {
@@ -65,6 +68,8 @@ class AuthViewModel with ChangeNotifier {
 
   Future<void> registerUser(BuildContext context,
       {String? referrerUserId}) async {
+    // Guard against re-entry; prevents duplicate SMS sends from double-taps.
+    if (isLoading.value) return;
     startLoading();
     try {
       String formattedPhoneNumber =
