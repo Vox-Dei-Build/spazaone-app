@@ -3,6 +3,7 @@ import 'package:pasella/pages/contact/view_model/customer_management_view_model.
 import 'package:pasella/pages/transactions/view_transaction/view_transaction.dart';
 import 'package:pasella/pages/transactions/widgets/transaction_card.dart';
 import 'package:pasella/pages/transactions/widgets/transaction_date.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class TransactionsListView extends StatefulWidget {
   final CustomerManagementViewModel customerManagementViewModel;
@@ -52,38 +53,43 @@ class _TransactionsListViewState extends State<TransactionsListView> {
         .reversed
         .toList(); // ✅ Reverse the date order
 
-    return ListView.builder(
-      controller: _scrollController,
-      reverse: true, // ✅ Makes the latest transactions appear at the bottom
-      itemCount: reversedKeys.length,
-      itemBuilder: (context, index) {
-        String date = reversedKeys[index];
-        return Column(
-          children: [
-            TransactionDate(date),
-            ...groupedTransactions[date]!
-                .map((transaction) {
-                  return InkWell(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => TransactionDetailScreen(
-                              customerName: widget.customerName,
-                              customerId: widget.customerId,
-                              transactionId: transaction['id'],
-                              transaction: transaction,
-                              mobileNumber: widget.mobileNumber),
-                        ),
-                      );
-                    },
-                    child: TransactionCard(transaction),
-                  );
-                })
-                .toList()
-                .reversed, // ✅ Reverse transactions inside each date group
-          ],
-        );
-      },
+    // Customer profile already shows the name in the AppBar; the list shows
+    // their amounts. Wrap the list once so every transaction amount is masked
+    // in replay -- pairing of name+amount is what makes this PII-sensitive.
+    return PrivateRegion(
+      child: ListView.builder(
+        controller: _scrollController,
+        reverse: true, // ✅ Makes the latest transactions appear at the bottom
+        itemCount: reversedKeys.length,
+        itemBuilder: (context, index) {
+          String date = reversedKeys[index];
+          return Column(
+            children: [
+              TransactionDate(date),
+              ...groupedTransactions[date]!
+                  .map((transaction) {
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => TransactionDetailScreen(
+                                customerName: widget.customerName,
+                                customerId: widget.customerId,
+                                transactionId: transaction['id'],
+                                transaction: transaction,
+                                mobileNumber: widget.mobileNumber),
+                          ),
+                        );
+                      },
+                      child: TransactionCard(transaction),
+                    );
+                  })
+                  .toList()
+                  .reversed, // ✅ Reverse transactions inside each date group
+            ],
+          );
+        },
+      ),
     );
   }
 }

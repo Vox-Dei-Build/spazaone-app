@@ -5,6 +5,7 @@ import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/date_util.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class CustomersWithBadLoansTile extends StatelessWidget {
   final Future<List<dynamic>>? customersWithBadLoansFuture;
@@ -45,70 +46,72 @@ class CustomersWithBadLoansTile extends StatelessWidget {
               final id = customer['id'];
               final profileImageUrl = customer['profileImageUrl'];
 
-              return ListTile(
-                contentPadding: const EdgeInsets.all(0.0),
-                visualDensity: const VisualDensity(horizontal: -2),
-                leading: profilePicture(
-                    context, name, profileImageUrl, number, true),
-                title: _buildTitle(name, balance),
-                subtitle: Text(
-                  CurrencyUtil.format(balance),
-                  style: TextStyle(
-                    color: balance >= 0 ? kPrimaryColor : Colors.red,
-                    fontWeight: FontWeight.bold,
-                    fontSize: SizeConfig.textMultiplier * 1.8,
-                  ),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    number != null && number.isNotEmpty
-                        ? (reminderSentRecently(customer)
-                            ? Tooltip(
-                                message: 'Reminder sent within the last month',
-                                child: Icon(
-                                  Icons.notifications_active_outlined,
-                                  color: Colors.green,
-                                  size: SizeConfig.imageSizeMultiplier * 5,
-                                ),
-                              )
-                            : Tooltip(
-                                message:
-                                    'No reminder sent within the last month',
-                                child: Icon(
-                                  Icons.notifications_off_outlined,
-                                  color: Colors.red,
-                                  size: SizeConfig.imageSizeMultiplier * 5,
-                                ),
-                              ))
-                        : Tooltip(
-                            message:
-                                'No number available, cannot send reminder',
-                            child: Icon(
-                              Icons.phone_disabled_outlined,
-                              color: Colors.grey,
-                              size: SizeConfig.imageSizeMultiplier * 5,
-                            ),
-                          ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.visibility,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CustomerManagementPage(
-                              customerName: name,
-                              customerId: id,
-                              mobileNumber: number,
-                            ),
-                          ),
-                        );
-                      },
+              return PrivateRegion(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(0.0),
+                  visualDensity: const VisualDensity(horizontal: -2),
+                  leading: profilePicture(
+                      context, name, profileImageUrl, number, true),
+                  title: _buildTitle(name, balance),
+                  subtitle: Text(
+                    CurrencyUtil.format(balance),
+                    style: TextStyle(
+                      color: balance >= 0 ? kPrimaryColor : Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: SizeConfig.textMultiplier * 1.8,
                     ),
-                  ],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      number != null && number.isNotEmpty
+                          ? (reminderSentRecently(customer)
+                              ? Tooltip(
+                                  message: 'Reminder sent within the last month',
+                                  child: Icon(
+                                    Icons.notifications_active_outlined,
+                                    color: Colors.green,
+                                    size: SizeConfig.imageSizeMultiplier * 5,
+                                  ),
+                                )
+                              : Tooltip(
+                                  message:
+                                      'No reminder sent within the last month',
+                                  child: Icon(
+                                    Icons.notifications_off_outlined,
+                                    color: Colors.red,
+                                    size: SizeConfig.imageSizeMultiplier * 5,
+                                  ),
+                                ))
+                          : Tooltip(
+                              message:
+                                  'No number available, cannot send reminder',
+                              child: Icon(
+                                Icons.phone_disabled_outlined,
+                                color: Colors.grey,
+                                size: SizeConfig.imageSizeMultiplier * 5,
+                              ),
+                            ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.visibility,
+                          size: SizeConfig.imageSizeMultiplier * 5,
+                        ),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CustomerManagementPage(
+                                customerName: name,
+                                customerId: id,
+                                mobileNumber: number,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               );
             }).toList(),

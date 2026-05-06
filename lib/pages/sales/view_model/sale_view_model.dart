@@ -7,6 +7,9 @@ import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -247,10 +250,24 @@ class SalesViewModel extends TransactionViewModel {
         'lastSaleTransaction': salesData,
       });
 
+      // Cash sale committed. customerIsExisting is always false because the
+      // cash-sale flow does not bind to a customer document; credit sales
+      // (BNPL on ledger) fire the same event from add_credit_view_model with
+      // customerIsExisting: true.
+      await TelemetryService.instance.capture(SaleCompleted(
+        amountBucket: amountBucketZAR(amountEntered),
+        isCredit: false,
+        customerIsExisting: false,
+      ));
+
       // Reset the form and navigate back
       resetFormAndNavigateAway(context);
-    } catch (error) {
-      print(error);
+    } catch (error, st) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        st,
+        reason: 'addSalesTransaction failed',
+      );
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showSnackbar(context, 'Error adding sale. Please retry.', Colors.red);
       });

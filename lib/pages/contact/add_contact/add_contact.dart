@@ -7,6 +7,7 @@ import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/utils/show_toast.dart';
+import 'package:pasella/widgets/private_region.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/shared/widgets/custom_divider.dart';
@@ -195,28 +196,32 @@ class AddContactPage extends StatelessWidget {
                                 ),
                                 SectionCard(
                                   children: [
-                                    CustomTextField(
-                                      hintText: 'Customer Name',
-                                      prefixIcon: Icons.person,
-                                      label: 'Name *',
-                                      textInputType: TextInputType.name,
-                                      maxLength: 20,
-                                      controller: viewModel.nameController,
-                                      validator: (value) {
-                                        if (value == null || value.isEmpty) {
-                                          return 'This field is required';
-                                        }
-                                        return null;
-                                      },
+                                    PrivateRegion(
+                                      child: CustomTextField(
+                                        hintText: 'Customer Name',
+                                        prefixIcon: Icons.person,
+                                        label: 'Name *',
+                                        textInputType: TextInputType.name,
+                                        maxLength: 20,
+                                        controller: viewModel.nameController,
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'This field is required';
+                                          }
+                                          return null;
+                                        },
+                                      ),
                                     ),
-                                    CustomTextField(
-                                      hintText:
-                                          'Change it later via "Edit Customer"',
-                                      prefixIcon: Icons.call,
-                                      label: 'Mobile Number (Optional)',
-                                      textInputType: TextInputType.number,
-                                      maxLength: 10,
-                                      controller: viewModel.numberController,
+                                    PrivateRegion(
+                                      child: CustomTextField(
+                                        hintText:
+                                            'Change it later via "Edit Customer"',
+                                        prefixIcon: Icons.call,
+                                        label: 'Mobile Number (Optional)',
+                                        textInputType: TextInputType.number,
+                                        maxLength: 10,
+                                        controller: viewModel.numberController,
+                                      ),
                                     ),
                                   ],
                                 ),

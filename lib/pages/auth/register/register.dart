@@ -9,6 +9,7 @@ import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/utils/support_util.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -50,47 +51,52 @@ class _RegisterPageState extends State<RegisterPage> {
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
                 const LogoDisplay(),
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
-                CustomTextField(
-                  label: 'Full Name',
-                  hintText: 'Enter Full Name',
-                  prefixIcon: Icons.person,
-                  controller: authViewModel.nameController,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Full Name is required';
-                    }
-                    return null;
-                  },
+                PrivateRegion(
+                  child: CustomTextField(
+                    label: 'Full Name',
+                    hintText: 'Enter Full Name',
+                    prefixIcon: Icons.person,
+                    controller: authViewModel.nameController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Full Name is required';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
-                CustomTextField(
-                  label: 'Business Name',
-                  hintText: 'Enter Business Name',
-                  prefixIcon: Icons.store,
-                  controller: authViewModel.shopNameController,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Business Name is required';
-                    }
-                    return null;
-                  },
+                PrivateRegion(
+                  child: CustomTextField(
+                    label: 'Business Name',
+                    hintText: 'Enter Business Name',
+                    prefixIcon: Icons.store,
+                    controller: authViewModel.shopNameController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Business Name is required';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
-                CustomTextField(
-                  label: 'Mobile Number',
-                  hintText: 'Enter Mobile Number',
-                  prefixIcon: Icons.phone,
-                  controller: authViewModel.registrationMobileNoController,
-                  textInputType: TextInputType.phone,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Mobile Number is required';
-                    }
-                    if (!isValidSAPhoneNumber(value)) {
-                      return 'Enter a valid SA mobile number';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 1),
+                PrivateRegion(
+                  child: CustomTextField(
+                    label: 'Mobile Number',
+                    hintText: 'Enter Mobile Number',
+                    prefixIcon: Icons.phone,
+                    controller: authViewModel.registrationMobileNoController,
+                    textInputType: TextInputType.phone,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Mobile Number is required';
+                      }
+                      if (!isValidSAPhoneNumber(value)) {
+                        return 'Enter a valid SA mobile number';
+                      }
+                      return null;
+                    },
+                  ),
+                ),                SizedBox(height: SizeConfig.heightMultiplier * 1),
                 ValueListenableBuilder<bool>(
                   valueListenable: authViewModel.isLoading,
                   builder: (context, isLoading, child) {

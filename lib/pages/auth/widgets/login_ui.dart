@@ -5,6 +5,7 @@ import 'package:pasella/pages/auth/widgets/logo_display.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/utils/phone_util.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
   SizeConfig().init(context);
@@ -23,21 +24,23 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
                 const LogoDisplay(),
                 SizedBox(height: SizeConfig.heightMultiplier * 10),
-                CustomTextField(
-                  label: 'Mobile Number',
-                  hintText: 'Enter Mobile Number',
-                  prefixIcon: Icons.phone,
-                  controller: authViewModel.mobileNoController,
-                  textInputType: TextInputType.phone,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'This field is required';
-                    }
-                    if (!isValidSAPhoneNumber(value)) {
-                      return 'Enter a valid SA mobile number';
-                    }
-                    return null;
-                  },
+                PrivateRegion(
+                  child: CustomTextField(
+                    label: 'Mobile Number',
+                    hintText: 'Enter Mobile Number',
+                    prefixIcon: Icons.phone,
+                    controller: authViewModel.mobileNoController,
+                    textInputType: TextInputType.phone,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'This field is required';
+                      }
+                      if (!isValidSAPhoneNumber(value)) {
+                        return 'Enter a valid SA mobile number';
+                      }
+                      return null;
+                    },
+                  ),
                 ),
                 SizedBox(height: SizeConfig.heightMultiplier * 2),
                 ValueListenableBuilder<bool>(
