@@ -15,6 +15,7 @@ import 'package:contacts_service/contacts_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/permission_helper.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AddContactPage extends StatelessWidget {
@@ -75,10 +76,22 @@ class AddContactPage extends StatelessWidget {
                                             contact.phones?.first.value;
                                         if (phoneNumber != null &&
                                             phoneNumber.isNotEmpty) {
+                                          // Picker output may include
+                                          // spaces, dashes, parens or label
+                                          // noise. Normalize to local SA
+                                          // form when possible; fall back
+                                          // to digit-only so the maxLength:10
+                                          // input doesn't drop characters
+                                          // mid-typing.
+                                          final normalized =
+                                              normalizePhoneNumber(phoneNumber);
+                                          final cleaned = normalized.isNotEmpty
+                                              ? normalized
+                                              : cleanPhoneNumber(phoneNumber);
                                           viewModel.nameController.text =
                                               contact.displayName ?? '';
                                           viewModel.numberController.text =
-                                              phoneNumber;
+                                              cleaned;
                                         } else {
                                           SchedulerBinding.instance
                                               .addPostFrameCallback((_) {
@@ -217,6 +230,18 @@ class AddContactPage extends StatelessWidget {
                                       textInputType: TextInputType.number,
                                       maxLength: 10,
                                       controller: viewModel.numberController,
+                                      validator: (value) {
+                                        // Optional field: empty is OK.
+                                        // If provided, must be a valid SA
+                                        // mobile to keep storage and the
+                                        // SMS send-gate in agreement.
+                                        final v = value?.trim() ?? '';
+                                        if (v.isEmpty) return null;
+                                        if (!isValidSAPhoneNumber(v)) {
+                                          return 'Enter a valid SA mobile number';
+                                        }
+                                        return null;
+                                      },
                                     ),
                                   ],
                                 ),

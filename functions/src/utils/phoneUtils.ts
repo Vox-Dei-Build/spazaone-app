@@ -20,38 +20,82 @@ async function firestoreExceptionHandler<T>(
 }
 
 /**
- * Formats phone numbers to South African international format.
+ * Strict SA mobile number detection.
  *
- * @param {string | null} phoneNumber - The phone number to format.
- * @return {string} - The formatted phone number.
+ * All conversions in this file are SA-only and never silently mangle
+ * non-SA input. If the input cannot be confidently identified as a SA
+ * mobile number, an empty string is returned and downstream validators
+ * will reject it via {@link isValidSAPhoneNumber}.
+ *
+ * Accepted SA mobile prefixes: 6, 7, 8, 9 (per ICASA, including the
+ * 9-prefix range allocated from 2024 onwards).
+ *
+ * NOTE: This file is the single source of truth for phone-number
+ * handling in functions/. Do not introduce new normalizers; import
+ * from here.
  */
-function formatPhoneNumber(phoneNumber: string | null): string {
-  if (!phoneNumber || phoneNumber.trim() === "") return "";
 
-  phoneNumber = cleanPhoneNumber(phoneNumber);
+const SA_LOCAL_REGEX = /^0[6-9][0-9]{8}$/;
+const SA_E164_REGEX = /^\+27[6-9][0-9]{8}$/;
+const SA_CC_DIGITS_REGEX = /^27[6-9][0-9]{8}$/;
 
-  if (phoneNumber.length === 10 && phoneNumber.startsWith("0")) {
-    return "+27" + phoneNumber.substring(1);
-  } else if (phoneNumber.startsWith("27") && phoneNumber.length === 11) {
-    return "+" + phoneNumber;
+/**
+ * Returns the number in E.164 format (`+27XXXXXXXXX`) if it is a valid
+ * SA mobile, otherwise an empty string. Never blindly prepends `+27`.
+ *
+ * @param {string | null | undefined} phoneNumber - Raw input.
+ * @return {string} - The E.164 SA number, or "" if not SA-valid.
+ */
+export function formatPhoneNumber(
+  phoneNumber: string | null | undefined,
+): string {
+  if (!phoneNumber) return "";
+
+  const trimmed = phoneNumber.trim();
+  if (trimmed === "") return "";
+
+  const hasPlusPrefix = trimmed.startsWith("+");
+  const digits = cleanPhoneNumber(trimmed);
+
+  if (SA_LOCAL_REGEX.test(digits)) {
+    return "+27" + digits.substring(1);
   }
-
-  return phoneNumber;
+  if (SA_CC_DIGITS_REGEX.test(digits)) {
+    return "+" + digits;
+  }
+  if (hasPlusPrefix && SA_E164_REGEX.test("+" + digits)) {
+    return "+" + digits;
+  }
+  return "";
 }
 
 /**
- * Validates a South African phone number.
+ * Normalizes to local SA form (`0XXXXXXXXX`). Returns empty string if
+ * the number is not a valid SA mobile.
  *
- * @param {string | null} phoneNumber - The phone number to validate.
- * @return {boolean} - Returns true if valid, false otherwise.
+ * @param {string | null | undefined} rawNumber - Raw input.
+ * @return {string} - The local SA number, or "" if not SA-valid.
  */
-export function isValidSAPhoneNumber(phoneNumber: string | null): boolean {
+export function normalizePhoneNumber(
+  rawNumber: string | null | undefined,
+): string {
+  if (!rawNumber) return "";
+  const e164 = formatPhoneNumber(rawNumber);
+  if (e164 === "") return "";
+  return "0" + e164.substring(3);
+}
+
+/**
+ * Validates a South African mobile phone number.
+ *
+ * @param {string | null | undefined} phoneNumber - The phone number to validate.
+ * @return {boolean} - true iff a valid SA mobile.
+ */
+export function isValidSAPhoneNumber(
+  phoneNumber: string | null | undefined,
+): boolean {
   if (!phoneNumber) return false;
-
-  phoneNumber = formatPhoneNumber(phoneNumber);
-
-  const regex = /^(?:\+27)[6-8][0-9]{8}$/;
-  return regex.test(phoneNumber);
+  return formatPhoneNumber(phoneNumber) !== "";
 }
 
 /**
@@ -59,7 +103,7 @@ export function isValidSAPhoneNumber(phoneNumber: string | null): boolean {
  *
  * @param {string} currentUserId - The user ID (merchant).
  * @param {string} customerId - The customer ID.
- * @return {Promise<string | null>} - Returns the formatted phone number or null if an error occurs.
+ * @return {Promise<string | null>} - The E.164 formatted number, or null on error.
  */
 export async function fetchAndFormatPhoneNumber(
   currentUserId: string,

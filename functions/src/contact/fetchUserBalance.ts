@@ -1,32 +1,15 @@
 import { functions, db } from "../config/main";
+import { normalizePhoneNumber } from "../utils/phoneUtils";
+
+// Re-exported so existing import sites that resolve `normalizePhoneNumber`
+// from `../contact/fetchUserBalance` (and `..` via index.ts) keep working.
+// The single source of truth lives in `../utils/phoneUtils.ts`.
+export { normalizePhoneNumber };
 
 export interface MerchantDetails {
   name: string;
   shopName: string;
   balance: number;
-}
-
-/**
- * Normalizes a phone number to a standard local format without country code.
- *
- * @param {string} rawNumber - The raw phone number.
- * @return {string} - The normalized phone number in local format, e.g., 0648370009.
- */
-export function normalizePhoneNumber(rawNumber: string) {
-  if (rawNumber === "") {
-    return rawNumber; // Return the empty string unchanged
-  }
-
-  let digits = rawNumber.replace(/\D/g, ""); // Remove all non-digit characters
-
-  // Remove country code if present
-  if (digits.startsWith("27")) {
-    digits = "0" + digits.substring(2);
-  } else if (!digits.startsWith("0")) {
-    digits = "0" + digits.substring(digits.length - 9);
-  }
-
-  return digits;
 }
 
 /**
