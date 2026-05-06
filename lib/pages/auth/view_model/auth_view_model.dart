@@ -117,8 +117,8 @@ class AuthViewModel with ChangeNotifier {
     try {
       String formattedPhoneNumber =
           formatPhoneNumber(registrationMobileNoController.text);
-      bool isAlreadyRegistered =
-          await _isUserRegistered(registrationMobileNoController.text);
+      String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
+      bool isAlreadyRegistered = await _isUserRegistered(normalizedPhoneNumber);
       if (isAlreadyRegistered) {
         stopLoading();
         showErrorSnackBar(
@@ -268,14 +268,25 @@ class AuthViewModel with ChangeNotifier {
     return completer.future;
   }
 
-  Future<bool> _isUserRegistered(String mobileNumber) async {
+  Future<bool> _isUserRegistered(String normalizedMobileNumber) async {
     try {
-      final QuerySnapshot userSnapshot = await FirebaseFirestore.instance
+      // Query by the normalized field. We also fall back to a query on
+      // the legacy raw `mobileNumber` field so accounts created before
+      // `mobileNumberNormalized` was written (which may have raw values
+      // like "082 123 4567" or "+27821234567") are still found via the
+      // matching E.164 form.
+      final String e164 = formatPhoneNumber(normalizedMobileNumber);
+      final QuerySnapshot bothSnapshots = await FirebaseFirestore.instance
           .collection('users')
-          .where('mobileNumber', isEqualTo: mobileNumber)
+          .where(Filter.or(
+            Filter('mobileNumberNormalized',
+                isEqualTo: normalizedMobileNumber),
+            Filter('mobileNumber', isEqualTo: e164),
+            Filter('mobileNumber', isEqualTo: normalizedMobileNumber),
+          ))
           .get();
 
-      return userSnapshot.docs.isNotEmpty;
+      return bothSnapshots.docs.isNotEmpty;
     } catch (e) {
       print('Something went wrong while checking registered user: $e');
       return false; // Return false here within the catch block
@@ -360,11 +371,14 @@ class AuthViewModel with ChangeNotifier {
     if (user == null) return;
 
     try {
+      final String rawNumber = registrationMobileNoController.text;
+      final String normalized = normalizePhoneNumber(rawNumber);
       // Set root user details
       await _firestore.collection('users').doc(user.uid).set({
         'name': nameController.text,
         'shopName': shopNameController.text,
-        'mobileNumber': registrationMobileNoController.text,
+        'mobileNumber': rawNumber,
+        'mobileNumberNormalized': normalized,
         'referralCount': 0,
         'referrerUserId': referrerUserId ?? "",
       }, SetOptions(merge: true));
@@ -382,10 +396,13 @@ class AuthViewModel with ChangeNotifier {
   Future<void> _storeUserDetails(BuildContext context, User user,
       {String? referrerUserId}) async {
     try {
+      final String rawNumber = registrationMobileNoController.text;
+      final String normalized = normalizePhoneNumber(rawNumber);
       final Map<String, dynamic> userData = {
         'name': nameController.text,
         'shopName': shopNameController.text,
-        'mobileNumber': registrationMobileNoController.text,
+        'mobileNumber': rawNumber,
+        'mobileNumberNormalized': normalized,
         'referralCount': 0,
       };
 
@@ -393,7 +410,12 @@ class AuthViewModel with ChangeNotifier {
         userData['referrerUserId'] = referrerUserId;
       }
 
-      await _firestore.collection('users').doc(user.uid).set(userData);
+      // Merge to avoid clobbering fields that may already exist (e.g.
+      // when this is called after `_storeUserDetailsAfterLinking`).
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(userData, SetOptions(merge: true));
 
       // DRY ✅ create wallet doc
       await _createInitialWallet(user.uid);
