@@ -227,9 +227,24 @@ workflows:
             exit 1
           fi
       - name: Set up code signing
-        # Pulls/creates the Apple Distribution cert + App Store profile
-        # via the App Store Connect API key configured in the dashboard.
+        # Fetch (or create) the App Store distribution cert + profile for
+        # com.tsepo.pasella via the App Store Connect API key configured
+        # in the dashboard, install both into the build keychain, then
+        # tell xcodebuild to use them.
+        #
+        # `--create` is critical: after revoking the legacy iPhone
+        # Distribution cert, no provisioning profile in Apple's portal
+        # references the new Codemagic-owned Apple Distribution cert
+        # yet. fetch-signing-files with --create will mint a fresh
+        # App Store profile bound to the new cert.
         script: |
+          set -e
+          keychain initialize
+          app-store-connect fetch-signing-files \
+            "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
           xcode-project use-profiles
       - name: Pod install
         # Workaround for Ruby 3.4 / cocoapods locale bug.
