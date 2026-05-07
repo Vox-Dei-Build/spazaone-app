@@ -17,6 +17,22 @@ class TransactionViewModel extends ChangeNotifier {
   DateTime selectedDate = DateTime.now();
   String salesSelectedDate =
       DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
+
+  /// Mutates [selectedDate] and notifies listeners. Use this from the
+  /// shared `DateRow` callback so the displayed date refreshes
+  /// immediately and the dirty-tracking baseline picks up the change.
+  void setSelectedDate(DateTime value) {
+    selectedDate = value;
+    notifyListeners();
+  }
+
+  /// Mutates [salesSelectedDate] (kept as a `dd-MM-yyyy HH:mm` string for
+  /// backwards compat with the existing Firestore write paths) and
+  /// notifies listeners.
+  void setSalesSelectedDate(DateTime value) {
+    salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(value);
+    notifyListeners();
+  }
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
   List<Product> products = [];
   List<Product> filteredProducts = [];
@@ -30,8 +46,56 @@ class TransactionViewModel extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
 
+  /// Snapshot of the controller values + selected products + dates taken
+  /// the first time [markPristine] is called. Used by [isDirty] so the
+  /// shared `TransactionFormScaffold` can prompt before discarding work.
+  String? _pristineAmount;
+  String? _pristineRemarks;
+  Map<String, int>? _pristineProducts;
+  DateTime? _pristineSelectedDate;
+  String? _pristineSalesSelectedDate;
+
+  /// Call after the form has been populated (Add: in the constructor;
+  /// Edit: after the existing record loads). Subsequent calls are no-ops
+  /// unless [force] is true, which Edit screens use after a successful
+  /// load to reset the baseline.
+  void markPristine({bool force = false}) {
+    if (!force && _pristineAmount != null) return;
+    _pristineAmount = amountController.text;
+    _pristineRemarks = remarksController.text;
+    _pristineProducts = Map<String, int>.from(selectedProducts);
+    _pristineSelectedDate = selectedDate;
+    _pristineSalesSelectedDate = salesSelectedDate;
+  }
+
+  /// True when the user has edited any tracked field since the last
+  /// [markPristine]. Drives the unsaved-changes guard in
+  /// `TransactionFormScaffold`.
+  bool get isDirty {
+    if (_pristineAmount == null) return false;
+    if (amountController.text != _pristineAmount) return true;
+    if (remarksController.text != _pristineRemarks) return true;
+    if (selectedDate != _pristineSelectedDate) return true;
+    if (salesSelectedDate != _pristineSalesSelectedDate) return true;
+    final originalProducts = _pristineProducts ?? const {};
+    if (selectedProducts.length != originalProducts.length) return true;
+    for (final entry in selectedProducts.entries) {
+      if (originalProducts[entry.key] != entry.value) return true;
+    }
+    return false;
+  }
+
   TransactionViewModel() {
     loadProducts();
+    // Most Add* flows have empty controllers at construction, so this
+    // captures an "empty" baseline. Edit* flows should call
+    // `markPristine(force: true)` again after they finish loading the
+    // existing record.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      markPristine();
+    });
+    amountController.addListener(notifyListeners);
+    remarksController.addListener(notifyListeners);
   }
 
   Future<void> loadProducts() async {

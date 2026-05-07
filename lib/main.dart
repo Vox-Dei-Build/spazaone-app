@@ -3,7 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app_badger/flutter_app_badger.dart';
+import 'package:flutter_app_badger_plus/flutter_app_badger_plus.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
@@ -18,6 +18,7 @@ import 'package:pasella/pages/settings/privacy/privacy_page.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
+import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
@@ -31,6 +32,8 @@ import 'package:firebase_core/firebase_core.dart';
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
+import 'pages/promote/promote_intent_bus.dart';
+import 'pages/promote/promotions_page.dart';
 import 'pages/promote/view_model/promotions_view_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'services/merchant_heartbeat.dart';
@@ -113,15 +116,34 @@ void showLocalNotification(RemoteMessage message) async {
 
 Future<void> _firebaseMessagingOnMessageOpenedAppHandler(
     RemoteMessage message) async {
-  if (message.data.containsKey('route')) {
-    navigatorKey.currentState?.pushNamed(message.data['route']);
-  }
+  _handleNotificationRoute(message);
 }
 
 Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
-  if (message != null && message.data.containsKey('route')) {
-    navigatorKey.currentState?.pushNamed(message.data['route']);
+  if (message != null) _handleNotificationRoute(message);
+}
+
+/// Routes a notification tap to the correct screen.
+///
+/// Recognises the `route` data field. For the `/promotionsPage` family of
+/// routes, query parameters (`tab`, `templateId`, `action`) are stashed in
+/// [PromoteIntentBus] so the destination page can react after first build —
+/// this avoids needing a full deep-link router for what is currently a small
+/// number of routes.
+void _handleNotificationRoute(RemoteMessage message) {
+  final route = message.data['route'] as String?;
+  if (route == null || route.isEmpty) return;
+
+  final uri = Uri.tryParse(route);
+  if (uri == null) return;
+
+  if (uri.path == '/promotionsPage') {
+    PromoteIntentBus.instance.set(PromoteIntent.fromUri(uri));
   }
+
+  // Strip query params before pushing — the routes table only knows about
+  // bare paths. Anything page-specific is delivered via PromoteIntentBus.
+  navigatorKey.currentState?.pushNamed(uri.path);
 }
 
 Future<void> _initializeRemoteConfigAndSmartlook() async {
@@ -274,11 +296,7 @@ void main() async {
         .listen(showLocalNotification); // ✅ listen and display
 
     // When app is opened from a notification
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      if (message.data.containsKey('route')) {
-        navigatorKey.currentState?.pushNamed(message.data['route']);
-      }
-    });
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationRoute);
 
     // Setup merchant heartbeat boot hook
     await setupMerchantHeartbeatBootHook();
@@ -327,6 +345,7 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => AppModel()),
+        ChangeNotifierProvider(create: (context) => WalletBalanceProvider()),
         ChangeNotifierProvider(create: (context) => BalanceSummaryProvider()),
         ChangeNotifierProvider(
             create: (context) => CustomerBalanceSummaryProvider()),
@@ -378,6 +397,7 @@ class MyApp extends StatelessWidget {
             WalletPage.id: (context) => const WalletPage(),
             FindDefaulterPage.id: (context) => const FindDefaulterPage(),
             PrivacyPage.id: (context) => const PrivacyPage(),
+            PromotionsPage.id: (context) => const PromotionsPage(),
           },
         ),
       ),

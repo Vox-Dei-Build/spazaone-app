@@ -8,6 +8,8 @@ import 'dart:io';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/shared/billing/cost_breakdown.dart';
+import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
@@ -32,7 +34,18 @@ class AddContactViewModel extends ChangeNotifier {
 
   AddContactViewModel() {
     _initializeServices();
+    nameController.addListener(notifyListeners);
+    numberController.addListener(notifyListeners);
   }
+
+  /// True when the user has typed a name, a number, picked a profile
+  /// image, or accepted the consent box. Drives the unsaved-changes
+  /// guard on the Add Contact screen.
+  bool get isDirty =>
+      nameController.text.isNotEmpty ||
+      numberController.text.isNotEmpty ||
+      _profileImage != null ||
+      _contactConsentAccepted;
 
   Future<void> _initializeServices() async {
     pricingService = await DynamicPricingService.initialize();
@@ -107,14 +120,27 @@ class AddContactViewModel extends ChangeNotifier {
             unitCost: pricingService!.smsReminderTemplatePrice,
           );
 
-          bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-              context, currentUserId, onboardingMessageCost);
+          // Pre-flight cost confirmation. Cancel still saves the contact;
+          // only the welcome SMS is skipped.
+          final userConfirmed = await CostConfirmationSheet.show(
+            context,
+            breakdown: CostBreakdown.singleMessage(
+              title: 'Send welcome SMS to $customerName?',
+              subtitle: 'One-time onboarding message',
+              channelLabel: 'Welcome SMS',
+              cost: onboardingMessageCost,
+            ),
+            confirmLabel: 'Send SMS',
+          );
+
+          // Safety net for race conditions.
+          final canProceed = userConfirmed &&
+              await BalanceCheckUtil.checkBalanceAndProceed(
+                  context, currentUserId, onboardingMessageCost);
 
           if (canProceed) {
             await _sendSMS(
                 currentUserId, docRef.id, customerName, mobileNumber);
-          } else {
-            SnackbarComponents.showInsufficientBalance(context);
           }
         } else {
           SchedulerBinding.instance.addPostFrameCallback((_) {

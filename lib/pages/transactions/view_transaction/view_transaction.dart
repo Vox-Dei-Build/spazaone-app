@@ -64,7 +64,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         trailing: IconButton(
           icon: const Icon(Icons.edit),
           onPressed: () async {
-            await Navigator.of(context).push(
+            final result = await Navigator.of(context).push<bool>(
               MaterialPageRoute(
                 builder: (context) => EditTransactionScreen(
                   customerName: widget.customerName,
@@ -75,6 +75,14 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                 ),
               ),
             );
+            // EditTransactionScreen returns `true` when the user
+            // deleted the transaction — there's nothing left to view,
+            // so close this details screen too.
+            if (result == true && context.mounted) {
+              Navigator.of(context).pop(true);
+              return;
+            }
+            if (!context.mounted) return;
             setState(() {
               _transactionFuture = loadTransactionDetails();
             });

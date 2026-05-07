@@ -1,26 +1,9 @@
-buildscript {
-    ext.kotlin_version = '1.7.10'
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.9.1'
-        // START: FlutterFire Configuration
-        classpath 'com.google.gms:google-services:4.3.14'
-        // END: FlutterFire Configuration
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
-
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
 }
-
 
 rootProject.buildDir = '../build'
 subprojects {
@@ -34,15 +17,14 @@ subprojects {
                 if (namespace == null) {
                     namespace project.group
                 }
+                // Some long-tail plugins still declare an old compileSdkVersion
+                // (e.g. flutter_app_badger_plus pins 29) which is incompatible
+                // with modern androidx-core resources (the `lStar` attribute is
+                // only present from API 31). Force every subproject to compile
+                // against the same SDK as the app to avoid resource-linking
+                // failures.
+                compileSdkVersion 35
             }
-        }
-    }
-}
-
-subprojects {
-    afterEvaluate {
-        if (it.name == ":app:minifyReleaseWithR8") {
-            it.android.buildTypes.release.minifyEnabled = false
         }
     }
 }

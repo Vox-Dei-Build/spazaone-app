@@ -24,19 +24,47 @@ class PaystackWebView extends StatefulWidget {
 }
 
 class _PaystackWebViewState extends State<PaystackWebView> {
-  final Completer<WebViewController> _controller =
-      Completer<WebViewController>();
+  late final WebViewController _controller;
   bool isLoading = true;
 
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            if (mounted) setState(() => isLoading = true);
+          },
+          onPageFinished: (String url) {
+            if (mounted) setState(() => isLoading = false);
+            if (url == 'https://standard.paystack.co/close') {
+              if (mounted) Navigator.pop(context, true); // Payment successful
+            }
+          },
+          onNavigationRequest: (NavigationRequest request) {
+            if (request.url == 'https://standard.paystack.co/close') {
+              if (mounted) Navigator.of(context).pop(); // close webview
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.url));
+  }
+
   /// 🟢 Handle Payment Result and Navigate to Response Screen
+  // ignore: unused_element
   void _handlePaymentResult(bool success) {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => PaymentResponseScreen(
           isSuccess: success,
           message: success
-              ? "Your payment was successfully processed!"
-              : "Oops! Something went wrong with your payment.",
+              ? 'Your payment was successfully processed!'
+              : 'Oops! Something went wrong with your payment.',
           amount: widget.amount,
           reference: widget.reference,
         ),
@@ -53,14 +81,11 @@ class _PaystackWebViewState extends State<PaystackWebView> {
             children: [
               IconButton(
                 icon: const Icon(Icons.refresh),
-                onPressed: () async {
-                  final controller = await _controller.future;
-                  controller.reload(); // Refresh the page
-                },
+                onPressed: () => _controller.reload(),
               ),
               IconButton(
                 icon: const Icon(Icons.close),
-                onPressed: () async {
+                onPressed: () {
                   Navigator.of(context).pop(); //close webview
                   Navigator.of(context).pop(); //close paystack form
                 },
@@ -74,30 +99,7 @@ class _PaystackWebViewState extends State<PaystackWebView> {
           // in session replay. Wrapping just the WebView (not the AppBar /
           // spinner) keeps the chrome visible for diagnosing UX issues.
           PrivateRegion(
-            child: WebView(
-              initialUrl: widget.url,
-              javascriptMode: JavascriptMode.unrestricted,
-              onWebViewCreated: (WebViewController webViewController) {
-                _controller.complete(webViewController);
-              },
-              onPageStarted: (String url) {
-                setState(() => isLoading = true);
-              },
-              onPageFinished: (String url) {
-                setState(() => isLoading = false);
-                if (url == "https://standard.paystack.co/close") {
-                  Navigator.pop(context, true); // Payment successful
-                }
-              },
-              navigationDelegate: (NavigationRequest request) {
-                if (request.url == "https://standard.paystack.co/close") {
-                  Navigator.of(context).pop(); //close webview
-                }
-
-                return NavigationDecision.navigate;
-              },
-              gestureNavigationEnabled: true,
-            ),
+            child: WebViewWidget(controller: _controller),
           ),
           if (isLoading) const Center(child: CircularProgressIndicator()),
         ],

@@ -26,7 +26,7 @@ class TelemetryService {
   static final TelemetryService instance = TelemetryService._();
 
   static const _euHost = 'https://eu.i.posthog.com';
-  static const _envKey = 'posthog_key';
+  static const _envKey = 'POSTHOG_KEY';
 
   bool _setupCalled = false;
   bool _enabled = false;

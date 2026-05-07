@@ -6,13 +6,14 @@ import 'package:pasella/pages/contact/view_model/add_contact_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:pasella/widgets/private_region.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/shared/widgets/custom_divider.dart';
 import 'package:pasella/pages/contact/add_contact/widgets/section_card.dart';
-import 'package:contacts_service/contacts_service.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/permission_helper.dart';
@@ -25,10 +26,16 @@ class AddContactPage extends StatelessWidget {
   static const _privacyPolicyUrl =
       'https://docs.google.com/document/d/1Oz4M_j8u0YwQBzIyDB-IAl_wYBNdrQ5k_Fx6qR7uPAQ/edit?tab=t.0';
 
-  Future<void> _openPrivacyPolicy() async {
+  Future<void> _openPrivacyPolicy(BuildContext context) async {
     final uri = Uri.parse(_privacyPolicyUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (context.mounted) {
+      showErrorSnackBar(
+        context,
+        "Could not open the privacy policy. Please check your connection.",
+        isWarning: true,
+      );
     }
   }
 
@@ -38,59 +45,104 @@ class AddContactPage extends StatelessWidget {
       create: (_) => AddContactViewModel(),
       child: Consumer<AddContactViewModel>(
         builder: (context, viewModel, child) {
-          return Scaffold(
-            appBar: const CustomAppBar(title: 'Add Contact'),
-            body: SafeArea(
-              child: Padding(
-                padding: LayoutConstants.padding10Horizontal,
-                child: Consumer<AppModel>(
-                  builder: (context, model, child) {
-                    return Stack(
-                      children: [
-                        Form(
-                          key: viewModel
-                              .formKey, // Use formKey from the ViewModel
+          return PopScope(
+            canPop: !viewModel.isDirty,
+            onPopInvokedWithResult: (didPop, _) async {
+              if (didPop) return;
+              final shouldPop = await ConfirmDialog.showDestructive(
+                context,
+                title: 'Discard contact?',
+                message:
+                    'You have unsaved changes. Leaving now will discard them.',
+                confirmLabel: 'Discard',
+                cancelLabel: 'Keep editing',
+              );
+              if (shouldPop && context.mounted) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: GestureDetector(
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: Scaffold(
+                appBar: const CustomAppBar(title: 'Add Contact'),
+                body: SafeArea(
+                  child: Padding(
+                    padding: LayoutConstants.padding10Horizontal,
+                    child: Consumer<AppModel>(
+                      builder: (context, model, child) {
+                        // Coerce to string so the header always renders
+                        // even if AppModel hasn't selected a category yet.
+                        final categoryLabel =
+                            model.selectedCustomerCategory.toString();
+
+                        return Form(
+                          key: viewModel.formKey,
                           child: SingleChildScrollView(
                             child: Column(
                               children: [
+                                // Consent moved above the contact picker so
+                                // the gate is visible before the action,
+                                // not enforced via a runtime snackbar
+                                // surprise.
+                                CheckboxListTile(
+                                  value: viewModel.contactConsentAccepted,
+                                  onChanged: (value) => viewModel
+                                      .setContactConsent(value ?? false),
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  contentPadding: EdgeInsets.zero,
+                                  title: const Text(
+                                    'I confirm I have consent to upload this contact and understand Pasella securely stores the details so I can message the customer later.',
+                                  ),
+                                  subtitle: GestureDetector(
+                                    onTap: () => _openPrivacyPolicy(context),
+                                    child: const Text(
+                                      'View Privacy Policy',
+                                      style: TextStyle(
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(
+                                    height: LayoutConstants.spaceSm),
                                 CustomButton(
+                                  isDisabled:
+                                      !viewModel.contactConsentAccepted,
                                   onTap: () async {
-                                    if (!viewModel.contactConsentAccepted) {
-                                      showSnackbar(
-                                        context,
-                                        'Please confirm you have permission to store this contact before continuing.',
-                                        Colors.orange,
-                                      );
-                                      return;
-                                    }
-
                                     final granted = await PermissionHelper
                                         .requestContacts(context);
-
                                     if (!granted) return;
 
                                     try {
-                                      Contact? contact = await ContactsService
-                                          .openDeviceContactPicker();
+                                      final Contact? contact =
+                                          await FlutterContacts
+                                              .openExternalPick();
                                       if (contact != null) {
-                                        String? phoneNumber =
-                                            contact.phones?.first.value;
+                                        // Re-fetch with full details to ensure
+                                        // phones are populated (some OEMs
+                                        // return a stub from the picker).
+                                        final fullContact =
+                                            await FlutterContacts.getContact(
+                                          contact.id,
+                                          withProperties: true,
+                                        );
+                                        final phones =
+                                            fullContact?.phones ?? contact.phones;
+                                        final String? phoneNumber =
+                                            phones.isNotEmpty
+                                                ? phones.first.number
+                                                : null;
                                         if (phoneNumber != null &&
                                             phoneNumber.isNotEmpty) {
-                                          // Picker output may include
-                                          // spaces, dashes, parens or label
-                                          // noise. Normalize to local SA
-                                          // form when possible; fall back
-                                          // to digit-only so the maxLength:10
-                                          // input doesn't drop characters
-                                          // mid-typing.
                                           final normalized =
                                               normalizePhoneNumber(phoneNumber);
                                           final cleaned = normalized.isNotEmpty
                                               ? normalized
                                               : cleanPhoneNumber(phoneNumber);
                                           viewModel.nameController.text =
-                                              contact.displayName ?? '';
+                                              (fullContact ?? contact)
+                                                  .displayName;
                                           viewModel.numberController.text =
                                               cleaned;
                                         } else {
@@ -116,30 +168,8 @@ class AddContactPage extends StatelessWidget {
                                   icon: Icons.contacts,
                                   title: 'Select Contact',
                                 ),
-                                SizedBox(
-                                    height: SizeConfig.heightMultiplier * 2),
-                                CheckboxListTile(
-                                  value: viewModel.contactConsentAccepted,
-                                  onChanged: (value) => viewModel
-                                      .setContactConsent(value ?? false),
-                                  controlAffinity:
-                                      ListTileControlAffinity.leading,
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text(
-                                    'I confirm I have consent to upload this contact and understand Pasella securely stores the details so I can message the customer later.',
-                                  ),
-                                  subtitle: GestureDetector(
-                                    onTap: _openPrivacyPolicy,
-                                    child: const Text(
-                                      'View Privacy Policy',
-                                      style: TextStyle(
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                    height: SizeConfig.heightMultiplier * 1.5),
+                                const SizedBox(
+                                    height: LayoutConstants.spaceMd),
                                 Row(
                                   children: [
                                     const CustomDivider(),
@@ -154,8 +184,8 @@ class AddContactPage extends StatelessWidget {
                                     const CustomDivider(),
                                   ],
                                 ),
-                                SizedBox(
-                                    height: SizeConfig.heightMultiplier * 2),
+                                const SizedBox(
+                                    height: LayoutConstants.spaceMd),
                                 Column(
                                   mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
@@ -169,14 +199,14 @@ class AddContactPage extends StatelessWidget {
                                       radius: SizeConfig.heightMultiplier * 9,
                                       profileImage: viewModel.profileImage,
                                     ),
-                                    SizedBox(
-                                        height:
-                                            SizeConfig.heightMultiplier * 1),
+                                    const SizedBox(
+                                        height: LayoutConstants.spaceXs),
                                     IconButton(
-                                      icon: Icon(
+                                      tooltip: 'Add profile photo',
+                                      iconSize:
+                                          SizeConfig.imageSizeMultiplier * 8,
+                                      icon: const Icon(
                                         Icons.camera_alt,
-                                        size:
-                                            SizeConfig.imageSizeMultiplier * 8,
                                         color: Colors.green,
                                       ),
                                       onPressed: () async {
@@ -186,27 +216,17 @@ class AddContactPage extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    SizedBox(
-                                        height:
-                                            SizeConfig.heightMultiplier * 2),
-                                    Text(
-                                      '${model.selectedCustomerCategory} Details',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize:
-                                              SizeConfig.textMultiplier * 2),
-                                    ),
-                                    SizedBox(
-                                        height:
-                                            SizeConfig.heightMultiplier * 2),
-                                    SizedBox(
-                                        height: SizeConfig.heightMultiplier * 2)
-                                  ],
+                                const SizedBox(
+                                    height: LayoutConstants.spaceMd),
+                                Text(
+                                  '$categoryLabel Details',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize:
+                                          SizeConfig.textMultiplier * 2),
                                 ),
+                                const SizedBox(
+                                    height: LayoutConstants.spaceMd),
                                 SectionCard(
                                   children: [
                                     PrivateRegion(
@@ -235,10 +255,6 @@ class AddContactPage extends StatelessWidget {
                                         maxLength: 10,
                                         controller: viewModel.numberController,
                                         validator: (value) {
-                                          // Optional field: empty is OK.
-                                          // If provided, must be a valid SA
-                                          // mobile to keep storage and the
-                                          // SMS send-gate in agreement.
                                           final v = value?.trim() ?? '';
                                           if (v.isEmpty) return null;
                                           if (!isValidSAPhoneNumber(v)) {
@@ -250,32 +266,36 @@ class AddContactPage extends StatelessWidget {
                                     ),
                                   ],
                                 ),
+                                const SizedBox(
+                                    height: LayoutConstants.spaceMd),
+                                // Real disabled state via the
+                                // `isDisabled` prop — replaces the
+                                // `onTap: isLoading ? () {} : ...`
+                                // pattern that left the button looking
+                                // tappable while no-oping.
                                 CustomButton(
-                                  onTap: viewModel.isLoading
-                                      ? () {}
-                                      : () async {
-                                          if (viewModel.formKey.currentState!
-                                              .validate()) {
-                                            await viewModel
-                                                .addCustomerToFirestore(
-                                                    context, model);
-                                          }
-                                        },
+                                  isDisabled: viewModel.isLoading,
+                                  onTap: () async {
+                                    if (viewModel.formKey.currentState
+                                            ?.validate() ??
+                                        false) {
+                                      await viewModel.addCustomerToFirestore(
+                                          context, model);
+                                    }
+                                  },
                                   margin: const EdgeInsets.fromLTRB(
                                       10, 0, 10, 10.0),
-                                  title: 'Confirm',
+                                  title: viewModel.isLoading
+                                      ? 'Saving…'
+                                      : 'Confirm',
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                        if (viewModel.isLoading)
-                          const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                      ],
-                    );
-                  },
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),

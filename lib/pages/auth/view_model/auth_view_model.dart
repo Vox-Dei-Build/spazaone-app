@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show SocketException;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
@@ -42,6 +44,21 @@ class AuthViewModel with ChangeNotifier {
     startLoading();
 
     try {
+      // Network-first: the registered-user lookup needs an authoritative
+      // answer from Firestore. If the device is offline, Firestore silently
+      // returns empty results from cache, which would tell the user they
+      // aren't registered and push them into the registration flow — risking
+      // duplicate accounts.
+      if (!await _hasNetwork()) {
+        showErrorSnackBar(
+          context,
+          "You're offline. Please connect to the internet and try again.",
+          isWarning: true,
+        );
+        stopLoading();
+        return;
+      }
+
       String formattedPhoneNumber = formatPhoneNumber(mobileNoController.text);
       String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
       bool isRegistered = await _isUserRegistered(normalizedPhoneNumber);
@@ -64,7 +81,7 @@ class AuthViewModel with ChangeNotifier {
         stopLoading();
       }
     } catch (e) {
-      showErrorSnackBar(context, 'Something went wrong, please try again: $e');
+      showErrorSnackBar(context, _friendlyAuthError(e), isWarning: true);
     } finally {
       stopLoading();
     }
@@ -76,6 +93,17 @@ class AuthViewModel with ChangeNotifier {
     if (isLoading.value) return;
     startLoading();
     try {
+      // Network-first: see comment in handleLogin().
+      if (!await _hasNetwork()) {
+        showErrorSnackBar(
+          context,
+          "You're offline. Please connect to the internet and try again.",
+          isWarning: true,
+        );
+        stopLoading();
+        return;
+      }
+
       String formattedPhoneNumber =
           formatPhoneNumber(registrationMobileNoController.text);
       String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
@@ -123,8 +151,7 @@ class AuthViewModel with ChangeNotifier {
         st,
         reason: 'phone registration failed',
       );
-      showErrorSnackBar(
-          context, 'Something went wrong during registration: $e');
+      showErrorSnackBar(context, _friendlyAuthError(e), isWarning: true);
     } finally {
       stopLoading();
     }
@@ -316,32 +343,98 @@ class AuthViewModel with ChangeNotifier {
     return completer.future;
   }
 
+  /// Returns true if the device currently has a usable network connection.
+  /// Uses the same `connectivity_plus` API used elsewhere in the app.
+  ///
+  /// NOTE: This only reflects whether a radio (Wi-Fi / cellular) is enabled,
+  /// not whether the internet is actually reachable. Captive portals, DNS
+  /// failure, weak signal and similar will all report "online" here. Treat
+  /// this as a cheap pre-check; the real reachability test is the Firestore
+  /// query itself, whose `[cloud_firestore/unavailable]` error is caught and
+  /// translated by [_friendlyAuthError].
+  Future<bool> _hasNetwork() async {
+    try {
+      final result = await Connectivity().checkConnectivity();
+      return result != ConnectivityResult.none;
+    } catch (_) {
+      // If the connectivity check itself fails, assume we have a connection
+      // and let the downstream Firestore call fail loudly.
+      return true;
+    }
+  }
+
+  /// Translates an exception thrown during the auth flow into a user-facing
+  /// message. The single most common failure mode is the device being
+  /// effectively offline (no DNS, captive portal, server unreachable), which
+  /// surfaces as `[cloud_firestore/unavailable]` — show a clear "you're
+  /// offline" message rather than the raw Firestore error.
+  String _friendlyAuthError(Object e) {
+    if (e is FirebaseException && e.code == 'unavailable') {
+      return "You're offline or our servers are unreachable. "
+          "Please check your connection and try again.";
+    }
+    if (e is SocketException || e.toString().contains('SocketException')) {
+      return "You're offline. Please check your connection and try again.";
+    }
+    return 'Something went wrong, please try again: $e';
+  }
+
   Future<bool> _isUserRegistered(String normalizedMobileNumber) async {
     try {
-      // Query by the normalized field. We also fall back to a query on
-      // the legacy raw `mobileNumber` field so accounts created before
-      // `mobileNumberNormalized` was written (which may have raw values
-      // like "082 123 4567" or "+27821234567") are still found via the
-      // matching E.164 form.
-      final String e164 = formatPhoneNumber(normalizedMobileNumber);
-      final QuerySnapshot bothSnapshots = await FirebaseFirestore.instance
-          .collection('users')
-          .where(Filter.or(
-            Filter('mobileNumberNormalized',
-                isEqualTo: normalizedMobileNumber),
-            Filter('mobileNumber', isEqualTo: e164),
-            Filter('mobileNumber', isEqualTo: normalizedMobileNumber),
-          ))
-          .get();
+      if (normalizedMobileNumber.isEmpty) return false;
 
-      return bothSnapshots.docs.isNotEmpty;
+      final String e164 = formatPhoneNumber(normalizedMobileNumber);
+      final users = FirebaseFirestore.instance.collection('users');
+      // Force a server fetch. Without this, Firestore will happily return
+      // empty results from cache when offline, which would tell the user
+      // they aren't registered when in fact the lookup never reached the
+      // server. The connectivity guard in the caller catches the common
+      // case; Source.server is belt-and-braces for stale-cache scenarios.
+      const opts = GetOptions(source: Source.server);
+
+      // 1) Preferred: query the new normalized field. Matches accounts
+      //    written/updated since the normalization fix.
+      final byNormalized = await users
+          .where('mobileNumberNormalized', isEqualTo: normalizedMobileNumber)
+          .limit(1)
+          .get(opts);
+      if (byNormalized.docs.isNotEmpty) return true;
+
+      // 2) Legacy fallback: query the raw `mobileNumber` field. Existing
+      //    accounts may have been stored as either the local form
+      //    ("0648370009") or the E.164 form ("+27648370009") depending on
+      //    what the user typed at registration time.
+      //
+      //    NOTE: two sequential single-field queries are used (instead of
+      //    Filter.or) so this works without a composite index and on
+      //    older cloud_firestore SDK versions.
+      final byLegacyLocal = await users
+          .where('mobileNumber', isEqualTo: normalizedMobileNumber)
+          .limit(1)
+          .get(opts);
+      if (byLegacyLocal.docs.isNotEmpty) return true;
+
+      if (e164.isNotEmpty && e164 != normalizedMobileNumber) {
+        final byLegacyE164 = await users
+            .where('mobileNumber', isEqualTo: e164)
+            .limit(1)
+            .get(opts);
+        if (byLegacyE164.docs.isNotEmpty) return true;
+      }
+
+      return false;
     } catch (e, st) {
       await CrashService.instance.recordNonFatal(
         e,
         st,
         reason: 'isUserRegistered lookup failed',
       );
-      return false; // Return false here within the catch block
+      // Re-throw so callers can distinguish "lookup failed" (e.g. offline /
+      // permission denied) from "lookup succeeded and returned no match".
+      // Previously this swallowed the exception and returned false, which
+      // told users they weren't registered when the query had actually
+      // failed.
+      rethrow;
     }
   }
 

@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/settings/settings.dart';
-import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/widgets/connectivity_widget.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/shared/widgets/wallet_balance_pill.dart';
 
+/// Top-of-page header.
+///
+/// Layout, left → right:
+///   1. Brand (logo + "Pasella")
+///   2. Page-scoped actions: optional search, optional `actionWidget`
+///   3. Account/value: wallet balance pill (always visible, with breathing
+///      room so its rounded shape doesn't visually merge with adjacent icons)
+///   4. System: settings + connectivity status
+///
+/// Width strategy: every element renders at its natural size and is sized to
+/// fit comfortably even on narrow Android screens (~360dp). The brand is
+/// intentionally toned down from a hero-sized title to a header-appropriate
+/// size so the always-visible wallet pill, page actions, and system cluster
+/// all fit without ellipsizing or overflow.
 class PageHeader extends StatelessWidget {
   final VoidCallback? onSearchTap;
   final Widget? actionWidget;
@@ -20,116 +32,69 @@ class PageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
+    final iconSize = SizeConfig.imageSizeMultiplier * 5;
+    final pillGap = SizeConfig.imageSizeMultiplier * 2;
+    final tightGap = SizeConfig.imageSizeMultiplier * 0.5;
+
     return Padding(
       padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.imageSizeMultiplier * 1,
-          vertical: SizeConfig.heightMultiplier * 0),
+        horizontal: SizeConfig.imageSizeMultiplier * 1,
+      ),
       child: Row(
         children: [
+          // ── Brand ────────────────────────────────────────────────
           Icon(
             Icons.shopping_cart_outlined,
             color: Colors.orangeAccent,
-            size: SizeConfig.imageSizeMultiplier * 7,
+            size: SizeConfig.imageSizeMultiplier * 5.5,
           ),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 1.3),
+          SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
           Text(
             'Pasella',
             style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 4,
+              fontSize: SizeConfig.textMultiplier * 2.6,
               fontWeight: FontWeight.bold,
             ),
           ),
+
           const Spacer(),
+
+          // ── Page-scoped actions ──────────────────────────────────
           if (onSearchTap != null)
-            Expanded(
-              child: IconButton(
-                icon: Icon(Icons.search,
-                    color: Colors.black,
-                    size: SizeConfig.imageSizeMultiplier * 5),
-                onPressed: onSearchTap,
-                alignment: Alignment.centerRight,
-              ),
-            )
-          else
-            const Spacer(),
-          const Spacer(),
-          if (actionWidget != null) actionWidget!,
-          const Spacer(),
-          Expanded(
-            child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseAuth.instance.currentUser == null
-                  ? null
-                  : FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(FirebaseAuth.instance.currentUser!.uid)
-                      .collection('wallet')
-                      .doc('current')
-                      .snapshots(),
-              builder: (context, snapshot) {
-                double salesBalance = 0;
-                if (snapshot.hasData && snapshot.data?.data() != null) {
-                  final data = snapshot.data!.data()!;
-                  final sb = data['salesVirtualBalance'];
-                  if (sb is num) {
-                    salesBalance = sb.toDouble();
-                  }
-                }
-
-                final button = IconButton(
-                  icon: Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: Colors.black,
-                    size: SizeConfig.imageSizeMultiplier * 5,
-                  ),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const WalletPage(),
-                      ),
-                    );
-                  },
-                  alignment: Alignment.centerRight,
-                );
-
-                if (salesBalance > 0) {
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      button,
-                      Positioned(
-                        right: 4,
-                        top: 4,
-                        child: Icon(
-                          Icons.circle,
-                          color: Colors.green,
-                          size: SizeConfig.imageSizeMultiplier * 2.5,
-                        ),
-                      ),
-                    ],
-                  );
-                }
-
-                return button;
-              },
+            IconButton(
+              icon: Icon(Icons.search, color: Colors.black, size: iconSize),
+              onPressed: onSearchTap,
+              tooltip: 'Search',
+              visualDensity: VisualDensity.compact,
             ),
+          if (actionWidget != null)
+            // Strip Expanded wrappers from caller-supplied actionWidgets so
+            // they don't gobble the breathing room before the wallet pill.
+            // (Several pages historically wrap icons in Expanded — that
+            // collides the icon with the pill and also breaks Row layout
+            // when combined with Flexible siblings.)
+            actionWidget is Expanded
+                ? (actionWidget as Expanded).child
+                : actionWidget!,
+
+          // ── Account / value (wallet pill, with breathing room) ──
+          SizedBox(width: pillGap),
+          const WalletBalancePill(),
+          SizedBox(width: pillGap),
+
+          // ── System cluster (settings + connectivity) ────────────
+          IconButton(
+            icon: Icon(Icons.settings_outlined,
+                color: Colors.black, size: iconSize),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              );
+            },
+            tooltip: 'Settings',
+            visualDensity: VisualDensity.compact,
           ),
-          const Spacer(),
-          Expanded(
-            child: IconButton(
-              icon: Icon(Icons.settings_outlined,
-                  color: Colors.black,
-                  size: SizeConfig.imageSizeMultiplier * 5),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsPage(),
-                  ),
-                );
-              },
-              alignment: Alignment.centerRight,
-            ),
-          ),
-          const Spacer(),
+          SizedBox(width: tightGap),
           const ConnectivityIndicator(),
         ],
       ),

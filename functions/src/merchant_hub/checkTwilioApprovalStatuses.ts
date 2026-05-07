@@ -114,6 +114,14 @@ exports.checkTwilioApprovalStatuses = functions.pubsub
             data: {
               status,
               templateId: doc.id,
+              // Deep-link target consumed by the Flutter client. Approved →
+              // jump to the Run Promotion flow so the merchant can use the
+              // template immediately. Rejected → land on the template's
+              // detail page so they can read the reason and resubmit.
+              route:
+                status === "approved"
+                  ? "/promotionsPage?tab=promotions&action=run"
+                  : `/promotionsPage?tab=templates&templateId=${doc.id}`,
             },
             token,
           };
