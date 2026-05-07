@@ -66,6 +66,23 @@ definitions:
       cocoapods: default
 
   scripts:
+    - &materialise_dotenv
+      name: Materialise .env from secure env var
+      # The .env file is gitignored and declared as a Flutter asset in
+      # pubspec.yaml. Without it the asset bundle build fails with
+      # "No file or variants found for asset: .env" during pub get,
+      # flutter test, and flutter build. Codemagic exposes the file's
+      # contents via the secure $DOTENV_FILE variable; write it back
+      # to disk at the repo root before any Flutter step runs.
+      script: |
+        set -e
+        if [ -z "${DOTENV_FILE:-}" ]; then
+          echo "::error:: DOTENV_FILE env var is empty. Set it as a secure variable in Codemagic with the contents of the local .env file."
+          exit 1
+        fi
+        printf '%s' "$DOTENV_FILE" > "$CM_BUILD_DIR/.env"
+        echo ".env written ($(wc -c < "$CM_BUILD_DIR/.env") bytes)"
+
     - &flutter_pub_get
       name: Flutter pub get
       script: |
@@ -114,6 +131,7 @@ workflows:
         - pattern: 'v*.*.*+*'
           include: true
     scripts:
+      - *materialise_dotenv
       - *flutter_pub_get
       - *flutter_analyze
       - *flutter_test
@@ -224,6 +242,7 @@ workflows:
         - pattern: 'v*.*.*+*'
           include: true
     scripts:
+      - *materialise_dotenv
       - *flutter_pub_get
       - *flutter_analyze
       - *flutter_test
