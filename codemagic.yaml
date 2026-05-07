@@ -189,11 +189,12 @@ workflows:
     <<: *macos_instance
     environment:
       <<: *flutter_version
-      # APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
-      # APP_STORE_CONNECT_PRIVATE_KEY are configured as app-level
-      # environment variables in the Codemagic dashboard (Settings ->
-      # Environment variables) and are auto-injected into every build,
-      # so no `groups:` reference is needed here.
+      groups:
+        - pasella_app_store_credentials  # APP_STORE_CONNECT_KEY_IDENTIFIER,
+                                         # APP_STORE_CONNECT_ISSUER_ID,
+                                         # APP_STORE_CONNECT_PRIVATE_KEY
+                                         # (.p8 contents). All marked Secure
+                                         # in the Codemagic dashboard.
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.tsepo.pasella
