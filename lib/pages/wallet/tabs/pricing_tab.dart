@@ -4,28 +4,51 @@ import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/support_util.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/config/size_config.dart';
 
+/// Wallet > Account > Info segment.
+///
+/// This screen exists to honestly explain how the merchant is charged for
+/// messaging and payments. The previous version misled users in three
+/// concrete ways which this rewrite fixes:
+///
+///   1. SMS prices were labelled "/SMS" but the send path
+///      ([SMSPricingUtil.calculateCost]) bills per 160-char (GSM-7) /
+///      70-char (UCS-2) segment — long messages cost a multiple of the
+///      displayed rate. Now labelled "/segment" with an explainer.
+///   2. WhatsApp prices were labelled "/Msg" without explaining that
+///      WhatsApp is billed once per recipient regardless of length and
+///      that utility (transactional) and marketing (promotional) have
+///      different rates. Both points are now spelled out.
+///   3. A "WhatsApp AI Assistant — utilityPrice + R0.05" row was shown,
+///      but no AI-assistant send path adds R0.05 anywhere in the
+///      codebase. Row removed; can be re-introduced when an actual AI
+///      send path with real billing exists.
+///
+/// Visual design: stripped of decorative emojis and FontAwesome icons.
+/// Plain typographic hierarchy (section titles, body bullets, key/value
+/// pricing rows, dividers) keeps the page scannable on small screens
+/// without competing with the wallet's own iconography.
 class PricingInfoTab extends StatefulWidget {
   const PricingInfoTab({super.key});
 
   @override
-  _PricingInfoTab createState() => _PricingInfoTab();
+  State<PricingInfoTab> createState() => _PricingInfoTabState();
 }
 
-class _PricingInfoTab extends State<PricingInfoTab> {
+class _PricingInfoTabState extends State<PricingInfoTab> {
   DynamicPricingService? pricingService;
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    initialisePricingService();
+    _initialisePricingService();
   }
 
-  Future<void> initialisePricingService() async {
+  Future<void> _initialisePricingService() async {
     final service = await DynamicPricingService.initialize();
+    if (!mounted) return;
     setState(() {
       pricingService = service;
       isLoading = false;
@@ -45,224 +68,377 @@ class _PricingInfoTab extends State<PricingInfoTab> {
     final settlementFee = rc?.getDouble('PAYSTACK_SETTLEMENT_FEE') ?? 0;
     final vatPercent = rc?.getDouble('PAYSTACK_VAT_PERCENT') ?? 0;
 
+    // Per-segment SMS rates and per-message WhatsApp rates. See
+    // dynamic_pricing_service.dart for the underlying Remote Config
+    // keys and markup model.
+    final smsReminderRate = pricingService?.smsReminderTemplatePrice ?? 0;
+    final smsPaymentRate = pricingService?.smsPaymentTemplatePrice ?? 0;
+    final whatsappUtilityRate = pricingService?.whatsappUtilityPrice ?? 0;
+    final whatsappPromotionRate = pricingService?.whatsappPromotionPrice ?? 0;
+
     return Scaffold(
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+        padding: EdgeInsets.symmetric(
+          horizontal: SizeConfig.heightMultiplier * 2,
+          vertical: SizeConfig.heightMultiplier * 2,
+        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 🟢 Section 1: How It Works
-            _sectionTitle('How It Works'),
-
+            // -----------------------------------------------------------
+            // How it works
+            // -----------------------------------------------------------
+            _sectionTitle('How it works'),
             _buildBulletPoint(
-                '📊 Viewing balance - Always visible at the top of your wallet.'),
-
+              'Your wallet balance is always visible at the top of the wallet '
+              'screen.',
+            ),
             _buildBulletPoint(
-                '📜 Transaction history - View payments & expenses anytime.'),
-
+              'Open Account > History to review every payment, top-up and '
+              'message charge.',
+            ),
             if (FeatureFlags.enableBalancePayout) ...[
               _buildBulletPoint(
-                  '📌 Set up banking details to receive payouts.'),
+                'Add banking details under Account > Banking to receive '
+                'payouts.',
+              ),
               _buildBulletPoint(
-                  '💰 Request payouts - Withdraw balance whenever needed.'),
+                'Request a payout at any time from the Withdraw tab.',
+              ),
             ],
+            _sectionGap(),
 
-            // 🟢 Section 3: Payouts (Dynamic)
+            // -----------------------------------------------------------
+            // Payouts
+            // -----------------------------------------------------------
             if (FeatureFlags.enableBalancePayout) ...[
               _sectionTitle('Payouts'),
               _buildBulletPoint(
-                  '🕒 Request anytime - Processed during business hours.'),
-              _buildBulletPoint('🔍 Track payout status in real-time.'),
-              _buildBulletPoint('🏧 Funds sent to your linked bank account.'),
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
+                'Requests are processed during business hours.',
+              ),
+              _buildBulletPoint(
+                'You can track payout status in real time on the Withdraw '
+                'tab.',
+              ),
+              _buildBulletPoint(
+                'Funds are transferred to your linked bank account.',
+              ),
+              _sectionGap(),
             ],
 
-            // 🟢 Section 4: Messaging Pricing & Fees
+            // -----------------------------------------------------------
+            // Messaging
+            // -----------------------------------------------------------
             if (FeatureFlags.enablePricingInfo) ...[
-              _sectionTitle('Messaging Pricing & Fees'),
+              _sectionTitle('Messaging'),
               _buildBulletPoint(
-                  '💬 Charged per message sent (WhatsApp & SMS).'),
-              SizedBox(height: SizeConfig.heightMultiplier * 1),
-              _pricingRow('Reminder SMS',
-                  '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/SMS'),
-              _pricingRow('WhatsApp Reminder',
-                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+                'WhatsApp messages are billed once per recipient regardless '
+                'of length. Utility (transactional) and marketing rates '
+                'differ — see the table below.',
+              ),
+              _buildBulletPoint(
+                'SMS is billed per segment, not per message. A segment is '
+                '160 characters of plain text, or 70 characters when the '
+                'message contains emoji or special characters such as é, ô '
+                'or curly quotes. Long messages may use multiple segments.',
+              ),
+              _buildBulletPoint(
+                'The cost shown before sending is an estimate. The final '
+                'charge is based on the rendered message — substituting '
+                'longer customer or shop names can push the segment count '
+                'up by one.',
+              ),
+              SizedBox(height: SizeConfig.heightMultiplier * 2),
+
+              // SMS rows. All transactional SMS templates share the
+              // reminder rate at the moment (see
+              // messaging_notification_service.dart line 392/439/468);
+              // only Payment SMS uses the dedicated payment rate at
+              // line 399. Onboarding and Credit are NOT shown as their
+              // own rows because doing so falsely implies they have
+              // independent rates.
+              _pricingRowWithUnit(
+                title: 'SMS — reminder, credit, onboarding',
+                rate: smsReminderRate,
+                unit: 'per segment',
+              ),
               _divider(),
-              _pricingRow('Credit SMS',
-                  '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/SMS'),
-              _pricingRow('WhatsApp Credit',
-                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+              _pricingRowWithUnit(
+                title: 'SMS — payment confirmation',
+                rate: smsPaymentRate,
+                unit: 'per segment',
+              ),
               _divider(),
-              _pricingRow('Payment SMS',
-                  '${CurrencyUtil.format(pricingService?.smsPaymentTemplatePrice ?? 0)}/SMS'),
-              _pricingRow('WhatsApp Payment',
-                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+              _pricingRowWithUnit(
+                title: 'SMS — promotions',
+                rate: smsReminderRate,
+                unit: 'per segment',
+              ),
               _divider(),
-              _pricingRow('Onboarding SMS',
-                  '${CurrencyUtil.format(pricingService?.smsReminderTemplatePrice ?? 0)}/SMS'),
-              _pricingRow('WhatsApp Onboarding',
-                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice ?? 0)}/Msg'),
+
+              // WhatsApp rows.
+              _pricingRowWithUnit(
+                title: 'WhatsApp — transactional',
+                rate: whatsappUtilityRate,
+                unit: 'per message',
+              ),
               _divider(),
-              _pricingRow('SMS Promotions', 'Based on length of Msg'),
-              _pricingRow('WhatsApp Promotions',
-                  '${CurrencyUtil.format(pricingService?.whatsappPromotionPrice ?? 0)}/Msg'),
-              _pricingRow('Whatsapp AI Assistant',
-                  '${CurrencyUtil.format(pricingService?.whatsappUtilityPrice != null ? pricingService!.whatsappUtilityPrice + 0.05 : 0)}/Msg'),
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
+              _pricingRowWithUnit(
+                title: 'WhatsApp — promotions',
+                rate: whatsappPromotionRate,
+                unit: 'per message',
+              ),
+              _sectionGap(),
             ],
 
-            // 🟢 Section 5: Order Payments & Fees
+            // -----------------------------------------------------------
+            // Order payments
+            // -----------------------------------------------------------
             if (FeatureFlags.enablePricingInfo) ...[
-              _sectionTitle('Order Payments & Fees'),
+              _sectionTitle('Order payments'),
               _buildBulletPoint(
-                  '🛍️ Cash orders settle immediately with no platform fee.'),
+                'Cash orders settle immediately with no platform fee.',
+              ),
               _buildBulletPoint(
-                  '💳 Online orders incur a platform fee and transaction fee.'),
+                'Online orders carry a platform fee plus the transaction '
+                'fee charged by your payment provider.',
+              ),
               _buildBulletPoint(
-                  '📲 Wallet balance can be used for in-app purchases.'),
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
+                'Wallet balance can be used for in-app purchases.',
+              ),
+              _sectionGap(),
             ],
 
-            // 🟢 Section 6: Paystack Fees (South Africa)
+            // -----------------------------------------------------------
+            // Paystack
+            // -----------------------------------------------------------
             if (FeatureFlags.enablePricingInfo &&
                 FeatureFlags.enableTopUpPaystack) ...[
-              _sectionTitle('Paystack Fees (South Africa)'),
+              _sectionTitle('Paystack fees (South Africa)'),
               _buildBulletPoint(
-                  'Local Payments: ${localPercent.toStringAsFixed(1)}% + R${localFlat.toStringAsFixed(2)} (excl. VAT)'),
+                'Local payments: ${localPercent.toStringAsFixed(1)}% + '
+                'R${localFlat.toStringAsFixed(2)} (excl. VAT)',
+              ),
               _buildBulletPoint(
-                  'Bank EFT: ${eftPercent.toStringAsFixed(1)}% (excl. VAT)'),
+                'Bank EFT: ${eftPercent.toStringAsFixed(1)}% (excl. VAT)',
+              ),
               _buildBulletPoint(
-                  'International Payments: ${intPercent.toStringAsFixed(1)}% + R${intFlat.toStringAsFixed(2)} (excl. VAT)'),
+                'International payments: ${intPercent.toStringAsFixed(1)}% + '
+                'R${intFlat.toStringAsFixed(2)} (excl. VAT)',
+              ),
               _buildBulletPoint(
-                  'Settlement (Payouts): R${settlementFee.toStringAsFixed(2)} per transfer (excl. VAT)'),
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
-              _sectionTitle('Worked Examples'),
+                'Settlement (payouts): R${settlementFee.toStringAsFixed(2)} '
+                'per transfer (excl. VAT)',
+              ),
+              _sectionGap(),
+              _sectionTitle('Worked examples'),
               _exampleTransaction(
-                  'Example 1: Local Card Transaction — R1 000 sale',
-                  1000,
-                  localPercent,
-                  localFlat,
-                  vatPercent),
-              _exampleTransaction('Example 2: EFT Transaction — R1 000 sale',
-                  1000, eftPercent, 0, vatPercent),
-              _exampleTransaction('Example 3: International Card — R1 000 sale',
-                  1000, intPercent, intFlat, vatPercent),
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
+                title: 'Local card — R1 000 sale',
+                sale: 1000,
+                percent: localPercent,
+                flat: localFlat,
+                vat: vatPercent,
+              ),
+              _exampleTransaction(
+                title: 'EFT — R1 000 sale',
+                sale: 1000,
+                percent: eftPercent,
+                flat: 0,
+                vat: vatPercent,
+              ),
+              _exampleTransaction(
+                title: 'International card — R1 000 sale',
+                sale: 1000,
+                percent: intPercent,
+                flat: intFlat,
+                vat: vatPercent,
+              ),
+              _sectionGap(),
             ],
 
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
-            // 🟢 Section 6: Need Help?
-            _sectionTitle('Need Help?'),
-            _helpOption('0648370009'),
+            // -----------------------------------------------------------
+            // Help
+            // -----------------------------------------------------------
+            _sectionTitle('Need help?'),
+            SizedBox(height: SizeConfig.heightMultiplier),
+            _helpOption(),
+            SizedBox(height: SizeConfig.heightMultiplier * 2),
           ],
         ),
       ),
     );
   }
 
-  Widget _exampleTransaction(
-      String title, double sale, double percent, double flat, double vat) {
+  Widget _exampleTransaction({
+    required String title,
+    required double sale,
+    required double percent,
+    required double flat,
+    required double vat,
+  }) {
     final base = sale * percent / 100;
     final subtotal = base + flat;
     final vatAmount = subtotal * vat / 100;
     final total = subtotal + vatAmount;
     final merchant = sale - total;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildBulletPoint(title),
-        _buildBulletPoint(
-            'Base fee: ${percent.toStringAsFixed(1)}% of ${sale.toStringAsFixed(0)} = R${base.toStringAsFixed(2)}'),
-        if (flat > 0)
-          _buildBulletPoint(
-              'Flat: R${flat.toStringAsFixed(2)} → R${subtotal.toStringAsFixed(2)}'),
-        _buildBulletPoint(
-            'VAT: ${vat.toStringAsFixed(0)}% of R${subtotal.toStringAsFixed(2)} = R${vatAmount.toStringAsFixed(2)}'),
-        _buildBulletPoint('Total fee = R${total.toStringAsFixed(2)}'),
-        _buildBulletPoint(
-            'Merchant receives = R${merchant.toStringAsFixed(2)}'),
-        SizedBox(height: SizeConfig.heightMultiplier * 2),
-      ],
-    );
-  }
-
-  // ✅ Title Section
-  Widget _sectionTitle(String title) {
     return Padding(
-      padding: EdgeInsets.only(bottom: SizeConfig.heightMultiplier * 1.5),
-      child: Text(
-        title,
-        style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
-            decoration: TextDecoration.none),
-      ),
-    );
-  }
-
-  // ✅ Simple Divider
-  Widget _divider() {
-    return Divider(
-        thickness: 1,
-        height: SizeConfig.heightMultiplier * 2,
-        color: Colors.grey);
-  }
-
-  // ✅ Bullet Points with Spacing & Icons
-  Widget _buildBulletPoint(String text) {
-    return Padding(
-      padding:
-          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
-      child: Row(
+      padding: EdgeInsets.only(bottom: SizeConfig.heightMultiplier * 2),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.8, height: 1),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 1.7,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
             ),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+          _exampleLine(
+            'Base fee: ${percent.toStringAsFixed(1)}% of '
+            'R${sale.toStringAsFixed(0)} = R${base.toStringAsFixed(2)}',
+          ),
+          if (flat > 0)
+            _exampleLine(
+              'Flat fee: R${flat.toStringAsFixed(2)} → '
+              'subtotal R${subtotal.toStringAsFixed(2)}',
+            ),
+          _exampleLine(
+            'VAT: ${vat.toStringAsFixed(0)}% of '
+            'R${subtotal.toStringAsFixed(2)} = R${vatAmount.toStringAsFixed(2)}',
+          ),
+          _exampleLine('Total fee: R${total.toStringAsFixed(2)}'),
+          _exampleLine(
+            'Merchant receives: R${merchant.toStringAsFixed(2)}',
+            emphasised: true,
           ),
         ],
       ),
     );
   }
 
-  // ✅ Pricing Row for Fees
-  Widget _pricingRow(String title, String price) {
+  Widget _sectionTitle(String title) {
     return Padding(
-      padding:
-          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.5),
+      padding: EdgeInsets.only(
+        top: SizeConfig.heightMultiplier * 0.5,
+        bottom: SizeConfig.heightMultiplier * 1.2,
+      ),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: SizeConfig.textMultiplier * 2.1,
+          fontWeight: FontWeight.w700,
+          color: Colors.black87,
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionGap() => SizedBox(height: SizeConfig.heightMultiplier * 3);
+
+  Widget _divider() => Divider(
+        thickness: 0.6,
+        height: SizeConfig.heightMultiplier * 2,
+        color: Colors.grey.shade300,
+      );
+
+  /// Body bullet — no leading glyph; the indentation and line spacing
+  /// alone communicate list structure.
+  Widget _buildBulletPoint(String text) {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        vertical: SizeConfig.heightMultiplier * 0.5,
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: SizeConfig.textMultiplier * 1.65,
+          height: 1.4,
+          color: Colors.black87,
+        ),
+      ),
+    );
+  }
+
+  /// Pricing row that splits the unit ("per segment", "per message")
+  /// onto a faint sub-line, so the price itself stays prominent.
+  Widget _pricingRowWithUnit({
+    required String title,
+    required double rate,
+    required String unit,
+  }) {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        vertical: SizeConfig.heightMultiplier * 0.5,
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.5)),
-          Text(price,
+          Expanded(
+            child: Text(
+              title,
               style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.5,
-                  fontWeight: FontWeight.bold)),
+                fontSize: SizeConfig.textMultiplier * 1.65,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                CurrencyUtil.format(rate),
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 1.7,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              Text(
+                unit,
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 1.3,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  // ✅ WhatsApp Help Option
-  Widget _helpOption(String phone) {
-    return FilledButton.icon(
-      onPressed: () =>
-          SupportUtil.sendWhatsAppMessage(context, WhatsAppMessageType.support),
-      icon:
-          Icon(FontAwesomeIcons.whatsapp, size: SizeConfig.textMultiplier * 2),
-      label: Text("Chat to support",
-          style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+  Widget _exampleLine(String text, {bool emphasised = false}) {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        vertical: SizeConfig.heightMultiplier * 0.25,
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: SizeConfig.textMultiplier * 1.55,
+          color: emphasised ? Colors.black87 : Colors.black54,
+          fontWeight: emphasised ? FontWeight.w600 : FontWeight.w400,
+          height: 1.3,
+        ),
+      ),
     );
   }
 
-  void _launchWhatsApp(String phone) async {
-    final url = "https://wa.me/$phone";
-    if (await canLaunch(url)) await launch(url);
+  Widget _helpOption() {
+    return FilledButton.icon(
+      onPressed: () =>
+          SupportUtil.sendWhatsAppMessage(context, WhatsAppMessageType.support),
+      icon: Icon(
+        FontAwesomeIcons.whatsapp,
+        size: SizeConfig.textMultiplier * 2,
+      ),
+      label: Text(
+        'Chat to support',
+        style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.8),
+      ),
+    );
   }
 }
