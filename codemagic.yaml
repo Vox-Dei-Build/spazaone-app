@@ -118,8 +118,8 @@ workflows:
           # Example  : v3.0.2+41
           TAG="${CM_TAG:-}"
           if [ -z "$TAG" ]; then
-            echo "::error:: CM_TAG is empty; this workflow only runs on tags."
-            exit 1
+            echo "::warning:: CM_TAG is empty (manual branch build); skipping version check."
+            exit 0
           fi
           PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           EXPECTED_TAG="v${PUBSPEC_VERSION}"
@@ -217,8 +217,8 @@ workflows:
         script: |
           TAG="${CM_TAG:-}"
           if [ -z "$TAG" ]; then
-            echo "::error:: CM_TAG is empty."
-            exit 1
+            echo "::warning:: CM_TAG is empty (manual branch build); skipping version check."
+            exit 0
           fi
           PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           EXPECTED_TAG="v${PUBSPEC_VERSION}"
