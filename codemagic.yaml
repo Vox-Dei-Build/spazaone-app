@@ -288,10 +288,22 @@ workflows:
           keychain add-certificates
           xcode-project use-profiles
       - name: Pod install
-        # Workaround for Ruby 3.4 / cocoapods locale bug.
+        # The committed ios/Podfile.lock pins Firebase 10.22.0 transitive
+        # versions (e.g. FirebaseAppCheck 10.22.0). With the Podfile bumped
+        # to $FirebaseSDKVersion = 11.6.0 and Flutter plugins resolving
+        # FirebaseAppCheck ~> 11.6.0-beta, pod install rejects the lock
+        # mismatch and aborts. Wipe the lockfile and Pods/ before
+        # resolution so CocoaPods builds a fresh dependency graph from
+        # the current Podfile + plugin specs. --repo-update refreshes
+        # the trunk index so Firebase 11.6.0 specs are visible.
+        #
+        # LANG/LC_ALL workaround addresses Ruby 3.4 / CocoaPods locale bug.
         script: |
+          set -e
           cd ios
-          LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+          rm -f Podfile.lock
+          rm -rf Pods
+          LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install --repo-update
       - name: Build IPA
         script: |
           flutter build ipa --release \
