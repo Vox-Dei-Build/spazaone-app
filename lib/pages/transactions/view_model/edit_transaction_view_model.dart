@@ -6,6 +6,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/shared/billing/cost_breakdown.dart';
+import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -33,6 +35,12 @@ class EditTransactionViewModel extends TransactionViewModel {
   }) {
     loadTransactionDetails();
     _initServices();
+  }
+
+  /// Updates the credit's repayment date and notifies listeners.
+  void setRepaymentDate(DateTime value) {
+    repaymentDate = value;
+    notifyListeners();
   }
 
   Future<void> _initServices() async {
@@ -90,6 +98,12 @@ class EditTransactionViewModel extends TransactionViewModel {
       print(err);
     } finally {
       _isProductsLoading = false;
+      // Reset the dirty-tracking baseline now that the edit screen has
+      // populated the fields with the existing record. Without this the
+      // unsaved-changes guard would fire on every Edit because the
+      // controllers went from empty to "loaded" after construction.
+      markPristine(force: true);
+      notifyListeners();
     }
   }
 
@@ -199,14 +213,30 @@ class EditTransactionViewModel extends TransactionViewModel {
             : pricingService.smsPaymentTemplatePrice,
       );
 
-      bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-          context, currentUserId, messageCost);
+      // Pre-flight cost confirmation. Cancel keeps the edit but skips the
+      // notification SMS to the customer.
+      bool userConfirmed = false;
+      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        userConfirmed = await CostConfirmationSheet.show(
+          context,
+          breakdown: CostBreakdown.singleMessage(
+            title: 'Send updated $transactionType notification?',
+            subtitle: 'SMS to $customerName',
+            channelLabel: '$transactionType notification SMS',
+            cost: messageCost,
+          ),
+          confirmLabel: 'Send SMS',
+        );
+      }
+
+      // Safety net for race conditions.
+      final canProceed = userConfirmed &&
+          await BalanceCheckUtil.checkBalanceAndProceed(
+              context, currentUserId, messageCost);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,
             transactionType, mobileNumber);
-      } else {
-        SnackbarComponents.showInsufficientBalance(context);
       }
 
       showSnackbar(context, 'Transaction updated successfully!', Colors.green);
@@ -227,6 +257,74 @@ class EditTransactionViewModel extends TransactionViewModel {
     } catch (error) {
       showSnackbar(
           context, 'Error updating transaction. Please retry.', Colors.red);
+      setLoading(false);
+    }
+  }
+
+  /// Deletes the transaction and, for credit transactions, returns the
+  /// reserved stock back to inventory. Caller (the form scaffold) is
+  /// responsible for the destructive confirmation prompt before invoking
+  /// this method.
+  Future<void> deleteTransaction(BuildContext context) async {
+    if (isLoading) return;
+    setLoading(true);
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (currentUserId.isEmpty) {
+      showSnackbar(context, 'No user is logged in!', Colors.red);
+      setLoading(false);
+      return;
+    }
+    try {
+      final transactionRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .collection('customers')
+          .doc(customerId)
+          .collection('transactions')
+          .doc(transactionId);
+
+      // For credit transactions, return reserved stock to inventory
+      // before deleting the record so the rollback survives even if the
+      // delete write fails afterwards.
+      if (transactionType == 'Credit') {
+        final snapshot = await transactionRef.get();
+        final originalProducts =
+            (snapshot.data()?['products'] ?? const {}) as Map;
+        for (final entry in originalProducts.entries) {
+          final productId = entry.key.toString();
+          final qty = (entry.value as num?)?.toInt() ?? 0;
+          if (qty <= 0) continue;
+          final product = products.firstWhere((p) => p.id == productId,
+              orElse: () => Product());
+          if (product.quantity != null) {
+            await firestore
+                .collection('users')
+                .doc(currentUserId)
+                .collection('products')
+                .doc(productId)
+                .update({'quantity': product.quantity! + qty});
+          }
+        }
+      }
+
+      await transactionRef.delete();
+
+      if (context.mounted) {
+        showSnackbar(
+            context, '$transactionType deleted.', Colors.green);
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          // Pop twice: first close the edit screen, then pop the now-stale
+          // transaction detail screen so the user lands back on the
+          // ledger/transactions list.
+          Navigator.of(context).pop(true);
+        });
+      }
+    } catch (error) {
+      if (context.mounted) {
+        showSnackbar(context, 'Error deleting $transactionType. Please retry.',
+            Colors.red);
+      }
+    } finally {
       setLoading(false);
     }
   }

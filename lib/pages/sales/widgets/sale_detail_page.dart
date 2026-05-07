@@ -38,14 +38,18 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
         trailing: IconButton(
           icon: const Icon(Icons.edit),
           onPressed: () async {
-            // Navigate to EditSale and await the result
-            await Navigator.of(context).push(
+            // EditSale returns `true` when the sale was deleted — close
+            // this details screen too since there is nothing left to view.
+            final result = await Navigator.of(context).push<bool>(
               MaterialPageRoute(
                 builder: (context) => EditSale(
                   sale: sale,
                 ),
               ),
             );
+            if (result == true && context.mounted) {
+              Navigator.of(context).pop(true);
+            }
           },
         ),
       ),

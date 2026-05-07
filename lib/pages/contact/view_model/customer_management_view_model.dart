@@ -10,6 +10,8 @@ import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/orders_unread_clear.dart';
+import 'package:pasella/shared/billing/cost_breakdown.dart';
+import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
@@ -276,7 +278,24 @@ class CustomerManagementViewModel extends ChangeNotifier {
       return;
     }
 
-    bool shouldSend = await _showConfirmationDialog(context);
+    // Compute the SMS cost up-front so the user sees it on the confirmation
+    // sheet (replaces the cost-blind "Send reminder?" alert dialog).
+    final reminderMessageCost = SMSPricingUtil.calculateCost(
+      text: SMSMessages.reminderShort,
+      unitCost: pricingService.smsReminderTemplatePrice,
+    );
+
+    final shouldSend = await CostConfirmationSheet.show(
+      context,
+      breakdown: CostBreakdown.singleMessage(
+        title: 'Send payment reminder?',
+        subtitle: 'SMS to $customerName',
+        channelLabel: 'Reminder SMS',
+        cost: reminderMessageCost,
+      ),
+      confirmLabel: 'Send Reminder',
+    );
+
     if (shouldSend) await _sendReminder(context);
   }
 
@@ -289,31 +308,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .get();
 
     return customerDoc.data()?['lastReminderSent']?.toDate();
-  }
-
-  Future<bool> _showConfirmationDialog(BuildContext context) async {
-    return await showDialog(
-          context: context,
-          builder: (BuildContext context) => AlertDialog(
-            title: Text('Send Reminder',
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
-            content: Text('Do you want to send a payment reminder?',
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
-            actions: <Widget>[
-              TextButton(
-                child: Text('Cancel',
-                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
-                onPressed: () => Navigator.of(context).pop(false),
-              ),
-              TextButton(
-                child: Text('Send',
-                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
-                onPressed: () => Navigator.of(context).pop(true),
-              ),
-            ],
-          ),
-        ) ??
-        false;
   }
 
   Future<void> _sendReminder(BuildContext context) async {

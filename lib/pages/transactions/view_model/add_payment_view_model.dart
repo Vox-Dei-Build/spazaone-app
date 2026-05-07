@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/shared/billing/cost_breakdown.dart';
+import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -86,14 +88,33 @@ class AddPaymentViewModel extends TransactionViewModel {
         unitCost: pricingService.smsPaymentTemplatePrice,
       );
 
-      bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-          context, userId, paymentMessageCost);
+      // Pre-flight cost confirmation sheet — user explicitly confirms the
+      // SMS deduction before it happens (no surprise charge). Cancel keeps
+      // the recorded payment but skips the confirmation SMS.
+      bool userConfirmed = false;
+      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        userConfirmed = await CostConfirmationSheet.show(
+          context,
+          breakdown: CostBreakdown.singleMessage(
+            title: 'Send payment confirmation?',
+            subtitle: 'SMS to $customerName',
+            channelLabel: 'Payment confirmation SMS',
+            cost: paymentMessageCost,
+          ),
+          confirmLabel: 'Send SMS',
+        );
+      }
+
+      // Safety net for race conditions (balance changed between sheet and
+      // dispatch). Keeps the legacy "Insufficient Balance" dialog as a
+      // last-resort fallback only — should rarely fire now.
+      final canProceed = userConfirmed &&
+          await BalanceCheckUtil.checkBalanceAndProceed(
+              context, userId, paymentMessageCost);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,
             "Payment", mobileNumber);
-      } else {
-        SnackbarComponents.showInsufficientBalance(context);
       }
 
       DocumentReference customerRef = FirebaseFirestore.instance

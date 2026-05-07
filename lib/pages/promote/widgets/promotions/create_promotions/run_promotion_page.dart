@@ -1,14 +1,14 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
-import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/customer_selection/customer_selection_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/promotion_details/template_and_details_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/wizard_stepper.dart';
 import 'package:provider/provider.dart';
 
 // ───────────────────────────────────────────────────
@@ -54,17 +54,13 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   // ─── User Selections ─────────────────────────────
   String? selectedTemplateId;
   bool sendWhatsApp = true;
-  bool sendSMS = true;
+  // SMS is opt-in to avoid surprise charges; merchants can enable explicitly.
+  bool sendSMS = false;
   bool allCustomers = true;
-  final userId = FirebaseAuth.instance.currentUser?.uid;
-  late var userRef;
-  late var walletRef;
 
   @override
   void initState() {
     super.initState();
-    userRef = FirebaseFirestore.instance.collection('users').doc(userId);
-    walletRef = userRef.collection('wallet').doc('current');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (allCustomers) {
         Provider.of<PromotionsViewModel>(context, listen: false)
@@ -84,18 +80,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   void nextStep() async {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
 
-    if (currentStep == RunPromotionStep.templateAndDetails) {
-      if (selectedTemplateId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please select a template.')));
-        return;
-      }
-      if (!sendWhatsApp && !sendSMS) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Please choose at least one channel.')));
-        return;
-      }
-    }
+    // Step 1 validation is shown inline via canProceed/UI hints — no SnackBar.
 
     if (currentStep == RunPromotionStep.customerSelection) {
       if (vm.selectedCustomerIds.isEmpty) {
@@ -173,6 +158,44 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     if (context.mounted) Navigator.pop(context);
   }
 
+  Future<void> _openCreateTemplate() async {
+    final vm = Provider.of<PromotionsViewModel>(context, listen: false);
+    final beforeIds = vm.templates.map((t) => t['id']).toSet();
+
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateTemplatePage(viewModel: vm),
+      ),
+    );
+
+    if (created != true || !mounted) return;
+
+    // Refresh and try to auto-select the newly-created template if it's
+    // already approved. Otherwise let the user know it's pending.
+    await vm.loadTemplatesData();
+    if (!mounted) return;
+
+    final newTemplates =
+        vm.templates.where((t) => !beforeIds.contains(t['id'])).toList();
+    if (newTemplates.isEmpty) return;
+    final newest = newTemplates.first;
+    final approved = newest['channels']?['whatsapp']?['approved'] == true;
+
+    if (approved) {
+      setState(() {
+        selectedTemplateId = newest['id'] as String?;
+      });
+      vm.selectTemplate(newest['id'] as String);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Selected your new template "${newest['displayName'] ?? newest['name']}".'),
+      ));
+    }
+    // No fallback snackbar: TemplateSubmittedSuccessPage already explained
+    // the pending state and the next-steps. Adding another toast on top
+    // would just create noise.
+  }
+
   Widget _buildNavigationButtons() {
     final isLastStep = currentStep == RunPromotionStep.reviewAndPricing;
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
@@ -205,82 +228,35 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     }
 
     // ── Final review: balance + Save/Send or Top-Up ──
-    return StreamBuilder<DocumentSnapshot>(
-      stream: walletRef.snapshots(),
-      builder: (context, snap) {
-        final loadingBalance = snap.connectionState == ConnectionState.waiting;
-        final data = snap.data?.data() as Map<String, dynamic>?;
-        final balance = data?['virtualBalance'] ?? 0.0;
-        final totalCost = vm.totalPrice;
-        final canAfford = balance >= totalCost;
-
-        final statusText = loadingBalance
-            ? 'Checking wallet…'
-            : 'You have R${balance.toStringAsFixed(2)}, cost is R${totalCost.toStringAsFixed(2)}';
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              statusText,
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                OutlinedButton(
-                    onPressed: previousStep, child: const Text('Back')),
-
-                // Always allow saving if not saved yet
-                if (!isSaved)
-                  ElevatedButton(
-                    onPressed: sending ? null : _savePromotion,
-                    child: sending
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save Promotion'),
+    // Save flow: before saving, the user always sees a "Save Promotion"
+    // button regardless of balance. After saving, the affordability footer
+    // gates Send vs. Top-Up based on the live wallet balance.
+    if (!isSaved) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          OutlinedButton(onPressed: previousStep, child: const Text('Back')),
+          ElevatedButton(
+            onPressed: sending ? null : _savePromotion,
+            child: sending
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                else
-                  // Once saved, allow sending only if balance suffices
-                  (canAfford
-                      ? ElevatedButton(
-                          onPressed: sending ? null : _runSavedPromotion,
-                          child: sending
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Text('Send Promotion'),
-                        )
-                      : ElevatedButton(
-                          onPressed: () {
-                            Navigator.of(context)
-                                .popUntil((route) => route.isFirst);
-                            Provider.of<AppModel>(context, listen: false)
-                                .goToBilling(context);
-                          },
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange),
-                          child: loadingBalance
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Text('Top Up Wallet'),
-                        )),
-              ],
-            ),
-          ],
-        );
-      },
+                : const Text('Save Promotion'),
+          ),
+        ],
+      );
+    }
+
+    return WalletAffordabilityFooter(
+      cost: vm.totalPrice,
+      confirmLabel: 'Send Promotion',
+      confirmIcon: Icons.send,
+      busy: sending,
+      onBack: previousStep,
+      onConfirm: _runSavedPromotion,
     );
   }
 
@@ -307,6 +283,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           },
           onWhatsAppChanged: (val) => setState(() => sendWhatsApp = val),
           onSMSChanged: (val) => setState(() => sendSMS = val),
+          onCreateTemplate: _openCreateTemplate,
         );
 
       case RunPromotionStep.customerSelection:
@@ -360,6 +337,10 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
                   padding: LayoutConstants.padding10Horizontal,
                   child: Column(
                     children: [
+                      WizardStepper(
+                        steps: const ['Template', 'Customers', 'Review'],
+                        currentIndex: currentStep.index,
+                      ),
                       Expanded(child: _buildStepContent()),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       _buildNavigationButtons(),

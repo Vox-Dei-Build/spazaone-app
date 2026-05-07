@@ -7,9 +7,11 @@ import 'package:pasella/pages/promote/widgets/templates/create_template/force_bo
 import 'package:pasella/pages/promote/widgets/templates/create_template/steps/basic_info_step.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/steps/content_step.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/steps/review_step.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/wizard_stepper.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 
@@ -19,10 +21,42 @@ enum CreateTemplateStep {
   review,
 }
 
+/// Bundle of fields used to prefill [CreateTemplatePage] when the user is
+/// fixing-and-resubmitting a rejected template, or retrying a failed
+/// submission. The wizard treats this exactly like a fresh submission — a new
+/// document is created — but the friction of retyping is removed.
+class TemplatePrefill {
+  final String displayName;
+  final String whatsappContent;
+  final String smsContent;
+  final String mediaUrl;
+  final bool includeWhatsApp;
+  final bool includeSMS;
+
+  /// Optional reason from the previous rejection, surfaced as a banner so the
+  /// merchant can address it before resubmitting.
+  final String? rejectionReason;
+
+  const TemplatePrefill({
+    this.displayName = '',
+    this.whatsappContent = '',
+    this.smsContent = '',
+    this.mediaUrl = '',
+    this.includeWhatsApp = true,
+    this.includeSMS = true,
+    this.rejectionReason,
+  });
+}
+
 class CreateTemplatePage extends StatefulWidget {
   final PromotionsViewModel viewModel;
+  final TemplatePrefill? prefill;
 
-  const CreateTemplatePage({super.key, required this.viewModel});
+  const CreateTemplatePage({
+    super.key,
+    required this.viewModel,
+    this.prefill,
+  });
 
   @override
   State<CreateTemplatePage> createState() => _CreateTemplatePageState();
@@ -34,7 +68,10 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   final _whatsappContentController = TextEditingController();
   final _smsContentController = TextEditingController();
   final _mediaUrlController = TextEditingController();
-  bool showChannelError = false;
+
+  // Live state from BasicInfoStep so we can gate Next correctly.
+  String _sanitizedName = '';
+  bool _nameIsDuplicate = false;
 
   CreateTemplateStep currentStep = CreateTemplateStep.basicInfo;
   bool includeWhatsApp = true;
@@ -52,6 +89,19 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   @override
   void initState() {
     super.initState();
+
+    // Apply prefill from a "fix & resubmit" or retry flow before first paint.
+    final pre = widget.prefill;
+    if (pre != null) {
+      _templateNameController.text = pre.displayName;
+      _whatsappContentController.text = pre.whatsappContent;
+      _smsContentController.text = pre.smsContent;
+      _mediaUrlController.text = pre.mediaUrl;
+      includeWhatsApp = pre.includeWhatsApp;
+      includeSMS = pre.includeSMS;
+      _smsSegments = SMSPricingUtil.calculateSegments(pre.smsContent);
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _pricingService = await DynamicPricingService.initialize();
       setState(() {
@@ -62,25 +112,14 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   }
 
   void nextStep() {
-    // Always grab the form’s current validity & channel state
     final isFormValid = _formKey.currentState?.validate() ?? false;
 
-    // STEP 1: Basic Info → require name & at least one channel
+    // STEP 1: Basic Info — inline validation; just block if form invalid.
     if (currentStep == CreateTemplateStep.basicInfo) {
-      if (!isFormValid) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter a template name.')),
-        );
-        return;
-      }
-      // Sanitize the name when moving to the next step
-      final sanitized = _sanitizeTemplateName(_templateNameController.text);
-      if (sanitized != _templateNameController.text) {
-        _templateNameController.text = sanitized;
-      }
+      if (!isFormValid) return;
     }
 
-    // STEP 2: Content → require non‑empty body for each chosen channel
+    // STEP 2: Content → require non-empty body for each chosen channel
     if (currentStep == CreateTemplateStep.content) {
       if (_whatsappContentController.text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -90,9 +129,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       }
     }
 
-    // If we passed validation, clear any channel error flag
     setState(() {
-      showChannelError = false;
       currentStep = CreateTemplateStep.values[currentStep.index + 1];
     });
   }
@@ -140,6 +177,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     final data = {
       'userId': userId,
       'name': _sanitizeTemplateName(_templateNameController.text.trim()),
+      'displayName': _templateNameController.text.trim(),
       'contentType': 'text',
       'variables': variables.toList(),
       'default': false,
@@ -172,7 +210,22 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       widget.viewModel.loadTemplatesData();
 
       if (mounted) {
-        Navigator.pop(context, true);
+        // Replace the wizard with a "what happens next" success screen,
+        // then pop both back to wherever the wizard was launched from.
+        // Returns `true` to the original caller so it can refresh.
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => TemplateSubmittedSuccessPage(
+              displayName: _templateNameController.text.trim().isEmpty
+                  ? (_sanitizedName.isEmpty
+                      ? 'your template'
+                      : _sanitizedName)
+                  : _templateNameController.text.trim(),
+              onDone: () => Navigator.of(context).pop(true),
+              onViewPending: () => Navigator.of(context).pop(true),
+            ),
+          ),
+        );
       }
     } catch (e) {
       debugPrint("Failed to save template: $e");
@@ -195,6 +248,13 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           key: _formKey,
           child: Column(
             children: [
+              if (widget.prefill?.rejectionReason != null)
+                _RejectionReasonBanner(
+                    reason: widget.prefill!.rejectionReason!),
+              WizardStepper(
+                steps: const ['Name', 'Content', 'Review'],
+                currentIndex: currentStep.index,
+              ),
               Expanded(child: _buildStepContent()),
               _buildNavigationButtons(),
             ],
@@ -208,8 +268,15 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     switch (currentStep) {
       case CreateTemplateStep.basicInfo:
         return BasicInfoStep(
-          templateNameController: _templateNameController,
-          showChannelError: showChannelError, // 👈 Add this
+          displayNameController: _templateNameController,
+          sanitize: _sanitizeTemplateName,
+          userId: FirebaseAuth.instance.currentUser?.uid ?? '',
+          onSanitizedChanged: (sanitized, isDuplicate) {
+            setState(() {
+              _sanitizedName = sanitized;
+              _nameIsDuplicate = isDuplicate;
+            });
+          },
         );
 
       case CreateTemplateStep.content:
@@ -248,17 +315,15 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   // 1) Remove any calls to validate() in build:
   Widget _buildNavigationButtons() {
     final isLast = currentStep == CreateTemplateStep.review;
-    final name = _templateNameController.text.trim();
-    final nameValid = name.isNotEmpty; // Regex removed; we sanitize later
+    final nameValid = _sanitizedName.isNotEmpty && !_nameIsDuplicate;
 
-    final channelValid = includeWhatsApp || includeSMS;
     final whatsappFilled = _whatsappContentController.text.trim().isNotEmpty;
     final smsFilled = _smsContentController.text.trim().isNotEmpty;
     final contentValid =
         (!includeWhatsApp || whatsappFilled) && (!includeSMS || smsFilled);
 
     final canProceed = currentStep == CreateTemplateStep.basicInfo
-        ? (nameValid && channelValid)
+        ? nameValid
         : currentStep == CreateTemplateStep.content
             ? contentValid
             : true;
@@ -267,18 +332,15 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         if (currentStep != CreateTemplateStep.basicInfo)
-          OutlinedButton(onPressed: previousStep, child: const Text('Back')),
+          OutlinedButton(onPressed: previousStep, child: const Text('Back'))
+        else
+          const SizedBox.shrink(),
         ElevatedButton(
           onPressed: saving || !canProceed
-              // 2) On tap, run real Form validation before moving on
               ? null
               : () {
                   if (currentStep == CreateTemplateStep.basicInfo) {
-                    // validate the form now to show errors if any
-                    if (!_formKey.currentState!.validate()) {
-                      setState(() => showChannelError = !channelValid);
-                      return;
-                    }
+                    if (!_formKey.currentState!.validate()) return;
                     nextStep();
                   } else if (currentStep == CreateTemplateStep.content) {
                     nextStep();
@@ -295,6 +357,54 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
               : Text(isLast ? 'Save & Submit' : 'Next'),
         ),
       ],
+    );
+  }
+}
+
+class _RejectionReasonBanner extends StatelessWidget {
+  final String reason;
+  const _RejectionReasonBanner({required this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8, bottom: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.08),
+        border: Border.all(color: Colors.red.withOpacity(0.4)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.cancel_outlined, color: Colors.red, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'WhatsApp rejected the previous version',
+                  style: TextStyle(
+                      color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Reason: $reason',
+                  style: const TextStyle(color: Colors.red, fontSize: 12.5),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Tweak the wording or media to address the issue, then resubmit.',
+                  style: TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -313,6 +313,11 @@ class SalesViewModel extends TransactionViewModel {
       print("Error loading sale details: $e");
     } finally {
       isTransactionLoading = false;
+      // Reset the dirty-tracking baseline so the unsaved-changes guard
+      // doesn't fire just because we populated the form with the
+      // existing sale's values after construction.
+      markPristine(force: true);
+      notifyListeners();
     }
   }
 
@@ -397,6 +402,56 @@ class SalesViewModel extends TransactionViewModel {
     } catch (error) {
       print("Error updating sale: $error");
       showSnackbar(context, 'Error updating sale. Please retry.', Colors.red);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /// Deletes a previously committed sale and rolls back the product
+  /// stock that was decremented at the time of the sale. Caller (the
+  /// form scaffold) handles the destructive confirmation prompt.
+  Future<void> deleteSale(BuildContext context, Sale sale) async {
+    if (isLoading) return;
+    setLoading(true);
+    try {
+      // Roll stock back before deleting so the inventory adjustment
+      // survives even if the delete write fails afterwards.
+      for (final entry in sale.products.entries) {
+        final productId = entry.key;
+        final qty = entry.value;
+        if (qty <= 0) continue;
+        final product = products.firstWhere((p) => p.id == productId,
+            orElse: () => Product());
+        if (product.quantity != null) {
+          await firestore
+              .collection('users')
+              .doc(userId)
+              .collection('products')
+              .doc(productId)
+              .update({'quantity': product.quantity! + qty});
+        }
+      }
+
+      await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('sales')
+          .doc(sale.id)
+          .delete();
+
+      refreshSales();
+
+      if (context.mounted) {
+        showSnackbar(context, 'Sale deleted.', Colors.green);
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          Navigator.of(context).pop(true);
+        });
+      }
+    } catch (error) {
+      print("Error deleting sale: $error");
+      if (context.mounted) {
+        showSnackbar(context, 'Error deleting sale. Please retry.', Colors.red);
+      }
     } finally {
       setLoading(false);
     }

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_app_badger/flutter_app_badger.dart';
+import 'package:flutter_app_badger_plus/flutter_app_badger_plus.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/botpress_service.dart';
 import 'package:pasella/services/twilio_service.dart';

@@ -6,12 +6,27 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/support_util.dart';
 
-class LoomVideoPage extends StatelessWidget {
+class LoomVideoPage extends StatefulWidget {
   final String loomUrl; // Full Loom URL
   final String title;
 
   const LoomVideoPage({Key? key, required this.loomUrl, required this.title})
       : super(key: key);
+
+  @override
+  State<LoomVideoPage> createState() => _LoomVideoPageState();
+}
+
+class _LoomVideoPageState extends State<LoomVideoPage> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..loadRequest(Uri.parse(widget.loomUrl));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +38,7 @@ class LoomVideoPage extends StatelessWidget {
 
     return Scaffold(
       appBar: CustomAppBar(
-        title: title.isNotEmpty ? title : 'How to use Pasella',
+        title: widget.title.isNotEmpty ? widget.title : 'How to use Pasella',
       ),
       body: Padding(
         padding: LayoutConstants.padding10Horizontal,
@@ -33,10 +48,7 @@ class LoomVideoPage extends StatelessWidget {
               child: SizedBox(
                 height: videoHeight,
                 width: videoWidth,
-                child: WebView(
-                  initialUrl: loomUrl,
-                  javascriptMode: JavascriptMode.unrestricted,
-                ),
+                child: WebViewWidget(controller: _controller),
               ),
             ),
             SizedBox(height: spacing),

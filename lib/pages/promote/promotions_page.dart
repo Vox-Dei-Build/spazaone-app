@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/promote/promote_intent_bus.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotion_tab_item.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
@@ -8,6 +9,7 @@ import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_p
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
 import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
+import 'package:pasella/pages/promote/widgets/templates/view_template/template_detail_page.dart';
 import 'package:provider/provider.dart';
 
 class PromotionsPage extends StatefulWidget {
@@ -56,13 +58,10 @@ class _PromotionsPageState extends State<PromotionsPage>
           _tabController.animateTo(1);
           if (result == true) {
             if (!mounted) return;
+            // Success / "what happens next" UX is now handled inside the
+            // create flow via TemplateSubmittedSuccessPage. We only need to
+            // refresh the list here.
             await vm.loadTemplatesData();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'Template submitted to Twilio. Waiting for approval.'),
-              ),
-            );
           }
         },
       ),
@@ -73,8 +72,57 @@ class _PromotionsPageState extends State<PromotionsPage>
 
     // initial load for tab 0
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PromotionsViewModel>().loadInitialData();
+      context.read<PromotionsViewModel>().loadInitialData().then((_) {
+        if (mounted) _handlePendingIntent();
+      });
     });
+  }
+
+  /// Reacts to a deep-link intent stashed by the FCM handler. Called once
+  /// after the first templates load so we can resolve the templateId.
+  Future<void> _handlePendingIntent() async {
+    final intent = PromoteIntentBus.instance.consume();
+    if (intent == null || !mounted) return;
+
+    // Switch to the requested tab first so the UI is on-screen by the time
+    // any follow-up navigation happens.
+    final wantsTemplates = intent.tab == 'templates';
+    _tabController.animateTo(wantsTemplates ? 1 : 0);
+
+    final vm = context.read<PromotionsViewModel>();
+
+    // Open a specific template's detail page if requested.
+    if (intent.templateId != null) {
+      final template = vm.templates.firstWhere(
+        (t) => t['id'] == intent.templateId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (template.isNotEmpty && mounted) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => TemplateDetailPage(
+            viewModel: vm,
+            template: template,
+            shopName: vm.shopName,
+            whatsappPrice: vm.whatsappPrice,
+            smsPricePerSegment: vm.smsPricePerSegment,
+          ),
+        ));
+        return;
+      }
+    }
+
+    // Auto-trigger the Run Promotion flow if requested (and viable).
+    if (intent.action == 'run' && !wantsTemplates && mounted) {
+      final hasApproved = vm.templates.any((t) =>
+          (t['channels']?['whatsapp']?['approvalStatus'] == 'approved') ||
+          (t['channels']?['whatsapp']?['approved'] == true));
+      if (hasApproved) {
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const RunPromotionPage(),
+        ));
+        if (mounted) await vm.fetchPromotionsReports();
+      }
+    }
   }
 
   void _onTabChanged() {

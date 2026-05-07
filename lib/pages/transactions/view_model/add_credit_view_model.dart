@@ -8,6 +8,8 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
+import 'package:pasella/shared/billing/cost_breakdown.dart';
+import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -28,6 +30,14 @@ class AddCreditViewModel extends TransactionViewModel {
   }) {
     loadProducts();
     _initServices();
+  }
+
+  /// Updates the credit's repayment date and notifies listeners. The
+  /// previous flow mutated the field directly which left the on-screen
+  /// label stale until something else triggered a rebuild.
+  void setRepaymentDate(DateTime value) {
+    repaymentDate = value;
+    notifyListeners();
   }
 
   Future<void> _initServices() async {
@@ -101,14 +111,30 @@ class AddCreditViewModel extends TransactionViewModel {
         unitCost: pricingService.smsReminderTemplatePrice,
       );
 
-      bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-          context, userId, creditMessageCost);
+      // Pre-flight cost confirmation — explicit consent before any wallet
+      // deduction. Cancel still records the credit, just skips the SMS.
+      bool userConfirmed = false;
+      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        userConfirmed = await CostConfirmationSheet.show(
+          context,
+          breakdown: CostBreakdown.singleMessage(
+            title: 'Send credit confirmation?',
+            subtitle: 'SMS to $customerName',
+            channelLabel: 'Credit confirmation SMS',
+            cost: creditMessageCost,
+          ),
+          confirmLabel: 'Send SMS',
+        );
+      }
+
+      // Safety net for race conditions (balance changed since the sheet).
+      final canProceed = userConfirmed &&
+          await BalanceCheckUtil.checkBalanceAndProceed(
+              context, userId, creditMessageCost);
 
       if (canProceed) {
         await sendSMS(userId, customerId, amountEntered, customerName, "Credit",
             mobileNumber);
-      } else {
-        SnackbarComponents.showInsufficientBalance(context);
       }
 
       DocumentReference customerRef = FirebaseFirestore.instance
