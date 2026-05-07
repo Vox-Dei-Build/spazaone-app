@@ -5,9 +5,16 @@ use_frameworks! :linkage => :static
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-# Pin Firebase iOS SDK to a version known to work with this toolchain.
-# You can adjust this to a newer minor if needed.
-$FirebaseSDKVersion = '10.22.0'
+# Pin Firebase iOS SDK version. 11.6.0 ships gRPC-Core 1.65+, which
+# fixes a C++ template parse error in basic_seq.h that breaks the
+# build on Xcode 26 (`A template argument list is expected after a
+# name prefixed by the template keyword`). Older Firebase 10.22.0
+# transitively pinned gRPC-Core 1.62.5 which has the legacy syntax.
+#
+# Bumping from 10.22.0 to 11.6.0 is a Firebase major version change;
+# Firestore / Auth / Storage runtime behaviour should be re-tested
+# on TestFlight before promoting to production.
+$FirebaseSDKVersion = '11.6.0'
 
 project 'Runner', {
   'Debug' => :debug,
