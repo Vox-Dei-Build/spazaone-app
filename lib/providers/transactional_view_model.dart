@@ -117,15 +117,35 @@ class TransactionViewModel extends ChangeNotifier {
     }
   }
 
+  /// Resolve a usable [BuildContext] for showing SnackBars / pushing
+  /// routes from view-model methods. Prefers the live context the
+  /// caller passed in (which is always mounted by virtue of having
+  /// just fired the action), and falls back to [scaffoldKey] only when
+  /// the caller didn't have one. Returns `null` if neither is usable —
+  /// callers must check before dereferencing.
+  ///
+  /// This exists because the previous `scaffoldKey.currentContext!`
+  /// pattern silently NPEs when the key is detached from any live
+  /// `Scaffold` (which happened during the `TransactionFormScaffold`
+  /// migration in 7cd4126).
+  BuildContext? _resolveContext(BuildContext? caller) {
+    if (caller != null && caller.mounted) return caller;
+    final fromKey = scaffoldKey.currentContext;
+    if (fromKey != null && fromKey.mounted) return fromKey;
+    return null;
+  }
+
   SnackBarAction updateStockSnackBar(
       BuildContext context, String productId, int quantity, Product product) {
     return SnackBarAction(
       label: 'Update Stock',
       textColor: Colors.white,
       onPressed: () async {
-        await Navigator.of(scaffoldKey.currentContext!).push(
+        final navContext = _resolveContext(context);
+        if (navContext == null) return;
+        await Navigator.of(navContext).push(
           MaterialPageRoute(
-            builder: (context) => ProductDetailsPage(
+            builder: (_) => ProductDetailsPage(
               docID: productId,
               product: product,
             ),
@@ -138,9 +158,10 @@ class TransactionViewModel extends ChangeNotifier {
         if (updatedProduct.quantity != null && updatedProduct.quantity! > 0) {
           addProduct(context, productId, quantity);
         } else {
-          if (scaffoldKey.currentContext!.mounted) {
-            showSnackbar(scaffoldKey.currentContext!,
-                'Still out of stock. Please add stock.', Colors.red);
+          final toastContext = _resolveContext(context);
+          if (toastContext != null) {
+            showSnackbar(
+                toastContext, 'Still out of stock. Please add stock.', Colors.red);
           }
         }
       },
@@ -158,9 +179,10 @@ class TransactionViewModel extends ChangeNotifier {
       }
       notifyListeners();
     } else {
-      if (scaffoldKey.currentContext != null) {
+      final toastContext = _resolveContext(context);
+      if (toastContext != null) {
         showSnackbarWithNavigation(
-          scaffoldKey.currentContext!,
+          toastContext,
           'Cannot add product. Stock is zero or not available.',
           Colors.orange,
           updateStockSnackBar(context, productId, 1, product),
@@ -179,9 +201,10 @@ class TransactionViewModel extends ChangeNotifier {
       if (product.quantity != null && product.quantity! >= quantity) {
         selectedProducts[productId] = quantity;
       } else {
-        if (scaffoldKey.currentContext != null) {
+        final toastContext = _resolveContext(context);
+        if (toastContext != null) {
           showSnackbarWithNavigation(
-            scaffoldKey.currentContext!,
+            toastContext,
             'Insufficient stock for ${product.name}.',
             Colors.orange,
             updateStockSnackBar(context, productId, 1, product),

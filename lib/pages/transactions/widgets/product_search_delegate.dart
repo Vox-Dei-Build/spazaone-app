@@ -42,8 +42,10 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     );
   }
 
-  @override
-  Widget buildResults(BuildContext context) {
+  // Both the results and suggestions surfaces share the same product
+  // list + tap handlers; factor them out so a future refactor can't
+  // diverge them silently.
+  Widget _buildProductList(BuildContext context) {
     SizeConfig().init(context);
 
     final List<Product> matchQuery =
@@ -62,11 +64,18 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
           await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => NewProductPage(
+              // Use a distinct name to avoid shadowing the outer
+              // `context` we want to pass into `addProduct`.
+              builder: (newProductContext) => NewProductPage(
                 onProductAdded: (newProduct) async {
-                  await viewModel.loadProducts(); // Refresh product list
-                  viewModel.addProduct(
-                      viewModel.scaffoldKey.currentContext!, newProduct.id!, 1);
+                  await viewModel.loadProducts();
+                  // Pass the live BuildContext from the delegate, NOT
+                  // viewModel.scaffoldKey.currentContext. The shared
+                  // ScaffoldKey can be detached during refactors (see
+                  // 7cd4126 → 936abcd) and dereffing it with `!`
+                  // throws inside an async onTap, which Flutter swallows
+                  // on release builds — symptom: tap does nothing.
+                  viewModel.addProduct(context, newProduct.id!, 1);
                   close(context, newProduct);
                 },
               ),
@@ -86,8 +95,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
             style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
           ),
           onTap: () {
-            viewModel.addProduct(
-                viewModel.scaffoldKey.currentContext!, result.id!, 1);
+            viewModel.addProduct(context, result.id!, 1);
             close(context, result);
           },
         );
@@ -96,55 +104,8 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
   }
 
   @override
-  Widget buildSuggestions(BuildContext context) {
-    SizeConfig().init(context);
+  Widget buildResults(BuildContext context) => _buildProductList(context);
 
-    final List<Product> matchQuery =
-        viewModel.filteredProducts.where((product) {
-      return product.name!.toLowerCase().contains(query.toLowerCase());
-    }).toList();
-
-    if (matchQuery.isEmpty) {
-      return ListTile(
-        title: Text(
-          "No products found. Add a new product.",
-          style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-        ),
-        leading: Icon(Icons.add, size: SizeConfig.imageSizeMultiplier * 6),
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => NewProductPage(
-                onProductAdded: (newProduct) async {
-                  await viewModel.loadProducts(); // Refresh product list
-                  viewModel.addProduct(
-                      viewModel.scaffoldKey.currentContext!, newProduct.id!, 1);
-                  close(context, newProduct);
-                },
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    return ListView.builder(
-      itemCount: matchQuery.length,
-      itemBuilder: (context, index) {
-        var result = matchQuery[index];
-        return ListTile(
-          title: Text(
-            formatStringToCamelCase(result.name!),
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-          ),
-          onTap: () {
-            viewModel.addProduct(
-                viewModel.scaffoldKey.currentContext!, result.id!, 1);
-            close(context, result);
-          },
-        );
-      },
-    );
-  }
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildProductList(context);
 }
