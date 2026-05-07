@@ -330,7 +330,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"$PODS_ROOT/FirebaseCrashlytics/upload-symbols\" --flutter-project \"$PROJECT_DIR/firebase_app_id_file.json\" ";
+			shellScript = "# Run Crashlytics dSYM upload in the background so a stalled\n# network call to crashlyticsreports-pa.googleapis.com cannot block\n# the archive (which previously left the build hung for hours; see\n# release commit 4a605c1 / Pasella 3.0.2+42 retro). Output is\n# detached from Xcode so the script returns 0 immediately and the\n# build continues. dSYMs still upload on a successful network round\n# trip; if upload fails, Crashlytics reports for that build will be\n# unsymbolicated but the build itself ships fine.\n(\n  \"$PODS_ROOT/FirebaseCrashlytics/upload-symbols\" --flutter-project \"$PROJECT_DIR/firebase_app_id_file.json\" \\\n    > \"${TMPDIR:-/tmp}/crashlytics-upload-${CONFIGURATION}.log\" 2>&1 &\n) >/dev/null 2>&1\nexit 0\n";
 		};
 		5D1340CCA728DDB221F4BF12 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;

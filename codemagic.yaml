@@ -59,7 +59,10 @@ definitions:
   envs:
     flutter_version: &flutter_version
       flutter: 3.29.2
-      xcode: 16.2
+      # Xcode 26+ required by Apple as of April 2026 for any App Store
+      # Connect upload (iOS 26 SDK minimum). `latest` resolves to the
+      # newest stable Xcode 26.x on Codemagic's mac_mini_m2 image.
+      xcode: latest
       cocoapods: default
 
   scripts:
@@ -176,7 +179,7 @@ workflows:
         # In_app_update_priority: 0  # leave unset; only applies to production
       email:
         recipients:
-          - tsepo@yourcompany.example          # TODO: set real address
+          - tsepo@voxdei.io
         notify:
           success: true
           failure: true
@@ -186,8 +189,11 @@ workflows:
     <<: *macos_instance
     environment:
       <<: *flutter_version
-      groups:
-        - pasella_app_store_credentials  # APP_STORE_CONNECT_*
+      # APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
+      # APP_STORE_CONNECT_PRIVATE_KEY are configured as app-level
+      # environment variables in the Codemagic dashboard (Settings ->
+      # Environment variables) and are auto-injected into every build,
+      # so no `groups:` reference is needed here.
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.tsepo.pasella
@@ -195,11 +201,8 @@ workflows:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
         BUNDLE_ID: "com.tsepo.pasella"
-        APP_STORE_APPLE_ID: ""             # TODO: numeric Apple ID from
-                                            # appstoreconnect.apple.com -> App
-                                            # Information -> Apple ID. Required
-                                            # for the App Store Connect upload
-                                            # publishing step below.
+        APP_STORE_APPLE_ID: "6751821457"   # numeric Apple ID for Pasella
+                                            # in App Store Connect.
     triggering:
       events:
         - tag
@@ -262,7 +265,7 @@ workflows:
         submit_to_app_store: false
       email:
         recipients:
-          - tsepo@yourcompany.example          # TODO: set real address
+          - tsepo@voxdei.io
         notify:
           success: true
           failure: true
