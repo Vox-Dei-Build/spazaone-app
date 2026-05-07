@@ -1,0 +1,268 @@
+# CodeMagic CI configuration for Pasella.
+#
+# Triggers
+# --------
+# Both workflows fire on git tags matching `v*.*.*+*` (e.g. v3.0.2+41).
+# Push the tag from the release branch:
+#   git tag -a v3.0.2+41 -m "Release 3.0.2+41"
+#   git push --tags
+#
+# Distribution
+# ------------
+# Android  -> Google Play "internal" track (manual promote to Production)
+# iOS      -> App Store Connect / TestFlight (manual promote to App Store)
+#
+# This is the safe default for a 3-5 day release cadence: every tag goes
+# straight to internal testers; QA on TestFlight / Play Internal; promote
+# the build that passes QA to the production track from the respective
+# console UI.
+#
+# One-time setup in CodeMagic dashboard before the first run will succeed:
+# 1. Settings -> Integrations -> connect GitHub repo (Vox-Dei-Build/Pasella).
+# 2. Teams -> <your team> -> Code signing identities ->
+#      a. Android keystore: upload `android/app/release-key.keystore` +
+#         keystore password + key alias (KEY_ALIA) + key password.
+#         Reference name: `pasella_upload_keystore`.
+#      b. iOS distribution: choose "Automatic" / App Store Connect API key.
+#         Upload the .p8 + Issuer ID + Key ID from
+#         https://appstoreconnect.apple.com/access/integrations/api .
+#         Reference name: `pasella_app_store_api_key`.
+# 3. Teams -> <your team> -> Integrations ->
+#      a. Google Play: upload service account JSON (see below).
+#      b. App Store Connect: same API key as step 2b is reused.
+# 4. Environment variable groups (Settings -> Environment variables):
+#      - `pasella_android_credentials` group containing
+#         GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (Play service account JSON).
+#         Mark it "Secure".
+#      - `pasella_app_store_credentials` group containing
+#         APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
+#         APP_STORE_CONNECT_PRIVATE_KEY (the .p8 contents). All secure.
+#
+# Play service account JSON
+# -------------------------
+# Google Play Console -> Setup -> API access -> Create new service account
+# (in Google Cloud), grant "Release manager" + "Service account user"
+# roles, then in Play Console grant the service account "Admin (all
+# permissions)" or scope it to "Release apps to testing tracks" + "Manage
+# production releases" + "View app information". Download the JSON.
+
+definitions:
+  instance_groups:
+    macos: &macos_instance
+      instance_type: mac_mini_m2
+      max_build_duration: 60
+
+    linux: &linux_instance
+      instance_type: linux_x2
+      max_build_duration: 60
+
+  envs:
+    flutter_version: &flutter_version
+      flutter: 3.29.2
+      xcode: 16.2
+      cocoapods: default
+
+  scripts:
+    - &flutter_pub_get
+      name: Flutter pub get
+      script: |
+        flutter --version
+        flutter pub get
+
+    - &flutter_analyze
+      name: Flutter analyze
+      script: |
+        # Treat warnings/errors as build failures; infos are tolerated.
+        flutter analyze --no-fatal-infos
+
+    - &flutter_test
+      name: Flutter test
+      # Tolerate the workflow if no tests exist yet; do not skip silently
+      # once tests land. Adjust this to a hard `flutter test` once the
+      # suite is real.
+      script: |
+        if [ -d test ] && [ -n "$(ls -A test 2>/dev/null)" ]; then
+          flutter test --no-pub
+        else
+          echo "::warning:: No tests found; skipping."
+        fi
+
+workflows:
+  android-release:
+    name: Android — Play Internal
+    <<: *macos_instance
+    environment:
+      <<: *flutter_version
+      groups:
+        - pasella_android_credentials   # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      android_signing:
+        - pasella_upload_keystore       # configured in dashboard step 2a
+      vars:
+        PACKAGE_NAME: "com.tsepo.pasella"
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*.*.*+*'
+          include: true
+    scripts:
+      - *flutter_pub_get
+      - *flutter_analyze
+      - *flutter_test
+      - name: Verify version code matches the git tag
+        script: |
+          # Tag format: v<major>.<minor>.<patch>+<buildNumber>
+          # Example  : v3.0.2+41
+          TAG="${CM_TAG:-}"
+          if [ -z "$TAG" ]; then
+            echo "::error:: CM_TAG is empty; this workflow only runs on tags."
+            exit 1
+          fi
+          PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          EXPECTED_TAG="v${PUBSPEC_VERSION}"
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "::error:: Tag $TAG does not match pubspec version $PUBSPEC_VERSION (expected $EXPECTED_TAG)."
+            exit 1
+          fi
+          echo "Tag $TAG matches pubspec.yaml version $PUBSPEC_VERSION ✓"
+      - name: Build signed AAB
+        script: |
+          # The android_signing block above injects key.properties into
+          # android/ before the build, so Gradle's signingConfigs.release
+          # block (which reads from key.properties) will produce a
+          # release-signed bundle without any local file shuffling.
+          flutter build appbundle --release
+      - name: Verify 16 KB page-size compliance
+        script: |
+          set -euo pipefail
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          if [ ! -f "$AAB" ]; then
+            echo "::error:: AAB not found at $AAB"
+            exit 1
+          fi
+          # Extract arm64-v8a libs from the AAB and assert ELF segment
+          # alignment >= 0x4000 (16 KB). This is the same gate Play
+          # applies post-upload; failing it here saves the round trip.
+          WORK=$(mktemp -d)
+          unzip -q "$AAB" -d "$WORK"
+          ARM64_DIR="$WORK/base/lib/arm64-v8a"
+          if [ ! -d "$ARM64_DIR" ]; then
+            echo "::warning:: No arm64-v8a libs in AAB; cannot verify."
+            exit 0
+          fi
+          BAD=0
+          for SO in "$ARM64_DIR"/*.so; do
+            [ -e "$SO" ] || continue
+            # readelf -lW prints program headers; LOAD entries with align
+            # < 0x4000 fail the 16 KB compliance check.
+            if readelf -lW "$SO" 2>/dev/null | awk '/LOAD/ && $NF !~ /0x[1-9a-f][0-9a-f]{3,}/ {print}' | grep -q .; then
+              echo "::error:: $SO has LOAD segments aligned below 16 KB"
+              BAD=1
+            fi
+          done
+          if [ "$BAD" != "0" ]; then exit 1; fi
+          echo "All arm64-v8a .so files are 16 KB aligned ✓"
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/mapping.txt
+      - flutter_drive.log
+    publishing:
+      google_play:
+        # Service account JSON is in env var GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        # Don't auto-submit for review when promoting later; use Play UI.
+        submit_as_draft: false
+        # In_app_update_priority: 0  # leave unset; only applies to production
+      email:
+        recipients:
+          - tsepo@yourcompany.example          # TODO: set real address
+        notify:
+          success: true
+          failure: true
+
+  ios-release:
+    name: iOS — TestFlight
+    <<: *macos_instance
+    environment:
+      <<: *flutter_version
+      groups:
+        - pasella_app_store_credentials  # APP_STORE_CONNECT_*
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.tsepo.pasella
+      vars:
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+        BUNDLE_ID: "com.tsepo.pasella"
+        APP_STORE_APPLE_ID: ""             # TODO: numeric Apple ID from
+                                            # appstoreconnect.apple.com -> App
+                                            # Information -> Apple ID. Required
+                                            # for the App Store Connect upload
+                                            # publishing step below.
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*.*.*+*'
+          include: true
+    scripts:
+      - *flutter_pub_get
+      - *flutter_analyze
+      - *flutter_test
+      - name: Verify version code matches the git tag
+        script: |
+          TAG="${CM_TAG:-}"
+          if [ -z "$TAG" ]; then
+            echo "::error:: CM_TAG is empty."
+            exit 1
+          fi
+          PUBSPEC_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          EXPECTED_TAG="v${PUBSPEC_VERSION}"
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "::error:: Tag $TAG does not match pubspec $PUBSPEC_VERSION."
+            exit 1
+          fi
+      - name: Set up code signing
+        # Pulls/creates the Apple Distribution cert + App Store profile
+        # via the App Store Connect API key configured in the dashboard.
+        script: |
+          xcode-project use-profiles
+      - name: Pod install
+        # Workaround for Ruby 3.4 / cocoapods locale bug.
+        script: |
+          cd ios
+          LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+      - name: Build IPA
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=/tmp/export_options.plist \
+            || (
+              # Fall back to letting Flutter generate the export options;
+              # Codemagic's `xcode-project use-profiles` writes them, but
+              # if for any reason that path didn't fire we let flutter do
+              # its own thing.
+              flutter build ipa --release --export-method app-store
+            )
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        # Lands the build in TestFlight. Promotion to App Store review is
+        # done manually from App Store Connect after QA.
+        submit_to_testflight: true
+        # Optionally beta-test groups to add the build to.
+        # beta_groups:
+        #   - "Internal"
+        submit_to_app_store: false
+      email:
+        recipients:
+          - tsepo@yourcompany.example          # TODO: set real address
+        notify:
+          success: true
+          failure: true

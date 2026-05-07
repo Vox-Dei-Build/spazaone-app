@@ -51,6 +51,7 @@ class EditTransactionScreen extends StatelessWidget {
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
             title: 'Edit $transactionType for $customerName',
+            scaffoldKey: viewModel.scaffoldKey,
             formKey: viewModel.formKey,
             isLoading: viewModel.isLoading,
             isDirty: viewModel.isDirty,

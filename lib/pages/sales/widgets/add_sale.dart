@@ -37,6 +37,7 @@ class AddSale extends StatelessWidget {
 
           return TransactionFormScaffold(
             title: 'Add Sale',
+            scaffoldKey: transactionViewModel.scaffoldKey,
             formKey: transactionViewModel.formKey,
             isLoading: transactionViewModel.isLoading,
             isDirty: transactionViewModel.isDirty,

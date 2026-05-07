@@ -29,6 +29,7 @@ class TransactionFormScaffold extends StatelessWidget {
     required this.body,
     required this.primaryActionLabel,
     required this.onPrimaryAction,
+    this.scaffoldKey,
     this.primaryActionIcon,
     this.primaryActionColor,
     this.totalLabel,
@@ -41,6 +42,17 @@ class TransactionFormScaffold extends StatelessWidget {
     this.unsavedChangesMessage =
         'You have unsaved changes. Leaving now will discard them.',
   });
+
+  /// Optional Scaffold key. Passed through onto the underlying
+  /// [Scaffold] so callers can show SnackBars / open drawers from
+  /// outside the form's BuildContext (e.g. the shared
+  /// `TransactionViewModel.scaffoldKey`, which is dereferenced from the
+  /// product-search delegate's tap handlers). Without this, the picker's
+  /// onTap silently no-ops in release builds because the orphaned key's
+  /// `currentContext` is null and `addProduct(...)` throws on the null
+  /// check inside an async callback.
+  final GlobalKey<ScaffoldState>? scaffoldKey;
+
 
   /// AppBar title.
   final String title;
@@ -116,6 +128,7 @@ class TransactionFormScaffold extends StatelessWidget {
       child: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Scaffold(
+          key: scaffoldKey,
           appBar: CustomAppBar(
             title: title,
             trailing: onDelete == null

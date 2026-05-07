@@ -34,6 +34,7 @@ class AddPaymentScreen extends StatelessWidget {
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
             title: 'Add Payment for $customerName',
+            scaffoldKey: viewModel.scaffoldKey,
             formKey: viewModel.formKey,
             isLoading: viewModel.isLoading,
             isDirty: viewModel.isDirty,

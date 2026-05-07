@@ -36,6 +36,7 @@ class AddCreditScreen extends StatelessWidget {
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
             title: 'Add Credit for $customerName',
+            scaffoldKey: viewModel.scaffoldKey,
             formKey: viewModel.formKey,
             isLoading: viewModel.isLoading,
             isDirty: viewModel.isDirty,
