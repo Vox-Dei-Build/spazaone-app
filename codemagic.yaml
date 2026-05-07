@@ -195,9 +195,17 @@ workflows:
                                          # APP_STORE_CONNECT_PRIVATE_KEY
                                          # (.p8 contents). All marked Secure
                                          # in the Codemagic dashboard.
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.tsepo.pasella
+      # NOTE: Intentionally omitting `ios_signing:` here. That block is
+      # pre-flight automation that looks for an *existing* App Store
+      # profile for com.tsepo.pasella before any script runs and aborts
+      # the build with "No matching profiles found" if none exists.
+      # We do not have a pre-existing profile bound to the new
+      # Codemagic-owned distribution cert (created after revoking the
+      # legacy iPhone Distribution cert), so the pre-flight check is
+      # guaranteed to fail. Instead, the `Set up code signing` script
+      # below uses `app-store-connect fetch-signing-files --create` to
+      # mint a fresh profile on-the-fly, then `xcode-project use-profiles`
+      # wires it into the Xcode build.
       vars:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
