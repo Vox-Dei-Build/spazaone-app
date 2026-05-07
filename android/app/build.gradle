@@ -106,6 +106,18 @@ flutter {
     source '../..'
 }
 
+// Force reCAPTCHA Enterprise to a non-deprecated, security-patched version.
+// Firebase Auth 22.x (via Firebase BoM 32.x) transitively pulls in
+// com.google.android.recaptcha:recaptcha:18.1.2, which Google has flagged
+// as deprecated and containing a critical security vulnerability. Until
+// we bump the Firebase BoM (larger change), pin to 18.5.1 (the latest
+// 18.5.x as of May 2026) at the resolution layer.
+configurations.configureEach {
+    resolutionStrategy {
+        force 'com.google.android.recaptcha:recaptcha:18.5.1'
+    }
+}
+
 dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
