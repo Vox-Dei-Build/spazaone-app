@@ -14,13 +14,9 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def localProperties = new Properties()
-def localPropertiesFile = rootProject.file('local.properties')
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.withReader('UTF-8') { reader ->
-        localProperties.load(reader)
-    }
-}
+// The Flutter Gradle plugin loads `localProperties` and `localPropertiesFile`
+// into the build script scope automatically. We only need to read additional
+// properties from them here.
 
 // Read versionCode/versionName from Flutter (which reads them from
 // pubspec.yaml `version: <name>+<code>`). pubspec is the single source of
