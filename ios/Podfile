@@ -139,6 +139,40 @@ post_install do |installer|
     puts "Warning: failed to patch FirebaseStorage Storage.swift: #{e}"
   end
 
+  # --- Strip invalid PrivacyInfo.xcprivacy from flutter_app_badger_plus ---
+  #
+  # flutter_app_badger_plus 1.0.1 ships an invalid privacy manifest at
+  #   Pods/flutter_app_badger_plus/ios/flutter_app_badger_plus/Sources/flutter_app_badger_plus/Resources/PrivacyInfo.xcprivacy
+  # which CocoaPods bundles into flutter_app_badger_plus_privacy.bundle
+  # in the final IPA. App Store Connect rejects the upload with
+  # ITMS-91056: "Invalid privacy manifest ... Keys and values in your
+  # app's privacy manifests must be valid." (rejection received for
+  # 3.0.3+44 on 2026-05-08).
+  #
+  # The plugin only sets a UIApplication notification badge \u2014 it does
+  # not collect any of the data its manifest declares (and badge-setting
+  # is not in Apple's required-reasons list, so no manifest is required
+  # for this plugin at all). Safe fix: delete the file before Xcode
+  # archives the resource bundle. Apple is happy with no manifest, the
+  # plugin keeps working, no migration / no behavioural change.
+  #
+  # Idempotent: glob may match zero files on a clean checkout if pod
+  # install lays the file out under a different prefix between
+  # CocoaPods versions.
+  begin
+    bad_manifests = Dir.glob(File.expand_path('../Pods/**/flutter_app_badger_plus*/**/PrivacyInfo.xcprivacy', __dir__))
+    bad_manifests.each do |m|
+      File.delete(m)
+      puts "Removed invalid privacy manifest: #{m}"
+    end
+    if bad_manifests.empty?
+      puts "Note: no flutter_app_badger_plus PrivacyInfo.xcprivacy found to strip (plugin may have been updated upstream)."
+    end
+  rescue => e
+    puts "Warning: failed to strip flutter_app_badger_plus privacy manifest: #{e}"
+  end
+  # --- END strip ---
+
   # --- NEW: Remove '-GCC_WARN_INHIBIT_ALL_WARNINGS' from BoringSSL-GRPC compile flags ---
   begin
     installer.pods_project.targets.each do |target|
