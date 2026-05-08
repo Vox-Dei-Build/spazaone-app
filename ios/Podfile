@@ -5,16 +5,17 @@ use_frameworks! :linkage => :static
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-# Pin Firebase iOS SDK version. 11.6.0 ships gRPC-Core 1.65+, which
-# fixes a C++ template parse error in basic_seq.h that breaks the
-# build on Xcode 26 (`A template argument list is expected after a
-# name prefixed by the template keyword`). Older Firebase 10.22.0
-# transitively pinned gRPC-Core 1.62.5 which has the legacy syntax.
+# Firebase iOS SDK version is intentionally NOT pinned here.
+# firebase_core 3.15.2 (FlutterFire 3.x coordinated set) defaults to
+# Firebase iOS 11.15.0, which is the version every firebase_*/cloud_*
+# Dart plugin in pubspec.yaml was published against. Pinning to an
+# older 11.x point release (11.6 / 11.8) breaks plugins that
+# reference newer Firebase APIs (e.g. cloud_functions StreamResponse,
+# firebase_remote_config CustomSignalValue).
 #
-# Bumping from 10.22.0 to 11.6.0 is a Firebase major version change;
-# Firestore / Auth / Storage runtime behaviour should be re-tested
-# on TestFlight before promoting to production.
-$FirebaseSDKVersion = '11.6.0'
+# 11.15.0 ships gRPC-Core 1.65+ which fixes the Xcode 26 C++ template
+# parse error in basic_seq.h that originally motivated the bump from
+# Firebase 10.22.0.
 
 project 'Runner', {
   'Debug' => :debug,

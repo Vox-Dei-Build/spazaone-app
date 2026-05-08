@@ -15,9 +15,9 @@ dependencies:
   cupertino_icons: ^1.0.2
   provider: ^6.0.5
   font_awesome_flutter: ^10.7.0
-  firebase_core: ^2.15.1
-  firebase_auth: ^4.7.3
-  cloud_firestore: ^4.8.5
+  firebase_core: ^3.15.2
+  firebase_auth: ^5.6.0
+  cloud_firestore: ^5.6.0
   fl_chart: ^0.63.0
   flutter_launcher_icons: ^0.13.1
   # Replaced discontinued contacts_service (v1 plugin embedding, not Flutter
@@ -32,12 +32,12 @@ dependencies:
   async: ^2.11.0
   twilio_flutter: ^0.0.9
   flutter_dotenv: ^5.1.0
-  cloud_functions: ^4.4.0
+  cloud_functions: ^5.5.0
   package_info_plus: ^9.0.1
-  firebase_remote_config: ^4.2.7
-  firebase_analytics: ^10.5.1
+  firebase_remote_config: ^5.4.0
+  firebase_analytics: ^11.5.0
   change_app_package_name: ^1.1.0
-  firebase_messaging: ^14.7.3
+  firebase_messaging: ^15.2.0
   url_launcher: ^6.1.14
   # url_launcher_ios is brought transitively by url_launcher; keeping transitive 6.2.4 for Dart 3.0.6
   connectivity_plus: ^5.0.2
@@ -46,8 +46,8 @@ dependencies:
   share_plus: ^7.2.2
   webview_flutter: ^4.13.0
   cached_network_image: ^3.3.1
-  firebase_storage: ^11.6.0
-  firebase_app_check: ^0.2.1
+  firebase_storage: ^12.4.0
+  firebase_app_check: ^0.3.2
   image_picker: ^1.0.7
   shimmer: ^3.0.0
   flutter_image_compress: ^2.3.0
@@ -63,8 +63,8 @@ dependencies:
   # PostHog 4.11.0 is the last release before Dart >=3.3 floor (5.0.0).
   # Keep pinned exactly until we upgrade Flutter past 3.27.
   posthog_flutter: 4.11.0
-  # Crashlytics 3.x is the last major compatible with firebase_core ^2.15.1.
-  firebase_crashlytics: ^3.4.9
+  # Crashlytics 4.x targets firebase_core 3.x (FlutterFire 3.x coordinated set).
+  firebase_crashlytics: ^4.3.0
 
 dev_dependencies:
   flutter_test:
