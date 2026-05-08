@@ -310,7 +310,12 @@ workflows:
             --certificate-key=@file:/tmp/codemagic_distribution.key \
             --create
           keychain add-certificates
-          xcode-project use-profiles
+          # use-profiles wires the minted profile into the Xcode project
+          # AND writes a matching $HOME/export_options.plist with the
+          # correct profile name + signingStyle=manual + teamID. We pass
+          # --archive-method app-store so the generated plist targets
+          # App Store distribution (not ad-hoc / development).
+          xcode-project use-profiles --archive-method app-store
       - name: Pod install
         # The committed ios/Podfile.lock pins Firebase 10.22.0 transitive
         # versions (e.g. FirebaseAppCheck 10.22.0). With the Podfile bumped
@@ -331,35 +336,21 @@ workflows:
       - name: Build IPA
         script: |
           set -e
-          # xcode-project use-profiles is supposed to write
-          # /tmp/export_options.plist, but in practice it sometimes
-          # silently does not. Write a deterministic plist here so
-          # `flutter build ipa` always has explicit export settings
-          # (method=app-store, signing=automatic, team).
-          cat > /tmp/export_options.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>Y283X7RA55</string>
-            <key>signingStyle</key>
-            <string>automatic</string>
-            <key>uploadBitcode</key>
-            <false/>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>compileBitcode</key>
-            <false/>
-            <key>destination</key>
-            <string>export</string>
-          </dict>
-          </plist>
-          EOF
+          # `xcode-project use-profiles --archive-method app-store`
+          # (see Set up code signing) writes $HOME/export_options.plist
+          # with the correct provisioning profile name, signingStyle=
+          # manual, teamID, and method=app-store. We must use that file
+          # instead of writing our own, otherwise the export step
+          # falls back to automatic signing which requires a logged-in
+          # Xcode account that CI does not have, producing:
+          #   "exportArchive No Accounts"
+          #   "exportArchive No profiles for 'com.tsepo.pasella' were found"
+          if [ ! -f "$HOME/export_options.plist" ]; then
+            echo "::error:: $HOME/export_options.plist missing \u2014 xcode-project use-profiles did not run or did not find a profile."
+            exit 1
+          fi
           flutter build ipa --release \
-            --export-options-plist=/tmp/export_options.plist
+            --export-options-plist="$HOME/export_options.plist"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
