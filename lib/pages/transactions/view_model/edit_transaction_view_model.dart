@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/templates/sms_message.dart';
@@ -204,7 +205,7 @@ class EditTransactionViewModel extends TransactionViewModel {
         }
       }
 
-      final messageCost = SMSPricingUtil.calculateCost(
+      final smsCost = SMSPricingUtil.calculateCost(
         text: transactionType == "Credit"
             ? SMSMessages.creditConfirmationShort
             : SMSMessages.paymentConfirmationShort,
@@ -212,27 +213,39 @@ class EditTransactionViewModel extends TransactionViewModel {
             ? pricingService.smsReminderTemplatePrice
             : pricingService.smsPaymentTemplatePrice,
       );
+      final whatsappCost = pricingService.whatsappUtilityPrice;
 
-      // Pre-flight cost confirmation. Cancel keeps the edit but skips the
-      // notification SMS to the customer.
+      // Pre-flight cost confirmation. Cancel keeps the edit but skips
+      // the notification message to the customer. Show both channel
+      // prices and bias the highlighted total to whichever channel the
+      // dispatcher will most likely use, so the user isn't quoted SMS
+      // when they'll actually be charged WhatsApp (or vice versa).
       bool userConfirmed = false;
+      double quotedTotal = smsCost;
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        final expectedChannel =
+            await MessagingNotificationService.resolveExpectedChannel(
+                mobileNumber!);
+        final breakdown = CostBreakdown.singleMessageMultiChannel(
+          title: 'Send updated $transactionType notification?',
+          subtitle: 'Message to $customerName',
+          whatsappCost: whatsappCost,
+          smsCost: smsCost,
+          expected: expectedChannel,
+        );
+        quotedTotal = breakdown.total;
         userConfirmed = await CostConfirmationSheet.show(
           context,
-          breakdown: CostBreakdown.singleMessage(
-            title: 'Send updated $transactionType notification?',
-            subtitle: 'SMS to $customerName',
-            channelLabel: '$transactionType notification SMS',
-            cost: messageCost,
-          ),
-          confirmLabel: 'Send SMS',
+          breakdown: breakdown,
+          confirmLabel: 'Send',
         );
       }
 
-      // Safety net for race conditions.
+      // Safety net for race conditions. Affordability gate uses the
+      // primary channel cost the user just confirmed.
       final canProceed = userConfirmed &&
           await BalanceCheckUtil.checkBalanceAndProceed(
-              context, currentUserId, messageCost);
+              context, currentUserId, quotedTotal);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,

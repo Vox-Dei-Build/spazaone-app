@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/templates/sms_message.dart';
@@ -83,34 +84,48 @@ class AddPaymentViewModel extends TransactionViewModel {
           .collection('transactions')
           .add(transactionData);
 
-      final paymentMessageCost = SMSPricingUtil.calculateCost(
+      final smsCost = SMSPricingUtil.calculateCost(
         text: SMSMessages.paymentConfirmationShort,
         unitCost: pricingService.smsPaymentTemplatePrice,
       );
+      final whatsappCost = pricingService.whatsappUtilityPrice;
 
-      // Pre-flight cost confirmation sheet — user explicitly confirms the
-      // SMS deduction before it happens (no surprise charge). Cancel keeps
-      // the recorded payment but skips the confirmation SMS.
+      // Pre-flight cost confirmation sheet — user explicitly confirms
+      // the deduction before it happens (no surprise charge). Cancel
+      // keeps the recorded payment but skips the confirmation message.
+      // Show both channel prices and bias the highlighted total to
+      // whichever channel the dispatcher will most likely use, so the
+      // user isn't quoted the wrong price for the channel that ends up
+      // delivering.
       bool userConfirmed = false;
+      double quotedTotal = smsCost;
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        final expectedChannel =
+            await MessagingNotificationService.resolveExpectedChannel(
+                mobileNumber!);
+        final breakdown = CostBreakdown.singleMessageMultiChannel(
+          title: 'Send payment confirmation?',
+          subtitle: 'Message to $customerName',
+          whatsappCost: whatsappCost,
+          smsCost: smsCost,
+          expected: expectedChannel,
+        );
+        quotedTotal = breakdown.total;
         userConfirmed = await CostConfirmationSheet.show(
           context,
-          breakdown: CostBreakdown.singleMessage(
-            title: 'Send payment confirmation?',
-            subtitle: 'SMS to $customerName',
-            channelLabel: 'Payment confirmation SMS',
-            cost: paymentMessageCost,
-          ),
-          confirmLabel: 'Send SMS',
+          breakdown: breakdown,
+          confirmLabel: 'Send',
         );
       }
 
-      // Safety net for race conditions (balance changed between sheet and
-      // dispatch). Keeps the legacy "Insufficient Balance" dialog as a
-      // last-resort fallback only — should rarely fire now.
+      // Safety net for race conditions (balance changed between sheet
+      // and dispatch). Keeps the legacy "Insufficient Balance" dialog
+      // as a last-resort fallback only — should rarely fire now.
+      // Affordability gate uses the primary channel cost the user just
+      // confirmed.
       final canProceed = userConfirmed &&
           await BalanceCheckUtil.checkBalanceAndProceed(
-              context, userId, paymentMessageCost);
+              context, userId, quotedTotal);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,

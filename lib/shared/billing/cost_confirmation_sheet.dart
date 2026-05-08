@@ -97,43 +97,62 @@ class CostConfirmationSheet extends StatelessWidget {
             ],
             SizedBox(height: SizeConfig.heightMultiplier * 2),
 
-            // Itemised lines
-            ...breakdown.lines.map((line) => Padding(
-                  padding: EdgeInsets.symmetric(
-                      vertical: SizeConfig.heightMultiplier * 0.4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+            // Itemised lines. Non-primary lines (e.g. the fallback
+            // channel of a multi-channel single-message quote) are
+            // rendered muted so the user can see what they'd be charged
+            // if delivery falls back to the alternative channel without
+            // it being mistaken for an additional charge.
+            ...breakdown.lines.map((line) {
+              final muted = !line.isPrimary;
+              final labelColor = muted ? Colors.black54 : Colors.black87;
+              final amountColor = muted ? Colors.black54 : Colors.black87;
+              return Padding(
+                padding: EdgeInsets.symmetric(
+                    vertical: SizeConfig.heightMultiplier * 0.4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            line.label,
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 1.7,
+                              color: labelColor,
+                              fontStyle: muted
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
+                            ),
+                          ),
+                          if (line.detail != null)
                             Text(
-                              line.label,
+                              line.detail!,
                               style: TextStyle(
-                                fontSize: SizeConfig.textMultiplier * 1.7,
+                                fontSize: SizeConfig.textMultiplier * 1.4,
+                                color: Colors.black54,
+                                fontStyle: muted
+                                    ? FontStyle.italic
+                                    : FontStyle.normal,
                               ),
                             ),
-                            if (line.detail != null)
-                              Text(
-                                line.detail!,
-                                style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.4,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                          ],
-                        ),
+                        ],
                       ),
-                      Text(
-                        'R${line.amount.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.7,
-                        ),
+                    ),
+                    Text(
+                      'R${line.amount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: SizeConfig.textMultiplier * 1.7,
+                        color: amountColor,
+                        fontStyle:
+                            muted ? FontStyle.italic : FontStyle.normal,
                       ),
-                    ],
-                  ),
-                )),
+                    ),
+                  ],
+                ),
+              );
+            }),
 
             if (breakdown.lines.isNotEmpty) ...[
               const Divider(height: 24),

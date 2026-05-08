@@ -3,6 +3,63 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Required for taking photos with ImagePicker -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Android 13+ (API 33+) split media access from the legacy
+         READ_EXTERNAL_STORAGE permission. image_picker on API 33+
+         doesn't strictly need a permission for the system Photo Picker,
+         but permission_handler's Permission.photos request resolves to
+         READ_MEDIA_IMAGES, and without this declaration the request
+         is auto-denied on Android 13+ devices and the gallery flow
+         silently aborts. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!-- Android 14+ (API 34+) "Selected Photos Access". Some devices
+         require this to be declared even if we never request the
+         partial-grant UX, otherwise Photo Picker permission state
+         is reported incorrectly. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!-- Legacy storage permission for Android 12 and below. The
+         maxSdkVersion bound makes this a no-op on API 33+ where
+         it has been replaced by the granular READ_MEDIA_* set above. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Android 11+ (API 30+) requires explicit declaration of every
+         external app/scheme the app intends to query or launch via
+         PackageManager.resolveActivity / Intent.resolveActivity, which
+         underpins url_launcher.canLaunchUrl(). Without these entries
+         canLaunchUrl returns false silently and url_launcher refuses
+         to launch even when the target app IS installed, breaking:
+           - "Top up via WhatsApp" button (https://wa.me/...)
+           - WhatsApp share button (whatsapp://send?...)
+           - "Call instead" fallback (tel:...)
+           - Email composer fallback (mailto:...)
+           - External browser links (https://...) -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+    </queries>
+
 
     <application
         android:label="Pasella"

@@ -7,6 +7,7 @@ import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
+import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
@@ -106,31 +107,45 @@ class AddCreditViewModel extends TransactionViewModel {
         }
       }
 
-      final creditMessageCost = SMSPricingUtil.calculateCost(
+      final smsCost = SMSPricingUtil.calculateCost(
         text: SMSMessages.creditConfirmationShort,
         unitCost: pricingService.smsReminderTemplatePrice,
       );
+      final whatsappCost = pricingService.whatsappUtilityPrice;
 
-      // Pre-flight cost confirmation — explicit consent before any wallet
-      // deduction. Cancel still records the credit, just skips the SMS.
+      // Pre-flight cost confirmation — explicit consent before any
+      // wallet deduction. Cancel still records the credit, just skips
+      // the notification. Show both channel prices and bias the
+      // highlighted total to whichever channel the dispatcher will most
+      // likely use; the user is never quoted the wrong price for the
+      // channel that ends up delivering.
       bool userConfirmed = false;
+      double quotedTotal = smsCost;
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        final expectedChannel =
+            await MessagingNotificationService.resolveExpectedChannel(
+                mobileNumber!);
+        final breakdown = CostBreakdown.singleMessageMultiChannel(
+          title: 'Send credit confirmation?',
+          subtitle: 'Message to $customerName',
+          whatsappCost: whatsappCost,
+          smsCost: smsCost,
+          expected: expectedChannel,
+        );
+        quotedTotal = breakdown.total;
         userConfirmed = await CostConfirmationSheet.show(
           context,
-          breakdown: CostBreakdown.singleMessage(
-            title: 'Send credit confirmation?',
-            subtitle: 'SMS to $customerName',
-            channelLabel: 'Credit confirmation SMS',
-            cost: creditMessageCost,
-          ),
-          confirmLabel: 'Send SMS',
+          breakdown: breakdown,
+          confirmLabel: 'Send',
         );
       }
 
-      // Safety net for race conditions (balance changed since the sheet).
+      // Safety net for race conditions (balance changed since the
+      // sheet). Affordability gate uses the primary channel cost the
+      // user just confirmed.
       final canProceed = userConfirmed &&
           await BalanceCheckUtil.checkBalanceAndProceed(
-              context, userId, creditMessageCost);
+              context, userId, quotedTotal);
 
       if (canProceed) {
         await sendSMS(userId, customerId, amountEntered, customerName, "Credit",
