@@ -84,8 +84,13 @@ definitions:
           echo "::error:: DOTENV_FILE env var is empty. Set it as a secure variable in Codemagic with the contents of the local .env file."
           exit 1
         fi
-        printf '%s' "$DOTENV_FILE" > "$CM_BUILD_DIR/.env"
-        echo ".env written ($(wc -c < "$CM_BUILD_DIR/.env") bytes)"
+        # Write relative to PWD (the clone root for every CodeMagic
+        # script step), not to "$CM_BUILD_DIR/.env" \u2014 the latter
+        # has produced phantom-write failures on at least one mac
+        # builder image where $CM_BUILD_DIR diverges from the actual
+        # clone path used by subsequent steps. PWD is canonical.
+        printf '%s' "$DOTENV_FILE" > .env
+        echo ".env written ($(wc -c < .env) bytes) to $(pwd)/.env"
 
     - &materialise_google_services_json
       name: Materialise android/app/google-services.json from secure env var
@@ -116,7 +121,16 @@ definitions:
           echo "::error:: GOOGLE_SERVICES_JSON_BASE64 env var is empty. Set it as a secure variable in Codemagic with: base64 -i android/app/google-services.json"
           exit 1
         fi
-        TARGET="$CM_BUILD_DIR/android/app/google-services.json"
+        # Write relative to PWD, which CodeMagic guarantees is the
+        # repo clone root for every `script:` block. We previously
+        # used "$CM_BUILD_DIR/android/app/google-services.json" and
+        # the file wrote successfully (step logged a byte count) but
+        # Gradle in a later step couldn't find it at
+        # /Users/builder/clone/android/app/google-services.json,
+        # which strongly suggests $CM_BUILD_DIR resolved to a path
+        # other than the actual clone root on this image. PWD is
+        # the canonical anchor and matches Gradle's expectation.
+        TARGET="android/app/google-services.json"
         printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$TARGET"
         # Sanity-check: file must be valid JSON and contain our project
         # number, otherwise we'll waste 5 min discovering it inside
@@ -125,7 +139,18 @@ definitions:
           echo "::error:: Decoded google-services.json is not valid JSON. Re-encode the source file and update the env var."
           exit 1
         fi
-        echo "google-services.json written ($(wc -c < "$TARGET") bytes)"
+        # Diagnostics: print absolute path + size + first key, so if
+        # the build still fails at processReleaseGoogleServices we
+        # have evidence of where the file actually landed and can
+        # rule out CI quirks vs corrupted contents.
+        ABSPATH=$(cd "$(dirname "$TARGET")" && pwd)/$(basename "$TARGET")
+        echo "google-services.json written:"
+        echo "  pwd:       $(pwd)"
+        echo "  rel path:  $TARGET"
+        echo "  abs path:  $ABSPATH"
+        echo "  size:      $(wc -c < "$TARGET") bytes"
+        echo "  first key: $(python3 -c "import json; print(list(json.load(open('$TARGET')).keys())[0])")"
+        ls -la "android/app/google-services.json"
 
     - &flutter_pub_get
       name: Flutter pub get
@@ -212,6 +237,27 @@ workflows:
           echo "Tag $TAG matches pubspec.yaml version $PUBSPEC_VERSION ✓"
       - name: Build signed AAB
         script: |
+          set -e
+          # Pre-flight: ensure both gitignored config files survived
+          # from their materialise steps to this step's working dir.
+          # If $CM_BUILD_DIR diverges from PWD on this image (which we
+          # observed on at least one v3.0.3+44 build), the materialise
+          # write lands somewhere Gradle can't see and we'd otherwise
+          # fail 4-6 minutes later with a generic
+          # "File google-services.json is missing" error. Fail fast
+          # instead with the actual filesystem evidence.
+          echo "Pre-flight working dir: $(pwd)"
+          for F in android/app/google-services.json .env; do
+            if [ ! -f "$F" ]; then
+              echo "::error:: Missing $F at $(pwd)/$F before Gradle build."
+              echo "Tree of android/app:"
+              ls -la android/app/ || true
+              echo "Tree of repo root:"
+              ls -la . || true
+              exit 1
+            fi
+            echo "  $F: $(wc -c < "$F") bytes ✓"
+          done
           # The android_signing block above injects key.properties into
           # android/ before the build, so Gradle's signingConfigs.release
           # block (which reads from key.properties) will produce a
