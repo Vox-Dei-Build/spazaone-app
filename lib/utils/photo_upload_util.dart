@@ -112,9 +112,39 @@ class PhotoUploadUtil {
     final isCamera = await showCameraOrGalleryPicker(context);
     if (isCamera == null) return;
 
-    final granted = isCamera
-        ? await PermissionHelper.requestCamera(context)
-        : await PermissionHelper.requestPhotos(context);
+    // Permission strategy by source + platform:
+    //
+    //   Camera (any platform)
+    //     → request Permission.camera (CAMERA on Android,
+    //       NSCameraUsageDescription on iOS).
+    //
+    //   Gallery on Android
+    //     → DO NOT request Permission.photos. image_picker on Android
+    //       13+ uses the system Photo Picker which deliberately needs
+    //       no runtime permission, and on Android 12 and below the
+    //       legacy READ_EXTERNAL_STORAGE permission is granted at
+    //       install time via the manifest declaration (no runtime
+    //       prompt either). Requesting Permission.photos here would
+    //       resolve to READ_MEDIA_IMAGES on Android 13+, which we
+    //       intentionally don't declare in the manifest (see comment
+    //       there about Google Play's Photo and Video Permissions
+    //       policy). With the permission undeclared, the request
+    //       auto-denies and the picker would silently abort —
+    //       reproducing the original Android-13+ gallery bug from a
+    //       different angle.
+    //
+    //   Gallery on iOS
+    //     → request Permission.photos. Maps to the Photos framework
+    //       and requires NSPhotoLibraryUsageDescription in Info.plist.
+    //       iOS Photo Library permission cannot be skipped.
+    final bool granted;
+    if (isCamera) {
+      granted = await PermissionHelper.requestCamera(context);
+    } else if (Platform.isAndroid) {
+      granted = true; // Photo Picker handles gallery auth implicitly.
+    } else {
+      granted = await PermissionHelper.requestPhotos(context);
+    }
 
     if (!granted) {
       onImagePicked(null);

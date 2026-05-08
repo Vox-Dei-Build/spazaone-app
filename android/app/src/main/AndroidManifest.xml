@@ -3,23 +3,26 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Required for taking photos with ImagePicker -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Android 13+ (API 33+) split media access from the legacy
-         READ_EXTERNAL_STORAGE permission. image_picker on API 33+
-         doesn't strictly need a permission for the system Photo Picker,
-         but permission_handler's Permission.photos request resolves to
-         READ_MEDIA_IMAGES, and without this declaration the request
-         is auto-denied on Android 13+ devices and the gallery flow
-         silently aborts. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <!-- Android 14+ (API 34+) "Selected Photos Access". Some devices
-         require this to be declared even if we never request the
-         partial-grant UX, otherwise Photo Picker permission state
-         is reported incorrectly. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!-- Gallery selection on Android 13+ uses the system Photo Picker
+         (ACTION_PICK_IMAGES), which deliberately does NOT require
+         READ_MEDIA_IMAGES / READ_MEDIA_VIDEO. Declaring those broad
+         permissions just to call the picker triggers Google Play's
+         Photo and Video Permissions policy gate and forces a
+         justification submission, even though they're never actually
+         needed for our flow (we only pick a single image at a time
+         from the picker; we never enumerate the user's library).
+         image_picker 1.0+ on image_picker_android 0.8.12+11+ routes
+         pickImage(source: gallery) through Photo Picker automatically
+         on API 33+, so dropping these permissions is purely
+         beneficial: no Play policy gate, no permission prompt, same
+         user-visible behaviour. See `lib/utils/photo_upload_util.dart`
+         which now skips PermissionHelper.requestPhotos for the gallery
+         source on Android. -->
     <!-- Legacy storage permission for Android 12 and below. The
-         maxSdkVersion bound makes this a no-op on API 33+ where
-         it has been replaced by the granular READ_MEDIA_* set above. -->
+         maxSdkVersion bound makes this a no-op on API 33+ where Photo
+         Picker (above) handles gallery selection without any
+         permission. On API 32 and below, image_picker still uses the
+         classic ACTION_GET_CONTENT path which needs this permission. -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
