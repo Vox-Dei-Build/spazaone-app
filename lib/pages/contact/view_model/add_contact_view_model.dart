@@ -8,8 +8,10 @@ import 'dart:io';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
@@ -102,64 +104,157 @@ class AddContactViewModel extends ChangeNotifier {
       'isNPA': false,
     };
 
-    try {
-      await FirebaseFirestore.instance
+    // Duplicate guard.
+    //
+    // The bug surfaced from production: re-picking an already-saved
+    // contact silently created a second customer document with the
+    // same phone number. The user saw the form go quiet and assumed
+    // nothing happened (because the success snackbar / nav was racing
+    // with the cost confirmation sheet — see addCustomerToFirestore
+    // notes below) so they tapped Confirm again, magnifying the
+    // duplicate. We now check first and refuse to write a second
+    // record for the same number.
+    //
+    // Match key: normalized SA local form (`0XXXXXXXXX`), which is
+    // exactly what we persist in `number`. Skipped entirely when the
+    // user adds a no-number customer — those are typically walk-in
+    // placeholders ("Walk-in 1", "Walk-in 2") and should not collide.
+    final normalizedNumber = newCustomer['number'] as String;
+    if (normalizedNumber.isNotEmpty) {
+      final existing = await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUserId)
           .collection('customers')
-          .add(newCustomer)
-          .then((docRef) async {
-        if (_profileImage != null) {
-          final url = await _photoUploadUtil.uploadImage(
-              _profileImage!, 'profile_images/$currentUserId/${docRef.id}.jpg');
-          await docRef.update({'profileImageUrl': url});
-        }
-        if (mobileNumber.isNotEmpty && pricingService != null) {
-          final onboardingMessageCost = SMSPricingUtil.calculateCost(
-            text: SMSMessages.onboardingShort,
-            unitCost: pricingService!.smsReminderTemplatePrice,
-          );
+          .where('number', isEqualTo: normalizedNumber)
+          .limit(1)
+          .get();
 
-          // Pre-flight cost confirmation. Cancel still saves the contact;
-          // only the welcome SMS is skipped.
-          final userConfirmed = await CostConfirmationSheet.show(
-            context,
-            breakdown: CostBreakdown.singleMessage(
-              title: 'Send welcome SMS to $customerName?',
-              subtitle: 'One-time onboarding message',
-              channelLabel: 'Welcome SMS',
-              cost: onboardingMessageCost,
+      if (existing.docs.isNotEmpty) {
+        _setLoading(false);
+        final existingDoc = existing.docs.first;
+        final existingData = existingDoc.data();
+        final existingName =
+            (existingData['name'] as String?) ?? customerName;
+
+        if (!context.mounted) return;
+        final openExisting = await ConfirmDialog.show(
+          context,
+          title: 'Already in your contacts',
+          message:
+              '$existingName is already saved with this number. Open the existing customer instead?',
+          confirmLabel: 'Open existing',
+          cancelLabel: 'Cancel',
+        );
+
+        if (openExisting && context.mounted) {
+          // Replace the AddContact route with the existing customer's
+          // page so back navigation lands the user on the ledger they
+          // came from, not back on the abandoned add form.
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => CustomerManagementPage(
+                customerName: existingName,
+                customerId: existingDoc.id,
+                mobileNumber: normalizedNumber,
+              ),
             ),
-            confirmLabel: 'Send SMS',
           );
-
-          // Safety net for race conditions.
-          final canProceed = userConfirmed &&
-              await BalanceCheckUtil.checkBalanceAndProceed(
-                  context, currentUserId, onboardingMessageCost);
-
-          if (canProceed) {
-            await _sendSMS(
-                currentUserId, docRef.id, customerName, mobileNumber);
-          }
-        } else {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            showSnackbar(
-              context,
-              'Customer added without a number. You can update it later via "Edit Customer".',
-              Colors.blue,
-            );
-          });
         }
-      }).catchError((error) {
-        showSnackbar(context,
-            'Error adding customer. It will retry when online.', Colors.red);
-      });
+        return;
+      }
+    }
 
+    // Linear async flow.
+    //
+    // The previous implementation chained `.add(...).then((docRef) async { ... })`
+    // and immediately ran `nameController.clear()` and the dashboard
+    // navigation right after kicking off the chain, NOT awaiting it.
+    // The `then` callback's `await CostConfirmationSheet.show(...)`
+    // therefore raced with `pushReplacementNamed('/dashboard')`, which
+    // produced the silent-success bug observed in production:
+    //   * Firestore wrote the contact (offline cache returns instantly)
+    //   * The cost confirmation sheet was orphaned by the navigation
+    //   * No success snackbar was shown
+    //   * The form fields cleared but the page sat there
+    //   * Users assumed nothing happened and tapped Confirm again,
+    //     creating duplicate customer documents
+    //
+    // The fix: await each phase in order, only navigate after all
+    // post-write side effects (image upload, cost sheet, SMS) finish,
+    // and surface a success snackbar so the user has explicit
+    // confirmation before the route changes.
+    try {
+      final docRef = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .collection('customers')
+          .add(newCustomer);
+
+      if (_profileImage != null) {
+        final url = await _photoUploadUtil.uploadImage(
+            _profileImage!, 'profile_images/$currentUserId/${docRef.id}.jpg');
+        await docRef.update({'profileImageUrl': url});
+      }
+
+      if (mobileNumber.isNotEmpty && pricingService != null) {
+        final smsCost = SMSPricingUtil.calculateCost(
+          text: SMSMessages.onboardingShort,
+          unitCost: pricingService!.smsReminderTemplatePrice,
+        );
+        final whatsappCost = pricingService!.whatsappUtilityPrice;
+
+        // Resolve which channel the dispatcher will most likely use so
+        // the cost sheet quotes the right primary price. Both prices are
+        // always shown — quoting only one is a money-correctness bug
+        // because the actual deduction depends on whether WhatsApp
+        // delivery succeeds.
+        final expectedChannel =
+            await MessagingNotificationService.resolveExpectedChannel(
+                mobileNumber);
+
+        // Pre-flight cost confirmation. Cancelling still persists the
+        // contact (already written above); only the welcome message is
+        // skipped.
+        final breakdown = CostBreakdown.singleMessageMultiChannel(
+          title: 'Send welcome message to $customerName?',
+          subtitle: 'One-time onboarding message',
+          whatsappCost: whatsappCost,
+          smsCost: smsCost,
+          expected: expectedChannel,
+        );
+        final userConfirmed = await CostConfirmationSheet.show(
+          context,
+          breakdown: breakdown,
+          confirmLabel: 'Send',
+        );
+
+        // Safety net for race conditions on the wallet balance. Use the
+        // breakdown's quoted total (the primary channel cost) as the
+        // affordability gate — matches what the user just confirmed.
+        final canProceed = userConfirmed &&
+            await BalanceCheckUtil.checkBalanceAndProceed(
+                context, currentUserId, breakdown.total);
+
+        if (canProceed) {
+          await _sendSMS(
+              currentUserId, docRef.id, customerName, mobileNumber);
+        }
+      }
+
+      // Success path: clear inputs, confirm to the user, then navigate.
+      // Order matters — clear() before the snackbar so the screen looks
+      // settled when the toast appears, and snackbar before nav so it
+      // queues onto the destination route's ScaffoldMessenger.
       nameController.clear();
       numberController.clear();
+      _profileImage = null;
+      _contactConsentAccepted = false;
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
+        final messenger = mobileNumber.isEmpty
+            ? 'Customer added. You can add a number later via "Edit Customer".'
+            : 'Customer added.';
+        showSnackbar(context, messenger, Colors.green);
         Navigator.of(context).pushReplacementNamed('/dashboard');
       });
     } catch (error) {

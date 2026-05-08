@@ -69,35 +69,71 @@ class _StockPageState extends State<StockPage>
                   child: Column(
                     children: [
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
+                      // Stock is the only page that needs BOTH a search
+                      // shortcut and a help/tutorial shortcut. Rendering
+                      // both as inline icons inside PageHeader pushed the
+                      // header into overflow on iPhone-class widths
+                      // (PageHeader was sized for ~360dp Android; iPhone
+                      // metrics for IconButton + the cumulative natural
+                      // width of brand + 2 page icons + wallet pill +
+                      // settings + connectivity tipped over). Collapse
+                      // the two page-scoped actions into a single kebab
+                      // menu so PageHeader still renders one inline
+                      // action slot like every other page does.
                       PageHeader(
-                          onSearchTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const GlobalSearchPage(),
-                              ),
-                            );
-                          },
-                          actionWidget: Expanded(
-                            child: IconButton(
-                              icon: Icon(
-                                Icons.help_outline,
-                                color: Colors.black,
-                                size: SizeConfig.imageSizeMultiplier * 5,
-                              ),
-                              onPressed: () {
+                        actionWidget: PopupMenuButton<_StockHeaderAction>(
+                          tooltip: 'More',
+                          icon: Icon(
+                            Icons.more_vert,
+                            color: Colors.black,
+                            size: SizeConfig.imageSizeMultiplier * 5,
+                          ),
+                          onSelected: (action) {
+                            switch (action) {
+                              case _StockHeaderAction.search:
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const GlobalSearchPage(),
+                                  ),
+                                );
+                                break;
+                              case _StockHeaderAction.help:
                                 final url = TutorialConfig.getTutorialUrl(
                                     TutorialConfig.TUTORIAL_CAPTURE_STOCK);
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (context) => LoomVideoPage(
+                                    builder: (_) => LoomVideoPage(
                                       loomUrl: url,
                                       title: 'How to Capture Stock',
                                     ),
                                   ),
                                 );
-                              },
+                                break;
+                            }
+                          },
+                          itemBuilder: (context) =>
+                              const <PopupMenuEntry<_StockHeaderAction>>[
+                            PopupMenuItem(
+                              value: _StockHeaderAction.search,
+                              child: ListTile(
+                                leading: Icon(Icons.search),
+                                title: Text('Search products'),
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                              ),
                             ),
-                          )),
+                            PopupMenuItem(
+                              value: _StockHeaderAction.help,
+                              child: ListTile(
+                                leading: Icon(Icons.help_outline),
+                                title: Text('How to capture stock'),
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       TabBar(
                         controller: _tabController,
@@ -185,3 +221,8 @@ class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
     return Offset(fabX, fabY);
   }
 }
+
+/// Discriminator for the Stock page's collapsed kebab menu.
+/// Kept private to this file because it has no meaning outside the
+/// header's PopupMenuButton selection.
+enum _StockHeaderAction { search, help }

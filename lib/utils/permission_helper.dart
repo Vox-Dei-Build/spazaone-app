@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -20,7 +18,18 @@ class PermissionHelper {
 
   static Future<bool> requestPhotos(BuildContext context) async {
     if (kIsWeb) return true;
-    final permission = Platform.isIOS ? Permission.photos : Permission.storage;
+    // Use Permission.photos on both platforms.
+    //
+    // permission_handler 11.x maps Permission.photos to:
+    //   - iOS:           Photos framework (NSPhotoLibraryUsageDescription)
+    //   - Android 13+:   READ_MEDIA_IMAGES (granular media permission)
+    //   - Android 12-:   READ_EXTERNAL_STORAGE (legacy fallback)
+    //
+    // Previously this branch asked for Permission.storage on Android,
+    // which on API 33+ silently auto-denies because the granular
+    // media permissions replaced the broad storage permission. The
+    // user saw the gallery flow do nothing without a system prompt.
+    const permission = Permission.photos;
     return _requestPermission(
       context,
       permission,

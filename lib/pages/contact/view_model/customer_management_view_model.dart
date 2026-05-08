@@ -278,20 +278,36 @@ class CustomerManagementViewModel extends ChangeNotifier {
       return;
     }
 
-    // Compute the SMS cost up-front so the user sees it on the confirmation
-    // sheet (replaces the cost-blind "Send reminder?" alert dialog).
-    final reminderMessageCost = SMSPricingUtil.calculateCost(
+    // Compute both channel costs up-front so the user sees an
+    // accurate, channel-aware quote on the confirmation sheet
+    // (replaces the cost-blind "Send reminder?" alert dialog and the
+    // SMS-only quote that under/over-quoted the actual deduction).
+    final smsCost = SMSPricingUtil.calculateCost(
       text: SMSMessages.reminderShort,
       unitCost: pricingService.smsReminderTemplatePrice,
     );
+    final whatsappCost = pricingService.whatsappUtilityPrice;
+
+    if (mobileNumber == null || mobileNumber!.isEmpty) {
+      // No phone number on file — nothing to send. Bail before the
+      // sheet so the user isn't asked to confirm a no-op.
+      showSnackbar(context, 'No phone number on file for this customer.',
+          Colors.orange);
+      return;
+    }
+
+    final expectedChannel =
+        await MessagingNotificationService.resolveExpectedChannel(
+            mobileNumber!);
 
     final shouldSend = await CostConfirmationSheet.show(
       context,
-      breakdown: CostBreakdown.singleMessage(
+      breakdown: CostBreakdown.singleMessageMultiChannel(
         title: 'Send payment reminder?',
-        subtitle: 'SMS to $customerName',
-        channelLabel: 'Reminder SMS',
-        cost: reminderMessageCost,
+        subtitle: 'Message to $customerName',
+        whatsappCost: whatsappCost,
+        smsCost: smsCost,
+        expected: expectedChannel,
       ),
       confirmLabel: 'Send Reminder',
     );

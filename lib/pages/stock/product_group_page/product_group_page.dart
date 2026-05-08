@@ -56,13 +56,21 @@ class ProductGroupPage extends StatelessWidget {
       ),
       appBar: CustomAppBar(
         title: name,
+        // mainAxisSize.min keeps the Row from claiming the full
+        // remaining width inside AppBar.actions, which was the cause
+        // of the trailing-icon overflow on iPhone-class widths.
+        // Icon size dropped from imageSizeMultiplier * 7 to * 5 to
+        // match the rest of the codebase (template_detail_page,
+        // view_promotion, product_details) and the AppBar's own
+        // leading back-arrow scale.
         trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
               icon: Icon(
                 Icons.search,
                 color: Colors.black,
-                size: SizeConfig.imageSizeMultiplier * 7,
+                size: SizeConfig.imageSizeMultiplier * 5,
               ),
               onPressed: () {
                 Navigator.of(context).push(
@@ -77,7 +85,7 @@ class ProductGroupPage extends StatelessWidget {
               icon: Icon(
                 Icons.edit,
                 color: Colors.black,
-                size: SizeConfig.imageSizeMultiplier * 7,
+                size: SizeConfig.imageSizeMultiplier * 5,
               ),
               onPressed: () {
                 showDialog(

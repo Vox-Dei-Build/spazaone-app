@@ -18,8 +18,10 @@ class CostBreakdown {
   /// Itemised line items. Order is preserved.
   final List<CostLine> lines;
 
-  /// Final total in ZAR. Authoritative — must equal `lines.sum(amount)` but
-  /// callers can pre-round to avoid float drift.
+  /// Final total in ZAR. Authoritative — must equal the sum of `lines`
+  /// where `isPrimary == true` (alternative/fallback lines are
+  /// informational only and don't contribute to the quoted total). Callers
+  /// can pre-round to avoid float drift.
   final double total;
 
   /// Optional explainer notes shown under the total
@@ -48,6 +50,89 @@ class CostBreakdown {
       lines: [CostLine(label: channelLabel, amount: cost)],
       total: cost,
       notes: notes,
+    );
+  }
+
+  /// A multi-channel single-message breakdown.
+  ///
+  /// The dispatch path tries WhatsApp first when the recipient is known
+  /// to have it (or when we need to recheck), and falls back to SMS
+  /// otherwise. Quoting only one channel is a money-correctness bug —
+  /// users get charged the OTHER price when the channel they didn't see
+  /// quoted ends up delivering. This factory produces a breakdown that:
+  ///
+  ///   * Always shows BOTH channel costs to the user.
+  ///   * Marks the most likely channel as the primary line (counts toward
+  ///     the quoted total).
+  ///   * Marks the alternative as a non-primary fallback line, rendered
+  ///     muted by the sheet with an explanatory hint.
+  ///   * Adds a note explaining the priority rules so the user can read
+  ///     the quote without surprise.
+  ///
+  /// The quoted `total` is the cost of the EXPECTED channel only — it's
+  /// what the user will see deducted on the happy path. The wallet
+  /// affordability check uses this same total. If the actual delivery
+  /// falls back to the other channel the deduction matches the
+  /// alternative line, which is shown right above the total so there's
+  /// no surprise.
+  factory CostBreakdown.singleMessageMultiChannel({
+    required String title,
+    String? subtitle,
+    required double whatsappCost,
+    required double smsCost,
+    required MessageChannelExpectation expected,
+    List<String> notes = const [],
+  }) {
+    final whatsappPrimary = expected == MessageChannelExpectation.whatsapp ||
+        expected == MessageChannelExpectation.unknown;
+    final smsPrimary = expected == MessageChannelExpectation.sms;
+
+    final whatsappLine = CostLine(
+      label: 'WhatsApp',
+      detail: whatsappPrimary
+          ? null
+          : (expected == MessageChannelExpectation.sms
+              ? 'Used only if SMS fails'
+              : null),
+      amount: whatsappCost,
+      isPrimary: whatsappPrimary,
+    );
+    final smsLine = CostLine(
+      label: 'SMS',
+      detail: smsPrimary
+          ? null
+          : (expected == MessageChannelExpectation.whatsapp
+              ? 'Used only if WhatsApp fails'
+              : 'Fallback if WhatsApp delivery fails'),
+      amount: smsCost,
+      isPrimary: smsPrimary,
+    );
+
+    // Always order: primary first, then alternative.
+    final lines = whatsappPrimary
+        ? <CostLine>[whatsappLine, smsLine]
+        : <CostLine>[smsLine, whatsappLine];
+
+    final total = whatsappPrimary ? whatsappCost : smsCost;
+
+    final fullNotes = <String>[
+      ...notes,
+      switch (expected) {
+        MessageChannelExpectation.whatsapp =>
+          'This number has WhatsApp, so we\'ll send via WhatsApp first.',
+        MessageChannelExpectation.sms =>
+          'This number doesn\'t have WhatsApp, so we\'ll send via SMS.',
+        MessageChannelExpectation.unknown =>
+          'We try WhatsApp first; if it fails, we send via SMS.',
+      },
+    ];
+
+    return CostBreakdown(
+      title: title,
+      subtitle: subtitle,
+      lines: lines,
+      total: total,
+      notes: fullNotes,
     );
   }
 
@@ -113,9 +198,45 @@ class CostLine {
   /// Amount in ZAR.
   final double amount;
 
+  /// Whether this line contributes to the quoted total.
+  ///
+  /// Most lines are primary (`true`). Multi-channel single-message
+  /// quotes use `isPrimary == false` to display the *alternative*
+  /// fallback channel cost so the user can see what they would be
+  /// charged on the unhappy path, without that figure being added to
+  /// the headline total. The sheet renders non-primary lines with a
+  /// muted style.
+  final bool isPrimary;
+
   const CostLine({
     required this.label,
     required this.amount,
     this.detail,
+    this.isPrimary = true,
   });
+}
+
+/// What channel we expect a single-recipient message to be delivered
+/// over, used to bias the cost-confirmation sheet to the most likely
+/// price while still disclosing the fallback.
+///
+/// The dispatch logic in `MessagingNotificationService.sendFormattedMessage`
+/// tries WhatsApp first when the recipient is a known WhatsApp user (or
+/// when the cached check is stale) and falls back to SMS if WhatsApp
+/// delivery fails. This enum lets callers pre-resolve their best guess
+/// so the sheet quotes the right primary price.
+enum MessageChannelExpectation {
+  /// Recipient is a known WhatsApp user — quote WhatsApp as primary,
+  /// SMS as fallback.
+  whatsapp,
+
+  /// Recipient is known NOT to have WhatsApp (or has previously failed
+  /// WhatsApp delivery) — quote SMS as primary, WhatsApp as fallback
+  /// (still shown because rechecks happen periodically).
+  sms,
+
+  /// We don't know yet (e.g. brand-new contact). The dispatcher tries
+  /// WhatsApp first by default, so quote WhatsApp as primary with SMS
+  /// as fallback and an explanatory note.
+  unknown,
 }

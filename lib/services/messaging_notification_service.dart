@@ -7,6 +7,7 @@ import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/sms_messaging_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/services/whatsapp_messaging_service.dart';
+import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/templates/in_app_notification.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -367,6 +368,68 @@ class MessagingNotificationService {
         .get();
 
     return querySnapshot.docs.isNotEmpty;
+  }
+
+  /// Predict which channel `sendFormattedMessage` is likely to use for
+  /// `phoneNumber`, mirroring the dispatch logic exactly so the cost
+  /// confirmation sheet can quote the right primary price.
+  ///
+  /// Static because it has no dependency on remote config or pricing —
+  /// just a Firestore lookup against `successfulWhatsAppNumbers`. This
+  /// lets cost-sheet callsites use it without paying the cost of a full
+  /// `MessagingNotificationService.create()` (which initialises remote
+  /// config + dynamic pricing) just to ask "is this number on WhatsApp?".
+  ///
+  /// Rules (must stay in lockstep with the WhatsApp-first branch in
+  /// `sendFormattedMessage`):
+  ///
+  ///   * No record on file → WhatsApp will be tried first → `unknown`.
+  ///   * Record + `hasWhatsApp == true` → WhatsApp expected.
+  ///   * Record + `hasWhatsApp == false` + `lastChecked` within 30 days
+  ///     → SMS expected (no recheck due).
+  ///   * Record + `hasWhatsApp == false` + `lastChecked` > 30 days →
+  ///     recheck triggers WhatsApp attempt → `unknown`.
+  ///
+  /// Falls back to `unknown` on any lookup error so the user still sees
+  /// both prices and the dispatcher's default WhatsApp-first behaviour
+  /// is reflected in the quote.
+  static Future<MessageChannelExpectation> resolveExpectedChannel(
+      String phoneNumber) async {
+    try {
+      if (!isValidSAPhoneNumber(phoneNumber)) {
+        return MessageChannelExpectation.unknown;
+      }
+      final normalizedPhone = normalizePhoneNumber(phoneNumber);
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('successfulWhatsAppNumbers')
+          .where('phoneNumber', isEqualTo: normalizedPhone)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        // Never checked → dispatcher will try WhatsApp first.
+        return MessageChannelExpectation.unknown;
+      }
+
+      final data = querySnapshot.docs.first.data();
+      final hasWhatsApp = data['hasWhatsApp'] as bool? ?? false;
+      final lastChecked = (data['lastChecked'] as Timestamp?)?.toDate();
+      final needsRecheck = lastChecked == null ||
+          DateTime.now().difference(lastChecked).inDays > 30;
+
+      if (hasWhatsApp) {
+        return MessageChannelExpectation.whatsapp;
+      }
+      if (needsRecheck) {
+        // Stale "no" → dispatcher retries WhatsApp.
+        return MessageChannelExpectation.unknown;
+      }
+      return MessageChannelExpectation.sms;
+    } catch (_) {
+      // Any Firestore hiccup: degrade gracefully — show both prices,
+      // bias to WhatsApp-first which matches dispatcher default.
+      return MessageChannelExpectation.unknown;
+    }
   }
 
   Future<void> sendConfirmationMessage(
