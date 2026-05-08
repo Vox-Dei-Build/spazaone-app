@@ -130,6 +130,19 @@ workflows:
       tag_patterns:
         - pattern: 'v*.*.*+*'
           include: true
+    cache:
+      # Cache downloaded source archives (Pub, Gradle, Android SDK
+      # extras) between builds. These directories never contain built
+      # artifacts \u2014 only fetched dependency sources \u2014 so a stale
+      # cache is at worst harmless: a fresh fetch overlays it.
+      # Saves \u22483-5 min per build by avoiding cold pub get + gradle
+      # wrapper download. Does NOT cache build outputs (Pods/, .gradle/
+      # build/, DerivedData) because those can hide real errors after
+      # dependency churn.
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
     scripts:
       - *materialise_dotenv
       - *flutter_pub_get
@@ -241,6 +254,17 @@ workflows:
       tag_patterns:
         - pattern: 'v*.*.*+*'
           include: true
+    cache:
+      # See android workflow comment. iOS additionally caches the
+      # CocoaPods specs repo (~3 min savings on cold pod install) and
+      # the user's Pods cache (downloaded podspecs/sources, not built
+      # frameworks). Pods/ itself is intentionally NOT cached \u2014 it
+      # contains compiled .o/.framework outputs that go stale fast and
+      # can mask real build errors after Firebase/Flutter bumps.
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
+        - $HOME/.cocoapods/repos
     scripts:
       - *materialise_dotenv
       - *flutter_pub_get
