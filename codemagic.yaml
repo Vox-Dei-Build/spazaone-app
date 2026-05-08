@@ -522,6 +522,97 @@ workflows:
           fi
           flutter build ipa --release \
             --export-options-plist="$HOME/export_options.plist"
+      - name: Verify IPA privacy manifests are valid
+        # Defensive post-build assertion. Apple's App Store Connect
+        # validator takes ~45 minutes to reject an upload with
+        # ITMS-91056 for an invalid PrivacyInfo.xcprivacy; we burned
+        # two release cycles (3.0.3+44 and 3.0.3+45) discovering this
+        # the slow way for flutter_app_badger_plus's broken manifest.
+        # Catch it here in 3 seconds instead.
+        #
+        # The Podfile post_install hook strips
+        # flutter_app_badger_plus_privacy.bundle/PrivacyInfo.xcprivacy
+        # at pod-install time. This step asserts the strip actually
+        # worked by unzipping the IPA and checking the bundle is gone.
+        # Also scans every other PrivacyInfo.xcprivacy that DID make
+        # it into the IPA for the same empty-<dict/> antipattern, so
+        # if a future plugin update introduces the same bug we catch
+        # it here, not 45 min later from Apple.
+        script: |
+          set -euo pipefail
+          IPA=$(ls build/ios/ipa/*.ipa | head -n1)
+          if [ -z "$IPA" ] || [ ! -f "$IPA" ]; then
+            echo "::error:: No IPA found under build/ios/ipa/"
+            exit 1
+          fi
+          echo "Verifying privacy manifests in: $IPA"
+          WORK=$(mktemp -d)
+          unzip -q "$IPA" -d "$WORK"
+          APP_DIR=$(ls -d "$WORK"/Payload/*.app | head -n1)
+          # 1. The known-bad bundle must NOT be present.
+          BAD_BUNDLE="$APP_DIR/Frameworks/flutter_app_badger_plus.framework/flutter_app_badger_plus_privacy.bundle"
+          if [ -d "$BAD_BUNDLE" ] || [ -f "$BAD_BUNDLE/PrivacyInfo.xcprivacy" ]; then
+            echo "::error:: flutter_app_badger_plus_privacy.bundle/PrivacyInfo.xcprivacy is still in the IPA. Podfile post_install strip did not run or did not find the source file. Apple will reject this upload with ITMS-91056."
+            find "$APP_DIR" -name "flutter_app_badger_plus_privacy*" -print
+            exit 1
+          fi
+          # Belt and braces: glob anywhere in the .app for any
+          # *flutter_app_badger_plus*privacy* asset.
+          STRAY=$(find "$APP_DIR" -iname "*flutter_app_badger_plus*privacy*" 2>/dev/null || true)
+          if [ -n "$STRAY" ]; then
+            echo "::error:: Stray flutter_app_badger_plus privacy asset still in IPA:"
+            echo "$STRAY"
+            exit 1
+          fi
+          # 2. Scan every remaining PrivacyInfo.xcprivacy in the IPA
+          # for the empty-<dict/> antipattern that triggers ITMS-91056.
+          # plutil -lint catches XML/plist syntax errors but NOT
+          # semantic errors like empty dicts in API/data-type arrays,
+          # which is exactly the bug class Apple rejects on. We use a
+          # python check that walks the plist structure.
+          ALL_MANIFESTS=$(find "$APP_DIR" -name "PrivacyInfo.xcprivacy" 2>/dev/null || true)
+          if [ -z "$ALL_MANIFESTS" ]; then
+            echo "No PrivacyInfo.xcprivacy files in IPA. Nothing more to validate."
+          else
+            echo "Found $(echo "$ALL_MANIFESTS" | wc -l | tr -d ' ') privacy manifest(s) to validate:"
+            echo "$ALL_MANIFESTS"
+            INVALID=0
+            while IFS= read -r M; do
+              [ -z "$M" ] && continue
+              if ! plutil -lint "$M" >/dev/null 2>&1; then
+                echo "::error:: $M is not valid plist XML"
+                INVALID=1
+                continue
+              fi
+              # Check for empty dicts in API / data-type arrays.
+              python3 - "$M" <<'PY' || INVALID=1
+          import plistlib, sys
+          path = sys.argv[1]
+          with open(path, 'rb') as f:
+              data = plistlib.load(f)
+          bad = []
+          for key in ('NSPrivacyAccessedAPITypes', 'NSPrivacyCollectedDataTypes'):
+              for i, entry in enumerate(data.get(key, [])):
+                  if not isinstance(entry, dict) or len(entry) == 0:
+                      bad.append(f"{key}[{i}] is empty/invalid")
+                      continue
+                  required = 'NSPrivacyAccessedAPIType' if key == 'NSPrivacyAccessedAPITypes' else 'NSPrivacyCollectedDataType'
+                  if required not in entry:
+                      bad.append(f"{key}[{i}] missing required key {required}")
+          if bad:
+              print(f"::error:: Invalid manifest {path}:")
+              for b in bad:
+                  print(f"  - {b}")
+              sys.exit(1)
+          print(f"  ✓ {path}")
+          PY
+            done <<< "$ALL_MANIFESTS"
+            if [ "$INVALID" != "0" ]; then
+              echo "::error:: One or more PrivacyInfo.xcprivacy files in the IPA would be rejected by Apple (ITMS-91056). Fix the offending plugin manifest in ios/Podfile post_install before re-uploading."
+              exit 1
+            fi
+          fi
+          echo "All privacy manifests in IPA are valid ✓"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log

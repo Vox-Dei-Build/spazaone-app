@@ -141,35 +141,56 @@ post_install do |installer|
 
   # --- Strip invalid PrivacyInfo.xcprivacy from flutter_app_badger_plus ---
   #
-  # flutter_app_badger_plus 1.0.1 ships an invalid privacy manifest at
-  #   Pods/flutter_app_badger_plus/ios/flutter_app_badger_plus/Sources/flutter_app_badger_plus/Resources/PrivacyInfo.xcprivacy
-  # which CocoaPods bundles into flutter_app_badger_plus_privacy.bundle
-  # in the final IPA. App Store Connect rejects the upload with
-  # ITMS-91056: "Invalid privacy manifest ... Keys and values in your
-  # app's privacy manifests must be valid." (rejection received for
-  # 3.0.3+44 on 2026-05-08).
+  # flutter_app_badger_plus 1.0.1 ships an invalid privacy manifest:
+  #   <key>NSPrivacyAccessedAPITypes</key><array><dict/></array>
+  #   <key>NSPrivacyCollectedDataTypes</key><array><dict/></array>
+  # Empty <dict/> entries in these arrays violate Apple's schema (each
+  # dict must declare a NSPrivacyAccessedAPIType / NSPrivacyCollected
+  # DataType key). App Store Connect rejects the IPA with ITMS-91056.
+  # Confirmed on builds 3.0.3+44 and 3.0.3+45.
   #
   # The plugin only sets a UIApplication notification badge \u2014 it does
   # not collect any of the data its manifest declares (and badge-setting
   # is not in Apple's required-reasons list, so no manifest is required
   # for this plugin at all). Safe fix: delete the file before Xcode
-  # archives the resource bundle. Apple is happy with no manifest, the
-  # plugin keeps working, no migration / no behavioural change.
+  # archives the resource bundle. Apple accepts an absent manifest for
+  # plugins that don't use required-reasons APIs.
   #
-  # Idempotent: glob may match zero files on a clean checkout if pod
-  # install lays the file out under a different prefix between
-  # CocoaPods versions.
+  # IMPORTANT: the podspec declares
+  #   s.resource_bundles = {'flutter_app_badger_plus_privacy' => ['PrivacyInfo.xcprivacy']}
+  # with the source file at the plugin's ios/ root. CocoaPods does NOT
+  # copy this into ios/Pods/flutter_app_badger_plus/; it references the
+  # symlinked source at ios/.symlinks/plugins/flutter_app_badger_plus/
+  # ios/PrivacyInfo.xcprivacy directly at Xcode build time. The earlier
+  # glob `Pods/**/flutter_app_badger_plus*/**/PrivacyInfo.xcprivacy`
+  # matched zero files in CI and the build sailed through to Apple.
+  #
+  # We now strip from BOTH:
+  #   1. ios/.symlinks/plugins/flutter_app_badger_plus*/ios/PrivacyInfo.xcprivacy
+  #      (the symlink Xcode actually reads)
+  #   2. ~/.pub-cache/hosted/pub.dev/flutter_app_badger_plus-*/ios/PrivacyInfo.xcprivacy
+  #      (the upstream the symlink points to; CodeMagic re-runs flutter
+  #      pub get on every build, so deleting only the symlink target
+  #      means the next pub get rehydrates the broken file)
+  #
+  # And RAISE if zero files matched. The silent fallback is exactly
+  # what let builds 44 and 45 ship broken to Apple (45 min round-trip
+  # per failed upload). If a future flutter_app_badger_plus version
+  # moves or removes this file, we fail loudly at pod install instead
+  # of after another 45-min Apple rejection cycle.
   begin
-    bad_manifests = Dir.glob(File.expand_path('../Pods/**/flutter_app_badger_plus*/**/PrivacyInfo.xcprivacy', __dir__))
+    candidate_globs = [
+      File.expand_path('../.symlinks/plugins/flutter_app_badger_plus*/ios/PrivacyInfo.xcprivacy', __dir__),
+      File.expand_path('~/.pub-cache/hosted/pub.dev/flutter_app_badger_plus-*/ios/PrivacyInfo.xcprivacy'),
+    ]
+    bad_manifests = candidate_globs.flat_map { |g| Dir.glob(g) }.uniq
+    if bad_manifests.empty?
+      raise "Expected to find flutter_app_badger_plus PrivacyInfo.xcprivacy at one of:\n  - #{candidate_globs.join("\n  - ")}\nbut found none. The plugin layout may have changed; update the globs in ios/Podfile and re-verify against the IPA assertion step in codemagic.yaml."
+    end
     bad_manifests.each do |m|
       File.delete(m)
       puts "Removed invalid privacy manifest: #{m}"
     end
-    if bad_manifests.empty?
-      puts "Note: no flutter_app_badger_plus PrivacyInfo.xcprivacy found to strip (plugin may have been updated upstream)."
-    end
-  rescue => e
-    puts "Warning: failed to strip flutter_app_badger_plus privacy manifest: #{e}"
   end
   # --- END strip ---
 
