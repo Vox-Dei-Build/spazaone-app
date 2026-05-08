@@ -152,6 +152,68 @@ definitions:
         echo "  first key: $(python3 -c "import json; print(list(json.load(open('$TARGET')).keys())[0])")"
         ls -la "android/app/google-services.json"
 
+    - &materialise_android_signing
+      name: Materialise android signing config from secure env vars
+      # `android/app/release-key.keystore` and `android/key.properties`
+      # are both gitignored. Without them, android/app/build.gradle's
+      # signingConfigs.release block is skipped (its `if (keystoreProperties
+      # File.exists() && keystoreProperties['storeFile'])` guard fails)
+      # and Gradle silently produces an UNSIGNED release AAB. Play
+      # rejected the 3.0.3+44 AAB with "All uploaded bundles must be
+      # signed. Please sign the bundle using jarsigner." \u2014 same root
+      # cause: AAB built but never signed.
+      #
+      # We tried the dashboard `android_signing: pasella_upload_keystore`
+      # block previously; it produced "Certificate issuer: None /
+      # Certificate subject: None" in the upload step, meaning the
+      # dashboard reference did not actually inject key.properties on
+      # this builder image. Switching to env-var materialisation so
+      # the YAML is the single source of truth (matches the .env and
+      # google-services.json patterns above).
+      #
+      # Required env vars in pasella_android_credentials (all Secure):
+      #   ANDROID_KEYSTORE_BASE64
+      #     base64 -i android/app/release-key.keystore | pbcopy
+      #   ANDROID_KEY_PROPERTIES
+      #     full contents of android/key.properties (4 lines:
+      #     storeFile=./release-key.keystore, storePassword=...,
+      #     keyAlias=..., keyPassword=...)
+      script: |
+        set -e
+        if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+          echo "::error:: ANDROID_KEYSTORE_BASE64 env var is empty. Set it (Secure) with: base64 -i android/app/release-key.keystore"
+          exit 1
+        fi
+        if [ -z "${ANDROID_KEY_PROPERTIES:-}" ]; then
+          echo "::error:: ANDROID_KEY_PROPERTIES env var is empty. Set it (Secure) with the full contents of android/key.properties."
+          exit 1
+        fi
+        # Keystore: write to android/app/release-key.keystore. The
+        # `storeFile=./release-key.keystore` line in key.properties is
+        # resolved by Gradle relative to android/app/ (where build.gradle
+        # lives), so the keystore must land there.
+        printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release-key.keystore
+        # key.properties: write to android/key.properties (the location
+        # rootProject.file('key.properties') resolves to in build.gradle).
+        printf '%s' "$ANDROID_KEY_PROPERTIES" > android/key.properties
+        # Sanity-check: keystore must be a non-trivial file and
+        # key.properties must contain all 4 expected keys, otherwise
+        # the build will silently fall back to unsigned again.
+        KS_SIZE=$(wc -c < android/app/release-key.keystore | tr -d ' ')
+        if [ "$KS_SIZE" -lt 1000 ]; then
+          echo "::error:: Decoded keystore is suspiciously small ($KS_SIZE bytes). Re-encode and update ANDROID_KEYSTORE_BASE64."
+          exit 1
+        fi
+        for K in storeFile storePassword keyAlias keyPassword; do
+          if ! grep -q "^$K=" android/key.properties; then
+            echo "::error:: android/key.properties is missing required key: $K"
+            exit 1
+          fi
+        done
+        echo "Android signing materialised:"
+        echo "  android/app/release-key.keystore: $KS_SIZE bytes"
+        echo "  android/key.properties: $(wc -l < android/key.properties | tr -d ' ') lines"
+
     - &flutter_pub_get
       name: Flutter pub get
       script: |
@@ -189,9 +251,14 @@ workflows:
       <<: *flutter_version
       groups:
         - pasella_android_credentials   # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS,
-                                         # GOOGLE_SERVICES_JSON_BASE64
-      android_signing:
-        - pasella_upload_keystore       # configured in dashboard step 2a
+                                         # GOOGLE_SERVICES_JSON_BASE64,
+                                         # ANDROID_KEYSTORE_BASE64,
+                                         # ANDROID_KEY_PROPERTIES
+      # NOTE: the dashboard `android_signing: pasella_upload_keystore`
+      # reference produced unsigned AABs on this image (Certificate
+      # issuer / subject = None in the publish step). We materialise
+      # signing config from secure env vars instead \u2014 see the
+      # materialise_android_signing script.
       vars:
         PACKAGE_NAME: "com.tsepo.pasella"
     triggering:
@@ -216,6 +283,7 @@ workflows:
     scripts:
       - *materialise_dotenv
       - *materialise_google_services_json
+      - *materialise_android_signing
       - *flutter_pub_get
       - *flutter_analyze
       - *flutter_test
@@ -247,7 +315,7 @@ workflows:
           # "File google-services.json is missing" error. Fail fast
           # instead with the actual filesystem evidence.
           echo "Pre-flight working dir: $(pwd)"
-          for F in android/app/google-services.json .env; do
+          for F in android/app/google-services.json .env android/app/release-key.keystore android/key.properties; do
             if [ ! -f "$F" ]; then
               echo "::error:: Missing $F at $(pwd)/$F before Gradle build."
               echo "Tree of android/app:"
@@ -258,10 +326,21 @@ workflows:
             fi
             echo "  $F: $(wc -c < "$F") bytes ✓"
           done
-          # The android_signing block above injects key.properties into
-          # android/ before the build, so Gradle's signingConfigs.release
-          # block (which reads from key.properties) will produce a
-          # release-signed bundle without any local file shuffling.
+          # Belt-and-braces: confirm the release signingConfig will
+          # actually attach. If key.properties exists but the keystore
+          # path inside it doesn't resolve, Gradle silently produces
+          # an unsigned AAB.
+          KEYSTORE_PATH=$(grep '^storeFile=' android/key.properties | cut -d= -f2)
+          # storeFile is resolved relative to android/app/ by Gradle.
+          if [ ! -f "android/app/$KEYSTORE_PATH" ] && [ ! -f "$KEYSTORE_PATH" ]; then
+            echo "::error:: storeFile=$KEYSTORE_PATH from key.properties does not resolve to an existing keystore. Build would produce an unsigned AAB."
+            exit 1
+          fi
+          # The materialise_android_signing script (run earlier) wrote
+          # android/key.properties + android/app/release-key.keystore,
+          # so Gradle's signingConfigs.release block (which reads from
+          # key.properties) will produce a release-signed bundle
+          # without any local file shuffling.
           flutter build appbundle --release
       - name: Verify 16 KB page-size compliance
         script: |
