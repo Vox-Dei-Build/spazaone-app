@@ -487,6 +487,19 @@ workflows:
           # --archive-method app-store so the generated plist targets
           # App Store distribution (not ad-hoc / development).
           xcode-project use-profiles --archive-method app-store
+      - name: Strip flutter_app_badger_plus invalid privacy manifest
+        # flutter_app_badger_plus 1.0.1 (Dart) / 1.3.0 (podspec) ships
+        # an invalid PrivacyInfo.xcprivacy that causes Apple to reject
+        # the IPA with ITMS-91056 ~45 min after upload. Builds
+        # 3.0.3+44 and +45 both shipped broken to Apple before we
+        # caught it. This step deletes the manifest from pub-cache and
+        # patches the podspec to remove the s.resource_bundles line so
+        # CocoaPods never declares the bundle. Must run AFTER
+        # flutter_pub_get (which rehydrates pub-cache) and BEFORE
+        # `pod install` (which reads the podspec). See
+        # scripts/strip_badger_privacy.sh for the full rationale.
+        script: |
+          ./scripts/strip_badger_privacy.sh
       - name: Pod install
         # The committed ios/Podfile.lock pins Firebase 10.22.0 transitive
         # versions (e.g. FirebaseAppCheck 10.22.0). With the Podfile bumped
