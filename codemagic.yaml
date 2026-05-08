@@ -32,8 +32,12 @@
 #      b. App Store Connect: same API key as step 2b is reused.
 # 4. Environment variable groups (Settings -> Environment variables):
 #      - `pasella_android_credentials` group containing
-#         GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (Play service account JSON).
-#         Mark it "Secure".
+#         GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (Play service account JSON)
+#         and GOOGLE_SERVICES_JSON_BASE64 (base64-encoded contents of
+#         the local `android/app/google-services.json` file; that file
+#         is gitignored so the CodeMagic clone doesn't have it). Mark
+#         both Secure. To produce GOOGLE_SERVICES_JSON_BASE64:
+#           base64 -i android/app/google-services.json | pbcopy
 #      - `pasella_app_store_credentials` group containing
 #         APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
 #         APP_STORE_CONNECT_PRIVATE_KEY (the .p8 contents). All secure.
@@ -83,6 +87,46 @@ definitions:
         printf '%s' "$DOTENV_FILE" > "$CM_BUILD_DIR/.env"
         echo ".env written ($(wc -c < "$CM_BUILD_DIR/.env") bytes)"
 
+    - &materialise_google_services_json
+      name: Materialise android/app/google-services.json from secure env var
+      # `android/app/google-services.json` is gitignored (contains the
+      # Firebase Android client config including API keys; treated as
+      # per-environment config, not source). The Google Services Gradle
+      # plugin (applied in android/app/build.gradle) hard-fails the
+      # build with "File google-services.json is missing" when it
+      # can't find the file under android/app/, android/app/src/, or
+      # android/app/src/release/. The CodeMagic clone doesn't have the
+      # file, so we materialise it from the secure GOOGLE_SERVICES_JSON_BASE64
+      # variable in the pasella_android_credentials env var group.
+      #
+      # Why base64 (and not raw JSON like DOTENV_FILE)? CodeMagic env
+      # vars containing curly braces / unescaped double quotes / shell
+      # metacharacters get mangled by the dashboard's variable parser.
+      # The .env file format is line-oriented `KEY=value` with no JSON
+      # syntax so it survives; google-services.json is dense JSON and
+      # does not. Base64 sidesteps the entire quoting hazard.
+      #
+      # To regenerate when the local file changes (e.g. new Firebase
+      # client added): base64 -i android/app/google-services.json | pbcopy
+      # then paste into the GOOGLE_SERVICES_JSON_BASE64 variable in the
+      # Codemagic dashboard, marked Secure.
+      script: |
+        set -e
+        if [ -z "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
+          echo "::error:: GOOGLE_SERVICES_JSON_BASE64 env var is empty. Set it as a secure variable in Codemagic with: base64 -i android/app/google-services.json"
+          exit 1
+        fi
+        TARGET="$CM_BUILD_DIR/android/app/google-services.json"
+        printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$TARGET"
+        # Sanity-check: file must be valid JSON and contain our project
+        # number, otherwise we'll waste 5 min discovering it inside
+        # the Gradle build.
+        if ! python3 -c "import json; json.load(open('$TARGET'))" 2>/dev/null; then
+          echo "::error:: Decoded google-services.json is not valid JSON. Re-encode the source file and update the env var."
+          exit 1
+        fi
+        echo "google-services.json written ($(wc -c < "$TARGET") bytes)"
+
     - &flutter_pub_get
       name: Flutter pub get
       script: |
@@ -119,7 +163,8 @@ workflows:
     environment:
       <<: *flutter_version
       groups:
-        - pasella_android_credentials   # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        - pasella_android_credentials   # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS,
+                                         # GOOGLE_SERVICES_JSON_BASE64
       android_signing:
         - pasella_upload_keystore       # configured in dashboard step 2a
       vars:
@@ -145,6 +190,7 @@ workflows:
         - $HOME/.gradle/wrapper
     scripts:
       - *materialise_dotenv
+      - *materialise_google_services_json
       - *flutter_pub_get
       - *flutter_analyze
       - *flutter_test
