@@ -306,15 +306,36 @@ workflows:
           LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install --repo-update
       - name: Build IPA
         script: |
+          set -e
+          # xcode-project use-profiles is supposed to write
+          # /tmp/export_options.plist, but in practice it sometimes
+          # silently does not. Write a deterministic plist here so
+          # `flutter build ipa` always has explicit export settings
+          # (method=app-store, signing=automatic, team).
+          cat > /tmp/export_options.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>Y283X7RA55</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+            <key>destination</key>
+            <string>export</string>
+          </dict>
+          </plist>
+          EOF
           flutter build ipa --release \
-            --export-options-plist=/tmp/export_options.plist \
-            || (
-              # Fall back to letting Flutter generate the export options;
-              # Codemagic's `xcode-project use-profiles` writes them, but
-              # if for any reason that path didn't fire we let flutter do
-              # its own thing.
-              flutter build ipa --release --export-method app-store
-            )
+            --export-options-plist=/tmp/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
