@@ -7,6 +7,8 @@ import 'dart:io';
 
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
@@ -132,6 +134,13 @@ class AddContactViewModel extends ChangeNotifier {
 
       if (existing.docs.isNotEmpty) {
         _setLoading(false);
+        // PAS-UX-16: blocked-create sub-event. The audit asked for
+        // duplicate-number signal because it's been a recurring
+        // confusion point in support; merchants tap Confirm again
+        // when nothing visible happens.
+        // ignore: unawaited_futures
+        TelemetryService.instance
+            .capture(const CustomerCreateBlocked(reason: 'duplicate_number'));
         final existingDoc = existing.docs.first;
         final existingData = existingDoc.data();
         final existingName =
@@ -254,6 +263,16 @@ class AddContactViewModel extends ChangeNotifier {
       // Order matters — clear() before the snackbar so the screen looks
       // settled when the toast appears, and snackbar before nav so it
       // queues onto the destination route's ScaffoldMessenger.
+
+      // PAS-UX-16: CustomerCreated must capture hasImage BEFORE we
+      // null out _profileImage as part of the form reset below,
+      // otherwise the event always reports has_image=false.
+      // Fire-and-forget so telemetry can't block the navigator push.
+      final createdWithImage = _profileImage != null;
+      // ignore: unawaited_futures
+      TelemetryService.instance
+          .capture(CustomerCreated(hasImage: createdWithImage));
+
       nameController.clear();
       numberController.clear();
       _profileImage = null;

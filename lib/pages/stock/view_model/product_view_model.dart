@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/models/stock/products_initial_data.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -125,6 +127,29 @@ class ProductViewModel extends ChangeNotifier {
       _hasUnsavedChanges = false;
       notifyListeners();
 
+      // PAS-UX-16: emit ProductCreated / ProductUpdated so the
+      // onboarding funnel ('signup -> first product -> first
+      // customer -> first sale -> first message') is measurable
+      // end-to-end. Buckets are coarse and contain no merchant PII.
+      final event = (docID == null)
+          ? ProductCreated(
+              group: product.group,
+              sellingPriceBucket:
+                  amountBucketZAR(product.sellingPrice ?? 0),
+              costPriceBucket: amountBucketZAR(product.cost ?? 0),
+              hasImage: (product.image ?? '').isNotEmpty,
+            )
+          : ProductUpdated(
+              group: product.group,
+              sellingPriceBucket:
+                  amountBucketZAR(product.sellingPrice ?? 0),
+              costPriceBucket: amountBucketZAR(product.cost ?? 0),
+              hasImage: (product.image ?? '').isNotEmpty,
+            );
+      // Fire-and-forget: telemetry must never block the UI.
+      // ignore: unawaited_futures
+      TelemetryService.instance.capture(event);
+
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showSnackbar(context, 'Saved Successfully!', Colors.green);
       });
@@ -146,12 +171,33 @@ class ProductViewModel extends ChangeNotifier {
     try {
       isLoading = true;
       notifyListeners();
+      // PAS-UX-16: read group before delete so the event can carry
+      // it without an extra round-trip after the doc is gone.
+      String? groupBeforeDelete;
+      try {
+        final snap = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('products')
+            .doc(docID)
+            .get();
+        groupBeforeDelete = snap.data()?['group'] as String?;
+      } catch (_) {
+        // If the read fails the analytics event still fires without
+        // group context; never let observability code prevent the
+        // actual delete.
+      }
       await _firestore
           .collection('users')
           .doc(userId)
           .collection('products')
           .doc(docID)
           .delete();
+      // PAS-UX-16: ProductDeleted - fire-and-forget so telemetry
+      // can't block the navigator.pop in the post-frame callback.
+      // ignore: unawaited_futures
+      TelemetryService.instance
+          .capture(ProductDeleted(group: groupBeforeDelete));
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showSnackbar(context, 'Deleted Successfully!', Colors.green);
         Navigator.of(context).pop();
