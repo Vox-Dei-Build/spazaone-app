@@ -238,16 +238,19 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }
 
   Widget _repaymentCard(WalletState walletState) {
+    // PAS-UX-12: single FutureBuilder for the only computed value
+    // on this card. Previously this title had its own per-row
+    // builder while the bottom sheet had three more, all hitting
+    // RemoteConfig in parallel.
     return Card(
       margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 1),
       color: Colors.red.shade50,
       child: ListTile(
         leading: const Icon(Icons.warning, color: Colors.red),
-        title: FutureBuilder<String>(
-          future:
-              WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(walletState),
+        title: FutureBuilder<WalletBreakdown>(
+          future: WalletUtils.computeBreakdown(walletState),
           builder: (context, snapshot) {
-            final due = snapshot.data ?? '...';
+            final due = snapshot.data?.totalOwed ?? '...';
             return Text("💸 Repayment Due: $due",
                 style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6));
           },
@@ -268,76 +271,66 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
+        // PAS-UX-12: one breakdown for the whole sheet. The future
+        // is created inside the builder which is fine: the sheet
+        // doesn't rebuild itself once it has resolved, and closing
+        // the sheet drops the subscription.
+        final breakdown = WalletUtils.computeBreakdown(walletState);
         return Padding(
           padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Center(
-                child: Container(
-                  width: 50,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
-              Text('Repayment Details',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: SizeConfig.textMultiplier * 2)),
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
-              FutureBuilder<String>(
-                future: WalletUtils.calculateAdvanceFee(walletState),
-                builder: (context, snapshot) {
-                  final value = snapshot.data ?? '...';
-                  return _infoRow('Fee Charged', value);
-                },
-              ),
-              FutureBuilder<String>(
-                future: WalletUtils.calculateBankFee(walletState),
-                builder: (context, snapshot) {
-                  final value = snapshot.data ?? '...';
-                  return _infoRow('Bank Fee', value);
-                },
-              ),
-              _infoRow(
-                  'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
-              FutureBuilder<String>(
-                future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
-                    walletState),
-                builder: (context, snapshot) {
-                  final due = snapshot.data ?? '...';
-                  return _infoRow('Amount Due', due);
-                },
-              ),
-              _infoRow('Due Date', WalletUtils.formatDueDate(walletState)),
-              _infoRow(
-                  'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          FullRepaymentReportPage(walletState: walletState),
+          child: FutureBuilder<WalletBreakdown>(
+            future: breakdown,
+            builder: (context, snapshot) {
+              final b = snapshot.data ?? WalletBreakdown.loading;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 50,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                ),
-                child: const Text('View Full Report',
-                    style: TextStyle(color: Colors.white)),
-              ),
-            ],
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  Text('Repayment Details',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: SizeConfig.textMultiplier * 2)),
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  _infoRow('Fee Charged', b.advanceFee),
+                  _infoRow('Bank Fee', b.bankFee),
+                  _infoRow('Penalty Applied', b.penaltyFee),
+                  _infoRow('Amount Due', b.totalOwed),
+                  _infoRow('Due Date', b.dueDate),
+                  _infoRow('Suspended', b.suspended),
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => FullRepaymentReportPage(
+                              walletState: walletState),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('View Full Report',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              );
+            },
           ),
         );
       },
