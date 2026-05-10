@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
@@ -58,6 +59,28 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
     } else {
       setState(() => _actionLoading = false);
     }
+  }
+
+  /// PAS-UX-06: jump from template preview straight into the
+  /// promotion wizard with this template pre-selected.
+  ///
+  /// The detail page stays in the navigation stack underneath. If
+  /// the merchant cancels the wizard they land back on the template
+  /// they were considering, which matches the mental model "I was
+  /// previewing this and changed my mind". On successful send the
+  /// wizard pops itself; the merchant is back on the detail page
+  /// and a single back tap returns them to Templates. We don't
+  /// auto-pop the detail because we deliberately don't want to
+  /// strip context from a merchant who might want to read the
+  /// preview again before sending to a different segment.
+  Future<void> _useThisTemplate() async {
+    final templateId = widget.template['id']?.toString();
+    if (templateId == null || templateId.isEmpty) return;
+    await RunPromotionLauncher.launch(
+      context,
+      viewModel: widget.viewModel,
+      initialTemplateId: templateId,
+    );
   }
 
   /// Opens the Create Template wizard pre-filled with this template's
@@ -157,6 +180,34 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
                   label: Text(status == TemplateStatus.submissionFailed
                       ? 'Retry submission'
                       : 'Fix and resubmit'),
+                ),
+              ),
+            ),
+          // PAS-UX-06: "Use this template" momentum shortcut.
+          //
+          // Audit found the Templates tab was a dead-end: a merchant
+          // browsing templates and deciding "I want to send this one"
+          // had to back out, switch to the Promotions tab, tap the
+          // FAB, and re-pick the same template from a dropdown. The
+          // launcher now accepts an initialTemplateId so we can drop
+          // the merchant straight into the wizard with their choice
+          // already selected. Approved-only because non-approved
+          // templates can't be sent (the no-approved dialog would
+          // bounce them right back).
+          if (status.isUsable)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _useThisTemplate,
+                  icon: const Icon(Icons.send),
+                  label: const Text('Use this template'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
                 ),
               ),
             ),

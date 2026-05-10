@@ -57,10 +57,17 @@ class RunPromotionLauncher {
   /// On successful return from `RunPromotionPage`,
   /// [PromotionsViewModel.fetchPromotionsReports] is called so the
   /// report list reflects the new send.
+  ///
+  /// PAS-UX-06: [initialTemplateId] pre-selects a template on the
+  /// first step. Used by the Templates tab "Use this template" CTA
+  /// so a merchant browsing templates can jump straight into the
+  /// send flow without having to re-pick the template they were
+  /// just looking at.
   static Future<void> launch(
     BuildContext context, {
     required PromotionsViewModel viewModel,
     VoidCallback? onGoToTemplates,
+    String? initialTemplateId,
   }) async {
     if (!hasApprovedTemplate(viewModel.templates)) {
       await _showNoApprovedDialog(
@@ -72,7 +79,9 @@ class RunPromotionLauncher {
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const RunPromotionPage(),
+        builder: (_) => RunPromotionPage(
+          initialTemplateId: initialTemplateId,
+        ),
       ),
     );
     if (!context.mounted) return;
