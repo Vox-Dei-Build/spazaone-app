@@ -5,6 +5,7 @@ import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/widgets/private_region.dart';
@@ -165,7 +166,21 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                 ),
               );
             } else if (value == 'delete') {
-              viewModel.deleteCustomer(context);
+              // PAS-UX-07: previously a single tap from the kebab wiped
+              // the entire customer + transaction history. Now gated by
+              // the same destructive-confirm dialog used elsewhere in the
+              // app (edit-sale, edit-transaction, transaction scaffold).
+              final confirmed = await ConfirmDialog.showDestructive(
+                context,
+                title: 'Delete customer?',
+                message:
+                    'This permanently deletes $customerName and all their '
+                    'transactions. This cannot be undone.',
+                confirmLabel: 'Delete',
+              );
+              if (confirmed) {
+                viewModel.deleteCustomer(context);
+              }
             }
           },
           itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
