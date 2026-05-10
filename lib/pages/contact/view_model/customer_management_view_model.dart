@@ -10,6 +10,8 @@ import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/orders_unread_clear.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -190,6 +192,14 @@ class CustomerManagementViewModel extends ChangeNotifier {
         'number': normalizePhoneNumber(numberController.text),
         if (profileImageUrl != null) 'profileImageUrl': profileImageUrl,
       });
+
+      // PAS-UX-16: CustomerUpdated. `hasImage` reflects whether a new
+      // image was uploaded as part of THIS edit, not whether the
+      // customer has a photo at all — the funnel cares about edit-time
+      // image attach behaviour. Fire-and-forget.
+      // ignore: unawaited_futures
+      TelemetryService.instance
+          .capture(CustomerUpdated(hasImage: profileImageUrl != null));
 
       showSnackbar(
           context, 'Customer details updated successfully :)', Colors.green);
@@ -396,6 +406,11 @@ class CustomerManagementViewModel extends ChangeNotifier {
           .collection('customers')
           .doc(customerId)
           .delete();
+
+      // PAS-UX-16: CustomerDeleted. Fire-and-forget so telemetry
+      // can't delay the navigator.pop below.
+      // ignore: unawaited_futures
+      TelemetryService.instance.capture(const CustomerDeleted());
 
       showSnackbar(context, 'Customer deleted successfully.', Colors.green);
 
