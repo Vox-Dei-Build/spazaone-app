@@ -24,8 +24,6 @@ enum RunPromotionStep {
 // Main Widget
 // ───────────────────────────────────────────────────
 class RunPromotionPage extends StatefulWidget {
-  final Map<String, dynamic>? promoToEdit;
-
   /// PAS-UX-06: pre-select a template on first frame.
   ///
   /// When the merchant taps "Use this template" on the Templates tab,
@@ -36,15 +34,16 @@ class RunPromotionPage extends StatefulWidget {
   /// selected. The merchant can still change it before tapping Next.
   final String? initialTemplateId;
 
-  /// normal "new" promotion
-  const RunPromotionPage({Key? key, this.initialTemplateId})
-      : promoToEdit = null,
-        super(key: key);
+  // PAS-UX-17: removed `promoToEdit` field and `RunPromotionPage.edit`
+  // named constructor. Both were dead -- no callsite anywhere in the
+  // codebase, and `promoToEdit` was never read inside the State. The
+  // wizard has only ever supported the "new promotion" flow; editing
+  // a saved-but-not-sent promotion happens through the existing
+  // promotions tab review path (see PAS-UX-11), not through
+  // re-entering this wizard with a pre-filled draft.
 
-  /// edit mode
-  const RunPromotionPage.edit(this.promoToEdit, {Key? key})
-      : initialTemplateId = null,
-        super(key: key);
+  const RunPromotionPage({Key? key, this.initialTemplateId})
+      : super(key: key);
 
   @override
   State<RunPromotionPage> createState() => _RunPromotionPageState();
