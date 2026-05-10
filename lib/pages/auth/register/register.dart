@@ -91,7 +91,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         return 'Mobile Number is required';
                       }
                       if (!isValidSAPhoneNumber(value)) {
-                        return 'Enter a valid SA mobile number';
+                        return kSAOnlyPhoneMessage;
                       }
                       return null;
                     },
