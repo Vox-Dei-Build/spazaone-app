@@ -22,10 +22,58 @@ class SaleDetailPage extends StatefulWidget {
 class _SaleDetailPageState extends State<SaleDetailPage> {
   late Sale sale;
 
+  // PAS-UX-15: batched product lookup.
+  //
+  // Audit found this page rendered one FutureBuilder<DocumentSnapshot>
+  // per product entry, each issuing an independent Firestore .get()
+  // against /users/<uid>/products/<id>. A sale with 12 line items
+  // therefore round-tripped Firestore 12 times in parallel and
+  // showed 12 separate spinners that resolved at different frames.
+  // We now fetch every product in a single batch (chunked at the
+  // Firestore whereIn cap of 30) and keep the result in a map keyed
+  // by product id.
+  late final Future<Map<String, Map<String, dynamic>>> _productsFuture;
+
   @override
   void initState() {
     super.initState();
     sale = widget.sale; // Initialize with the passed sale data
+    _productsFuture = _fetchProducts(sale.products.keys.toList());
+  }
+
+  /// Fetches every product referenced by [productIds] in a single
+  /// batched query (chunked by Firestore's 30-element whereIn cap).
+  /// Returns a map keyed by product id; missing ids are simply
+  /// absent from the map and rendered as 'Unknown product' below.
+  Future<Map<String, Map<String, dynamic>>> _fetchProducts(
+      List<String> productIds) async {
+    if (productIds.isEmpty) return const {};
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return const {};
+
+    final col = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('products');
+
+    // Chunk to honour Firestore's 30-element whereIn limit. In
+    // practice merchants rarely break 10 line items per sale but
+    // we chunk defensively so this doesn't silently drop products
+    // off long sales.
+    const chunkSize = 30;
+    final result = <String, Map<String, dynamic>>{};
+    for (var i = 0; i < productIds.length; i += chunkSize) {
+      final end = (i + chunkSize < productIds.length)
+          ? i + chunkSize
+          : productIds.length;
+      final chunk = productIds.sublist(i, end);
+      final snap =
+          await col.where(FieldPath.documentId, whereIn: chunk).get();
+      for (final doc in snap.docs) {
+        result[doc.id] = doc.data();
+      }
+    }
+    return result;
   }
 
   @override
@@ -133,39 +181,34 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                           ),
                         ),
                         subtitle: sale.products.isNotEmpty
-                            ? Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: sale.products.entries.map((entry) {
-                                  final productId = entry.key;
-                                  final quantity = entry.value;
-
-                                  return FutureBuilder<DocumentSnapshot>(
-                                    future: FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(FirebaseAuth
-                                                .instance.currentUser?.uid ??
-                                            '')
-                                        .collection('products')
-                                        .doc(productId)
-                                        .get(),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.connectionState ==
-                                          ConnectionState.waiting) {
-                                        return const CircularProgressIndicator();
-                                      }
-                                      if (snapshot.hasError) {
-                                        return Text(
-                                            'Error fetching product with ID: $productId');
-                                      }
-                                      if (!snapshot.hasData ||
-                                          !snapshot.data!.exists) {
+                            ? FutureBuilder<Map<String, Map<String, dynamic>>>(
+                                future: _productsFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const Padding(
+                                      padding: EdgeInsets.all(8),
+                                      child: Center(
+                                          child:
+                                              CircularProgressIndicator()),
+                                    );
+                                  }
+                                  final products = snapshot.data ?? const {};
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: sale.products.entries
+                                        .map((entry) {
+                                      final productId = entry.key;
+                                      final quantity = entry.value;
+                                      final productData = products[productId];
+                                      if (productData == null) {
                                         return Text(
                                             'Unknown product with ID: $productId');
                                       }
-                                      final productData = snapshot.data!.data()
-                                          as Map<String, dynamic>;
-                                      final productName = productData['name'] ??
-                                          'Unnamed product';
+                                      final productName =
+                                          productData['name'] ??
+                                              'Unnamed product';
                                       final sellingPrice =
                                           productData['sellingPrice'];
 
@@ -182,7 +225,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                         child: Padding(
                                           padding: EdgeInsets.all(SizeConfig
                                                   .imageSizeMultiplier *
-                                              2), // Add padding to avoid overflow
+                                              2),
                                           child: Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
@@ -210,8 +253,8 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                                                 .textMultiplier *
                                                             2,
                                                       ),
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
+                                                      overflow: TextOverflow
+                                                          .ellipsis,
                                                     ),
                                                   ),
                                                 ],
@@ -219,7 +262,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                               SizedBox(
                                                   height: SizeConfig
                                                           .heightMultiplier *
-                                                      1), // Add some spacing
+                                                      1),
                                               Text(
                                                 'Quantity: $quantity',
                                                 style: TextStyle(
@@ -231,11 +274,12 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                               SizedBox(
                                                   height: SizeConfig
                                                           .heightMultiplier *
-                                                      0.5), // Add some spacing
+                                                      0.5),
                                               Text(
                                                 'Selling Price: ${CurrencyUtil.format(sellingPrice)}',
                                                 style: TextStyle(
-                                                  fontStyle: FontStyle.italic,
+                                                  fontStyle:
+                                                      FontStyle.italic,
                                                   fontSize: SizeConfig
                                                           .textMultiplier *
                                                       1.8,
@@ -245,9 +289,9 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                           ),
                                         ),
                                       );
-                                    },
+                                    }).toList(),
                                   );
-                                }).toList(),
+                                },
                               )
                             : Text(
                                 'No products associated with this sale.',
