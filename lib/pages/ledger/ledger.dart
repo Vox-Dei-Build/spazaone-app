@@ -1,12 +1,17 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_floating_action_button.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_main_content.dart';
+import 'package:pasella/pages/promote/promote_intent_bus.dart';
+import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
+import 'package:pasella/shared/widgets/onboarding/onboarding_checklist.dart';
 import 'package:provider/provider.dart';
 
 class LedgerPage extends StatefulWidget {
@@ -65,9 +70,54 @@ class _LedgerPageState extends State<LedgerPage> {
         body: SafeArea(
           child: Padding(
             padding: LayoutConstants.padding10Horizontal,
-            child: LedgerMainContent(
-              ledgerViewModel: ledgerViewModel,
-              tabIndexNotifier: _tabIndexNotifier,
+            child: Column(
+              children: [
+                // PAS-UX-02: first-session aha checklist mounted on
+                // the default landing surface (Customers/Ledger).
+                // The widget is internally guarded — it only paints
+                // when the user hasn't dismissed it and at least one
+                // item is incomplete — so existing merchants see no
+                // visual change. There is no separate dashboard
+                // screen in the app to host this on; Customers is
+                // the first tab merchants land on after login, so
+                // the banner here is the highest-leverage placement
+                // available without restructuring the nav.
+                if (FirebaseAuth.instance.currentUser?.uid != null)
+                  OnboardingChecklist(
+                    userId: FirebaseAuth.instance.currentUser!.uid,
+                    onAddProduct: () {
+                      // Switch to Stock tab and push the New Product
+                      // page so the merchant lands on the form, not
+                      // the empty Stock tab they'd have to discover.
+                      final app = context.read<AppModel>();
+                      app.updateCurrentIndex(1);
+                    },
+                    onAddCustomer: () => Navigator.pushNamed(
+                        context, AddContactPage.id),
+                    onRecordSale: () =>
+                        context.read<AppModel>().updateCurrentIndex(2),
+                    onApproveTemplate: () {
+                      // Land the merchant on the Templates tab so
+                      // they can create one. The shared
+                      // PromoteIntentBus is the canonical way to
+                      // pre-route the Promote surface.
+                      PromoteIntentBus.instance.set(
+                        const PromoteIntent(tab: 'templates'),
+                      );
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PromotionsPage(),
+                        ),
+                      );
+                    },
+                  ),
+                Expanded(
+                  child: LedgerMainContent(
+                    ledgerViewModel: ledgerViewModel,
+                    tabIndexNotifier: _tabIndexNotifier,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
