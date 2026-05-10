@@ -35,7 +35,14 @@ class _PromotionsTabState extends State<PromotionsTab> {
         final created = (promo['createdAt'] as Timestamp).toDate();
         final date = DateFormat('MMM dd, yyyy').format(created);
         final status = sanitizeMalformedUtf16(promo['status'] as String? ?? '');
-        final statusColor = status == 'saved'
+        // PAS-UX-11: 'saved' is the audit's saved-but-unsent state.
+        // Surface it more strongly than the rest because every other
+        // state on this list is terminal (processing/sent), but a
+        // saved promotion is sitting there waiting for the merchant
+        // to come back and pay+send. Without an explicit affordance
+        // they were getting lost in the list.
+        final isPendingSend = status == 'saved';
+        final statusColor = isPendingSend
             ? Colors.blue
             : status == 'processing'
                 ? Colors.orange
@@ -102,12 +109,60 @@ class _PromotionsTabState extends State<PromotionsTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          sanitizeMalformedUtf16('Promotion $displayIndex: $name'),
-                          style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.8,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                sanitizeMalformedUtf16(
+                                    'Promotion $displayIndex: $name'),
+                                style: TextStyle(
+                                  fontSize: SizeConfig.textMultiplier * 1.8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            // PAS-UX-11: pending-send chip. Inline
+                            // 'Send now' is intentionally a tap on
+                            // the whole card (which already opens
+                            // the detail page where the existing
+                            // WalletAffordabilityFooter handles the
+                            // pay+send flow). A second tap target
+                            // here would have to duplicate the
+                            // affordability check, which the audit
+                            // explicitly warned against.
+                            if (isPendingSend)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius:
+                                      BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: Colors.blue.shade200,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.schedule_send,
+                                        size: 12,
+                                        color: Colors.blue.shade700),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Pending send',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.blue.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
                         ),
                         SizedBox(height: SizeConfig.heightMultiplier * 0.3),
                         RichText(
@@ -137,6 +192,24 @@ class _PromotionsTabState extends State<PromotionsTab> {
                             fontSize: SizeConfig.textMultiplier * 1.5,
                           ),
                         ),
+                        if (isPendingSend) ...[
+                          SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                          Row(
+                            children: [
+                              Icon(Icons.send,
+                                  size: 14, color: Colors.blue.shade700),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Tap to review and send',
+                                style: TextStyle(
+                                  fontSize: SizeConfig.textMultiplier * 1.4,
+                                  color: Colors.blue.shade700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
