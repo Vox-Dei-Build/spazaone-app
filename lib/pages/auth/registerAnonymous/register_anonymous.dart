@@ -92,7 +92,7 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                         return 'Mobile Number is required';
                       }
                       if (!isValidSAPhoneNumber(value)) {
-                        return 'Enter a valid SA mobile number';
+                        return kSAOnlyPhoneMessage;
                       }
                       return null;
                     },

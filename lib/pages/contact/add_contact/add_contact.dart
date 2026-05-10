@@ -135,16 +135,38 @@ class AddContactPage extends StatelessWidget {
                                                 : null;
                                         if (phoneNumber != null &&
                                             phoneNumber.isNotEmpty) {
+                                          // PAS-UX-08: previously
+                                          // `cleanPhoneNumber` was used as
+                                          // a silent fallback when the
+                                          // contact wasn't a valid SA
+                                          // mobile, which dumped raw
+                                          // digits (or junk) into the
+                                          // field with no error. Now: if
+                                          // the picked contact normalises
+                                          // cleanly, write it; otherwise
+                                          // tell the user explicitly so
+                                          // they can hand-enter or pick a
+                                          // different contact.
                                           final normalized =
                                               normalizePhoneNumber(phoneNumber);
-                                          final cleaned = normalized.isNotEmpty
-                                              ? normalized
-                                              : cleanPhoneNumber(phoneNumber);
                                           viewModel.nameController.text =
                                               (fullContact ?? contact)
                                                   .displayName;
-                                          viewModel.numberController.text =
-                                              cleaned;
+                                          if (normalized.isNotEmpty) {
+                                            viewModel.numberController.text =
+                                                normalized;
+                                          } else {
+                                            viewModel.numberController.text =
+                                                '';
+                                            SchedulerBinding.instance
+                                                .addPostFrameCallback((_) {
+                                              showErrorSnackBar(
+                                                context,
+                                                kSAOnlyPhoneMessage,
+                                                isWarning: true,
+                                              );
+                                            });
+                                          }
                                         } else {
                                           SchedulerBinding.instance
                                               .addPostFrameCallback((_) {
@@ -258,7 +280,7 @@ class AddContactPage extends StatelessWidget {
                                           final v = value?.trim() ?? '';
                                           if (v.isEmpty) return null;
                                           if (!isValidSAPhoneNumber(v)) {
-                                            return 'Enter a valid SA mobile number';
+                                            return kSAOnlyPhoneMessage;
                                           }
                                           return null;
                                         },

@@ -36,7 +36,7 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                         return 'This field is required';
                       }
                       if (!isValidSAPhoneNumber(value)) {
-                        return 'Enter a valid SA mobile number';
+                        return kSAOnlyPhoneMessage;
                       }
                       return null;
                     },
