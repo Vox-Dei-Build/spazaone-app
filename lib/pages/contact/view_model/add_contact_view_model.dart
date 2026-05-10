@@ -11,6 +11,7 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
+import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -212,9 +213,10 @@ class AddContactViewModel extends ChangeNotifier {
             await MessagingNotificationService.resolveExpectedChannel(
                 mobileNumber);
 
-        // Pre-flight cost confirmation. Cancelling still persists the
-        // contact (already written above); only the welcome message is
-        // skipped.
+        // Pre-flight cost confirmation. Tri-state outcome — explicit
+        // skip is now a labelled action ("Skip & record only"), so the
+        // contact is always saved and the merchant never has to guess
+        // whether the welcome message went out.
         final breakdown = CostBreakdown.singleMessageMultiChannel(
           title: 'Send welcome message to $customerName?',
           subtitle: 'One-time onboarding message',
@@ -222,7 +224,7 @@ class AddContactViewModel extends ChangeNotifier {
           smsCost: smsCost,
           expected: expectedChannel,
         );
-        final userConfirmed = await CostConfirmationSheet.show(
+        final outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
           confirmLabel: 'Send',
@@ -231,13 +233,20 @@ class AddContactViewModel extends ChangeNotifier {
         // Safety net for race conditions on the wallet balance. Use the
         // breakdown's quoted total (the primary channel cost) as the
         // affordability gate — matches what the user just confirmed.
-        final canProceed = userConfirmed &&
+        final canProceed = outcome.shouldSend &&
             await BalanceCheckUtil.checkBalanceAndProceed(
                 context, currentUserId, breakdown.total);
 
         if (canProceed) {
           await _sendSMS(
               currentUserId, docRef.id, customerName, mobileNumber);
+        } else if (outcome.isSilent) {
+          // Contact persisted, no welcome message. Surface the state.
+          showSnackbar(
+            context,
+            'Contact saved. No welcome message sent.',
+            Colors.blueGrey,
+          );
         }
       }
 

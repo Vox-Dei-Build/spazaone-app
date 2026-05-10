@@ -9,6 +9,7 @@ import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
+import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -215,12 +216,13 @@ class EditTransactionViewModel extends TransactionViewModel {
       );
       final whatsappCost = pricingService.whatsappUtilityPrice;
 
-      // Pre-flight cost confirmation. Cancel keeps the edit but skips
-      // the notification message to the customer. Show both channel
-      // prices and bias the highlighted total to whichever channel the
-      // dispatcher will most likely use, so the user isn't quoted SMS
-      // when they'll actually be charged WhatsApp (or vice versa).
-      bool userConfirmed = false;
+      // Pre-flight cost confirmation. Tri-state outcome — explicit
+      // skip is now a first-class action, no more silent "cancel == no
+      // message". Show both channel prices and bias the highlighted
+      // total to whichever channel the dispatcher will most likely
+      // use, so the user isn't quoted SMS when they'll actually be
+      // charged WhatsApp (or vice versa).
+      CostSheetOutcome outcome = CostSheetOutcome.skip;
       double quotedTotal = smsCost;
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
         final expectedChannel =
@@ -234,7 +236,7 @@ class EditTransactionViewModel extends TransactionViewModel {
           expected: expectedChannel,
         );
         quotedTotal = breakdown.total;
-        userConfirmed = await CostConfirmationSheet.show(
+        outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
           confirmLabel: 'Send',
@@ -243,13 +245,21 @@ class EditTransactionViewModel extends TransactionViewModel {
 
       // Safety net for race conditions. Affordability gate uses the
       // primary channel cost the user just confirmed.
-      final canProceed = userConfirmed &&
+      final canProceed = outcome.shouldSend &&
           await BalanceCheckUtil.checkBalanceAndProceed(
               context, currentUserId, quotedTotal);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,
             transactionType, mobileNumber);
+      } else if (outcome.isSilent &&
+          mobileNumber != null &&
+          mobileNumber!.isNotEmpty) {
+        showSnackbar(
+          context,
+          'Transaction updated. No message sent.',
+          Colors.blueGrey,
+        );
       }
 
       showSnackbar(context, 'Transaction updated successfully!', Colors.green);
