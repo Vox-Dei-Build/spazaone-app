@@ -300,6 +300,10 @@ class CustomerManagementViewModel extends ChangeNotifier {
         await MessagingNotificationService.resolveExpectedChannel(
             mobileNumber!);
 
+    // Reminder send is a pure side-effect (nothing to "record" if the
+    // merchant doesn't send), so the legacy bool API still maps cleanly:
+    // user explicitly confirms -> send, anything else -> do nothing.
+    // No silent state to surface.
     final shouldSend = await CostConfirmationSheet.show(
       context,
       breakdown: CostBreakdown.singleMessageMultiChannel(
