@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/app_urls.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/contact/view_model/add_contact_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -23,11 +24,12 @@ import 'package:url_launcher/url_launcher.dart';
 class AddContactPage extends StatelessWidget {
   const AddContactPage({super.key});
   static const id = '/addContactPage';
-  static const _privacyPolicyUrl =
-      'https://docs.google.com/document/d/1Oz4M_j8u0YwQBzIyDB-IAl_wYBNdrQ5k_Fx6qR7uPAQ/edit?tab=t.0';
 
   Future<void> _openPrivacyPolicy(BuildContext context) async {
-    final uri = Uri.parse(_privacyPolicyUrl);
+    // PAS-UX-10: routed through AppUrls so privacy-policy hosting can
+    // move from the legacy public Google Doc to a pasella.co.za URL
+    // by changing one constant.
+    final uri = Uri.parse(AppUrls.privacyPolicy);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else if (context.mounted) {

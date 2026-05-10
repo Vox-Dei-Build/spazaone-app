@@ -36,7 +36,12 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
           final bool canWithdraw = salesBalance > 0 &&
               walletState.hasBankAccount &&
               !walletState.hasPendingPayout;
-          const imageUrl = 'https://picsum.photos/id/13/2500/1667?blur';
+          // PAS-UX-10: see cash_advance_tab — Lorem-Picsum hero image
+          // replaced with branded colour band so the merchant
+          // payments surface stops fingerprinting picsum.photos and
+          // stops showing random stock photos as the visual for a
+          // payout card.
+          const heroColor = Color(0xff2B325F);
 
           return SingleChildScrollView(
             padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
@@ -44,7 +49,8 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildCard(
-                  imageUrl: imageUrl,
+                  heroColor: heroColor,
+                  heroIcon: Icons.account_balance_outlined,
                   title: 'Withdraw',
                   description: 'Withdraw your sales balance to your bank',
                   primaryBtn: FilledButton.icon(
@@ -149,7 +155,8 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
   }
 
   Widget _buildCard({
-    required String imageUrl,
+    required Color heroColor,
+    required IconData heroIcon,
     required String title,
     required String description,
     required Widget primaryBtn,
@@ -165,11 +172,15 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
         children: [
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Image.network(
-              imageUrl,
-              height: 160,
+            child: Container(
+              height: 120,
               width: double.infinity,
-              fit: BoxFit.cover,
+              color: heroColor,
+              child: Icon(
+                heroIcon,
+                size: 56,
+                color: Colors.white.withOpacity(0.9),
+              ),
             ),
           ),
           Padding(
