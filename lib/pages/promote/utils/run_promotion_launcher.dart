@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/utils/auth_util.dart';
 
 /// PAS-UX-09: single source of truth for launching the Run Promotion
 /// flow.
@@ -69,6 +70,15 @@ class RunPromotionLauncher {
     VoidCallback? onGoToTemplates,
     String? initialTemplateId,
   }) async {
+    // PAS-UX-14: anonymous gate at the screen edge. Promote is one
+    // of three sensitive surfaces flagged by the audit (along with
+    // Add Payment / Add Credit) where an anonymous user could
+    // navigate the entire flow only to be bounced at submit. We
+    // prompt for registration before any further work happens.
+    final passed = await isAnonymousGate(context);
+    if (!passed) return;
+    if (!context.mounted) return;
+
     if (!hasApprovedTemplate(viewModel.templates)) {
       await _showNoApprovedDialog(
         context,
