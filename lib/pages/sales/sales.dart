@@ -12,10 +12,10 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
-import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
 
 enum SalesViewType { cash, online }
@@ -392,38 +392,26 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       return _selectedMarketingView == MarketingViewType.promotions
           ? FloatingActionButton.extended(
               onPressed: () async {
-                final hasApproved = promoVM.templates.any((t) =>
-                    (t['channels']?['whatsapp']?['approved'] == true) ||
-                    (t['channels']?['sms']?['approved'] == true));
-                if (!hasApproved) {
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('No Approved Templates'),
-                      content: const Text(
-                          'You need at least one approved template before you can run a promotion.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            setState(() => _selectedMarketingView =
-                                MarketingViewType.templates);
-                            promoVM.loadTemplatesData();
-                          },
-                          child: const Text('Go to Templates'),
-                        ),
-                      ],
-                    ),
-                  );
-                } else {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const RunPromotionPage(),
-                    ),
-                  );
-                  if (!mounted) return;
-                  await promoVM.fetchPromotionsReports();
-                }
+                // PAS-UX-09: previously this FAB ran a third
+                // copy of the "any approved templates?" predicate
+                // that had drifted from the canonical reader —
+                // it checked `whatsapp.approved == true` and missed
+                // the `approvalStatus == 'approved'` string used by
+                // every template created since that field was
+                // introduced, so on this surface the dialog would
+                // fire even when the merchant had usable templates.
+                // Routed through RunPromotionLauncher so the truth
+                // check, dialog and post-return refresh stay in
+                // one place.
+                await RunPromotionLauncher.launch(
+                  context,
+                  viewModel: promoVM,
+                  onGoToTemplates: () {
+                    setState(() => _selectedMarketingView =
+                        MarketingViewType.templates);
+                    promoVM.loadTemplatesData();
+                  },
+                );
               },
               icon: const Icon(Icons.campaign_outlined, color: Colors.white),
               label: const Text('Run Promotion',
