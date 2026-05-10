@@ -74,3 +74,20 @@ dynamic pricing. Ensure the following keys are configured:
 
 Additional notes on the in-app wallet, order payment options, and payment provider markup are documented in
 [`docs/payment_provider_wallet.md`](docs/payment_provider_wallet.md).
+
+### Releases
+
+Pasella ships from `main` directly, tag-driven, no release branches.
+See [`docs/releases.md`](docs/releases.md) for the full ritual,
+trigger semantics, required env vars, and recovery playbook.
+
+Quick reference:
+
+```bash
+# bump pubspec.yaml version, commit, then:
+git tag -a v3.0.3+48 -m "Release 3.0.3+48"
+git push origin v3.0.3+48     # fires both Android + iOS workflows
+```
+
+Plain pushes to `main` do NOT trigger a build — only tags matching
+`v*.*.*+*` do.

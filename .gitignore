@@ -37,7 +37,14 @@ pasella-ledger-firebase-adminsdk-av7ho-985ee21a3d.json
 .packages
 .pub-cache/
 .pub/
+# Build outputs (Flutter, Gradle, Xcode). The original `/build/` rule
+# only matched the repo-root build dir. Flutter/Gradle/Xcode also
+# produce build dirs at android/build/, android/app/build/, ios/build/,
+# and android/app/.cxx/ for the NDK toolchain. Match all of them.
 /build/
+**/build/
+**/.cxx/
+**/DerivedData/
 /functions/node_modules
 
 # Symbolication related
