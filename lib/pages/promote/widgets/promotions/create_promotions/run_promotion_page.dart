@@ -26,13 +26,25 @@ enum RunPromotionStep {
 class RunPromotionPage extends StatefulWidget {
   final Map<String, dynamic>? promoToEdit;
 
-  /// normal “new” promotion
-  const RunPromotionPage({Key? key})
+  /// PAS-UX-06: pre-select a template on first frame.
+  ///
+  /// When the merchant taps "Use this template" on the Templates tab,
+  /// the audit found they were dropped on Step 1 with an empty
+  /// template picker and forced to find the template they had just
+  /// been looking at. This field lets the launcher carry the choice
+  /// across so the wizard opens already on Step 1 with that template
+  /// selected. The merchant can still change it before tapping Next.
+  final String? initialTemplateId;
+
+  /// normal "new" promotion
+  const RunPromotionPage({Key? key, this.initialTemplateId})
       : promoToEdit = null,
         super(key: key);
 
   /// edit mode
-  const RunPromotionPage.edit(this.promoToEdit, {Key? key}) : super(key: key);
+  const RunPromotionPage.edit(this.promoToEdit, {Key? key})
+      : initialTemplateId = null,
+        super(key: key);
 
   @override
   State<RunPromotionPage> createState() => _RunPromotionPageState();
@@ -61,6 +73,10 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   @override
   void initState() {
     super.initState();
+    // PAS-UX-06: honour the launcher-supplied template id so the
+    // merchant arriving from "Use this template" sees their choice
+    // already selected on Step 1.
+    selectedTemplateId = widget.initialTemplateId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (allCustomers) {
         Provider.of<PromotionsViewModel>(context, listen: false)
