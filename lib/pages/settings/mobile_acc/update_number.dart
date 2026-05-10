@@ -3,6 +3,19 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 
+/// PAS-UX-10: UpdateNumberPage is a stub.
+///
+/// The "Verify Mobile" button is wired to `() {}` and there is no
+/// supporting view-model, OTP flow, data-migration job, or backend
+/// hook. The page also has no entry point in Settings or anywhere
+/// else in the app — it is reachable only via the
+/// `/updateNumberPage` route, which is registered in `main.dart` for
+/// historical reasons.
+///
+/// Audit decision: do not remove the route (could break a deep
+/// link), do not surface the page in Settings (it would lie to the
+/// merchant), and do not precache its asset (waste of startup
+/// work). Re-enable when the OTP/data-migration backend exists.
 class UpdateNumberPage extends StatelessWidget {
   const UpdateNumberPage({super.key});
 

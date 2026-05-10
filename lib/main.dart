@@ -340,7 +340,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     precacheImage(const AssetImage("assets/images/share.png"), context);
-    precacheImage(const AssetImage("assets/images/update_number.png"), context);
+    // PAS-UX-10: update_number.png precache removed — UpdateNumberPage
+    // is a non-functional stub with no entry point in the app and no
+    // backing OTP/data-migration flow, so warming its asset wastes
+    // startup work for a screen merchants cannot reach. The route
+    // registration is kept below in case a deep link references it.
 
     return MultiProvider(
       providers: [
