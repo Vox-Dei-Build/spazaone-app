@@ -67,6 +67,27 @@ class RemoteConfigService {
             dotenv.env['PAYSTACK_SETTLEMENT_FEE'] ?? '3.0',
         'PAYSTACK_VAT_PERCENT':
             dotenv.env['PAYSTACK_VAT_PERCENT'] ?? '15.0',
+        // SMS template defaults — these mirror the production Remote Config
+        // values (post-QW-0 with ASCII hyphens in the sign-off). Defaults
+        // guarantee that if the RC fetch fails or a key is unset, the app
+        // still has a non-empty SMS body to send instead of `''` (which
+        // would hit Twilio with an empty `Body` parameter and either drop
+        // silently or fail with a 400 depending on account config).
+        // See `docs/openclaw/pas-sms-01-template-segment-audit.md` (QW-3).
+        'SMS_CREDIT_CONFIRMATION_SHORT':
+            'Hi {customerName}, credit of -{amount} at {shopName} recorded. '
+                'Balance: {balance}. Thanks for your trust. - {shopName}',
+        'SMS_PAYMENT_CONFIRMATION_SHORT':
+            'Hi {customerName}, payment of +{amount} at {shopName} recorded. '
+                'Balance: {balance}. Thanks for your payment. - {shopName}',
+        'SMS_ONBOARDING_SHORT':
+            'Hi {customerName}, welcome to {shopName}! Your account is now '
+                'online. Balance: R0,00. Thanks for joining! - {shopName}',
+        'SMS_REMINDER_SHORT':
+            'Hi {customerName}, your balance of {balance} at {shopName} is '
+                'due. Please make your payment to avoid any late fees. From '
+                '{shopName}',
+        'SMS_TEMPLATE_KEYWORDS': '[]',
       });
 
       _instance = RemoteConfigService._(remoteConfig);

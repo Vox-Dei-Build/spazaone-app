@@ -13,7 +13,10 @@ class SubscriptionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Profile'),
+      // PAS-UX-10: AppBar said "Profile" — left over from a copy of
+      // the Profile page. Now matches the page purpose and the
+      // Settings tile that opens it.
+      appBar: const CustomAppBar(title: 'Subscription'),
       body: SafeArea(
         child: Padding(
           padding: LayoutConstants.padding10Horizontal,
@@ -54,7 +57,14 @@ class SubscriptionPage extends StatelessWidget {
                     ),
                     bulletPoints: const [
                       'Contains Ads',
-                      'Send SMS from your phone (SIM)',
+                      // PAS-UX-10: 'Send SMS from your phone (SIM)'
+                      // claimed a feature the app does not actually
+                      // provide on the Free tier — there is no
+                      // SIM-send code path anywhere in the app. The
+                      // line was a marketing aspiration that read,
+                      // to a real merchant, as a working feature
+                      // they should be able to find. Removed until
+                      // the feature ships.
                       'Maximum 1 Business Account',
                     ],
                     isActive: value.activePlan == 'FREE',

@@ -3,6 +3,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/settings/help/help.dart';
 import 'package:pasella/pages/settings/privacy/privacy_page.dart';
+import 'package:pasella/pages/settings/subscription/subscription.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/models/common/app_model.dart';
@@ -62,6 +63,21 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.wallet,
                           title: 'Billing',
                           subTitle: 'Manage your wallet and payments',
+                        ),
+                        // PAS-UX-10: Subscription page existed
+                        // (registered as a route in main.dart) but
+                        // had no entry point in Settings, so the
+                        // page was effectively orphaned and
+                        // merchants couldn't see what tier they
+                        // were on. Surfaces the existing page.
+                        SettingTile(
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            SubscriptionPage.id,
+                          ),
+                          icon: Icons.workspace_premium_outlined,
+                          title: 'Subscription',
+                          subTitle: 'View and change your plan',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

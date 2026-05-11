@@ -11,6 +11,7 @@ import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
+import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -92,6 +93,56 @@ class AddCreditViewModel extends TransactionViewModel {
           .collection('transactions')
           .add(transactionData);
 
+      // NOTE: stock decrement was previously here. It now runs AFTER the
+      // cost-confirmation sheet returns a non-dismissed outcome — see
+      // PAS-UX-03 audit finding (data-integrity smell on cancelled
+      // credits). The credit row above is still written first because
+      // rolling that back across an offline Firestore queue would be
+      // worse than the alternative; the post-sheet snackbar makes the
+      // persisted state explicit instead of silent.
+
+      final smsCost = SMSPricingUtil.calculateCost(
+        text: SMSMessages.creditConfirmationShort,
+        unitCost: pricingService.smsReminderTemplatePrice,
+      );
+      final whatsappCost = pricingService.whatsappUtilityPrice;
+
+      // Pre-flight cost confirmation. Tri-state outcome:
+      //   * send      -> dispatcher charges + SMS goes out
+      //   * skip      -> merchant explicitly chose "record only"
+      //   * dismissed -> sheet closed without a choice
+      // Both skip and dismissed mean no message is sent. We still
+      // commit the stock decrement (the merchant gave the goods) but
+      // we surface that explicitly via snackbar.
+      CostSheetOutcome outcome = CostSheetOutcome.skip;
+      double quotedTotal = smsCost;
+      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        final expectedChannel =
+            await MessagingNotificationService.resolveExpectedChannel(
+                mobileNumber!);
+        final breakdown = CostBreakdown.singleMessageMultiChannel(
+          title: 'Send credit confirmation?',
+          subtitle: 'Message to $customerName',
+          whatsappCost: whatsappCost,
+          smsCost: smsCost,
+          expected: expectedChannel,
+        );
+        quotedTotal = breakdown.total;
+        outcome = await CostConfirmationSheet.showOutcome(
+          context,
+          breakdown: breakdown,
+          confirmLabel: 'Send',
+        );
+      } else {
+        // No number on file — the only honest outcome is "record only".
+        outcome = CostSheetOutcome.skip;
+      }
+
+      // Stock decrement runs only after the merchant has had a chance
+      // to interact with the cost sheet. The sale itself is committed
+      // either way (the goods are leaving the shelf), but ordering
+      // means a merchant who instantly backs out before any choice
+      // never sees a silent inventory hit.
       for (var productId in selectedProducts.keys) {
         Product? product = products.firstWhere((p) => p.id == productId,
             orElse: () => Product());
@@ -107,49 +158,28 @@ class AddCreditViewModel extends TransactionViewModel {
         }
       }
 
-      final smsCost = SMSPricingUtil.calculateCost(
-        text: SMSMessages.creditConfirmationShort,
-        unitCost: pricingService.smsReminderTemplatePrice,
-      );
-      final whatsappCost = pricingService.whatsappUtilityPrice;
-
-      // Pre-flight cost confirmation — explicit consent before any
-      // wallet deduction. Cancel still records the credit, just skips
-      // the notification. Show both channel prices and bias the
-      // highlighted total to whichever channel the dispatcher will most
-      // likely use; the user is never quoted the wrong price for the
-      // channel that ends up delivering.
-      bool userConfirmed = false;
-      double quotedTotal = smsCost;
-      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
-        final expectedChannel =
-            await MessagingNotificationService.resolveExpectedChannel(
-                mobileNumber!);
-        final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send credit confirmation?',
-          subtitle: 'Message to $customerName',
-          whatsappCost: whatsappCost,
-          smsCost: smsCost,
-          expected: expectedChannel,
-        );
-        quotedTotal = breakdown.total;
-        userConfirmed = await CostConfirmationSheet.show(
-          context,
-          breakdown: breakdown,
-          confirmLabel: 'Send',
-        );
-      }
-
       // Safety net for race conditions (balance changed since the
       // sheet). Affordability gate uses the primary channel cost the
       // user just confirmed.
-      final canProceed = userConfirmed &&
+      final canProceed = outcome.shouldSend &&
           await BalanceCheckUtil.checkBalanceAndProceed(
               context, userId, quotedTotal);
 
       if (canProceed) {
         await sendSMS(userId, customerId, amountEntered, customerName, "Credit",
             mobileNumber);
+      } else if (outcome.isSilent &&
+          mobileNumber != null &&
+          mobileNumber!.isNotEmpty) {
+        // Credit recorded; no message sent. Surface the state so the
+        // merchant doesn't have to guess what happened.
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(
+            context,
+            'Credit recorded. No message sent.',
+            Colors.blueGrey,
+          );
+        });
       }
 
       DocumentReference customerRef = FirebaseFirestore.instance

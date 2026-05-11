@@ -75,9 +75,9 @@ class BalanceCheckUtil {
               TextButton(
                 onPressed: () {
                   Navigator.of(context)
-                      .pop(false); // ❌ Cancel → Do NOT send message
+                      .pop(false); // ❌ Skip → record only, no message sent
                 },
-                child: Text("Proceed Without Message",
+                child: Text("Skip message — record only",
                     style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               ),
             ],

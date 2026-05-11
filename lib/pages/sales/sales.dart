@@ -12,11 +12,12 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
-import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 
 enum SalesViewType { cash, online }
 
@@ -85,28 +86,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     });
   }
 
-  // Replace your helper with this:
-  double _scrollBottomPadding(BuildContext context) {
-    final m = MediaQuery.of(context);
-
-    // Which FABs are visible?
-    final onSalesTab = _mainController.index == 0;
-    final onMarketingTab = _mainController.index == 1;
-
-    final cashFabVisible =
-        onSalesTab && _selectedSalesView == SalesViewType.cash;
-    final marketingFabVisible =
-        onMarketingTab; // both Marketing views show an extended FAB in your code
-
-    final fabVisible = cashFabVisible || marketingFabVisible;
-
-    // Material defaults: 56 for normal FAB (yours on Sales), ~48–56 for extended.
-    final fabHeight = fabVisible ? 56.0 : 0.0;
-    const fabMargin = 16.0;
-
-    return m.padding.bottom + fabHeight + fabMargin;
-  }
-
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -149,17 +128,17 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   segmentedButtonTheme:
                                       SegmentedButtonThemeData(
                                     style: ButtonStyle(
-                                      backgroundColor: MaterialStateProperty
+                                      backgroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.green
                                             : Colors.white,
                                       ),
-                                      foregroundColor: MaterialStateProperty
+                                      foregroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.white
                                             : Colors.black87,
                                       ),
@@ -290,17 +269,17 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   segmentedButtonTheme:
                                       SegmentedButtonThemeData(
                                     style: ButtonStyle(
-                                      backgroundColor: MaterialStateProperty
+                                      backgroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.green
                                             : Colors.white,
                                       ),
-                                      foregroundColor: MaterialStateProperty
+                                      foregroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.white
                                             : Colors.black87,
                                       ),
@@ -392,38 +371,26 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       return _selectedMarketingView == MarketingViewType.promotions
           ? FloatingActionButton.extended(
               onPressed: () async {
-                final hasApproved = promoVM.templates.any((t) =>
-                    (t['channels']?['whatsapp']?['approved'] == true) ||
-                    (t['channels']?['sms']?['approved'] == true));
-                if (!hasApproved) {
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('No Approved Templates'),
-                      content: const Text(
-                          'You need at least one approved template before you can run a promotion.'),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            setState(() => _selectedMarketingView =
-                                MarketingViewType.templates);
-                            promoVM.loadTemplatesData();
-                          },
-                          child: const Text('Go to Templates'),
-                        ),
-                      ],
-                    ),
-                  );
-                } else {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const RunPromotionPage(),
-                    ),
-                  );
-                  if (!mounted) return;
-                  await promoVM.fetchPromotionsReports();
-                }
+                // PAS-UX-09: previously this FAB ran a third
+                // copy of the "any approved templates?" predicate
+                // that had drifted from the canonical reader —
+                // it checked `whatsapp.approved == true` and missed
+                // the `approvalStatus == 'approved'` string used by
+                // every template created since that field was
+                // introduced, so on this surface the dialog would
+                // fire even when the merchant had usable templates.
+                // Routed through RunPromotionLauncher so the truth
+                // check, dialog and post-return refresh stay in
+                // one place.
+                await RunPromotionLauncher.launch(
+                  context,
+                  viewModel: promoVM,
+                  onGoToTemplates: () {
+                    setState(() => _selectedMarketingView =
+                        MarketingViewType.templates);
+                    promoVM.loadTemplatesData();
+                  },
+                );
               },
               icon: const Icon(Icons.campaign_outlined, color: Colors.white),
               label: const Text('Run Promotion',
@@ -431,13 +398,20 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
             )
           : FloatingActionButton.extended(
               onPressed: () async {
-                final result = await Navigator.of(context).push(
+                final result =
+                    await Navigator.of(context).push<TemplateSubmitResult>(
                   MaterialPageRoute(
                     builder: (_) => CreateTemplatePage(viewModel: promoVM),
                   ),
                 );
                 if (!mounted) return;
-                if (result == true) {
+                // Both outcomes succeed the same way (refresh the list).
+                // The Sales surface has no Templates tab to route to, so
+                // "View pending templates" can't be honoured strictly
+                // from here — refreshing is the best we can do without
+                // pushing the user into an unrelated page they didn't
+                // ask to be in.
+                if (result != null) {
                   await promoVM.loadTemplatesData();
                 }
               },

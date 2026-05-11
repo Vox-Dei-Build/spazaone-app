@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
-import 'package:pasella/pages/wallet/widgets/suspenstion_paywall.dart';
+import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
 import 'package:provider/provider.dart';
 
 class Dashboard extends StatelessWidget {

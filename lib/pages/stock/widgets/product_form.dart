@@ -23,6 +23,21 @@ class ProductForm extends StatefulWidget {
 }
 
 class _ProductFormState extends State<ProductForm> {
+  /// PAS-UX-05: cached parse results for the cost / selling-price soft
+  /// warning. We don't validate this as an error (a merchant may
+  /// legitimately run a loss-leader promo) but we surface a margin
+  /// callout so accidental sub-cost pricing isn't silent.
+  double? _cost;
+  double? _sellingPrice;
+
+  @override
+  void initState() {
+    super.initState();
+    final viewModel = context.read<ProductViewModel>();
+    _cost = double.tryParse(viewModel.costController.text);
+    _sellingPrice = double.tryParse(viewModel.sellingPriceController.text);
+  }
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context); // Initialize SizeConfig
@@ -100,6 +115,9 @@ class _ProductFormState extends State<ProductForm> {
                                       viewModel.markUnsavedChanges();
                                       widget.product.cost =
                                           double.tryParse(value);
+                                      setState(() {
+                                        _cost = double.tryParse(value);
+                                      });
                                     },
                                     textInputType: TextInputType.number,
                                   ),
@@ -126,24 +144,76 @@ class _ProductFormState extends State<ProductForm> {
                                       viewModel.markUnsavedChanges();
                                       widget.product.sellingPrice =
                                           double.tryParse(value);
+                                      setState(() {
+                                        _sellingPrice =
+                                            double.tryParse(value);
+                                      });
                                     },
                                     textInputType: TextInputType.number,
                                   ),
                                 ),
                               ],
                             ),
+                            // PAS-UX-05: non-blocking margin warning.
+                            // Sub-cost pricing is sometimes intentional
+                            // (loss leaders, clearance), so this is a
+                            // callout rather than a validator error —
+                            // the merchant can still save.
+                            if (_cost != null &&
+                                _sellingPrice != null &&
+                                _sellingPrice! < _cost!) ...[
+                              SizedBox(
+                                  height: SizeConfig.heightMultiplier * 1),
+                              Row(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size:
+                                        SizeConfig.imageSizeMultiplier * 4,
+                                    color: Colors.orange[700],
+                                  ),
+                                  SizedBox(
+                                      width:
+                                          SizeConfig.imageSizeMultiplier *
+                                              1.5),
+                                  Expanded(
+                                    child: Text(
+                                      'Heads up: selling price is below '
+                                      'cost. You will record a loss on '
+                                      'each sale.',
+                                      style: TextStyle(
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        color: Colors.orange[800],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
                             CustomTextField(
                               label: "Quantity*",
-                              hintText: "Quantity",
+                              hintText: "Enter 0 if unsure",
                               prefixIcon: Icons.inventory,
                               controller: viewModel.quantityController,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return 'Please enter the quantity';
                                 }
-                                if (int.tryParse(value) == null) {
+                                final parsed = int.tryParse(value);
+                                if (parsed == null) {
                                   return 'Please enter a valid number';
+                                }
+                                // PAS-UX-05: explicit non-negative
+                                // guard. Without it the form happily
+                                // accepts -3 and the stock list shows
+                                // a negative count, which then breaks
+                                // the sale-deduct path.
+                                if (parsed < 0) {
+                                  return 'Quantity cannot be negative';
                                 }
                                 return null;
                               },
@@ -154,26 +224,53 @@ class _ProductFormState extends State<ProductForm> {
                               textInputType: TextInputType.number,
                             ),
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            CustomTextField(
-                              label: "Company",
-                              hintText: "Company",
-                              prefixIcon: Icons.business,
-                              controller: viewModel.companyController,
-                              onChanged: (value) {
-                                viewModel.markUnsavedChanges();
-                                widget.product.company = value;
-                              },
-                            ),
-                            SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            CustomTextField(
-                              label: "Description",
-                              hintText: "Description",
-                              prefixIcon: Icons.description,
-                              controller: viewModel.descriptionController,
-                              onChanged: (value) {
-                                viewModel.markUnsavedChanges();
-                                widget.product.description = value;
-                              },
+                            // Progressive disclosure: keep optional fields out
+                            // of the merchant's way during initial create. Auto
+                            // expands when an existing product already has data
+                            // in either field (edit surface) so values stay
+                            // visible.
+                            Theme(
+                              data: Theme.of(context).copyWith(
+                                dividerColor: Colors.transparent,
+                              ),
+                              child: ExpansionTile(
+                                tilePadding: EdgeInsets.zero,
+                                childrenPadding: EdgeInsets.zero,
+                                initiallyExpanded: (viewModel
+                                            .companyController.text.isNotEmpty) ||
+                                    (viewModel
+                                        .descriptionController.text.isNotEmpty),
+                                title: const Text(
+                                  'More details (optional)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                children: [
+                                  CustomTextField(
+                                    label: "Company",
+                                    hintText: "Company",
+                                    prefixIcon: Icons.business,
+                                    controller: viewModel.companyController,
+                                    onChanged: (value) {
+                                      viewModel.markUnsavedChanges();
+                                      widget.product.company = value;
+                                    },
+                                  ),
+                                  SizedBox(
+                                      height: SizeConfig.heightMultiplier * 2),
+                                  CustomTextField(
+                                    label: "Description",
+                                    hintText: "Description",
+                                    prefixIcon: Icons.description,
+                                    controller: viewModel.descriptionController,
+                                    onChanged: (value) {
+                                      viewModel.markUnsavedChanges();
+                                      widget.product.description = value;
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),

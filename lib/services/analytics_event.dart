@@ -371,6 +371,147 @@ class ConsentDecided extends AnalyticsEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Stock CRUD
+// ---------------------------------------------------------------------------
+//
+// PAS-UX-16: the onboarding funnel ('signup -> first product -> first
+// customer -> first sale -> first message') was missing two of its
+// most important hops because product and customer CRUD weren't
+// instrumented. The Sale and Comms events were fine, but you couldn't
+// tell from the dashboard whether merchants were dropping off at
+// stock seeding, customer entry, or actually transacting. These
+// events close that gap.
+//
+// Properties intentionally exclude product / customer NAMES and any
+// free-form notes. Group, price-bucket and quantity-bucket are coarse
+// signals that help the funnel without leaking merchant data.
+
+class ProductCreated extends AnalyticsEvent {
+  final String? group;
+  final String sellingPriceBucket;
+  final String costPriceBucket;
+  final bool hasImage;
+
+  const ProductCreated({
+    this.group,
+    required this.sellingPriceBucket,
+    required this.costPriceBucket,
+    required this.hasImage,
+  });
+
+  @override
+  String get name => 'product_created';
+
+  @override
+  Map<String, Object?> get properties => {
+        'group': group,
+        'selling_price_bucket': sellingPriceBucket,
+        'cost_price_bucket': costPriceBucket,
+        'has_image': hasImage,
+      };
+}
+
+class ProductUpdated extends AnalyticsEvent {
+  final String? group;
+  final String sellingPriceBucket;
+  final String costPriceBucket;
+  final bool hasImage;
+
+  const ProductUpdated({
+    this.group,
+    required this.sellingPriceBucket,
+    required this.costPriceBucket,
+    required this.hasImage,
+  });
+
+  @override
+  String get name => 'product_updated';
+
+  @override
+  Map<String, Object?> get properties => {
+        'group': group,
+        'selling_price_bucket': sellingPriceBucket,
+        'cost_price_bucket': costPriceBucket,
+        'has_image': hasImage,
+      };
+}
+
+class ProductDeleted extends AnalyticsEvent {
+  final String? group;
+
+  const ProductDeleted({this.group});
+
+  @override
+  String get name => 'product_deleted';
+
+  @override
+  Map<String, Object?> get properties => {
+        'group': group,
+      };
+}
+
+// ---------------------------------------------------------------------------
+// Contact CRUD
+// ---------------------------------------------------------------------------
+//
+// CustomerCreateBlocked is a deliberate sub-event for duplicate-number
+// rejections; it tells us how often the merchant tries to add a
+// contact that already exists, which has been a recurring confusion
+// point in support.
+
+class CustomerCreated extends AnalyticsEvent {
+  final bool hasImage;
+
+  const CustomerCreated({required this.hasImage});
+
+  @override
+  String get name => 'customer_created';
+
+  @override
+  Map<String, Object?> get properties => {
+        'has_image': hasImage,
+      };
+}
+
+class CustomerCreateBlocked extends AnalyticsEvent {
+  final String reason; // 'duplicate_number' | 'validation_failed'
+
+  const CustomerCreateBlocked({required this.reason});
+
+  @override
+  String get name => 'customer_create_blocked';
+
+  @override
+  Map<String, Object?> get properties => {
+        'reason': reason,
+      };
+}
+
+class CustomerUpdated extends AnalyticsEvent {
+  final bool hasImage;
+
+  const CustomerUpdated({required this.hasImage});
+
+  @override
+  String get name => 'customer_updated';
+
+  @override
+  Map<String, Object?> get properties => {
+        'has_image': hasImage,
+      };
+}
+
+class CustomerDeleted extends AnalyticsEvent {
+  const CustomerDeleted();
+
+  @override
+  String get name => 'customer_deleted';
+
+  @override
+  Map<String, Object?> get properties => const {};
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

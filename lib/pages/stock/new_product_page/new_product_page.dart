@@ -5,6 +5,7 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
 import 'package:pasella/pages/stock/widgets/product_form.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:provider/provider.dart';
 
 class NewProductPage extends StatefulWidget {
@@ -33,6 +34,19 @@ class _NewProductPageState extends State<NewProductPage> {
           }
 
           return Scaffold(
+            // PAS-UX-05: full migration to TransactionFormScaffold was
+            // attempted but blocked by GlobalKey<FormState> uniqueness
+            // — `ProductForm` already owns its own internal Form (it's
+            // also reused by EditProductPage where that ownership is
+            // load-bearing for inline validation), so handing the same
+            // formKey to the scaffold's outer Form would cause a
+            // duplicate-key crash. Rather than fork ProductForm to
+            // strip its inner Form just for this entry point, we
+            // replicate the two scaffold benefits the audit actually
+            // called for — the unsaved-changes guard and the
+            // disabled-on-loading CTA — locally. The scaffold can
+            // adopt this page later if/when ProductForm is decoupled
+            // from owning its Form.
             floatingActionButton: Padding(
               padding: const EdgeInsets.only(
                 bottom: 35,
@@ -70,24 +84,46 @@ class _NewProductPageState extends State<NewProductPage> {
             appBar: const CustomAppBar(
               title: "New Product",
             ),
-            body: SafeArea(
-              child: Container(
-                color: Colors.white,
-                height: double.infinity,
-                width: double.infinity,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: LayoutConstants.padding10Horizontal,
-                        child: ProductForm(
-                          formKey: _formKey,
-                          product: _newProduct,
-                          initialGroup: widget.group,
+            body: PopScope(
+              // PAS-UX-05: unsaved-changes guard. Previously a swipe-
+              // back on this page silently discarded everything the
+              // merchant had typed. We now intercept and confirm.
+              canPop: !viewModel.hasUnsavedChanges,
+              onPopInvokedWithResult: (didPop, _) async {
+                if (didPop) return;
+                final shouldDiscard =
+                    await ConfirmDialog.showDestructive(
+                  context,
+                  title: 'Discard new product?',
+                  message:
+                      'You have unsaved changes. Leaving now will discard '
+                      'them.',
+                  confirmLabel: 'Discard',
+                  cancelLabel: 'Keep editing',
+                );
+                if (shouldDiscard && context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              child: SafeArea(
+                child: Container(
+                  color: Colors.white,
+                  height: double.infinity,
+                  width: double.infinity,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: LayoutConstants.padding10Horizontal,
+                          child: ProductForm(
+                            formKey: _formKey,
+                            product: _newProduct,
+                            initialGroup: widget.group,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

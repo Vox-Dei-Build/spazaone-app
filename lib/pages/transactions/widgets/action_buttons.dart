@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
 import 'package:pasella/pages/transactions/add_payment/add_payment.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
+import 'package:pasella/utils/auth_util.dart';
 
 class AddCreditPaymentButtons extends StatelessWidget {
   final String customerName;
@@ -26,13 +27,18 @@ class AddCreditPaymentButtons extends StatelessWidget {
           child: CustomButton(
             title: 'Credit',
             onTap: () {
-              Navigator.push(
+              // PAS-UX-14: gate at screen edge so anonymous users
+              // see the register prompt before the form is built.
+              gateAndPush(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => AddCreditScreen(
-                      customerName: customerName,
-                      customerId: customerId,
-                      mobileNumber: mobileNumber),
+                push: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddCreditScreen(
+                        customerName: customerName,
+                        customerId: customerId,
+                        mobileNumber: mobileNumber),
+                  ),
                 ),
               );
             },
@@ -50,13 +56,17 @@ class AddCreditPaymentButtons extends StatelessWidget {
           child: CustomButton(
             title: 'Payment',
             onTap: () {
-              Navigator.push(
+              // PAS-UX-14: gate at screen edge.
+              gateAndPush(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => AddPaymentScreen(
-                      customerName: customerName,
-                      customerId: customerId,
-                      mobileNumber: mobileNumber),
+                push: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddPaymentScreen(
+                        customerName: customerName,
+                        customerId: customerId,
+                        mobileNumber: mobileNumber),
+                  ),
                 ),
               );
             },

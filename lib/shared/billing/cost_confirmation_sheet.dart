@@ -2,36 +2,56 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
+import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:provider/provider.dart';
 
 /// Modal bottom sheet that previews a wallet-deducting action's cost,
 /// the user's current balance, and the resulting balance after deduction —
-/// then asks for explicit confirmation.
+/// then asks for explicit consent before any message is dispatched.
 ///
-/// Replaces the silent post-hoc "Insufficient Balance" alert dialog flow for
-/// transactional sends (payments, credits, contacts, reminders).
+/// The sheet exposes three outcomes via [CostSheetOutcome]:
 ///
-/// Returns `true` if the user confirms, `false` if they cancel or top up.
+///  * `send`      — primary CTA, the dispatcher is allowed to charge.
+///  * `skip`      — secondary CTA, the action persists but no message is
+///                  sent. The default label is "Save without sending" so
+///                  the UI states the actual outcome rather than what the
+///                  merchant is _not_ doing — the previous "Don't send"
+///                  read close enough to "Cancel" that release testers
+///                  hesitated on it.
+///  * `dismissed` — sheet closed without an explicit choice (back
+///                  gesture, scrim, OS interruption). Treated the same
+///                  as `skip` for side effects; callers should still
+///                  surface a snackbar so the merchant knows the
+///                  underlying record was kept.
+///
+/// The legacy [show] API is retained as a thin shim that maps `send` ->
+/// `true` and everything else -> `false`, so older call sites that have
+/// not yet migrated keep working unchanged. See
+/// `docs/openclaw/pas-ux-03-implementation-note.md` for the rationale on
+/// why the negative action must not read as "Cancel".
 class CostConfirmationSheet extends StatelessWidget {
   final CostBreakdown breakdown;
   final String confirmLabel;
+  final String skipLabel;
 
   const CostConfirmationSheet({
     Key? key,
     required this.breakdown,
     this.confirmLabel = 'Confirm',
+    this.skipLabel = 'Save without sending',
   }) : super(key: key);
 
-  /// Show the sheet. Returns `true` only when the user explicitly confirms
-  /// and has sufficient balance. Returns `false` for cancel, dismiss, or
-  /// top-up navigation.
-  static Future<bool> show(
+  /// Tri-state variant. Prefer this for any caller that needs to
+  /// distinguish "skip the message" from "cancel everything", or that
+  /// wants to surface explicit feedback about what happened.
+  static Future<CostSheetOutcome> showOutcome(
     BuildContext context, {
     required CostBreakdown breakdown,
-    String confirmLabel = 'Confirm',
+    String confirmLabel = 'Send',
+    String skipLabel = 'Save without sending',
   }) async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showModalBottomSheet<CostSheetOutcome>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -40,9 +60,31 @@ class CostConfirmationSheet extends StatelessWidget {
       builder: (_) => CostConfirmationSheet(
         breakdown: breakdown,
         confirmLabel: confirmLabel,
+        skipLabel: skipLabel,
       ),
     );
-    return result ?? false;
+    return result ?? CostSheetOutcome.dismissed;
+  }
+
+  /// Legacy bool variant. Returns `true` only when the user explicitly
+  /// confirms and has sufficient balance. Returns `false` for skip,
+  /// dismiss, or top-up navigation.
+  ///
+  /// Kept for backward compatibility — new code should prefer
+  /// [showOutcome] so that "skip" can be told apart from "dismissed".
+  static Future<bool> show(
+    BuildContext context, {
+    required CostBreakdown breakdown,
+    String confirmLabel = 'Confirm',
+    String skipLabel = 'Save without sending',
+  }) async {
+    final outcome = await showOutcome(
+      context,
+      breakdown: breakdown,
+      confirmLabel: confirmLabel,
+      skipLabel: skipLabel,
+    );
+    return outcome.shouldSend;
   }
 
   @override
@@ -203,8 +245,8 @@ class CostConfirmationSheet extends StatelessWidget {
               padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
               decoration: BoxDecoration(
                 color: canAfford
-                    ? Colors.green.withOpacity(0.08)
-                    : Colors.orange.withOpacity(0.10),
+                    ? Colors.green.withValues(alpha: 0.08)
+                    : Colors.orange.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -229,29 +271,41 @@ class CostConfirmationSheet extends StatelessWidget {
             SizedBox(height: SizeConfig.heightMultiplier * 2.5),
 
             // Actions
+            //
+            // Three explicit outcomes (mapped to [CostSheetOutcome]):
+            //   * Send                 -> CostSheetOutcome.send
+            //   * Don't send           -> CostSheetOutcome.skip
+            //   * Back / scrim dismiss -> CostSheetOutcome.dismissed (null pop)
+            //
+            // The secondary action is explicit so merchants can skip the
+            // outbound message without reading it as a destructive cancel.
             if (loading)
               const Center(child: CircularProgressIndicator())
             else if (canAfford)
-              Row(
+              Column(
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                            vertical: SizeConfig.heightMultiplier * 1.2),
-                        child: const Text('Cancel'),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-                  Expanded(
+                  SizedBox(
+                    width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(true),
+                      onPressed: () => Navigator.of(context)
+                          .pop(CostSheetOutcome.send),
                       child: Padding(
                         padding: EdgeInsets.symmetric(
                             vertical: SizeConfig.heightMultiplier * 1.2),
                         child: Text(confirmLabel),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.heightMultiplier * 1),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context)
+                          .pop(CostSheetOutcome.skip),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                            vertical: SizeConfig.heightMultiplier * 1.2),
+                        child: Text(skipLabel),
                       ),
                     ),
                   ),
@@ -269,15 +323,23 @@ class CostConfirmationSheet extends StatelessWidget {
                       minimumSize: const Size.fromHeight(48),
                     ),
                     onPressed: () {
-                      Navigator.of(context).pop(false);
+                      Navigator.of(context).pop(CostSheetOutcome.dismissed);
                       Provider.of<AppModel>(context, listen: false)
                           .goToBilling(context);
                     },
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 1),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context)
+                          .pop(CostSheetOutcome.skip),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                            vertical: SizeConfig.heightMultiplier * 1.2),
+                        child: Text(skipLabel),
+                      ),
+                    ),
                   ),
                 ],
               ),

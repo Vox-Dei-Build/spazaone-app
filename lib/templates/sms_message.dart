@@ -4,11 +4,13 @@ import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/template_service.dart';
 
 class SMSMessages {
-  static String creditConfirmation = '';
-  static String paymentConfirmation = '';
-  static String onboarding = '';
-  static String reminder = '';
-
+  // The four `_SHORT` strings are the only SMS bodies the client actually
+  // sends. The corresponding non-`_SHORT` RC keys (SMS_CREDIT_CONFIRMATION,
+  // SMS_PAYMENT_CONFIRMATION, SMS_ONBOARDING, SMS_REMINDER) were previously
+  // loaded into matching fields here but never read anywhere — dead state
+  // that misled engineers attempting to fix copy via the long key. Removed
+  // 2026-05-10 alongside the matching deletion of those long keys in
+  // Firebase Remote Config (QW-5 in pas-sms-01-template-segment-audit).
   static String creditConfirmationShort = '';
   static String paymentConfirmationShort = '';
   static String onboardingShort = '';
@@ -18,11 +20,6 @@ class SMSMessages {
   static Future<void> loadTemplates() async {
     final rc = await RemoteConfigService.getInstance();
     final keywordsJson = rc.getString('SMS_TEMPLATE_KEYWORDS');
-
-    creditConfirmation = rc.getString('SMS_CREDIT_CONFIRMATION');
-    paymentConfirmation = rc.getString('SMS_PAYMENT_CONFIRMATION');
-    onboarding = rc.getString('SMS_ONBOARDING');
-    reminder = rc.getString('SMS_REMINDER');
 
     creditConfirmationShort = rc.getString('SMS_CREDIT_CONFIRMATION_SHORT');
     paymentConfirmationShort = rc.getString('SMS_PAYMENT_CONFIRMATION_SHORT');

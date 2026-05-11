@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:path/path.dart' as path;
 
@@ -17,6 +18,11 @@ class ContentStep extends StatelessWidget {
   final double? whatsappPrice;
   final double? smsPricePerSegment;
   final int smsSegments;
+  /// Encoding + offending-character info for the current SMS body. Drives
+  /// the inline warning that explains *why* a body went UCS-2 (e.g.
+  /// "Contains an en-dash (–) — message costs 2 segments. Replace with -
+  /// to drop to 1 segment.").
+  final SmsEncodingInfo smsEncodingInfo;
   final Function(String) onSmsPricingUpdate;
   final String shopName;
 
@@ -33,6 +39,7 @@ class ContentStep extends StatelessWidget {
     required this.whatsappPrice,
     required this.smsPricePerSegment,
     required this.smsSegments,
+    required this.smsEncodingInfo,
     required this.onSmsPricingUpdate,
     required this.shopName,
   });
@@ -227,6 +234,30 @@ class ContentStep extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            // QW-2: surface *why* a body is multipart so merchants can
+            // self-rescue. UCS-2 flips are usually caused by characters
+            // that look identical to GSM-7 equivalents on most handsets
+            // (en-dash vs hyphen, curly vs straight quote) — without this
+            // explanation the cost preview is a black box.
+            if (includeSMS &&
+                smsPricePerSegment != null &&
+                smsEncodingInfo.offenderLabel != null)
+              Padding(
+                padding: EdgeInsets.only(
+                  top: SizeConfig.heightMultiplier * 0.5,
+                  left: SizeConfig.textMultiplier * 3.2,
+                ),
+                child: Text(
+                  'This message contains ${smsEncodingInfo.offenderLabel}, '
+                  'which forces a more expensive Unicode encoding. '
+                  'Removing it can cut the cost in half.',
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.4,
+                    color: Colors.orange[800],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
               ),
             Divider(
               color: Colors.grey,

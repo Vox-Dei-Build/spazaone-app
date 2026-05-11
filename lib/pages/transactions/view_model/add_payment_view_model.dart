@@ -7,6 +7,7 @@ import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
+import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -91,13 +92,15 @@ class AddPaymentViewModel extends TransactionViewModel {
       final whatsappCost = pricingService.whatsappUtilityPrice;
 
       // Pre-flight cost confirmation sheet — user explicitly confirms
-      // the deduction before it happens (no surprise charge). Cancel
-      // keeps the recorded payment but skips the confirmation message.
-      // Show both channel prices and bias the highlighted total to
-      // whichever channel the dispatcher will most likely use, so the
-      // user isn't quoted the wrong price for the channel that ends up
-      // delivering.
-      bool userConfirmed = false;
+      // the deduction before it happens (no surprise charge). The sheet
+      // returns a tri-state outcome:
+      //   * send      -> dispatcher is allowed to charge + send
+      //   * skip      -> merchant explicitly chose "record only"
+      //   * dismissed -> sheet was closed without an explicit choice
+      // skip and dismissed both keep the recorded payment but skip the
+      // SMS. We surface a snackbar in either case so the merchant is
+      // never left guessing whether anything went out.
+      CostSheetOutcome outcome = CostSheetOutcome.skip;
       double quotedTotal = smsCost;
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
         final expectedChannel =
@@ -111,11 +114,16 @@ class AddPaymentViewModel extends TransactionViewModel {
           expected: expectedChannel,
         );
         quotedTotal = breakdown.total;
-        userConfirmed = await CostConfirmationSheet.show(
+        outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
           confirmLabel: 'Send',
         );
+      } else {
+        // No mobile number on file — there was never a message path,
+        // so the only honest outcome is "skip" (record only). No sheet,
+        // no surprise.
+        outcome = CostSheetOutcome.skip;
       }
 
       // Safety net for race conditions (balance changed between sheet
@@ -123,13 +131,24 @@ class AddPaymentViewModel extends TransactionViewModel {
       // as a last-resort fallback only — should rarely fire now.
       // Affordability gate uses the primary channel cost the user just
       // confirmed.
-      final canProceed = userConfirmed &&
+      final canProceed = outcome.shouldSend &&
           await BalanceCheckUtil.checkBalanceAndProceed(
               context, userId, quotedTotal);
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,
             "Payment", mobileNumber);
+      } else if (outcome.isSilent &&
+          mobileNumber != null &&
+          mobileNumber!.isNotEmpty) {
+        // The payment is recorded but the merchant chose not to send
+        // (or dismissed the sheet). Surface that explicitly so the
+        // post-action state is never invisible.
+        showSnackbar(
+          context,
+          'Payment recorded. No message sent.',
+          Colors.blueGrey,
+        );
       }
 
       DocumentReference customerRef = FirebaseFirestore.instance

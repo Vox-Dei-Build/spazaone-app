@@ -18,6 +18,41 @@ Future<bool> isAnonymousGate(BuildContext context) async {
   return true; // Indicates that no navigation took place and further action can proceed.
 }
 
+/// PAS-UX-14: screen-edge anonymous gate.
+///
+/// Audit found three sensitive surfaces (Add Payment, Add Credit,
+/// Promote) only checked anonymous status at submit time, after the
+/// merchant had already filled the form. The fix is to gate at the
+/// screen edge: if the user is anonymous, prompt for registration
+/// before pushing the route at all. Cancelling the prompt aborts
+/// the navigation; the form is never built, never filled, never
+/// silently bounced.
+///
+/// [push] is the actual navigation closure to invoke when the gate
+/// passes. We don't take a `Route` directly because callers want
+/// flexibility (Navigator.push, MaterialPageRoute builders, named
+/// routes) and async-await composition through the closure is the
+/// cleanest way to thread that without a switch statement here.
+///
+/// Returns true if the navigation closure ran, false if the gate
+/// blocked it. Callers usually don't care about the return value;
+/// it's surfaced for tests + future analytics.
+///
+/// The submit-time `isAnonymousGate` calls in the underlying view
+/// models are intentionally left in place as defense in depth:
+/// they're cheap, and they catch the edge case of an account being
+/// converted to anonymous between page push and form submit.
+Future<bool> gateAndPush(
+  BuildContext context, {
+  required Future<void> Function() push,
+}) async {
+  final passed = await isAnonymousGate(context);
+  if (!passed) return false;
+  if (!context.mounted) return false;
+  await push();
+  return true;
+}
+
 bool isUserAnonymous() {
   return FirebaseAuth.instance.currentUser?.isAnonymous ?? true;
 }

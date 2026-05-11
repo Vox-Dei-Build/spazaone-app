@@ -21,6 +21,14 @@ Future<T?> firestoreExceptionHandler<T>(
 /// Accepted SA mobile prefixes: 6, 7, 8, 9 (per ICASA, including the
 /// 9-prefix range allocated from 2024 onwards).
 
+/// Shared validator copy. Surfaced verbatim wherever a non-SA number
+/// would otherwise be silently rejected — the audit (PAS-UX-08) flagged
+/// silent rejection as the #2 friction moment in the merchant flow.
+/// Keep this honest: until international support ships, the user has
+/// to know SA-only is a real product constraint, not a bug.
+const String kSAOnlyPhoneMessage =
+    'Pasella currently supports SA mobile numbers only (e.g. 0821234567 or +27821234567).';
+
 // Local 10-digit SA mobile, e.g. 0821234567
 final RegExp _saLocalRegex = RegExp(r'^0[6-9][0-9]{8}$');
 // E.164 SA mobile, e.g. +27821234567
