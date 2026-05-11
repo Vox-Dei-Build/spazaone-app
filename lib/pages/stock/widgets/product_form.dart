@@ -196,7 +196,7 @@ class _ProductFormState extends State<ProductForm> {
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
                             CustomTextField(
                               label: "Quantity*",
-                              hintText: "Quantity",
+                              hintText: "Enter 0 if unsure",
                               prefixIcon: Icons.inventory,
                               controller: viewModel.quantityController,
                               validator: (value) {
@@ -224,26 +224,53 @@ class _ProductFormState extends State<ProductForm> {
                               textInputType: TextInputType.number,
                             ),
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            CustomTextField(
-                              label: "Company",
-                              hintText: "Company",
-                              prefixIcon: Icons.business,
-                              controller: viewModel.companyController,
-                              onChanged: (value) {
-                                viewModel.markUnsavedChanges();
-                                widget.product.company = value;
-                              },
-                            ),
-                            SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            CustomTextField(
-                              label: "Description",
-                              hintText: "Description",
-                              prefixIcon: Icons.description,
-                              controller: viewModel.descriptionController,
-                              onChanged: (value) {
-                                viewModel.markUnsavedChanges();
-                                widget.product.description = value;
-                              },
+                            // Progressive disclosure: keep optional fields out
+                            // of the merchant's way during initial create. Auto
+                            // expands when an existing product already has data
+                            // in either field (edit surface) so values stay
+                            // visible.
+                            Theme(
+                              data: Theme.of(context).copyWith(
+                                dividerColor: Colors.transparent,
+                              ),
+                              child: ExpansionTile(
+                                tilePadding: EdgeInsets.zero,
+                                childrenPadding: EdgeInsets.zero,
+                                initiallyExpanded: (viewModel
+                                            .companyController.text.isNotEmpty) ||
+                                    (viewModel
+                                        .descriptionController.text.isNotEmpty),
+                                title: const Text(
+                                  'More details (optional)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                children: [
+                                  CustomTextField(
+                                    label: "Company",
+                                    hintText: "Company",
+                                    prefixIcon: Icons.business,
+                                    controller: viewModel.companyController,
+                                    onChanged: (value) {
+                                      viewModel.markUnsavedChanges();
+                                      widget.product.company = value;
+                                    },
+                                  ),
+                                  SizedBox(
+                                      height: SizeConfig.heightMultiplier * 2),
+                                  CustomTextField(
+                                    label: "Description",
+                                    hintText: "Description",
+                                    prefixIcon: Icons.description,
+                                    controller: viewModel.descriptionController,
+                                    onChanged: (value) {
+                                      viewModel.markUnsavedChanges();
+                                      widget.product.description = value;
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
