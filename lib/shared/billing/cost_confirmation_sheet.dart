@@ -13,9 +13,9 @@ import 'package:provider/provider.dart';
 /// The sheet exposes three outcomes via [CostSheetOutcome]:
 ///
 ///  * `send`      — primary CTA, the dispatcher is allowed to charge.
-///  * `skip`      — secondary CTA "Skip & record only", the action
-///                  persists but no message is sent. Removes the silent
-///                  "cancel == skip" trap from the previous bool API.
+///  * `skip`      — secondary CTA, the action persists but no message is
+///                  sent. The default label is "Don't send" so the UI
+///                  reflects what actually happens.
 ///  * `dismissed` — sheet closed without an explicit choice (back
 ///                  gesture, scrim, OS interruption). Treated the same
 ///                  as `skip` for side effects; callers should still
@@ -24,7 +24,9 @@ import 'package:provider/provider.dart';
 ///
 /// The legacy [show] API is retained as a thin shim that maps `send` ->
 /// `true` and everything else -> `false`, so older call sites that have
-/// not yet migrated keep working unchanged.
+/// not yet migrated keep working unchanged. See
+/// `docs/openclaw/pas-ux-03-implementation-note.md` for the rationale on
+/// why the negative action must not read as "Cancel".
 class CostConfirmationSheet extends StatelessWidget {
   final CostBreakdown breakdown;
   final String confirmLabel;
@@ -34,7 +36,7 @@ class CostConfirmationSheet extends StatelessWidget {
     Key? key,
     required this.breakdown,
     this.confirmLabel = 'Confirm',
-    this.skipLabel = 'Skip & record only',
+    this.skipLabel = "Don't send",
   }) : super(key: key);
 
   /// Tri-state variant. Prefer this for any caller that needs to
@@ -44,7 +46,7 @@ class CostConfirmationSheet extends StatelessWidget {
     BuildContext context, {
     required CostBreakdown breakdown,
     String confirmLabel = 'Send',
-    String skipLabel = 'Skip & record only',
+    String skipLabel = "Don't send",
   }) async {
     final result = await showModalBottomSheet<CostSheetOutcome>(
       context: context,
@@ -71,11 +73,13 @@ class CostConfirmationSheet extends StatelessWidget {
     BuildContext context, {
     required CostBreakdown breakdown,
     String confirmLabel = 'Confirm',
+    String skipLabel = "Don't send",
   }) async {
     final outcome = await showOutcome(
       context,
       breakdown: breakdown,
       confirmLabel: confirmLabel,
+      skipLabel: skipLabel,
     );
     return outcome.shouldSend;
   }
@@ -267,12 +271,11 @@ class CostConfirmationSheet extends StatelessWidget {
             //
             // Three explicit outcomes (mapped to [CostSheetOutcome]):
             //   * Send                 -> CostSheetOutcome.send
-            //   * Skip & record only   -> CostSheetOutcome.skip
+            //   * Don't send           -> CostSheetOutcome.skip
             //   * Back / scrim dismiss -> CostSheetOutcome.dismissed (null pop)
             //
-            // The Skip button is the antidote to the previous silent
-            // "cancel == skip" trap: merchants now choose, in one tap,
-            // whether to spend the wallet or persist without sending.
+            // The secondary action is explicit so merchants can skip the
+            // outbound message without reading it as a destructive cancel.
             if (loading)
               const Center(child: CircularProgressIndicator())
             else if (canAfford)
