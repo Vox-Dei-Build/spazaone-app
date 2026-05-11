@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
+import 'package:pasella/utils/sms_pricing_util.dart';
 
 class ReviewStep extends StatelessWidget {
   final String templateName;
@@ -13,6 +14,10 @@ class ReviewStep extends StatelessWidget {
   final double? whatsappPrice;
   final double? smsPricePerSegment;
   final int smsSegments;
+  /// See `ContentStep.smsEncodingInfo` — same data, displayed on the
+  /// review step so a merchant doesn't have to navigate back to learn why
+  /// the SMS cost is what it is.
+  final SmsEncodingInfo smsEncodingInfo;
   final String shopName;
 
   const ReviewStep({
@@ -26,6 +31,7 @@ class ReviewStep extends StatelessWidget {
     required this.whatsappPrice,
     required this.smsPricePerSegment,
     required this.smsSegments,
+    required this.smsEncodingInfo,
     required this.shopName,
   });
 
@@ -129,6 +135,24 @@ class ReviewStep extends StatelessWidget {
             if (includeSMS)
               Text(
                   'SMS Cost: R${(smsSegments * smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
+            if (includeSMS && smsEncodingInfo.offenderLabel != null)
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.textMultiplier * 2,
+                  vertical: SizeConfig.heightMultiplier * 0.5,
+                ),
+                child: Text(
+                  'Heads up: this SMS contains ${smsEncodingInfo.offenderLabel}, '
+                  'which doubles the per-segment cost. Removing it can cut '
+                  'your SMS bill on this template roughly in half.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.4,
+                    color: Colors.orange[800],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
           ],
         ),

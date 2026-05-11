@@ -82,6 +82,11 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   double? _whatsappPrice;
   double? _smsPricePerSegment;
   int _smsSegments = 1;
+  SmsEncodingInfo _smsEncodingInfo = const SmsEncodingInfo(
+    encoding: SmsEncoding.gsm7,
+    septetLength: 0,
+    offendingCharacters: <String>{},
+  );
   final PhotoUploadUtil _photoUtil = PhotoUploadUtil();
   bool uploadingImage = false;
   PromotionsViewModel get viewModel => widget.viewModel;
@@ -100,6 +105,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       includeWhatsApp = pre.includeWhatsApp;
       includeSMS = pre.includeSMS;
       _smsSegments = SMSPricingUtil.calculateSegments(pre.smsContent);
+      _smsEncodingInfo = SMSPricingUtil.classify(pre.smsContent.trim());
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -144,6 +150,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   void _calculateSmsPricing(String text) {
     setState(() {
       _smsSegments = SMSPricingUtil.calculateSegments(text);
+      _smsEncodingInfo = SMSPricingUtil.classify(text.trim());
     });
   }
 
@@ -293,6 +300,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           whatsappPrice: _whatsappPrice,
           smsPricePerSegment: _smsPricePerSegment,
           smsSegments: _smsSegments,
+          smsEncodingInfo: _smsEncodingInfo,
           onSmsPricingUpdate: _calculateSmsPricing,
           shopName: viewModel.shopName,
         );
@@ -307,6 +315,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           whatsappPrice: _whatsappPrice,
           smsPricePerSegment: _smsPricePerSegment,
           smsSegments: _smsSegments,
+          smsEncodingInfo: _smsEncodingInfo,
           shopName: viewModel.shopName,
         );
     }
