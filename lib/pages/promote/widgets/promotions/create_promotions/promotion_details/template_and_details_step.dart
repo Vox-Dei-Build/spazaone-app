@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/templates/template_picker_card.dart';
+import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 
 /// Step 1 of the Run Promotion wizard.
@@ -23,6 +26,14 @@ class TemplateAndDetailsStep extends StatefulWidget {
   final double? smsPricePerSegment;
   final VoidCallback onCreateTemplate;
 
+  // PAS-UX-rel #5 (Option B): optional product link. The wizard owns
+  // the selection state — this step is purely presentational. Passing
+  // `null` hides nothing (an "Add product" tile is always shown so the
+  // affordance is discoverable); passing a [LinkedProductRef] swaps
+  // the tile to a "linked product" chip with an unlink action.
+  final LinkedProductRef? linkedProduct;
+  final ValueChanged<LinkedProductRef?> onLinkedProductChanged;
+
   const TemplateAndDetailsStep({
     super.key,
     required this.selectedTemplateId,
@@ -36,6 +47,8 @@ class TemplateAndDetailsStep extends StatefulWidget {
     required this.whatsappPrice,
     required this.smsPricePerSegment,
     required this.onCreateTemplate,
+    required this.linkedProduct,
+    required this.onLinkedProductChanged,
   });
 
   @override
@@ -77,9 +90,15 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasTemplates = widget.templates.isNotEmpty;
-    final approvedCount = widget.templates
-        .where((t) => t['channels']?['whatsapp']?['approved'] == true)
-        .length;
+    // Use the canonical `templateStatusOf().isUsable` reader so this gate
+    // honours the `approvalStatus` string lifecycle (draft / pending /
+    // approved / rejected / submission_failed) the rest of the Promote
+    // surface relies on. The previous raw `approved == true` check missed
+    // templates whose status had only the new string set, which is why
+    // freshly-approved templates sometimes appeared as "still pending"
+    // until the user switched tabs and forced a reload.
+    final approvedCount =
+        widget.templates.where((t) => templateStatusOf(t).isUsable).length;
     final hasApproved = approvedCount > 0;
 
     final selected = _selectedTemplate;
@@ -124,7 +143,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           _EmptyTemplatesState(onCreate: widget.onCreateTemplate)
         else ...[
           if (!hasApproved)
-            _InlineNotice(
+            const _InlineNotice(
               icon: Icons.hourglass_top,
               color: Colors.orange,
               message:
@@ -141,8 +160,41 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
 
         SizedBox(height: SizeConfig.heightMultiplier * 3),
 
+        // ── Section: Linked product (optional) ───────────────────────────
+        // PAS-UX-rel #5 Option B. Audit feedback from release testers
+        // was that promotions felt "abstract" — they could see what
+        // message went out but couldn't tell at a glance what product
+        // the promotion was about when reviewing reports later. A
+        // single optional product link addresses that without forcing
+        // merchants who run generic announcements (e.g. "we're open
+        // late this weekend") to attach one.
+        //
+        // We intentionally show the affordance even when nothing is
+        // linked yet so it's discoverable; tap opens the picker. Once
+        // a product is linked the tile becomes a summary chip with an
+        // unlink action.
+        const _SectionHeader(
+          title: 'Link a product (optional)',
+          subtitle:
+              'Attach the product this promotion is about. Helps you remember later — and we\'ll use it in reports.',
+        ),
+        const SizedBox(height: 8),
+        _ProductLinkTile(
+          linked: widget.linkedProduct,
+          onPick: () async {
+            final picked = await ProductPickerSheet.show(
+              context,
+              currentlyLinkedProductId: widget.linkedProduct?.id,
+            );
+            if (picked != null) widget.onLinkedProductChanged(picked);
+          },
+          onUnlink: () => widget.onLinkedProductChanged(null),
+        ),
+
+        SizedBox(height: SizeConfig.heightMultiplier * 3),
+
         // ── Section: Channels ────────────────────────────────────────────
-        _SectionHeader(
+        const _SectionHeader(
           title: 'Choose channels',
           subtitle: 'WhatsApp is cheaper and richer. SMS is a fallback.',
         ),
@@ -180,7 +232,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         // ── Section: Preview ─────────────────────────────────────────────
         if (selected != null && waContent.isNotEmpty) ...[
           SizedBox(height: SizeConfig.heightMultiplier * 3),
-          _SectionHeader(
+          const _SectionHeader(
             title: 'Preview',
             subtitle:
                 'How your message will look to a customer named "[Customer Name]".',
@@ -292,8 +344,8 @@ class _ChannelTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
           color: value
-              ? theme.colorScheme.primary.withOpacity(0.4)
-              : theme.dividerColor.withOpacity(0.4),
+              ? theme.colorScheme.primary.withValues(alpha: 0.4)
+              : theme.dividerColor.withValues(alpha: 0.4),
         ),
       ),
       child: SwitchListTile(
@@ -354,9 +406,9 @@ class _InlineNotice extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,7 +418,7 @@ class _InlineNotice extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: TextStyle(color: color.withOpacity(0.9), fontSize: 13),
+              style: TextStyle(color: color.withValues(alpha: 0.9), fontSize: 13),
             ),
           ),
         ],
@@ -385,10 +437,10 @@ class _EmptyTemplatesState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withOpacity(0.04),
+        color: theme.colorScheme.primary.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.2),
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
           style: BorderStyle.solid,
         ),
       ),
@@ -416,6 +468,144 @@ class _EmptyTemplatesState extends StatelessWidget {
             label: const Text('Create your first template'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Compact tile shown in step 1 of the Run Promotion wizard for
+/// linking a product. Two visual states:
+///   * empty — "Add product" affordance with a chevron, opens picker.
+///   * linked — name / price / image thumb with an unlink action.
+///
+/// This is intentionally not a full Card with a switch; the merchant
+/// should always be able to either pick or change at a tap, with the
+/// "linked" state communicated by content rather than a toggle. See
+/// product_picker_sheet.dart for the sheet implementation.
+class _ProductLinkTile extends StatelessWidget {
+  final LinkedProductRef? linked;
+  final VoidCallback onPick;
+  final VoidCallback onUnlink;
+
+  const _ProductLinkTile({
+    required this.linked,
+    required this.onPick,
+    required this.onUnlink,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isLinked = linked != null;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isLinked
+              ? theme.colorScheme.primary.withValues(alpha: 0.4)
+              : theme.dividerColor.withValues(alpha: 0.4),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onPick,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              _LinkedThumb(image: linked?.imageUrl),
+              const SizedBox(width: 12),
+              Expanded(
+                child: isLinked
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            linked!.name,
+                            style: theme.textTheme.bodyLarge
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            linked!.sellingPrice != null
+                                ? CurrencyUtil.format(linked!.sellingPrice!)
+                                : 'No price set',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: linked!.sellingPrice != null
+                                  ? theme.colorScheme.primary
+                                  : theme.disabledColor,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add a product',
+                            style: theme.textTheme.bodyLarge
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Tap to choose from your stock',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: theme.disabledColor),
+                          ),
+                        ],
+                      ),
+              ),
+              if (isLinked)
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Unlink product',
+                  onPressed: onUnlink,
+                )
+              else
+                const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LinkedThumb extends StatelessWidget {
+  final String? image;
+  const _LinkedThumb({this.image});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (image == null || image!.isEmpty) {
+      return Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(Icons.inventory_2_outlined, color: theme.disabledColor),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        image!,
+        width: 44,
+        height: 44,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: 44,
+          height: 44,
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: Icon(Icons.broken_image, color: theme.disabledColor),
+        ),
       ),
     );
   }

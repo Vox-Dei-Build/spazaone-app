@@ -15,7 +15,7 @@ class StockPage extends StatefulWidget {
   const StockPage({super.key});
 
   @override
-  _StockPageState createState() => _StockPageState();
+  State<StockPage> createState() => _StockPageState();
 }
 
 class _StockPageState extends State<StockPage>
@@ -80,8 +80,16 @@ class _StockPageState extends State<StockPage>
                       // the two page-scoped actions into a single kebab
                       // menu so PageHeader still renders one inline
                       // action slot like every other page does.
+                      //
+                      // PAS-UX-rel #4: the kebab now sits in
+                      // PageHeader's `trailingWidget` slot — the true
+                      // far-right of the header — rather than the
+                      // mid-row `actionWidget` slot. The midline
+                      // placement read as "page action competing with
+                      // the wallet pill"; iOS / Material convention is
+                      // a top-right overflow, so we follow that.
                       PageHeader(
-                        actionWidget: PopupMenuButton<_StockHeaderAction>(
+                        trailingWidget: PopupMenuButton<_StockHeaderAction>(
                           tooltip: 'More',
                           icon: Icon(
                             Icons.more_vert,

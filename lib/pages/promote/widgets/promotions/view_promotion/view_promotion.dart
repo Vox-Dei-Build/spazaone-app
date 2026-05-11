@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
@@ -65,7 +66,7 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
                   setState(() => _actionLoading = true);
                   final success =
                       await vm.deletePromotion(promo['id'] as String);
-                  if (!mounted) return;
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(success
@@ -74,6 +75,7 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
                     ),
                   );
                   if (success) {
+                    if (!context.mounted) return;
                     Navigator.of(context).pop();
                   }
                 },
@@ -95,6 +97,23 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
                     style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.4),
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 1),
+                  // PAS-UX-rel #5: show the linked product (if any)
+                  // above the review/preview so merchants reviewing
+                  // a saved promotion can immediately see what it
+                  // was about. We read from the denormalized snapshot
+                  // stored on the promotion doc (see
+                  // PromotionsViewModel.savePromotion), so this keeps
+                  // working even if the underlying product was later
+                  // edited or deleted in stock.
+                  if (LinkedProductRef.fromMap(
+                          promo['linkedProduct'] as Map<String, dynamic>?) !=
+                      null) ...[
+                    _LinkedProductChip(
+                      ref: LinkedProductRef.fromMap(
+                          promo['linkedProduct'] as Map<String, dynamic>?)!,
+                    ),
+                    SizedBox(height: SizeConfig.heightMultiplier * 1),
+                  ],
                   Expanded(
                     child: ReviewAndPricingStep(
                       templateContent: vm.currentTemplateContent,
@@ -122,6 +141,71 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// Compact "this promotion is about X" chip shown at the top of a
+/// saved promotion view. Reads from the denormalized snapshot stored
+/// on the promotion document — see [PromotionsViewModel.savePromotion]
+/// for why we copy fields onto the promo (the short version: so the
+/// view doesn't silently break if the product is later edited or
+/// deleted).
+class _LinkedProductChip extends StatelessWidget {
+  final LinkedProductRef ref;
+  const _LinkedProductChip({required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.06),
+        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          if (ref.imageUrl != null && ref.imageUrl!.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(
+                ref.imageUrl!,
+                width: 36,
+                height: 36,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.inventory_2_outlined,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            )
+          else
+            Icon(Icons.inventory_2_outlined,
+                color: theme.colorScheme.primary, size: 28),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'About this product',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.disabledColor),
+                ),
+                Text(
+                  ref.name,
+                  style: theme.textTheme.bodyLarge
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

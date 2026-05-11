@@ -17,6 +17,7 @@ import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 
 enum SalesViewType { cash, online }
 
@@ -85,28 +86,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     });
   }
 
-  // Replace your helper with this:
-  double _scrollBottomPadding(BuildContext context) {
-    final m = MediaQuery.of(context);
-
-    // Which FABs are visible?
-    final onSalesTab = _mainController.index == 0;
-    final onMarketingTab = _mainController.index == 1;
-
-    final cashFabVisible =
-        onSalesTab && _selectedSalesView == SalesViewType.cash;
-    final marketingFabVisible =
-        onMarketingTab; // both Marketing views show an extended FAB in your code
-
-    final fabVisible = cashFabVisible || marketingFabVisible;
-
-    // Material defaults: 56 for normal FAB (yours on Sales), ~48–56 for extended.
-    final fabHeight = fabVisible ? 56.0 : 0.0;
-    const fabMargin = 16.0;
-
-    return m.padding.bottom + fabHeight + fabMargin;
-  }
-
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -149,17 +128,17 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   segmentedButtonTheme:
                                       SegmentedButtonThemeData(
                                     style: ButtonStyle(
-                                      backgroundColor: MaterialStateProperty
+                                      backgroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.green
                                             : Colors.white,
                                       ),
-                                      foregroundColor: MaterialStateProperty
+                                      foregroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.white
                                             : Colors.black87,
                                       ),
@@ -290,17 +269,17 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   segmentedButtonTheme:
                                       SegmentedButtonThemeData(
                                     style: ButtonStyle(
-                                      backgroundColor: MaterialStateProperty
+                                      backgroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.green
                                             : Colors.white,
                                       ),
-                                      foregroundColor: MaterialStateProperty
+                                      foregroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                MaterialState.selected)
+                                                WidgetState.selected)
                                             ? Colors.white
                                             : Colors.black87,
                                       ),
@@ -419,13 +398,20 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
             )
           : FloatingActionButton.extended(
               onPressed: () async {
-                final result = await Navigator.of(context).push(
+                final result =
+                    await Navigator.of(context).push<TemplateSubmitResult>(
                   MaterialPageRoute(
                     builder: (_) => CreateTemplatePage(viewModel: promoVM),
                   ),
                 );
                 if (!mounted) return;
-                if (result == true) {
+                // Both outcomes succeed the same way (refresh the list).
+                // The Sales surface has no Templates tab to route to, so
+                // "View pending templates" can't be honoured strictly
+                // from here — refreshing is the best we can do without
+                // pushing the user into an unrelated page they didn't
+                // ask to be in.
+                if (result != null) {
                   await promoVM.loadTemplatesData();
                 }
               },

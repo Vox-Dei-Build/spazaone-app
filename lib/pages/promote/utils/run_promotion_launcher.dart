@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/utils/auth_util.dart';
 
 /// PAS-UX-09: single source of truth for launching the Run Promotion
@@ -87,7 +88,7 @@ class RunPromotionLauncher {
       return;
     }
 
-    await Navigator.of(context).push(
+    final wizardResult = await Navigator.of(context).push<TemplateSubmitResult>(
       MaterialPageRoute(
         builder: (_) => RunPromotionPage(
           initialTemplateId: initialTemplateId,
@@ -96,6 +97,17 @@ class RunPromotionLauncher {
     );
     if (!context.mounted) return;
     await viewModel.fetchPromotionsReports();
+
+    // If, while the wizard was open, the merchant created a new
+    // template and chose "View pending templates", the wizard pops
+    // with [TemplateSubmitResult.viewPending]. Route them to the
+    // Templates surface so the action means what it says — without
+    // this, the two terminal buttons on the success page collapsed
+    // to the same outcome (the bug PAS-UX flagged for release).
+    if (wizardResult == TemplateSubmitResult.viewPending &&
+        onGoToTemplates != null) {
+      onGoToTemplates();
+    }
   }
 
   static Future<void> _showNoApprovedDialog(

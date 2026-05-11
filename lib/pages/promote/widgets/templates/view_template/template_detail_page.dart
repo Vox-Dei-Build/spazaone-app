@@ -8,6 +8,7 @@ import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 
@@ -92,7 +93,7 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
     final wa = widget.template['channels']?['whatsapp'] as Map<String, dynamic>?;
     final sms = widget.template['channels']?['sms'] as Map<String, dynamic>?;
 
-    final result = await Navigator.of(context).push<bool>(
+    final result = await Navigator.of(context).push<TemplateSubmitResult>(
       MaterialPageRoute(
         builder: (_) => CreateTemplatePage(
           viewModel: widget.viewModel,
@@ -111,7 +112,10 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
       ),
     );
 
-    if (result == true && mounted) {
+    // Both terminal outcomes (Done / View pending) mean the new
+    // submission was saved successfully — the cleanup of the old
+    // rejected/failed doc is unconditional on a non-null result.
+    if (result != null && mounted) {
       // The new submission lives independently. Delete the old rejected /
       // failed entry so the merchant's library doesn't accumulate dead docs.
       await widget.viewModel
@@ -254,7 +258,7 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
         if (_actionLoading)
           Positioned.fill(
             child: Container(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               child: const Center(child: CircularProgressIndicator()),
             ),
           ),
@@ -313,9 +317,9 @@ class _StatusBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: status.color.withOpacity(0.08),
+        color: status.color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: status.color.withOpacity(0.4)),
+        border: Border.all(color: status.color.withValues(alpha: 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,7 +342,7 @@ class _StatusBanner extends StatelessWidget {
                 Text(
                   _body,
                   style: TextStyle(
-                    color: status.color.withOpacity(0.85),
+                    color: status.color.withValues(alpha: 0.85),
                     fontSize: 12.5,
                     height: 1.35,
                   ),

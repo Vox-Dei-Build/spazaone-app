@@ -14,8 +14,11 @@ import 'package:provider/provider.dart';
 ///
 ///  * `send`      — primary CTA, the dispatcher is allowed to charge.
 ///  * `skip`      — secondary CTA, the action persists but no message is
-///                  sent. The default label is "Don't send" so the UI
-///                  reflects what actually happens.
+///                  sent. The default label is "Save without sending" so
+///                  the UI states the actual outcome rather than what the
+///                  merchant is _not_ doing — the previous "Don't send"
+///                  read close enough to "Cancel" that release testers
+///                  hesitated on it.
 ///  * `dismissed` — sheet closed without an explicit choice (back
 ///                  gesture, scrim, OS interruption). Treated the same
 ///                  as `skip` for side effects; callers should still
@@ -36,7 +39,7 @@ class CostConfirmationSheet extends StatelessWidget {
     Key? key,
     required this.breakdown,
     this.confirmLabel = 'Confirm',
-    this.skipLabel = "Don't send",
+    this.skipLabel = 'Save without sending',
   }) : super(key: key);
 
   /// Tri-state variant. Prefer this for any caller that needs to
@@ -46,7 +49,7 @@ class CostConfirmationSheet extends StatelessWidget {
     BuildContext context, {
     required CostBreakdown breakdown,
     String confirmLabel = 'Send',
-    String skipLabel = "Don't send",
+    String skipLabel = 'Save without sending',
   }) async {
     final result = await showModalBottomSheet<CostSheetOutcome>(
       context: context,
@@ -73,7 +76,7 @@ class CostConfirmationSheet extends StatelessWidget {
     BuildContext context, {
     required CostBreakdown breakdown,
     String confirmLabel = 'Confirm',
-    String skipLabel = "Don't send",
+    String skipLabel = 'Save without sending',
   }) async {
     final outcome = await showOutcome(
       context,
@@ -242,8 +245,8 @@ class CostConfirmationSheet extends StatelessWidget {
               padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
               decoration: BoxDecoration(
                 color: canAfford
-                    ? Colors.green.withOpacity(0.08)
-                    : Colors.orange.withOpacity(0.10),
+                    ? Colors.green.withValues(alpha: 0.08)
+                    : Colors.orange.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(

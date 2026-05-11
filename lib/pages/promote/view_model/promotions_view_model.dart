@@ -20,6 +20,22 @@ class PromotionsViewModel extends ChangeNotifier {
   bool loadingPromotions = false;
   List<Map<String, dynamic>> promotionsReports = [];
 
+  /// Count of customers that were filtered out by [fetchCustomers] because
+  /// they have no usable phone number. Exposed so the customer-selection
+  /// step can surface a small "X customers hidden (no number)" hint
+  /// rather than silently dropping them.
+  int customersWithoutNumberCount = 0;
+
+  /// Returns true if [customer] has a non-empty `number` field. Used to
+  /// keep numberless customers out of the promotion recipient list
+  /// (they would be skipped at send time anyway — there's no value in
+  /// letting the merchant pick them as recipients).
+  static bool customerHasNumber(Map<String, dynamic> customer) {
+    final raw = customer['number'];
+    if (raw == null) return false;
+    return raw.toString().trim().isNotEmpty;
+  }
+
   // -- TEMPLATES
   List<Map<String, dynamic>> _templates = [];
   List<Map<String, dynamic>> get templates => _templates;
@@ -152,11 +168,21 @@ class PromotionsViewModel extends ChangeNotifier {
           .collection('customers')
           .get();
 
-      customers = snapshot.docs.map((doc) {
+      final all = snapshot.docs.map((doc) {
         final data = doc.data();
         data['id'] = doc.id;
         return data;
       }).toList();
+
+      // Promotions can only be delivered to customers with a phone
+      // number. Numberless customers used to appear in the recipient
+      // list as selectable rows, get included in `selectAllCustomers`,
+      // and then get silently dropped by the send path — leaving the
+      // merchant with a mismatched "selected vs delivered" count and
+      // no explanation. Filter at the source so the UI, "select all",
+      // and pricing breakdown all agree on the same recipient set.
+      customers = all.where(customerHasNumber).toList();
+      customersWithoutNumberCount = all.length - customers.length;
 
       notifyListeners();
     } catch (e) {
@@ -253,6 +279,14 @@ class PromotionsViewModel extends ChangeNotifier {
     required bool sendWhatsApp,
     required bool sendSMS,
     required bool testMode,
+    // PAS-UX-rel #5: optional product link. We store both the id
+    // (canonical pointer back to `users/{uid}/products/{id}`) and a
+    // denormalized snapshot of the fields the UI needs to render the
+    // linked-product chip on saved promotions. The snapshot is what
+    // keeps the saved promo from silently breaking if the merchant
+    // later edits or deletes the product. Backend doesn't need to
+    // know about this field — it's UI metadata only.
+    Map<String, dynamic>? linkedProduct,
   }) async {
     _sendingPromotion = true;
     notifyListeners();
@@ -267,6 +301,7 @@ class PromotionsViewModel extends ChangeNotifier {
         'testMode': testMode,
         'status': 'saved',
         'createdAt': FieldValue.serverTimestamp(),
+        if (linkedProduct != null) 'linkedProduct': linkedProduct,
       });
       await fetchPromotionsReports();
       return docRef.id; // ← return the new ID
