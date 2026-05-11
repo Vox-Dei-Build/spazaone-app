@@ -176,7 +176,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     final smsContent = _smsContentController.text;
 
     final variables = <String>{};
-    final exp = RegExp('{{\s*([A-Za-z0-9_]+)\s*}}');
+    final exp = RegExp(r'{{\s*([A-Za-z0-9_]+)\s*}}');
     for (final match in exp.allMatches(whatsappContent + smsContent)) {
       variables.add(match.group(1)!);
     }
@@ -218,8 +218,14 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
 
       if (mounted) {
         // Replace the wizard with a "what happens next" success screen,
-        // then pop both back to wherever the wizard was launched from.
-        // Returns `true` to the original caller so it can refresh.
+        // then propagate the merchant's terminal choice back to the
+        // launcher so it can route correctly.
+        //
+        // The two callbacks pop different [TemplateSubmitResult] values
+        // so callers can tell "I'm done, take me back" apart from
+        // "show me the pending templates" — the previous flow popped
+        // `true` for both, which collapsed the two intents into the
+        // same callsite behaviour.
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => TemplateSubmittedSuccessPage(
@@ -228,8 +234,10 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
                       ? 'your template'
                       : _sanitizedName)
                   : _templateNameController.text.trim(),
-              onDone: () => Navigator.of(context).pop(true),
-              onViewPending: () => Navigator.of(context).pop(true),
+              onDone: () => Navigator.of(context)
+                  .pop(TemplateSubmitResult.doneCreating),
+              onViewPending: () => Navigator.of(context)
+                  .pop(TemplateSubmitResult.viewPending),
             ),
           ),
         );
@@ -381,8 +389,8 @@ class _RejectionReasonBanner extends StatelessWidget {
       margin: const EdgeInsets.only(top: 8, bottom: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.08),
-        border: Border.all(color: Colors.red.withOpacity(0.4)),
+        color: Colors.red.withValues(alpha: 0.08),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(

@@ -14,10 +14,19 @@ class LedgerMainContent extends StatelessWidget {
   final LedgerViewModel ledgerViewModel;
   final ValueNotifier<int> tabIndexNotifier;
 
+  /// Optional in-flow card rendered between the page header / tab bar
+  /// and the tab content. Used by the LedgerPage to host the
+  /// onboarding checklist (PAS-UX-02) below the actual page rhythm
+  /// rather than as a top-of-page banner. Pre-release feedback flagged
+  /// the old top-of-page placement as visually disconnected from the
+  /// rest of the surface.
+  final Widget? belowHeaderCard;
+
   const LedgerMainContent({
     Key? key,
     required this.ledgerViewModel,
     required this.tabIndexNotifier,
+    this.belowHeaderCard,
   }) : super(key: key);
 
   @override
@@ -52,6 +61,10 @@ class LedgerMainContent extends StatelessWidget {
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             LedgerTabBarWithFilter(tabIndexNotifier: tabIndexNotifier),
+            // In-flow slot for cards that should sit inside the page
+            // rhythm (after the tab context) rather than crowning the
+            // page above the header.
+            if (belowHeaderCard != null) belowHeaderCard!,
             Expanded(
               child: TabBarView(
                 children: [

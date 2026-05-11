@@ -12,6 +12,11 @@ import 'package:pasella/shared/widgets/wallet_balance_pill.dart';
 ///   3. Account/value: wallet balance pill (always visible, with breathing
 ///      room so its rounded shape doesn't visually merge with adjacent icons)
 ///   4. System: settings + connectivity status
+///   5. Optional `trailingWidget` — pinned to the true far right of the
+///      header, after the system cluster. Use this when a page has a
+///      contextual action that should read as a system-level affordance
+///      (e.g. the Stock kebab) rather than competing with the wallet
+///      pill in the middle of the row.
 ///
 /// Width strategy: every element renders at its natural size and is sized to
 /// fit comfortably even on narrow Android screens (~360dp). The brand is
@@ -22,10 +27,20 @@ class PageHeader extends StatelessWidget {
   final VoidCallback? onSearchTap;
   final Widget? actionWidget;
 
+  /// Optional widget rendered at the true far-right of the header, after
+  /// the system cluster (settings + connectivity).
+  ///
+  /// Use this for page-level overflow menus where the user expectation
+  /// is "the dots are in the corner". `actionWidget` is positioned
+  /// before the wallet pill, which is correct for inline search-style
+  /// affordances but reads off-balance for a three-dot menu.
+  final Widget? trailingWidget;
+
   const PageHeader({
     Key? key,
     this.onSearchTap,
     this.actionWidget,
+    this.trailingWidget,
   }) : super(key: key);
 
   @override
@@ -96,6 +111,12 @@ class PageHeader extends StatelessWidget {
           ),
           SizedBox(width: tightGap),
           const ConnectivityIndicator(),
+
+          // ── Optional trailing slot (true far-right) ────────────
+          if (trailingWidget != null) ...[
+            SizedBox(width: tightGap),
+            trailingWidget!,
+          ],
         ],
       ),
     );

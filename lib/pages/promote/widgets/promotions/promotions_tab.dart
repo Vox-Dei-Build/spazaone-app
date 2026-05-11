@@ -23,13 +23,39 @@ class _PromotionsTabState extends State<PromotionsTab> {
       return const Center(child: CircularProgressIndicator());
     }
     final promos = vm.promotionsReports;
-    if (promos.isEmpty) {
-      return const Center(child: Text("No saved promotions."));
+
+    // Wrap in a RefreshIndicator so merchants have a familiar way to
+    // force-refresh while waiting on backend state (promotion status
+    // moving from 'processing' to 'sent', template approval flipping
+    // upstream of the next automatic reload, etc.). The pull pulls
+    // both the templates list and the promotions list so the names
+    // shown against each promo card stay in sync.
+    Future<void> onRefresh() async {
+      await Future.wait([
+        vm.fetchPromotionsReports(),
+        vm.loadTemplatesData(),
+      ]);
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(8),
-      itemCount: promos.length,
+    if (promos.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 120),
+            Center(child: Text("No saved promotions.")),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(8),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: promos.length,
       itemBuilder: (ctx, i) {
         final promo = promos[i];
         final created = (promo['createdAt'] as Timestamp).toDate();
@@ -219,6 +245,7 @@ class _PromotionsTabState extends State<PromotionsTab> {
           ),
         );
       },
+      ),
     );
   }
 }

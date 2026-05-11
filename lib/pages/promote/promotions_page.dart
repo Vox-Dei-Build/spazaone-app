@@ -7,6 +7,7 @@ import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotion_tab_item.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
 import 'package:pasella/pages/promote/widgets/templates/view_template/template_detail_page.dart';
@@ -18,11 +19,11 @@ class PromotionsPage extends StatefulWidget {
   static const id = '/promotionsPage';
 
   @override
-  _PromotionsPageState createState() => _PromotionsPageState();
+  State<PromotionsPage> createState() => _PromotionsPageState();
 }
 
 class _PromotionsPageState extends State<PromotionsPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabController;
   late final List<TabItem> _tabs;
   int _previousTabIndex = 0;
@@ -30,6 +31,17 @@ class _PromotionsPageState extends State<PromotionsPage>
   @override
   void initState() {
     super.initState();
+
+    // PAS-UX-rel: template approval state lives upstream of the app
+    // (Twilio + WhatsApp review) and used to only refresh when the
+    // user explicitly tab-switched or pulled the list. If a merchant
+    // backgrounded the app while waiting on approval and then
+    // returned, they'd still see the old "pending" state until they
+    // poked the UI. Observing the lifecycle lets us reload templates
+    // (and the promotions list, since template names hang off it)
+    // the moment the app comes back to foreground while we're on
+    // this surface.
+    WidgetsBinding.instance.addObserver(this);
 
     _tabs = [
       TabItem(
@@ -57,12 +69,23 @@ class _PromotionsPageState extends State<PromotionsPage>
         fabLabel: 'Create Template',
         fabIcon: Icons.library_books_outlined,
         onTap: (ctx, vm) async {
-          final result = await Navigator.of(ctx).push(MaterialPageRoute(
+          final result =
+              await Navigator.of(ctx).push<TemplateSubmitResult>(
+                  MaterialPageRoute(
             builder: (_) => CreateTemplatePage(viewModel: vm),
           ));
-          _tabController.animateTo(1);
-          if (result == true) {
-            if (!mounted) return;
+          if (!mounted) return;
+          // The two outcomes are distinct: "Done" returns the merchant
+          // to the Templates tab they launched from; "View pending
+          // templates" also lands on Templates (same tab) but we
+          // explicitly switch so the contract is honoured even if a
+          // future caller pushes from elsewhere.
+          if (result == TemplateSubmitResult.viewPending) {
+            _tabController.animateTo(1);
+          } else {
+            _tabController.animateTo(1);
+          }
+          if (result != null) {
             // Success / "what happens next" UX is now handled inside the
             // create flow via TemplateSubmittedSuccessPage. We only need to
             // refresh the list here.
@@ -150,10 +173,28 @@ class _PromotionsPageState extends State<PromotionsPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController
       ..removeListener(_onTabChanged)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    if (!mounted) return;
+    final vm = context.read<PromotionsViewModel>();
+    // Refresh whatever is on-screen. Both lists are cheap one-shot
+    // reads; we deliberately stop short of a Firestore stream
+    // refactor because the audit (#3c) recommended the targeted
+    // refresh first.
+    if (_tabController.index == 0) {
+      vm.loadInitialData();
+    } else {
+      vm.loadTemplatesData();
+    }
   }
 
   @override
