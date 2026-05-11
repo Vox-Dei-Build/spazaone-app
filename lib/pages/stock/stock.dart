@@ -15,7 +15,7 @@ class StockPage extends StatefulWidget {
   const StockPage({super.key});
 
   @override
-  _StockPageState createState() => _StockPageState();
+  State<StockPage> createState() => _StockPageState();
 }
 
 class _StockPageState extends State<StockPage>
@@ -80,8 +80,16 @@ class _StockPageState extends State<StockPage>
                       // the two page-scoped actions into a single kebab
                       // menu so PageHeader still renders one inline
                       // action slot like every other page does.
+                      //
+                      // PAS-UX-rel #4: the kebab now sits in
+                      // PageHeader's `trailingWidget` slot — the true
+                      // far-right of the header — rather than the
+                      // mid-row `actionWidget` slot. The midline
+                      // placement read as "page action competing with
+                      // the wallet pill"; iOS / Material convention is
+                      // a top-right overflow, so we follow that.
                       PageHeader(
-                        actionWidget: PopupMenuButton<_StockHeaderAction>(
+                        trailingWidget: PopupMenuButton<_StockHeaderAction>(
                           tooltip: 'More',
                           icon: Icon(
                             Icons.more_vert,
@@ -98,16 +106,7 @@ class _StockPageState extends State<StockPage>
                                 );
                                 break;
                               case _StockHeaderAction.help:
-                                final url = TutorialConfig.getTutorialUrl(
-                                    TutorialConfig.TUTORIAL_CAPTURE_STOCK);
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => LoomVideoPage(
-                                      loomUrl: url,
-                                      title: 'How to Capture Stock',
-                                    ),
-                                  ),
-                                );
+                                _openTutorial();
                                 break;
                             }
                           },
@@ -160,6 +159,15 @@ class _StockPageState extends State<StockPage>
                               viewModel: viewModel,
                               groupName:
                                   null, // Set groupname to null so that all products show up
+                              // PAS-UX-04: empty-state recovery — wire
+                              // the same affordances the FAB + kebab
+                              // expose so a first-time merchant on an
+                              // empty catalogue has an inline path to
+                              // either add their first product or watch
+                              // the walkthrough, instead of staring at
+                              // a dead "No products available" label.
+                              onAddProduct: () => _openNewProduct(),
+                              onWatchTutorial: () => _openTutorial(),
                             ),
                             ProductReportsTab(viewModel: viewModel),
                           ],
@@ -180,18 +188,7 @@ class _StockPageState extends State<StockPage>
     return tabIndex == 0
         ? FloatingActionButton.extended(
             elevation: 3.0,
-            onPressed: () {
-              Navigator.of(context)
-                  .push(
-                MaterialPageRoute(
-                  builder: (context) => const NewProductPage(),
-                ),
-              )
-                  .then((_) {
-                // snap back to “Product Page” tab when you pop
-                _tabController.animateTo(0);
-              });
-            },
+            onPressed: _openNewProduct,
             icon: Icon(
               Icons.add_outlined,
               color: Colors.white,
@@ -206,6 +203,38 @@ class _StockPageState extends State<StockPage>
             ),
           )
         : Container();
+  }
+
+  /// PAS-UX-04: shared launcher used by both the FAB and the empty-state
+  /// "Add your first product" CTA so the two affordances can never
+  /// drift in behaviour.
+  void _openNewProduct() {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(
+        builder: (context) => const NewProductPage(),
+      ),
+    )
+        .then((_) {
+      // snap back to "Product Page" tab when you pop
+      _tabController.animateTo(0);
+    });
+  }
+
+  /// PAS-UX-04: shared launcher for the capture-stock walkthrough so the
+  /// kebab "How to capture stock" and the empty-state "Watch a 2-min
+  /// walkthrough" link land on the same tutorial.
+  void _openTutorial() {
+    final url =
+        TutorialConfig.getTutorialUrl(TutorialConfig.TUTORIAL_CAPTURE_STOCK);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LoomVideoPage(
+          loomUrl: url,
+          title: 'How to Capture Stock',
+        ),
+      ),
+    );
   }
 }
 

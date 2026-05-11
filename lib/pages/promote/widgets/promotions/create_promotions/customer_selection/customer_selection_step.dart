@@ -10,6 +10,12 @@ class CustomerSelectionStep extends StatelessWidget {
   final ValueChanged<bool> onAllCustomersChanged;
   final ValueChanged<String> onCustomerToggle;
 
+  /// Number of customers filtered out of [customers] because they have
+  /// no phone number. Shown as an inline notice so the merchant
+  /// understands why their customer count here can be smaller than on
+  /// the Ledger page.
+  final int hiddenWithoutNumberCount;
+
   const CustomerSelectionStep({
     Key? key,
     required this.allCustomers,
@@ -17,6 +23,7 @@ class CustomerSelectionStep extends StatelessWidget {
     required this.selectedCustomerIds,
     required this.onAllCustomersChanged,
     required this.onCustomerToggle,
+    this.hiddenWithoutNumberCount = 0,
   }) : super(key: key);
 
   @override
@@ -28,6 +35,37 @@ class CustomerSelectionStep extends StatelessWidget {
             style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: SizeConfig.textMultiplier * 2)),
+        if (hiddenWithoutNumberCount > 0)
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: SizeConfig.imageSizeMultiplier * 2,
+              vertical: SizeConfig.heightMultiplier * 0.5,
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.10),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.45)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      size: 18, color: Colors.amber),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      hiddenWithoutNumberCount == 1
+                          ? '1 customer is hidden because they have no phone number.'
+                          : '$hiddenWithoutNumberCount customers are hidden because they have no phone number.',
+                      style: const TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         CheckboxListTile(
             controlAffinity: ListTileControlAffinity.leading,
             value: allCustomers,

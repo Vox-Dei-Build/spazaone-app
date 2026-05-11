@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +49,23 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
   OrderStatus _status = OrderStatus.all;
   DateTimeRange? _range;
 
+  // PAS-UX-13: in-memory cache of the unfiltered server result.
+  //
+  // Audit found every keystroke in the search field re-invoked the
+  // `getCustomerOrders` cloud function, even though status / range
+  // / query filtering all happen client-side via applyClientFilters.
+  // We now fetch from the server exactly once per page lifetime
+  // (and on explicit refresh), then re-filter the cached list
+  // synchronously on every input change.
+  List<OrderModel>? _allOrders;
+
+  // PAS-UX-13: 350ms debounce on search input. Even though
+  // filtering is now local, debouncing keeps the chip/summary
+  // re-render off the keystroke hot path so the keyboard stays
+  // responsive on low-end Android.
+  Timer? _searchDebounce;
+  static const Duration _searchDebounceDuration = Duration(milliseconds: 350);
+
   // dependencies
   late final OrdersRepository _repo;
 
@@ -63,40 +82,70 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
       auth: FirebaseAuth.instance,
       functions: FirebaseFunctions.instance,
     );
-    _ordersFuture = _fetchOrders();
+    _ordersFuture = _loadOrders();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtl.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  Future<List<OrderModel>> _fetchOrders() async {
+  /// Returns a future of the filtered order list.
+  ///
+  /// When [forceServer] is true (pull-to-refresh), the cached
+  /// [_allOrders] is discarded and the cloud function is hit again.
+  /// Otherwise the cached list is reused and only the client-side
+  /// filters are re-applied.
+  Future<List<OrderModel>> _loadOrders({bool forceServer = false}) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw Exception('Not signed in');
 
-    final list = await _repo.fetchCustomerOrders(
-      merchantId: uid,
-      customerId: widget.customerId,
-    );
+    if (forceServer || _allOrders == null) {
+      _allOrders = await _repo.fetchCustomerOrders(
+        merchantId: uid,
+        customerId: widget.customerId,
+      );
+    }
 
     return applyClientFilters(
-      list,
+      _allOrders!,
       status: _status,
       query: _query,
       range: _range,
     );
   }
 
-  Future<void> _refresh() async {
-    final future = _fetchOrders(); // start async work
+  /// Re-applies status/query/range filters against the cached list
+  /// without touching the server. Cheap and synchronous in practice
+  /// because applyClientFilters is in-memory.
+  void _applyFilters() {
     setState(() {
-      // update state synchronously
+      _ordersFuture = _loadOrders();
+    });
+  }
+
+  Future<void> _refresh() async {
+    final future = _loadOrders(forceServer: true);
+    setState(() {
       _ordersFuture = future;
     });
-    await future; // let RefreshIndicator wait correctly
+    await future;
+  }
+
+  /// Debounced search handler.
+  ///
+  /// Cancels any in-flight debounce and schedules a new filter pass
+  /// 350ms after the most recent keystroke. The trailing edge wins
+  /// so a fast typist only causes one re-render.
+  void _onSearchChanged(String txt) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(_searchDebounceDuration, () {
+      _query = txt.trim();
+      _applyFilters();
+    });
   }
 
   Future<void> _pickDateRange() async {
@@ -109,17 +158,13 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
       saveText: 'Apply',
     );
     if (picked == null) return;
-    setState(() {
-      _range = picked;
-      _ordersFuture = _fetchOrders();
-    });
+    _range = picked;
+    _applyFilters();
   }
 
   void _clearDateRange() {
-    setState(() {
-      _range = null;
-      _ordersFuture = _fetchOrders();
-    });
+    _range = null;
+    _applyFilters();
   }
 
   @override
@@ -140,10 +185,8 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
               selected: _status,
               onSelected: (s) {
                 if (_status == s) return;
-                setState(() {
-                  _status = s;
-                  _ordersFuture = _fetchOrders();
-                });
+                _status = s;
+                _applyFilters();
               },
             );
           },
@@ -161,10 +204,7 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
                 child: OrderSearchField(
                   controller: _searchCtl,
                   hint: 'Search by order #…',
-                  onChanged: (txt) {
-                    _query = txt.trim();
-                    _refresh();
-                  },
+                  onChanged: _onSearchChanged,
                 ),
               ),
               SizedBox(width: SizeConfig.imageSizeMultiplier * 2),

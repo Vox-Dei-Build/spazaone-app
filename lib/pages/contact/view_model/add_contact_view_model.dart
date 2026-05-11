@@ -7,10 +7,13 @@ import 'dart:io';
 
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
+import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
@@ -131,6 +134,13 @@ class AddContactViewModel extends ChangeNotifier {
 
       if (existing.docs.isNotEmpty) {
         _setLoading(false);
+        // PAS-UX-16: blocked-create sub-event. The audit asked for
+        // duplicate-number signal because it's been a recurring
+        // confusion point in support; merchants tap Confirm again
+        // when nothing visible happens.
+        // ignore: unawaited_futures
+        TelemetryService.instance
+            .capture(const CustomerCreateBlocked(reason: 'duplicate_number'));
         final existingDoc = existing.docs.first;
         final existingData = existingDoc.data();
         final existingName =
@@ -212,9 +222,10 @@ class AddContactViewModel extends ChangeNotifier {
             await MessagingNotificationService.resolveExpectedChannel(
                 mobileNumber);
 
-        // Pre-flight cost confirmation. Cancelling still persists the
-        // contact (already written above); only the welcome message is
-        // skipped.
+        // Pre-flight cost confirmation. Tri-state outcome — explicit
+        // skip is now a labelled action ("Skip & record only"), so the
+        // contact is always saved and the merchant never has to guess
+        // whether the welcome message went out.
         final breakdown = CostBreakdown.singleMessageMultiChannel(
           title: 'Send welcome message to $customerName?',
           subtitle: 'One-time onboarding message',
@@ -222,7 +233,7 @@ class AddContactViewModel extends ChangeNotifier {
           smsCost: smsCost,
           expected: expectedChannel,
         );
-        final userConfirmed = await CostConfirmationSheet.show(
+        final outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
           confirmLabel: 'Send',
@@ -231,13 +242,20 @@ class AddContactViewModel extends ChangeNotifier {
         // Safety net for race conditions on the wallet balance. Use the
         // breakdown's quoted total (the primary channel cost) as the
         // affordability gate — matches what the user just confirmed.
-        final canProceed = userConfirmed &&
+        final canProceed = outcome.shouldSend &&
             await BalanceCheckUtil.checkBalanceAndProceed(
                 context, currentUserId, breakdown.total);
 
         if (canProceed) {
           await _sendSMS(
               currentUserId, docRef.id, customerName, mobileNumber);
+        } else if (outcome.isSilent) {
+          // Contact persisted, no welcome message. Surface the state.
+          showSnackbar(
+            context,
+            'Contact saved. No welcome message sent.',
+            Colors.blueGrey,
+          );
         }
       }
 
@@ -245,6 +263,16 @@ class AddContactViewModel extends ChangeNotifier {
       // Order matters — clear() before the snackbar so the screen looks
       // settled when the toast appears, and snackbar before nav so it
       // queues onto the destination route's ScaffoldMessenger.
+
+      // PAS-UX-16: CustomerCreated must capture hasImage BEFORE we
+      // null out _profileImage as part of the form reset below,
+      // otherwise the event always reports has_image=false.
+      // Fire-and-forget so telemetry can't block the navigator push.
+      final createdWithImage = _profileImage != null;
+      // ignore: unawaited_futures
+      TelemetryService.instance
+          .capture(CustomerCreated(hasImage: createdWithImage));
+
       nameController.clear();
       numberController.clear();
       _profileImage = null;

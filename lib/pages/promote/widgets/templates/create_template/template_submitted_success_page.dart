@@ -3,6 +3,24 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 
+/// Discriminates the two terminal actions on
+/// [TemplateSubmittedSuccessPage] so callers can react differently.
+///
+/// Both outcomes mean the submission was successful — they only differ
+/// in what the merchant wants to do next.
+enum TemplateSubmitResult {
+  /// Merchant tapped "Done". They want to return to whatever they
+  /// were doing before opening the wizard (e.g. continue running a
+  /// promotion, return to the Templates tab, return to Sales).
+  doneCreating,
+
+  /// Merchant tapped "View pending templates". They want to land on
+  /// the Templates tab to watch the new submission's approval state.
+  /// Hosts that have a tabbed surface (PromotionsPage) should switch
+  /// to the Templates tab when they see this value.
+  viewPending,
+}
+
 /// Success / "what happens next" screen shown immediately after a merchant
 /// submits a new WhatsApp template for approval.
 ///
@@ -16,10 +34,12 @@ class TemplateSubmittedSuccessPage extends StatelessWidget {
   final String displayName;
 
   /// Called when the merchant taps "View pending templates". Defaults to
-  /// just popping back to wherever the page was shown from.
+  /// popping with [TemplateSubmitResult.viewPending] so callers can
+  /// distinguish from "Done" and route to the Templates view.
   final VoidCallback? onViewPending;
 
-  /// Called when the merchant taps "Done". Defaults to popping the page.
+  /// Called when the merchant taps "Done". Defaults to popping with
+  /// [TemplateSubmitResult.doneCreating].
   final VoidCallback? onDone;
 
   const TemplateSubmittedSuccessPage({
@@ -45,7 +65,7 @@ class TemplateSubmittedSuccessPage extends StatelessWidget {
               height: 88,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.colorScheme.primary.withOpacity(0.1),
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
               ),
               child: Icon(
                 Icons.send_rounded,
@@ -71,14 +91,14 @@ class TemplateSubmittedSuccessPage extends StatelessWidget {
             SizedBox(height: SizeConfig.heightMultiplier * 4),
 
             // What happens next ────────────────────────────────────────
-            _StepRow(
+            const _StepRow(
               number: 1,
               title: 'WhatsApp reviews it',
               body:
                   'Most templates are approved within a few minutes — sometimes it takes a few hours, occasionally up to 24 hours.',
             ),
             const _StepDivider(),
-            _StepRow(
+            const _StepRow(
               number: 2,
               title: 'We send you a notification',
               body:
@@ -86,7 +106,7 @@ class TemplateSubmittedSuccessPage extends StatelessWidget {
               icon: Icons.notifications_active_outlined,
             ),
             const _StepDivider(),
-            _StepRow(
+            const _StepRow(
               number: 3,
               title: 'Run your first promotion',
               body:
@@ -97,10 +117,25 @@ class TemplateSubmittedSuccessPage extends StatelessWidget {
             const Spacer(),
 
             // Actions ─────────────────────────────────────────────────
+            //
+            // Two genuinely distinct outcomes:
+            //
+            //   * View pending templates → host should land the
+            //     merchant on the Templates tab so they can watch
+            //     the new submission. Pops with
+            //     [TemplateSubmitResult.viewPending].
+            //   * Done → return to wherever the wizard was launched
+            //     from. Pops with [TemplateSubmitResult.doneCreating].
+            //
+            // The two return values are how callers tell the actions
+            // apart; previously both buttons popped `true` and the
+            // host could not respond differently.
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: onViewPending ?? () => Navigator.of(context).pop(),
+                onPressed: onViewPending ??
+                    () => Navigator.of(context)
+                        .pop(TemplateSubmitResult.viewPending),
                 icon: const Icon(Icons.list_alt),
                 label: const Text('View pending templates'),
               ),
@@ -109,7 +144,9 @@ class TemplateSubmittedSuccessPage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: onDone ?? () => Navigator.of(context).pop(),
+                onPressed: onDone ??
+                    () => Navigator.of(context)
+                        .pop(TemplateSubmitResult.doneCreating),
                 child: const Text('Done'),
               ),
             ),
@@ -146,7 +183,7 @@ class _StepRow extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: theme.colorScheme.primary.withOpacity(0.1),
+            color: theme.colorScheme.primary.withValues(alpha: 0.1),
           ),
           child: icon != null
               ? Icon(icon, size: 18, color: theme.colorScheme.primary)
@@ -192,7 +229,7 @@ class _StepDivider extends StatelessWidget {
       child: Container(
         width: 2,
         height: 16,
-        color: Theme.of(context).dividerColor.withOpacity(0.4),
+        color: Theme.of(context).dividerColor.withValues(alpha: 0.4),
         margin: const EdgeInsets.symmetric(vertical: 8),
       ),
     );

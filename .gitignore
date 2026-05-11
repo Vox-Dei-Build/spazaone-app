@@ -65,3 +65,11 @@ app.*.map.json
 
 # FVM Version Cache
 .fvm/
+
+# Per-lane workflow scaffolding (Openclaw lanes drop these at the repo
+# root for the duration of a worktree; they are local context and not
+# meant to ship). Drop or rename if a future workflow needs them in-tree.
+/CHAT_PROMPT.md
+/LANE_CONTEXT.md
+/TASK_PACKET.md
+/OPENCLAW_HANDOFF_PROMPT.md

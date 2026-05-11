@@ -43,18 +43,29 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
         final bool canWithdraw = cashAdvanceBalance > 0 &&
             walletState.hasBankAccount &&
             !walletState.hasPendingPayout;
-        const imageUrl = 'https://picsum.photos/id/10/2500/1667?blur';
-        const imageUrlTwo = 'https://picsum.photos/id/11/2500/1667?blur';
-        const imageUrlThree = 'https://picsum.photos/id/13/2500/1667?blur';
+        // PAS-UX-10: previously these cards loaded blurred Lorem
+        // Picsum stock photos as hero images on a live merchant
+        // payments surface. Picsum is a placeholder service —
+        // shipping it in production looks unfinished, fingerprints
+        // a third-party domain on every render, and (because the
+        // images are random per id) sometimes loaded an irrelevant
+        // photo as the visual for "Get cash advance instantly".
+        // Replaced with branded colour bands keyed off the card's
+        // intent. Real, on-message illustrations can land later as
+        // local assets without changing the card layout.
+        const advanceColor = Color(0xff1c863b); // brand green
+        const eligibilityColor = Color(0xff4d4d4d);
+        const historyColor = Color(0xff2B325F);
 
         return SingleChildScrollView(
           padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              /// 🚀 Request Advance Card
+              /// Request Advance Card
               _buildCard(
-                imageUrl: imageUrl,
+                heroColor: advanceColor,
+                heroIcon: Icons.payments_outlined,
                 title: 'Get cash advance instantly',
                 description:
                     'Need extra cash? Request a cash advance based on your transaction history.',
@@ -79,9 +90,10 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
                 ),
               ),
 
-              /// 💸 Repayment Card
+              /// Repayment Card
               _buildCard(
-                imageUrl: imageUrlTwo,
+                heroColor: eligibilityColor,
+                heroIcon: Icons.account_balance_wallet_outlined,
                 title: 'Repay what you owe',
                 description:
                     'Settle your cash advance now and view your full repayment history.',
@@ -113,9 +125,10 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
                 ),
               ),
 
-              /// 🏦 Withdraw / Move Funds Card
+              /// Withdraw / Move Funds Card
               _buildCard(
-                imageUrl: imageUrlThree,
+                heroColor: historyColor,
+                heroIcon: Icons.account_balance_outlined,
                 title: 'Withdraw',
                 description: 'Withdraw your balance to your bank',
                 primaryBtn: FilledButton.icon(
@@ -172,7 +185,8 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
   }
 
   Widget _buildCard({
-    required String imageUrl,
+    required Color heroColor,
+    required IconData heroIcon,
     required String title,
     required String description,
     required Widget primaryBtn,
@@ -186,14 +200,21 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Card Image
+          // PAS-UX-10: branded hero band replaces the previous
+          // Lorem-Picsum stock-photo network image. Solid colour +
+          // intent-matched icon keeps the card silhouette while
+          // removing third-party network dependency on every render.
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Image.network(
-              imageUrl,
-              height: 160,
+            child: Container(
+              height: 120,
               width: double.infinity,
-              fit: BoxFit.cover,
+              color: heroColor,
+              child: Icon(
+                heroIcon,
+                size: 56,
+                color: Colors.white.withOpacity(0.9),
+              ),
             ),
           ),
 

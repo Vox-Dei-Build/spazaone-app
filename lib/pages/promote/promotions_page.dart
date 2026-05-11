@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/promote_intent_bus.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotion_tab_item.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
-import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
 import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
 import 'package:pasella/pages/promote/widgets/templates/view_template/template_detail_page.dart';
@@ -18,11 +19,11 @@ class PromotionsPage extends StatefulWidget {
   static const id = '/promotionsPage';
 
   @override
-  _PromotionsPageState createState() => _PromotionsPageState();
+  State<PromotionsPage> createState() => _PromotionsPageState();
 }
 
 class _PromotionsPageState extends State<PromotionsPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabController;
   late final List<TabItem> _tabs;
   int _previousTabIndex = 0;
@@ -31,6 +32,17 @@ class _PromotionsPageState extends State<PromotionsPage>
   void initState() {
     super.initState();
 
+    // PAS-UX-rel: template approval state lives upstream of the app
+    // (Twilio + WhatsApp review) and used to only refresh when the
+    // user explicitly tab-switched or pulled the list. If a merchant
+    // backgrounded the app while waiting on approval and then
+    // returned, they'd still see the old "pending" state until they
+    // poked the UI. Observing the lifecycle lets us reload templates
+    // (and the promotions list, since template names hang off it)
+    // the moment the app comes back to foreground while we're on
+    // this surface.
+    WidgetsBinding.instance.addObserver(this);
+
     _tabs = [
       TabItem(
         title: 'Promotions',
@@ -38,12 +50,17 @@ class _PromotionsPageState extends State<PromotionsPage>
         fabLabel: 'Run Promotion',
         fabIcon: Icons.campaign_outlined,
         onTap: (ctx, vm) async {
-          await Navigator.of(ctx).push(MaterialPageRoute(
-            builder: (_) => const RunPromotionPage(),
-          ));
+          // PAS-UX-09: routed through RunPromotionLauncher so the
+          // approval check, dialog, and post-return refresh stay in
+          // one place. The launcher already handles the no-approved
+          // dialog, so the FAB callback no longer needs the
+          // duplicate guard that lived in _buildFloatingActionButton.
+          await RunPromotionLauncher.launch(
+            ctx,
+            viewModel: vm,
+            onGoToTemplates: () => _tabController.animateTo(1),
+          );
           _tabController.animateTo(0);
-          if (!mounted) return;
-          await vm.fetchPromotionsReports();
         },
       ),
       TabItem(
@@ -52,12 +69,23 @@ class _PromotionsPageState extends State<PromotionsPage>
         fabLabel: 'Create Template',
         fabIcon: Icons.library_books_outlined,
         onTap: (ctx, vm) async {
-          final result = await Navigator.of(ctx).push(MaterialPageRoute(
+          final result =
+              await Navigator.of(ctx).push<TemplateSubmitResult>(
+                  MaterialPageRoute(
             builder: (_) => CreateTemplatePage(viewModel: vm),
           ));
-          _tabController.animateTo(1);
-          if (result == true) {
-            if (!mounted) return;
+          if (!mounted) return;
+          // The two outcomes are distinct: "Done" returns the merchant
+          // to the Templates tab they launched from; "View pending
+          // templates" also lands on Templates (same tab) but we
+          // explicitly switch so the contract is honoured even if a
+          // future caller pushes from elsewhere.
+          if (result == TemplateSubmitResult.viewPending) {
+            _tabController.animateTo(1);
+          } else {
+            _tabController.animateTo(1);
+          }
+          if (result != null) {
             // Success / "what happens next" UX is now handled inside the
             // create flow via TemplateSubmittedSuccessPage. We only need to
             // refresh the list here.
@@ -113,15 +141,12 @@ class _PromotionsPageState extends State<PromotionsPage>
 
     // Auto-trigger the Run Promotion flow if requested (and viable).
     if (intent.action == 'run' && !wantsTemplates && mounted) {
-      final hasApproved = vm.templates.any((t) =>
-          (t['channels']?['whatsapp']?['approvalStatus'] == 'approved') ||
-          (t['channels']?['whatsapp']?['approved'] == true));
-      if (hasApproved) {
-        await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => const RunPromotionPage(),
-        ));
-        if (mounted) await vm.fetchPromotionsReports();
-      }
+      // PAS-UX-09: launcher owns the approval check + push + refresh.
+      await RunPromotionLauncher.launch(
+        context,
+        viewModel: vm,
+        onGoToTemplates: () => _tabController.animateTo(1),
+      );
     }
   }
 
@@ -148,10 +173,28 @@ class _PromotionsPageState extends State<PromotionsPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController
       ..removeListener(_onTabChanged)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    if (!mounted) return;
+    final vm = context.read<PromotionsViewModel>();
+    // Refresh whatever is on-screen. Both lists are cheap one-shot
+    // reads; we deliberately stop short of a Firestore stream
+    // refactor because the audit (#3c) recommended the targeted
+    // refresh first.
+    if (_tabController.index == 0) {
+      vm.loadInitialData();
+    } else {
+      vm.loadTemplatesData();
+    }
   }
 
   @override
@@ -214,43 +257,16 @@ class _PromotionsPageState extends State<PromotionsPage>
     PromotionsViewModel vm,
     TabItem current,
   ) {
-    final onPromotionsTab = current.title == 'Promotions';
-    final hasApproved = vm.templates.any((t) =>
-        (t['channels']?['whatsapp']?['approvalStatus'] == 'approved') ||
-        (t['channels']?['sms']?['approved'] == true));
-
+    // PAS-UX-09: previously the FAB ran a second, drifted, copy of
+    // the "any approved templates?" predicate and showed its own
+    // dialog before delegating to the tab's onTap (which would then
+    // push the page anyway). Both pieces are now owned by
+    // RunPromotionLauncher, so the FAB just hands off to the tab's
+    // onTap and the launcher decides whether to push or to show the
+    // no-approved dialog. The Templates tab's onTap is unaffected
+    // because it doesn't touch the launcher.
     return FloatingActionButton.extended(
-      onPressed: () {
-        if (onPromotionsTab && !hasApproved) {
-          // Show dialog instead of running
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('No Approved Templates'),
-              content: const Text(
-                  'You need at least one approved template before you can run a promotion. '
-                  'Head over to the Templates tab to create and approve one.'),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    // switch to Templates tab
-                    _tabController.animateTo(1);
-                  },
-                  child: const Text('Go to Templates'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Cancel'),
-                ),
-              ],
-            ),
-          );
-        } else {
-          // Normal behavior
-          current.onTap(context, vm);
-        }
-      },
+      onPressed: () => current.onTap(context, vm),
       icon: Icon(
         current.fabIcon,
         size: SizeConfig.heightMultiplier * 2.5,

@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/customer_selection/customer_selection_step.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/promotion_details/template_and_details_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/wizard_stepper.dart';
@@ -24,15 +27,26 @@ enum RunPromotionStep {
 // Main Widget
 // ───────────────────────────────────────────────────
 class RunPromotionPage extends StatefulWidget {
-  final Map<String, dynamic>? promoToEdit;
+  /// PAS-UX-06: pre-select a template on first frame.
+  ///
+  /// When the merchant taps "Use this template" on the Templates tab,
+  /// the audit found they were dropped on Step 1 with an empty
+  /// template picker and forced to find the template they had just
+  /// been looking at. This field lets the launcher carry the choice
+  /// across so the wizard opens already on Step 1 with that template
+  /// selected. The merchant can still change it before tapping Next.
+  final String? initialTemplateId;
 
-  /// normal “new” promotion
-  const RunPromotionPage({Key? key})
-      : promoToEdit = null,
-        super(key: key);
+  // PAS-UX-17: removed `promoToEdit` field and `RunPromotionPage.edit`
+  // named constructor. Both were dead -- no callsite anywhere in the
+  // codebase, and `promoToEdit` was never read inside the State. The
+  // wizard has only ever supported the "new promotion" flow; editing
+  // a saved-but-not-sent promotion happens through the existing
+  // promotions tab review path (see PAS-UX-11), not through
+  // re-entering this wizard with a pre-filled draft.
 
-  /// edit mode
-  const RunPromotionPage.edit(this.promoToEdit, {Key? key}) : super(key: key);
+  const RunPromotionPage({Key? key, this.initialTemplateId})
+      : super(key: key);
 
   @override
   State<RunPromotionPage> createState() => _RunPromotionPageState();
@@ -58,13 +72,31 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   bool sendSMS = false;
   bool allCustomers = true;
 
+  // PAS-UX-rel #5: optional product attached to this promotion. Kept
+  // as a single field (not a list) — the audit decision was Option B:
+  // one product per promotion to keep the mental model simple. Null
+  // means "no product attached" and is the default.
+  LinkedProductRef? linkedProduct;
+
   @override
   void initState() {
     super.initState();
+    // PAS-UX-06: honour the launcher-supplied template id so the
+    // merchant arriving from "Use this template" sees their choice
+    // already selected on Step 1.
+    selectedTemplateId = widget.initialTemplateId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final vm = Provider.of<PromotionsViewModel>(context, listen: false);
+      // PAS-UX-rel #3c: targeted refresh on entry. Approval state can
+      // have flipped server-side since the merchant last opened the
+      // Promote surface; without this, they could land on Step 1
+      // looking at a stale "pending" pill on a template that is
+      // actually approved (or vice versa). Cheap one-shot fetch —
+      // we'd reach for a Firestore stream only if this proves
+      // insufficient in practice.
+      vm.loadTemplatesData();
       if (allCustomers) {
-        Provider.of<PromotionsViewModel>(context, listen: false)
-            .selectAllCustomers();
+        vm.selectAllCustomers();
       }
     });
   }
@@ -133,12 +165,17 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       sendWhatsApp: sendWhatsApp,
       sendSMS: sendSMS,
       testMode: false,
+      // PAS-UX-rel #5: persist denormalized product snapshot so the
+      // saved promo can render the linked product even if the
+      // underlying product is later edited/deleted.
+      linkedProduct: linkedProduct?.toMap(),
     );
     if (promoId != null) {
       isSaved = true;
       savedPromotionId = promoId;
       await vm.fetchPromotionsReports();
     }
+    if (!mounted) return;
     setState(() => sending = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -154,25 +191,38 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     setState(() => sending = true);
     await Provider.of<PromotionsViewModel>(context, listen: false)
         .sendSavedPromotion(savedPromotionId!);
+    if (!mounted) return;
     setState(() => sending = false);
-    if (context.mounted) Navigator.pop(context);
+    Navigator.pop(context);
   }
 
   Future<void> _openCreateTemplate() async {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
     final beforeIds = vm.templates.map((t) => t['id']).toSet();
 
-    final created = await Navigator.push<bool>(
+    final result = await Navigator.push<TemplateSubmitResult>(
       context,
       MaterialPageRoute(
         builder: (_) => CreateTemplatePage(viewModel: vm),
       ),
     );
 
-    if (created != true || !mounted) return;
+    if (result == null || !mounted) return;
 
-    // Refresh and try to auto-select the newly-created template if it's
-    // already approved. Otherwise let the user know it's pending.
+    // If the merchant tapped "View pending templates", we owe them a
+    // visit to the Templates tab. Easiest correct path: pop the
+    // promotion wizard back to the host and propagate the result so
+    // the host (PromotionsPage) switches tabs.
+    if (result == TemplateSubmitResult.viewPending) {
+      if (!context.mounted) return;
+      Navigator.of(context).pop(TemplateSubmitResult.viewPending);
+      return;
+    }
+
+    // "Done" path: refresh + try to auto-select the newly-created
+    // template if it's already approved (e.g. previously approved
+    // duplicate). Otherwise leave the picker as-is so the merchant
+    // can see the pending row land in the list.
     await vm.loadTemplatesData();
     if (!mounted) return;
 
@@ -180,13 +230,16 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
         vm.templates.where((t) => !beforeIds.contains(t['id'])).toList();
     if (newTemplates.isEmpty) return;
     final newest = newTemplates.first;
-    final approved = newest['channels']?['whatsapp']?['approved'] == true;
+    // Use canonical reader so we correctly detect newly-approved templates
+    // whose status string was set without flipping the legacy boolean.
+    final approved = templateStatusOf(newest).isUsable;
 
     if (approved) {
       setState(() {
         selectedTemplateId = newest['id'] as String?;
       });
       vm.selectTemplate(newest['id'] as String);
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Selected your new template "${newest['displayName'] ?? newest['name']}".'),
       ));
@@ -284,12 +337,15 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           onWhatsAppChanged: (val) => setState(() => sendWhatsApp = val),
           onSMSChanged: (val) => setState(() => sendSMS = val),
           onCreateTemplate: _openCreateTemplate,
+          linkedProduct: linkedProduct,
+          onLinkedProductChanged: (p) => setState(() => linkedProduct = p),
         );
 
       case RunPromotionStep.customerSelection:
         return CustomerSelectionStep(
           allCustomers: allCustomers,
           customers: vm.customers,
+          hiddenWithoutNumberCount: vm.customersWithoutNumberCount,
           selectedCustomerIds: vm.selectedCustomerIds.toSet(),
           onAllCustomersChanged: (val) {
             setState(() {

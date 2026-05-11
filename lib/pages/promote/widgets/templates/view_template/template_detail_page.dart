@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
+import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 
@@ -60,6 +62,28 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
     }
   }
 
+  /// PAS-UX-06: jump from template preview straight into the
+  /// promotion wizard with this template pre-selected.
+  ///
+  /// The detail page stays in the navigation stack underneath. If
+  /// the merchant cancels the wizard they land back on the template
+  /// they were considering, which matches the mental model "I was
+  /// previewing this and changed my mind". On successful send the
+  /// wizard pops itself; the merchant is back on the detail page
+  /// and a single back tap returns them to Templates. We don't
+  /// auto-pop the detail because we deliberately don't want to
+  /// strip context from a merchant who might want to read the
+  /// preview again before sending to a different segment.
+  Future<void> _useThisTemplate() async {
+    final templateId = widget.template['id']?.toString();
+    if (templateId == null || templateId.isEmpty) return;
+    await RunPromotionLauncher.launch(
+      context,
+      viewModel: widget.viewModel,
+      initialTemplateId: templateId,
+    );
+  }
+
   /// Opens the Create Template wizard pre-filled with this template's
   /// content. Twilio doesn't allow editing a submitted template — under the
   /// hood this creates a new submission, but to the user it feels like an
@@ -69,7 +93,7 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
     final wa = widget.template['channels']?['whatsapp'] as Map<String, dynamic>?;
     final sms = widget.template['channels']?['sms'] as Map<String, dynamic>?;
 
-    final result = await Navigator.of(context).push<bool>(
+    final result = await Navigator.of(context).push<TemplateSubmitResult>(
       MaterialPageRoute(
         builder: (_) => CreateTemplatePage(
           viewModel: widget.viewModel,
@@ -88,7 +112,10 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
       ),
     );
 
-    if (result == true && mounted) {
+    // Both terminal outcomes (Done / View pending) mean the new
+    // submission was saved successfully — the cleanup of the old
+    // rejected/failed doc is unconditional on a non-null result.
+    if (result != null && mounted) {
       // The new submission lives independently. Delete the old rejected /
       // failed entry so the merchant's library doesn't accumulate dead docs.
       await widget.viewModel
@@ -160,6 +187,34 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
                 ),
               ),
             ),
+          // PAS-UX-06: "Use this template" momentum shortcut.
+          //
+          // Audit found the Templates tab was a dead-end: a merchant
+          // browsing templates and deciding "I want to send this one"
+          // had to back out, switch to the Promotions tab, tap the
+          // FAB, and re-pick the same template from a dropdown. The
+          // launcher now accepts an initialTemplateId so we can drop
+          // the merchant straight into the wizard with their choice
+          // already selected. Approved-only because non-approved
+          // templates can't be sent (the no-approved dialog would
+          // bounce them right back).
+          if (status.isUsable)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _useThisTemplate,
+                  icon: const Icon(Icons.send),
+                  label: const Text('Use this template'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ),
           SizedBox(height: SizeConfig.heightMultiplier * 2),
           Text('Created: $formattedDate', textAlign: TextAlign.center),
           SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -203,7 +258,7 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
         if (_actionLoading)
           Positioned.fill(
             child: Container(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               child: const Center(child: CircularProgressIndicator()),
             ),
           ),
@@ -262,9 +317,9 @@ class _StatusBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: status.color.withOpacity(0.08),
+        color: status.color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: status.color.withOpacity(0.4)),
+        border: Border.all(color: status.color.withValues(alpha: 0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,7 +342,7 @@ class _StatusBanner extends StatelessWidget {
                 Text(
                   _body,
                   style: TextStyle(
-                    color: status.color.withOpacity(0.85),
+                    color: status.color.withValues(alpha: 0.85),
                     fontSize: 12.5,
                     height: 1.35,
                   ),

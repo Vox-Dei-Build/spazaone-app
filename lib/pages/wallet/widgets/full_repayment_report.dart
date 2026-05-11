@@ -17,11 +17,16 @@ class FullRepaymentReportPage extends StatefulWidget {
 
 class _FullRepaymentReportPage extends State<FullRepaymentReportPage> {
   late WalletState walletState;
+  // PAS-UX-12: compute the fee breakdown once instead of spawning
+  // three sibling FutureBuilders that each hit RemoteConfig in
+  // parallel and resolve at different frames.
+  late Future<WalletBreakdown> _breakdown;
 
   @override
   void initState() {
     super.initState();
     walletState = widget.walletState;
+    _breakdown = WalletUtils.computeBreakdown(walletState);
   }
 
   @override
@@ -30,82 +35,67 @@ class _FullRepaymentReportPage extends State<FullRepaymentReportPage> {
       appBar: const CustomAppBar(title: 'Cash Advance Report'),
       body: Padding(
         padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text('Overview',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: SizeConfig.textMultiplier * 2)),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
-            _infoRow('Total Given',
-                CurrencyUtil.format(walletState.totalCashAdvanceGiven)),
-            _infoRow('Total Repaid',
-                CurrencyUtil.format(walletState.totalCashAdvanceRepaid)),
-            FutureBuilder<String>(
-              future: WalletUtils.calculateAdvanceFee(walletState),
-              builder: (context, snapshot) {
-                final value = snapshot.data ?? '...';
-                return _infoRow('Fee Charged', value);
-              },
-            ),
-            FutureBuilder<String>(
-              future: WalletUtils.calculateBankFee(walletState),
-              builder: (context, snapshot) {
-                final value = snapshot.data ?? '...';
-                return _infoRow('Bank Fee', value);
-              },
-            ),
-            _infoRow(
-                'Penalty Applied', WalletUtils.formatPenaltyFee(walletState)),
-            FutureBuilder<String>(
-              future: WalletUtils.calculateTotalOwedWithPenaltyAndBankFee(
-                  walletState),
-              builder: (context, snapshot) {
-                final due = snapshot.data ?? '...';
-                return _infoRow('Current Due', due);
-              },
-            ),
-            _infoRow(
-                'Suspended', WalletUtils.formatSuspendedStatus(walletState)),
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
-            Text('Repayment History',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: SizeConfig.textMultiplier * 2)),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Expanded(
-              child: ListView.builder(
-                itemCount: walletState.repaymentHistory.length,
-                itemBuilder: (context, index) {
-                  final repayment = walletState.repaymentHistory[index];
-                  return Card(
-                    margin: EdgeInsets.only(
-                        bottom: SizeConfig.heightMultiplier * 1.5),
-                    child: ListTile(
-                      title: Text(
-                          CurrencyUtil.format(
-                              (repayment['amount'] as num).toDouble()),
-                          style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.8,
-                            fontWeight: FontWeight.bold,
-                          )),
-                      subtitle: Text(
-                          'Date: ${DateFormat('dd MMM yyyy').format(repayment['date'])}\n'
-                          'Method: ${repayment['method']}\n'
-                          'Status: ${repayment['status']}',
-                          style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.6,
-                          )),
-                      trailing: Text(repayment['reference'],
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+        child: FutureBuilder<WalletBreakdown>(
+          future: _breakdown,
+          builder: (context, snapshot) {
+            final b = snapshot.data ?? WalletBreakdown.loading;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text('Overview',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: SizeConfig.textMultiplier * 2)),
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                _infoRow('Total Given',
+                    CurrencyUtil.format(walletState.totalCashAdvanceGiven)),
+                _infoRow('Total Repaid',
+                    CurrencyUtil.format(walletState.totalCashAdvanceRepaid)),
+                _infoRow('Fee Charged', b.advanceFee),
+                _infoRow('Bank Fee', b.bankFee),
+                _infoRow('Penalty Applied', b.penaltyFee),
+                _infoRow('Current Due', b.totalOwed),
+                _infoRow('Suspended', b.suspended),
+                SizedBox(height: SizeConfig.heightMultiplier * 3),
+                Text('Repayment History',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: SizeConfig.textMultiplier * 2)),
+                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: walletState.repaymentHistory.length,
+                    itemBuilder: (context, index) {
+                      final repayment = walletState.repaymentHistory[index];
+                      return Card(
+                        margin: EdgeInsets.only(
+                            bottom: SizeConfig.heightMultiplier * 1.5),
+                        child: ListTile(
+                          title: Text(
+                              CurrencyUtil.format(
+                                  (repayment['amount'] as num).toDouble()),
+                              style: TextStyle(
+                                fontSize: SizeConfig.textMultiplier * 1.8,
+                                fontWeight: FontWeight.bold,
+                              )),
+                          subtitle: Text(
+                              'Date: ${DateFormat('dd MMM yyyy').format(repayment['date'])}\n'
+                              'Method: ${repayment['method']}\n'
+                              'Status: ${repayment['status']}',
+                              style: TextStyle(
+                                fontSize: SizeConfig.textMultiplier * 1.6,
+                              )),
+                          trailing: Text(repayment['reference'],
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey)),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
