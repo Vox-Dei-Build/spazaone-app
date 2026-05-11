@@ -107,11 +107,16 @@ String constructMessageFromTemplate(
     QueuedSMS sms, double balance, String shopName) {
   String template = sms.message;
 
-  // Replace placeholders with actual values
+  // Replace placeholders with actual values.
+  //
+  // SMS-safe currency formatting (no U+00A0 thousands separator) — see
+  // `docs/openclaw/pas-sms-01-template-segment-audit.md` (F-2). Using
+  // `CurrencyUtil.format` here would inject U+00A0 for any value >= R1 000
+  // and silently force the body into UCS-2 segmentation.
   return template
-      .replaceAll("{balance}", CurrencyUtil.format(balance))
+      .replaceAll("{balance}", CurrencyUtil.formatForSms(balance))
       .replaceAll("{shopName}", shopName)
       .replaceAll("{customerName}", sms.customerName)
       .replaceAll('{amount}',
-          sms.amount != null ? CurrencyUtil.format(sms.amount!) : 'R0.0');
+          sms.amount != null ? CurrencyUtil.formatForSms(sms.amount!) : 'R0,00');
 }

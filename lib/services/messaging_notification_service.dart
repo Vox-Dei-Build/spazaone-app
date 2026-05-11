@@ -60,7 +60,14 @@ class MessagingNotificationService {
       String? phoneNumber = results[0] as String?;
       String shopName = results[1] as String? ?? 'Pasella';
       double balance = results[2] as double;
-      String formattedBalance = CurrencyUtil.format(balance);
+      // SMS-safe formatting: avoids U+00A0 thousands separator from
+      // NumberFormat('en_ZA') which would force UCS-2 segmentation on any
+      // body containing the balance (and silently double the SMS segment
+      // count for balances >= R1 000). The WhatsApp template variables
+      // below intentionally keep the locale-formatted value because
+      // WhatsApp does not have GSM-7/UCS-2 segmentation.
+      String formattedBalance = CurrencyUtil.formatForSms(balance);
+      String formattedBalanceDisplay = CurrencyUtil.format(balance);
 
       if (phoneNumber == null || !isValidSAPhoneNumber(phoneNumber)) {
         eventBus.fire(SMSEvent("Invalid phone number.", success: false));
@@ -91,7 +98,7 @@ class MessagingNotificationService {
           "customerName": customerName,
           "amount": amount,
           "shopName": shopName,
-          "balance": formattedBalance,
+          "balance": formattedBalanceDisplay,
         });
 
         if (messageId != null) {
@@ -117,14 +124,14 @@ class MessagingNotificationService {
                   "customerName": customerName,
                   "amount": amount,
                   "shopName": shopName,
-                  "balance": formattedBalance,
+                  "balance": formattedBalanceDisplay,
                 }),
                 phoneNumber: phoneNumber,
                 customerDetails: {
                   "customerName": customerName,
                   "amount": amount,
                   "shopName": shopName,
-                  "balance": formattedBalance,
+                  "balance": formattedBalanceDisplay,
                 },
                 messageCost: pricingService.whatsappUtilityPrice,
                 templateKey: templateSid,
@@ -449,16 +456,21 @@ class MessagingNotificationService {
       if (transactionType == 'Credit') {
         templateSid = credit_transaction;
         inAppNotification = InAppNotifications.creditTransactionNotification;
+        // SMS-safe currency formatting in the substituted body. The
+        // WhatsApp `amount` argument passed to `sendFormattedMessage`
+        // below keeps the locale-formatted display form because the
+        // WhatsApp template content is rendered server-side and not
+        // subject to GSM-7/UCS-2 segmentation.
         message = SMSMessages.creditConfirmationShort
             .replaceAll('{customerName}', customerName)
-            .replaceAll('{amount}', CurrencyUtil.format(amount));
+            .replaceAll('{amount}', CurrencyUtil.formatForSms(amount));
         messageCost = pricingService.smsReminderTemplatePrice;
       } else {
         templateSid = payment_transaction;
         inAppNotification = InAppNotifications.paymentTransactionNotification;
         message = SMSMessages.paymentConfirmationShort
             .replaceAll('{customerName}', customerName)
-            .replaceAll('{amount}', CurrencyUtil.format(amount));
+            .replaceAll('{amount}', CurrencyUtil.formatForSms(amount));
         messageCost = pricingService.smsPaymentTemplatePrice;
       }
 
