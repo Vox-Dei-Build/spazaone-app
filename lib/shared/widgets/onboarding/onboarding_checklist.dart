@@ -31,7 +31,11 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 ///   `onboarding_checklist:<userId>` -> Map<String, bool>
 /// The banner is hidden when:
 ///   - the user has explicitly dismissed it, OR
-///   - all four items are marked done.
+///   - at least three of the four items are marked done.
+///
+/// Hiding at 3/4 keeps the checklist focused on early activation.
+/// Once a merchant has completed most of the setup, the banner stops
+/// competing with the actual working surface.
 ///
 /// Out of scope (deferred, see PAS-UX-02 audit notes):
 ///
@@ -123,13 +127,13 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
     _persist();
   }
 
-  bool get _allDone => _state.values.every((v) => v);
-
   int get _completedCount => _state.values.where((v) => v).length;
+
+  bool get _shouldHideChecklist => _completedCount >= 3;
 
   @override
   Widget build(BuildContext context) {
-    if (_dismissed || _allDone) return const SizedBox.shrink();
+    if (_dismissed || _shouldHideChecklist) return const SizedBox.shrink();
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
