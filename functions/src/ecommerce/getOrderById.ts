@@ -27,7 +27,9 @@ export const getOrderById = functions.https.onCall(async (data) => {
     return {
       id: snap.id,
       status: orderData.status || "pending",
-      total: Number(orderData.amount ?? 0),
+      total: Number(
+        orderData.amount ?? orderData.total ?? orderData.saleTotal ?? 0,
+      ),
       itemsCount: Number(
         orderData.itemsCount ??
           (orderData.products && typeof orderData.products === "object"
