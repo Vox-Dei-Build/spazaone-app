@@ -5,6 +5,12 @@ import { computeCartSig } from "./cartSig";
 
 type PaymentType = "Cash" | "Online" | "BNPL" | string;
 
+function idempotencyDocId(value: string | null): string | null {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  return encodeURIComponent(normalized).slice(0, 500);
+}
+
 export const checkoutCart = functions.https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
     res.status(405).send("Method Not Allowed");
@@ -40,6 +46,41 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     }
 
     const ptype = String(paymentType || "").toLowerCase();
+    const idempotencyId = idempotencyDocId(idempotencyKey);
+    const idempotencyRef = idempotencyId
+      ? db
+          .collection("users")
+          .doc(merchantId)
+          .collection("checkoutIdempotency")
+          .doc(idempotencyId)
+      : null;
+
+    if (idempotencyRef) {
+      const existing = await idempotencyRef.get();
+      const existingSaleId = existing.exists
+        ? String(existing.get("saleId") || "")
+        : "";
+      if (existingSaleId) {
+        const saleSnap = await db
+          .collection("users")
+          .doc(merchantId)
+          .collection("sales")
+          .doc(existingSaleId)
+          .get();
+        if (saleSnap.exists) {
+          const sale = saleSnap.data() || {};
+          res.status(200).json({
+            success: true,
+            idempotent: true,
+            saleId: existingSaleId,
+            total: Number(sale.amount ?? sale.total ?? 0),
+            itemsCount: Number(sale.itemsCount ?? 0),
+            status: String(sale.status || "pending"),
+          });
+          return;
+        }
+      }
+    }
 
     const cartDoc = db
       .collection("users")
@@ -261,6 +302,19 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       },
       { merge: true },
     );
+
+    if (idempotencyRef) {
+      await idempotencyRef.set(
+        {
+          saleId: saleRef.id,
+          customerId,
+          cartSig,
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+    }
 
     // after creating saleRef and saving the sale (no stock, no clear)
     await db
