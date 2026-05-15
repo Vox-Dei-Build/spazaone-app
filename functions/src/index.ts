@@ -35,6 +35,8 @@ export * from "./customer_hub/addCredit";
 export * from "./customer_hub/fetchUserBalance";
 export * from "./customer_hub/fetchTransactionHistory";
 export * from "./customer_hub/fetchMerchantCandidates";
+export * from "./customer_hub/getCustomerStatementBotHttp";
+export * from "./customer_hub/getAccountSummaryBotHttp";
 
 /* ---- Merchant Bot ---- */
 export * from "./merchant_hub/order/airtime/createAirtimeOrder";
@@ -75,6 +77,7 @@ export * from "./ecommerce/cancelOrder";
 export * from "./ecommerce/finalizeOnlinePaid";
 export * from "./ecommerce/getOnlineSalesFromLedger";
 export * from "./ecommerce/getShopContextBotHttp";
+export * from "./ecommerce/getMerchantCatalogBotHttp";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
 /* import { fixProductsContentType } from './utils/fix-content-type'
 

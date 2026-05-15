@@ -117,22 +117,36 @@ export const getOnlineSalesFromLedger = functions.https.onRequest(
       const limit = Math.min(Number(data.limit ?? 100), 200);
       const startIso = data.startDate as string | undefined;
       const endIso = data.endDate as string | undefined;
+      const orderId = String(data.orderId || "");
+      const referenceFilter = String(data.reference || "");
 
       if (!merchantId) {
         res.status(400).json({ error: "merchantId is required" });
         return;
       }
 
-      const ledSnap = await db
+      const ledgerCol = db
         .collection("users")
         .doc(merchantId)
-        .collection("salesLedger")
-        .where("provider", "==", "paystack")
-        .orderBy("createdAt", "desc")
-        .limit(limit)
-        .get();
+        .collection("salesLedger");
 
-      let rows = ledSnap.docs.map((d) => {
+      let ledgerDocs: FirebaseFirestore.DocumentSnapshot[] = [];
+      if (referenceFilter) {
+        const refSnap = await ledgerCol.doc(referenceFilter).get();
+        ledgerDocs = refSnap.exists ? [refSnap] : [];
+      } else if (orderId) {
+        const bySale = await ledgerCol.where("saleId", "==", orderId).get();
+        ledgerDocs = bySale.docs;
+      } else {
+        const ledSnap = await ledgerCol
+          .where("provider", "==", "paystack")
+          .orderBy("createdAt", "desc")
+          .limit(limit)
+          .get();
+        ledgerDocs = ledSnap.docs;
+      }
+
+      let rows = ledgerDocs.map((d) => {
         const x: AnyMap = d.data() || {};
         return {
           _refId: d.id,
@@ -148,6 +162,14 @@ export const getOnlineSalesFromLedger = functions.https.onRequest(
           createdAt: x.createdAt || x.paidAt || null,
         };
       });
+
+      if (orderId) rows = rows.filter((r) => r.saleId === orderId);
+      if (referenceFilter) {
+        rows = rows.filter(
+          (r) =>
+            r.reference === referenceFilter || r._refId === referenceFilter,
+        );
+      }
 
       if (startIso || endIso) {
         const start = startIso ? new Date(startIso) : null;

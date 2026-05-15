@@ -20,21 +20,29 @@ class ConnectManagementViewModel {
   }
 
   bool isDisposed = false;
+  bool _isInitialized = false;
+  bool _isFetching = false;
+  bool _pollingStarted = false;
+  bool _hasLoadedOnce = false;
+  Future<void>? _initFuture;
   final ValueNotifier<bool> loadingNotifier = ValueNotifier(false);
   late TwilioService _twilio;
   late BotpressService _botpress;
   Timer? _poll;
 
   ConnectManagementViewModel(this.customerId) {
-    _init();
+    _initFuture = _init();
   }
 
   Future<void> _init() async {
     _twilio = await TwilioService.create();
     _botpress = await BotpressService.create();
+    _isInitialized = true;
   }
 
   void _startPolling() {
+    if (_pollingStarted) return;
+    _pollingStarted = true;
     _poll?.cancel();
     // first fetch immediately
     _fetchMessages();
@@ -45,16 +53,23 @@ class ConnectManagementViewModel {
   }
 
   Future<void> _fetchMessages() async {
-    if (isDisposed) return;
+    if (isDisposed || _isFetching) return;
 
     try {
-      loadingNotifier.value = true;
+      _isFetching = true;
+      if (!_hasLoadedOnce) loadingNotifier.value = true;
+
+      if (!_isInitialized) {
+        await (_initFuture ??= _init());
+        if (isDisposed) return;
+      }
 
       // Resolve & normalize the customer number used across both systems
       final customerNumber =
           await fetchAndFormatPhoneNumber(currentUserId, customerId);
       if (customerNumber == null || customerNumber.isEmpty) {
         _controller.add(const []);
+        _hasLoadedOnce = true;
         loadingNotifier.value = false;
         return;
       }
@@ -64,24 +79,25 @@ class ConnectManagementViewModel {
       final twilioMessagingServiceId =
           rc.getString('TWILIO_MESSAGING_SERVICE_ID');
 
-      // 1) Twilio SMS (existing functions). Make sure they return maps with:
-      //    id/sid, message, dateSent (DateTime), direction, isSMS=true
-      final sentSms = await _twilio.fetchMessagesToCustomer(
-        customerNumber: customerNumber,
-        currentUserId: currentUserId,
-        customerId: customerId,
-      );
+      final results = await Future.wait([
+        _twilio.fetchMessagesToCustomer(
+          customerNumber: customerNumber,
+          currentUserId: currentUserId,
+          customerId: customerId,
+        ),
+        _twilio.fetchMessagesFromCustomer(
+          customerNumber: customerNumber,
+          twilioSmsNumber: twilioSmsNumber,
+          twilioMessagingServiceId: twilioMessagingServiceId,
+        ),
+        _botpress.fetchBotpressMessages(
+          customerNumber: customerNumber,
+        ),
+      ]);
 
-      final receivedSms = await _twilio.fetchMessagesFromCustomer(
-        customerNumber: customerNumber,
-        twilioSmsNumber: twilioSmsNumber,
-        twilioMessagingServiceId: twilioMessagingServiceId,
-      );
-
-      // 2) Botpress WhatsApp
-      final wa = await _botpress.fetchBotpressMessages(
-        customerNumber: customerNumber,
-      );
+      final sentSms = results[0];
+      final receivedSms = results[1];
+      final wa = results[2];
 
       // ---- Merge + Dedupe ----
       final cutOff = DateTime(2024, 1, 1);
@@ -129,11 +145,13 @@ class ConnectManagementViewModel {
       _applyReadHeuristics(all);
 
       if (!isDisposed) _controller.add(all);
+      _hasLoadedOnce = true;
     } catch (e, stack) {
       // ignore: avoid_print
       print('🔥 Error fetching messages: $e\n$stack');
       if (!isDisposed) _controller.add(const []);
     } finally {
+      _isFetching = false;
       if (!isDisposed) loadingNotifier.value = false;
     }
   }
@@ -296,7 +314,7 @@ class ConnectManagementViewModel {
     isDisposed = true;
     _poll?.cancel();
     loadingNotifier.dispose();
-    _botpress.dispose();
+    if (_isInitialized) _botpress.dispose();
     _controller.close();
   }
 }

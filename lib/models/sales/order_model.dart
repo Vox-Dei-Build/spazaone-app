@@ -16,6 +16,12 @@ DateTime? _asDate(dynamic v) {
   return null;
 }
 
+double _asDouble(dynamic v) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v) ?? 0.0;
+  return 0.0;
+}
+
 class OrderModel {
   final String id;
   final String status;
@@ -60,7 +66,7 @@ class OrderModel {
     return OrderModel(
       id: m['id'] as String,
       status: (m['status'] ?? '') as String,
-      total: (m['total'] ?? 0).toDouble(),
+      total: _asDouble(m['total']),
       itemsCount: (m['itemsCount'] as num?)?.toInt(),
       createdAt: created,
       type: m['type'] as String?,

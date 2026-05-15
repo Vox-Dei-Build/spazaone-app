@@ -29,7 +29,7 @@ export const getCustomerOrders = functions.https.onCall(async (data) => {
       const s: any = d.data() || {};
 
       // Normalize counts/amount
-      const total = Number(s.amount ?? 0);
+      const total = Number(s.amount ?? s.total ?? s.saleTotal ?? 0);
       const itemsCount = Number(
         s.itemsCount ??
           (s.products && typeof s.products === "object"
@@ -42,7 +42,7 @@ export const getCustomerOrders = functions.https.onCall(async (data) => {
 
       // --- NEW: collected signals (be generous)
       const statusStr = String(s.status || "").toLowerCase();
-      const collectedAt = s.collectedAt || s.pickupAt || null; // support either field
+      const collectedAt = s.collectedAt || s.fulfilledAt || null;
       const collected =
         s.collected === true || !!collectedAt || statusStr === "collected";
 

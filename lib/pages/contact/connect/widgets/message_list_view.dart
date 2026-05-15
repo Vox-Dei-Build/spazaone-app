@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
-import 'package:sticky_headers/sticky_headers.dart';
 import 'message_card.dart';
 
 class MessagesListView extends StatefulWidget {
@@ -22,14 +21,33 @@ class MessagesListView extends StatefulWidget {
 
 class _MessagesListViewState extends State<MessagesListView> {
   final ScrollController _scrollController = ScrollController();
+  int _lastMessageCount = 0;
 
   @override
   void initState() {
     super.initState();
+    _lastMessageCount = widget.messages.length;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Delay to ensure long lists + sticky headers finish layout
       Future.delayed(const Duration(milliseconds: 100), scrollToBottom);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant MessagesListView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.messages.length != _lastMessageCount) {
+      _lastMessageCount = widget.messages.length;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 50), scrollToBottom);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void scrollToBottom({int retry = 0}) {
@@ -50,13 +68,22 @@ class _MessagesListViewState extends State<MessagesListView> {
     }
   }
 
-  Map<String, List<Map<String, dynamic>>> _groupMessagesByDate() {
-    Map<String, List<Map<String, dynamic>>> groupedMessages = {};
-    for (var message in widget.messages) {
-      final dateKey = DateFormat('yyyy-MM-dd').format(message['dateSent']);
-      groupedMessages.putIfAbsent(dateKey, () => []).add(message);
+  List<_MessageRow> _buildRows() {
+    final rows = <_MessageRow>[];
+    String? currentDateKey;
+
+    for (final message in widget.messages) {
+      final date = _asDate(message['dateSent']);
+      if (date == null) continue;
+
+      final dateKey = DateFormat('yyyy-MM-dd').format(date);
+      if (dateKey != currentDateKey) {
+        rows.add(_MessageRow.header(dateKey));
+        currentDateKey = dateKey;
+      }
+      rows.add(_MessageRow.message(message));
     }
-    return groupedMessages;
+    return rows;
   }
 
   String _formatDate(String date) {
@@ -72,32 +99,29 @@ class _MessagesListViewState extends State<MessagesListView> {
 
   @override
   Widget build(BuildContext context) {
-    final groupedMessages = _groupMessagesByDate();
-    final sortedDates = groupedMessages.keys.toList()
-      ..sort((a, b) => a.compareTo(
-          b)); // Oldest at top, newest at bottom (WhatsApp-style clearly!)
+    final rows = _buildRows();
 
     return ListView.builder(
       controller: _scrollController,
-      itemCount: sortedDates.length,
+      itemCount: rows.length,
       itemBuilder: (context, index) {
-        final date = sortedDates[index];
-        final messages = groupedMessages[date]!;
-
-        return StickyHeader(
-          header: _buildDateHeader(_formatDate(date)),
-          content: Column(
-            children: messages
-                .map((msg) => MessageCard(
-                      msg,
-                      profileImageUrl: widget.profileImageUrl,
-                      customerName: widget.customerName,
-                    ))
-                .toList(),
-          ),
+        final row = rows[index];
+        if (row.dateKey != null) {
+          return _buildDateHeader(_formatDate(row.dateKey!));
+        }
+        return MessageCard(
+          row.message!,
+          profileImageUrl: widget.profileImageUrl,
+          customerName: widget.customerName,
         );
       },
     );
+  }
+
+  DateTime? _asDate(dynamic value) {
+    if (value is DateTime) return value;
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
   }
 
   Widget _buildDateHeader(String date) {
@@ -119,4 +143,16 @@ class _MessagesListViewState extends State<MessagesListView> {
       ),
     );
   }
+}
+
+class _MessageRow {
+  final String? dateKey;
+  final Map<String, dynamic>? message;
+
+  const _MessageRow._({this.dateKey, this.message});
+
+  factory _MessageRow.header(String dateKey) => _MessageRow._(dateKey: dateKey);
+
+  factory _MessageRow.message(Map<String, dynamic> message) =>
+      _MessageRow._(message: message);
 }

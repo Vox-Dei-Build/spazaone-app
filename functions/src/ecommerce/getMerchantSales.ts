@@ -80,7 +80,12 @@ export const getMerchantSales = functions.https.onCall(async (data) => {
         total,
         itemsCount: Number(
           s.itemsCount ??
-            (s.products ? Object.values(s.products || {}).length : 0) ??
+            (s.products && typeof s.products === "object"
+              ? Object.values(s.products).reduce(
+                  (acc: number, q: any) => acc + Number(q || 0),
+                  0,
+                )
+              : 0) ??
             0,
         ),
         paymentMethod: String(s.paymentMethod ?? s.type ?? ""),
