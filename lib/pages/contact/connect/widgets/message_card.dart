@@ -186,13 +186,39 @@ class MessageCard extends StatelessWidget {
                   SizedBox(height: SizeConfig.heightMultiplier * 1),
 
                   // 3️⃣ Text body
-                  Text(
-                    (message['message'] as String?) ?? '',
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 2,
-                      color: Colors.black,
-                    ),
-                  ),
+                  Builder(builder: (context) {
+                    final body = (message['message'] as String?) ?? '';
+                    if (body.trim().isNotEmpty) {
+                      return Text(
+                        body,
+                        style: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 2,
+                          color: Colors.black,
+                        ),
+                      );
+                    }
+                    // PAS-AI-02: avoid blank bubbles. If we have media we
+                    // already rendered it above; otherwise surface the
+                    // payload type so merchants still see *something* and
+                    // know an AI/Botpress message exists.
+                    final hasMedia =
+                        mediaUrl != null && mediaUrl.trim().isNotEmpty;
+                    if (hasMedia) return const SizedBox.shrink();
+                    final payloadType =
+                        (message['payloadType'] as String?)?.trim();
+                    final fallback = (payloadType == null ||
+                            payloadType.isEmpty)
+                        ? 'Message'
+                        : '[${payloadType[0].toUpperCase()}${payloadType.substring(1)} message]';
+                    return Text(
+                      fallback,
+                      style: TextStyle(
+                        fontSize: SizeConfig.textMultiplier * 1.8,
+                        color: Colors.black54,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    );
+                  }),
 
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
 

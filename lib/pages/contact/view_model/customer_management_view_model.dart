@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -182,9 +183,18 @@ class CustomerManagementViewModel extends ChangeNotifier {
     try {
       String? profileImageUrl;
       if (_profileImage != null) {
+        final String? previousUrl = _profileImageUrl;
         profileImageUrl = await _photoUploadUtil.uploadImage(
             _profileImage!, 'profile_images/$userId/$customerId.jpg');
-        _profileImageUrl = profileImageUrl; // Update the local state
+
+        if (profileImageUrl != null) {
+          await _evictProfileImageCache(previousUrl);
+          if (profileImageUrl != previousUrl) {
+            await _evictProfileImageCache(profileImageUrl);
+          }
+          _profileImageUrl = profileImageUrl;
+          _profileImage = null;
+        }
       }
 
       await customerRef.update({
@@ -225,6 +235,15 @@ class CustomerManagementViewModel extends ChangeNotifier {
         notifyListeners(); // 🔥 Ensure UI updates
       }
     });
+  }
+
+  Future<void> _evictProfileImageCache(String? url) async {
+    if (url == null || url.isEmpty) return;
+    try {
+      await CachedNetworkImage.evictFromCache(url);
+    } catch (_) {
+      // Never let cache eviction failure mask a successful upload.
+    }
   }
 
   Map<String, List<Map<String, dynamic>>> groupTransactionsByDate() {
@@ -301,8 +320,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
     if (mobileNumber == null || mobileNumber!.isEmpty) {
       // No phone number on file — nothing to send. Bail before the
       // sheet so the user isn't asked to confirm a no-op.
-      showSnackbar(context, 'No phone number on file for this customer.',
-          Colors.orange);
+      showSnackbar(
+          context, 'No phone number on file for this customer.', Colors.orange);
       return;
     }
 

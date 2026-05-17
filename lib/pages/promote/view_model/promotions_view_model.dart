@@ -314,13 +314,79 @@ class PromotionsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> sendSavedPromotion(String promoId) async {
-    final callable =
-        FirebaseFunctions.instance.httpsCallable('runMerchantPromotion');
-    final res = await callable.call({'promotionId': promoId});
-    if ((res.data as Map)['success'] == true) {
-      // optionally update local UI or refetch promos
-      await fetchPromotionsReports();
+  Future<SendPromotionResult> sendSavedPromotion(String promoId) async {
+    // PAS-WA-01: the callable used to be invoked with no error
+    // handling at all — a FirebaseFunctionsException would bubble
+    // unhandled while the awaiting UI just popped back, leaving the
+    // merchant with no feedback. We now always return a structured
+    // result so callers can show a snackbar/banner with either the
+    // provider error preserved by the backend or the Pasella-side
+    // fallback when the provider gave us nothing.
+    try {
+      final callable =
+          FirebaseFunctions.instance.httpsCallable('runMerchantPromotion');
+      final res = await callable.call({'promotionId': promoId});
+      final data = (res.data as Map?) ?? const {};
+      if (data['success'] == true) {
+        // Refresh reports so we can read back the terminal status
+        // (`complete` / `partial` / `failed`) and per-recipient
+        // counts the function just wrote.
+        await fetchPromotionsReports();
+        final promo = promotionsReports.firstWhere(
+          (p) => p['id'] == promoId,
+          orElse: () => <String, dynamic>{},
+        );
+        final status = promo['status'] as String?;
+        final failedCount = (promo['failedCount'] as num?)?.toInt() ?? 0;
+        final succeededCount = (promo['succeededCount'] as num?)?.toInt() ?? 0;
+        final lastError = promo['lastErrorMessage'] as String?;
+        if (status == 'failed') {
+          return SendPromotionResult.failed(
+            message: lastError ??
+                'No messages could be delivered. Provider gave no further detail — '
+                    'treat as transient and retry, then contact support if it persists.',
+            failedCount: failedCount,
+            succeededCount: succeededCount,
+          );
+        }
+        if (status == 'partial') {
+          return SendPromotionResult.partial(
+            message: lastError ??
+                'Some messages could not be delivered. See the promotion details for the affected recipients.',
+            failedCount: failedCount,
+            succeededCount: succeededCount,
+          );
+        }
+        return SendPromotionResult.ok(succeededCount: succeededCount);
+      }
+      return SendPromotionResult.failed(
+        message:
+            'The send did not complete successfully. Please retry or contact support if it keeps happening.',
+        failedCount: 0,
+        succeededCount: 0,
+      );
+    } on FirebaseFunctionsException catch (e) {
+      // Preserve whatever the callable layer gave us, but always
+      // provide a usable fallback so we never leave the merchant
+      // staring at a silent failure.
+      final detail = (e.message != null && e.message!.trim().isNotEmpty)
+          ? e.message!
+          : 'Send failed (code: ${e.code}). No further detail returned — '
+              'retry, then contact support if it persists.';
+      debugPrint('sendSavedPromotion callable failure: ${e.code} ${e.message}');
+      return SendPromotionResult.failed(
+        message: detail,
+        failedCount: 0,
+        succeededCount: 0,
+      );
+    } catch (e) {
+      debugPrint('sendSavedPromotion unexpected error: $e');
+      return SendPromotionResult.failed(
+        message:
+            'Send failed unexpectedly. Check your connection and retry, then contact support if it persists.',
+        failedCount: 0,
+        succeededCount: 0,
+      );
     }
   }
 
@@ -403,4 +469,65 @@ class PromotionsViewModel extends ChangeNotifier {
 
     notifyListeners();
   }
+}
+
+/// PAS-WA-01: structured outcome of a `sendSavedPromotion` call.
+///
+/// The previous `Future<void>` shape gave callers no way to react to
+/// per-recipient failures or to a callable-layer crash, which is why
+/// the audit found merchants getting no feedback at all on broken
+/// sends. The three states map directly to the backend terminal
+/// statuses (`complete` / `partial` / `failed`) plus an explicit
+/// failure path for transport/callable errors. `message` is always
+/// populated — even in the fallback case — so a UI can show a
+/// snackbar/banner without having to invent its own copy.
+enum SendPromotionOutcome { ok, partial, failed }
+
+class SendPromotionResult {
+  final SendPromotionOutcome outcome;
+  final String? message;
+  final int succeededCount;
+  final int failedCount;
+
+  const SendPromotionResult._({
+    required this.outcome,
+    required this.message,
+    required this.succeededCount,
+    required this.failedCount,
+  });
+
+  factory SendPromotionResult.ok({int succeededCount = 0}) =>
+      SendPromotionResult._(
+        outcome: SendPromotionOutcome.ok,
+        message: null,
+        succeededCount: succeededCount,
+        failedCount: 0,
+      );
+
+  factory SendPromotionResult.partial({
+    required String message,
+    required int succeededCount,
+    required int failedCount,
+  }) =>
+      SendPromotionResult._(
+        outcome: SendPromotionOutcome.partial,
+        message: message,
+        succeededCount: succeededCount,
+        failedCount: failedCount,
+      );
+
+  factory SendPromotionResult.failed({
+    required String message,
+    required int succeededCount,
+    required int failedCount,
+  }) =>
+      SendPromotionResult._(
+        outcome: SendPromotionOutcome.failed,
+        message: message,
+        succeededCount: succeededCount,
+        failedCount: failedCount,
+      );
+
+  bool get isOk => outcome == SendPromotionOutcome.ok;
+  bool get hasFailures => failedCount > 0 || outcome != SendPromotionOutcome.ok;
 }

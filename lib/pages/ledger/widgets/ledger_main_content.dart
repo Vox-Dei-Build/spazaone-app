@@ -22,11 +22,17 @@ class LedgerMainContent extends StatelessWidget {
   /// rest of the surface.
   final Widget? belowHeaderCard;
 
+  /// PAS-UX-09: tap handler for the empty Customers-tab CTA. Passed
+  /// down so the empty state can offer an inline primary action
+  /// instead of relying solely on the floating "+" FAB.
+  final VoidCallback? onAddCustomer;
+
   const LedgerMainContent({
     Key? key,
     required this.ledgerViewModel,
     required this.tabIndexNotifier,
     this.belowHeaderCard,
+    this.onAddCustomer,
   }) : super(key: key);
 
   @override
@@ -40,23 +46,26 @@ class LedgerMainContent extends StatelessWidget {
             PageHeader(
               actionWidget: Expanded(
                 child: IconButton(
-                    icon: Icon(
-                      Icons.help_outline,
-                      color: Colors.black,
-                      size: SizeConfig.imageSizeMultiplier * 5,
-                    ),
-                    onPressed: () {
-                      final url = TutorialConfig.getTutorialUrl(
-                          TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => LoomVideoPage(
-                            loomUrl: url,
-                            title: 'How to Add Customers',
-                          ),
-                        ),
-                      );
-                    }),
+                  icon: Icon(
+                    Icons.help_outline,
+                    color: Colors.black,
+                    size: SizeConfig.imageSizeMultiplier * 5,
+                  ),
+                  onPressed: () {
+                    final url = TutorialConfig.getTutorialUrl(
+                      TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS,
+                    );
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder:
+                            (context) => LoomVideoPage(
+                              loomUrl: url,
+                              title: 'How to Add Customers',
+                            ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -71,6 +80,7 @@ class LedgerMainContent extends StatelessWidget {
                   CustomerTab(
                     searchTextNotifier: ledgerViewModel.searchTextNotifier,
                     hasCustomersNotifier: ledgerViewModel.hasCustomersNotifier,
+                    onAddCustomer: onAddCustomer,
                   ),
                   const BusinessReportPage(),
                 ],

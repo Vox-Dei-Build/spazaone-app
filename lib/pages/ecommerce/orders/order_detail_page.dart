@@ -9,6 +9,7 @@ import 'package:pasella/pages/ecommerce/orders/widgets/header_card.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/products_section_enhanced.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/section.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/timeline_row.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/whatsapp_delivery_pill.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -42,61 +43,154 @@ class _OrderDetailPageState extends State<OrderDetailPage>
   bool _actionLoading = false;
   String? _busyAction;
 
+  void _closePage() {
+    Navigator.pop(context, _updated);
+  }
+
   /// Guards `BnplOfferShown` so it fires once per page instance even though
   /// the StreamBuilder rebuilds on every Firestore snapshot.
   bool _bnplShownFired = false;
 
-  late final TabController _tabController =
-      TabController(length: 2, vsync: this); // 2 tabs now
+  late final TabController _tabController = TabController(
+    length: 2,
+    vsync: this,
+  ); // 2 tabs now
 
   Future<void> _callPayment(String action, Map<String, dynamic> order) async {
     setState(() {
       _actionLoading = true;
       _busyAction = action;
     });
-    final ok = await PaymentService.updateOrderPayment(
-      context: context,
+
+    // 1) Server-side state transition. Pure data — no UI side-effects
+    //    here so the caller can sequence post-action feedback against
+    //    the messaging step that follows.
+    final result = await PaymentService.updateOrderPayment(
       orderId: widget.orderId,
       action: action,
     );
-    if (ok) {
-      // Fire BNPL accept/reject events as soon as the cloud function confirms
-      // the status change. termDays is not in the order document and the
-      // reject dialog has no reason dropdown -- pass 0 / null and revisit
-      // when those fields are introduced backend-side.
-      final amountBucket =
-          amountBucketZAR(OrderRepository.asNum(order['total']));
-      if (action == 'ACCEPT_BNPL') {
-        await TelemetryService.instance.capture(BnplOfferAccepted(
-          amountBucket: amountBucket,
-          termDays: 0,
-        ));
-      } else if (action == 'REJECT_BNPL') {
-        await TelemetryService.instance
-            .capture(BnplOfferRejected(amountBucket: amountBucket));
-      }
 
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        final msgSvc = await OrderStatusMessagingService.create();
-        await msgSvc.sendStatusMessage(
-          action: action,
-          merchantId: uid,
-          customerId: widget.customerId,
-          customerName: widget.customerName,
-          orderId: widget.orderId,
-          amount: CurrencyUtil.format(OrderRepository.asNum(order['total'])),
-          itemsCount: ((order['items'] as List?)?.length ?? 0).toString(),
-          pickupLocation: (order['pickupLabel'] ?? '').toString(),
-        );
-      }
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      // The server rejected the transition (or we never tried).
+      // Surface the underlying reason verbatim so the merchant can act.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.errorMessage ?? 'Failed to update order.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      setState(() {
+        _actionLoading = false;
+        _busyAction = null;
+      });
+      return;
     }
+
+    // 2) The order itself is now in its new state. Tell the merchant
+    //    *what just changed* — and, if a customer message is on the
+    //    way, that the next step is in progress (not silent).
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.sendIntent) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('${result.stateLabel} · Notifying customer…'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(result.stateLabel)));
+    }
+
+    // 3) Telemetry for the state change itself. Kept exactly as before
+    //    so the analytics surface for BNPL accept/reject is unchanged.
+    final amountBucket = amountBucketZAR(OrderRepository.asNum(order['total']));
+    if (action == 'ACCEPT_BNPL') {
+      await TelemetryService.instance.capture(
+        BnplOfferAccepted(amountBucket: amountBucket, termDays: 0),
+      );
+    } else if (action == 'REJECT_BNPL') {
+      await TelemetryService.instance.capture(
+        BnplOfferRejected(amountBucket: amountBucket),
+      );
+    }
+
+    // 4) Downstream WhatsApp + wallet debit. This used to be silent
+    //    (PAS-UX-07 root cause): the merchant saw the optimistic
+    //    "Cash received" snackbar above, then the wallet quietly
+    //    dropped seconds later with no UI signal. We now await the
+    //    explicit result and surface the final send/charge state on
+    //    the same snackbar surface.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && result.sendIntent) {
+      final msgSvc = await OrderStatusMessagingService.create();
+      final notif = await msgSvc.sendStatusMessage(
+        action: action,
+        merchantId: uid,
+        customerId: widget.customerId,
+        customerName: widget.customerName,
+        orderId: widget.orderId,
+        amount: CurrencyUtil.format(OrderRepository.asNum(order['total'])),
+        itemsCount: ((order['items'] as List?)?.length ?? 0).toString(),
+        pickupLocation: (order['pickupLabel'] ?? '').toString(),
+      );
+
+      if (!mounted) return;
+      final finalSnack = _notificationSnackBar(result.stateLabel, notif);
+      // Replace the "Notifying customer…" toast with the resolved
+      // state. `clearSnackBars` keeps the most-recent-truth wins
+      // semantics: merchants never see a stale interim message after
+      // the final result is known.
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(finalSnack);
+    }
+
     if (!mounted) return;
     setState(() {
-      _updated = ok || _updated;
+      _updated = true;
       _actionLoading = false;
       _busyAction = null;
     });
+  }
+
+  /// Builds the final snackbar shown after the customer-notification
+  /// step settles. We always anchor the copy to the *new order state*
+  /// (`stateLabel`) so the merchant sees both what the order is now
+  /// and what happened to the wallet — never one without the other.
+  SnackBar _notificationSnackBar(
+    String stateLabel,
+    OrderNotificationResult notif,
+  ) {
+    switch (notif.status) {
+      case OrderNotificationStatus.sent:
+        final priced = notif.cost > 0
+            ? ' · ${CurrencyUtil.format(notif.cost)} charged'
+            : '';
+        return SnackBar(
+          content: Text('$stateLabel · Customer notified$priced'),
+          backgroundColor: Colors.green,
+        );
+      case OrderNotificationStatus.skippedNoPhone:
+        return SnackBar(
+          content: Text('$stateLabel · No phone on file — message not sent.'),
+          backgroundColor: Colors.blueGrey,
+        );
+      case OrderNotificationStatus.skippedNoTemplate:
+        return SnackBar(
+          content: Text('$stateLabel · Template missing — message not sent.'),
+          backgroundColor: Colors.blueGrey,
+        );
+      case OrderNotificationStatus.failed:
+        return SnackBar(
+          content: Text(
+            '$stateLabel · Could not notify customer. Wallet not charged.',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 6),
+        );
+    }
   }
 
   @override
@@ -117,13 +211,19 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           if (snapshot.connectionState == ConnectionState.waiting &&
               !snapshot.hasData) {
             return Scaffold(
-              appBar: CustomAppBar(title: 'Order #${widget.orderId}'),
+              appBar: CustomAppBar(
+                title: 'Order #${widget.orderId}',
+                onBackPressed: _closePage,
+              ),
               body: const Center(child: CircularProgressIndicator()),
             );
           }
           if (!snapshot.hasData || (snapshot.data ?? {}).isEmpty) {
             return Scaffold(
-              appBar: CustomAppBar(title: 'Order #${widget.orderId}'),
+              appBar: CustomAppBar(
+                title: 'Order #${widget.orderId}',
+                onBackPressed: _closePage,
+              ),
               body: const ErrorEmpty(
                 title: 'Order not found',
                 subtitle: 'Please go back and try again.',
@@ -197,7 +297,10 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           // Fire BnplOfferShown once when the merchant first sees a pending
           // BNPL request. We defer to the next frame because we cannot fire
           // analytics events directly from inside a build method.
-          if (isBnpl && !isBnplApproved && !isBnplRejected && !_bnplShownFired) {
+          if (isBnpl &&
+              !isBnplApproved &&
+              !isBnplRejected &&
+              !_bnplShownFired) {
             _bnplShownFired = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               TelemetryService.instance.capture(
@@ -228,8 +331,49 @@ class _OrderDetailPageState extends State<OrderDetailPage>
 
           final pill = buildCollectionPill(isCollected: isCollected == true);
 
+          // PAS-AI-02: WhatsApp delivery state read off the order doc.
+          final lastMessage = (order['lastMessage'] is Map)
+              ? Map<String, dynamic>.from(order['lastMessage'] as Map)
+              : <String, dynamic>{};
+          final waState = WhatsAppDeliveryPill.fromMap(lastMessage);
+          DateTime? waAt;
+          String? waLabel;
+          if (lastMessage.isNotEmpty) {
+            final replied = OrderRepository.parseTs(lastMessage['repliedAt']);
+            final delivered = OrderRepository.parseTs(
+              lastMessage['deliveredAt'],
+            );
+            final failed = OrderRepository.parseTs(lastMessage['failedAt']);
+            final sent = OrderRepository.parseTs(lastMessage['sentAt']);
+            final queued = OrderRepository.parseTs(lastMessage['queuedAt']);
+            if (replied != null) {
+              waAt = replied;
+              waLabel = 'Replied';
+            } else if (delivered != null) {
+              waAt = delivered;
+              waLabel = 'Delivered';
+            } else if (failed != null) {
+              waAt = failed;
+              waLabel = 'Failed';
+            } else if (sent != null) {
+              waAt = sent;
+              waLabel = 'Sent';
+            } else if (queued != null) {
+              waAt = queued;
+              waLabel = 'Queued';
+            } else {
+              waLabel = WhatsAppDeliveryPill.labelFor(
+                waState,
+              ).replaceFirst('WhatsApp · ', '');
+              waLabel = waLabel[0].toUpperCase() + waLabel.substring(1);
+            }
+          }
+
           return Scaffold(
-            appBar: CustomAppBar(title: 'Order #${widget.orderId}'),
+            appBar: CustomAppBar(
+              title: 'Order #${widget.orderId}',
+              onBackPressed: _closePage,
+            ),
             bottomNavigationBar: ActionsDock(
               child: ActionsBlock(
                 paymentMethod: methodForLogic,
@@ -245,7 +389,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                     builder: (_) => AlertDialog(
                       title: const Text('Reject BNPL?'),
                       content: const Text(
-                          'This will decline the customer’s BNPL request.'),
+                        'This will decline the customer’s BNPL request.',
+                      ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(context, false),
@@ -269,7 +414,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                     builder: (_) => AlertDialog(
                       title: const Text('Cancel order?'),
                       content: const Text(
-                          'This will cancel the order and release the cart.'),
+                        'This will cancel the order and release the cart.',
+                      ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(context, false),
@@ -318,17 +464,21 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                   slivers: [
                                     SliverPadding(
                                       padding: EdgeInsets.symmetric(
-                                          horizontal: horizontal,
-                                          vertical: vertical),
+                                        horizontal: horizontal,
+                                        vertical: vertical,
+                                      ),
                                       sliver: SliverList.list(
                                         children: [
                                           HeaderCard(
                                             customerName: widget.customerName,
                                             statusText: statusLabel(st),
-                                            statusColor:
-                                                statusColor(context, st),
-                                            totalText:
-                                                CurrencyUtil.format(total),
+                                            statusColor: statusColor(
+                                              context,
+                                              st,
+                                            ),
+                                            totalText: CurrencyUtil.format(
+                                              total,
+                                            ),
                                             dateText: createdAt,
                                             paymentMethod:
                                                 methodForDisplay.isEmpty
@@ -345,6 +495,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                             paymentStatusText: payMeta.label,
                                             paymentStatusColor: payMeta.color,
                                             collectionPill: pill,
+                                            whatsAppState: waState,
                                           ),
                                           SizedBox(
                                             height:
@@ -356,6 +507,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                             collectedAt: isCollected
                                                 ? collectedAtDt
                                                 : null,
+                                            whatsAppAt: waAt,
+                                            whatsAppLabel: waLabel,
                                           ),
                                           SizedBox(
                                             height:

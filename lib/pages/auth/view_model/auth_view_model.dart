@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/main.dart' show navigatorKey;
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
@@ -65,14 +66,19 @@ class AuthViewModel with ChangeNotifier {
 
       if (!isRegistered) {
         showErrorSnackBar(
-            context, "This number is not registered. Please register first.",
-            isWarning: true);
+          context,
+          "This number is not registered. Please register first.",
+          isWarning: true,
+        );
         stopLoading();
         return;
       }
 
       final verificationId = await initiatePhoneNumberVerification(
-          formattedPhoneNumber, context, VerificationPurpose.login);
+        formattedPhoneNumber,
+        context,
+        VerificationPurpose.login,
+      );
       if (verificationId != null) {
         await _promptForVerificationCode(context, verificationId, (smsCode) {
           signInWithVerificationCode(smsCode, verificationId, context);
@@ -87,8 +93,10 @@ class AuthViewModel with ChangeNotifier {
     }
   }
 
-  Future<void> registerUser(BuildContext context,
-      {String? referrerUserId}) async {
+  Future<void> registerUser(
+    BuildContext context, {
+    String? referrerUserId,
+  }) async {
     // Guard against re-entry; prevents duplicate SMS sends from double-taps.
     if (isLoading.value) return;
     startLoading();
@@ -104,46 +112,65 @@ class AuthViewModel with ChangeNotifier {
         return;
       }
 
-      String formattedPhoneNumber =
-          formatPhoneNumber(registrationMobileNoController.text);
+      String formattedPhoneNumber = formatPhoneNumber(
+        registrationMobileNoController.text,
+      );
       String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
       bool isAlreadyRegistered = await _isUserRegistered(normalizedPhoneNumber);
 
       if (isAlreadyRegistered) {
         showErrorSnackBar(
-            context, "This number is already registered. Please log in.",
-            isWarning: true);
+          context,
+          "This number is already registered. Please log in.",
+          isWarning: true,
+        );
         return;
       }
 
       final verificationId = await initiatePhoneNumberVerification(
-          formattedPhoneNumber, context, VerificationPurpose.registration,
-          referrerUserId: referrerUserId);
+        formattedPhoneNumber,
+        context,
+        VerificationPurpose.registration,
+        referrerUserId: referrerUserId,
+      );
       if (verificationId != null) {
-        await _promptForVerificationCode(context, verificationId,
-            (smsCode) async {
-          await signInWithVerificationCode(smsCode, verificationId, context,
-              onSuccess: () async {
-            User? user = auth.currentUser;
-            if (user != null) {
-              await _storeUserDetails(context, user,
-                  referrerUserId: referrerUserId);
-              // Phone-OTP signup completed (manual code entry path).
-              // We identify the merchant immediately so subsequent events
-              // attach to a person profile rather than the anonymous id.
-              await TelemetryService.instance.identify(merchantId: user.uid);
-              await TelemetryService.instance
-                  .capture(const SignupCompleted(method: 'phone'));
-              handleSuccessfulLogin(context);
-            } else {
-              showErrorSnackBar(context,
-                  "User not found after verification. Please try again.");
-            }
-          });
+        await _promptForVerificationCode(context, verificationId, (
+          smsCode,
+        ) async {
+          await signInWithVerificationCode(
+            smsCode,
+            verificationId,
+            context,
+            onSuccess: () async {
+              User? user = auth.currentUser;
+              if (user != null) {
+                await _storeUserDetails(
+                  context,
+                  user,
+                  referrerUserId: referrerUserId,
+                );
+                // Phone-OTP signup completed (manual code entry path).
+                // We identify the merchant immediately so subsequent events
+                // attach to a person profile rather than the anonymous id.
+                await TelemetryService.instance.identify(merchantId: user.uid);
+                await TelemetryService.instance.capture(
+                  const SignupCompleted(method: 'phone'),
+                );
+                handleSuccessfulLogin(context);
+              } else {
+                showErrorSnackBar(
+                  context,
+                  "User not found after verification. Please try again.",
+                );
+              }
+            },
+          );
         });
       } else {
-        showErrorSnackBar(context,
-            "No verification ID received, potentially auto-signed in.");
+        showErrorSnackBar(
+          context,
+          "No verification ID received, potentially auto-signed in.",
+        );
       }
     } catch (e, st) {
       await CrashService.instance.recordNonFatal(
@@ -157,24 +184,32 @@ class AuthViewModel with ChangeNotifier {
     }
   }
 
-  Future<void> registerAnonymousAccount(BuildContext context,
-      {String? referrerUserId}) async {
+  Future<void> registerAnonymousAccount(
+    BuildContext context, {
+    String? referrerUserId,
+  }) async {
     startLoading();
     try {
-      String formattedPhoneNumber =
-          formatPhoneNumber(registrationMobileNoController.text);
+      String formattedPhoneNumber = formatPhoneNumber(
+        registrationMobileNoController.text,
+      );
       String normalizedPhoneNumber = normalizePhoneNumber(formattedPhoneNumber);
       bool isAlreadyRegistered = await _isUserRegistered(normalizedPhoneNumber);
       if (isAlreadyRegistered) {
         stopLoading();
         showErrorSnackBar(
-            context, "This number is already registered. Please log in.");
+          context,
+          "This number is already registered. Please log in.",
+        );
         return;
       }
 
       final verificationId = await initiatePhoneNumberVerification(
-          formattedPhoneNumber, context, VerificationPurpose.linkAnonymous,
-          referrerUserId: referrerUserId);
+        formattedPhoneNumber,
+        context,
+        VerificationPurpose.linkAnonymous,
+        referrerUserId: referrerUserId,
+      );
 
       if (verificationId == null) {
         // Auto verification completed or failed
@@ -183,13 +218,19 @@ class AuthViewModel with ChangeNotifier {
       }
 
       // Manual code input required
-      await _promptForVerificationCode(context, verificationId,
-          (smsCode) async {
+      await _promptForVerificationCode(context, verificationId, (
+        smsCode,
+      ) async {
         try {
           AuthCredential credential = PhoneAuthProvider.credential(
-              verificationId: verificationId, smsCode: smsCode);
+            verificationId: verificationId,
+            smsCode: smsCode,
+          );
           await linkPhoneNumberWithAnonymousAccount(
-              credential, context, referrerUserId);
+            credential,
+            context,
+            referrerUserId,
+          );
         } catch (e) {
           showErrorSnackBar(context, "Failed to link anonymous account: $e");
         } finally {
@@ -204,11 +245,16 @@ class AuthViewModel with ChangeNotifier {
   }
 
   Future<void> signInWithVerificationCode(
-      String smsCode, String verificationId, BuildContext context,
-      {Function? onSuccess}) async {
+    String smsCode,
+    String verificationId,
+    BuildContext context, {
+    Function? onSuccess,
+  }) async {
     try {
       final AuthCredential credential = PhoneAuthProvider.credential(
-          verificationId: verificationId, smsCode: smsCode);
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
       await signInWithCredential(credential, context, onSuccess: onSuccess);
     } catch (e) {
       showErrorSnackBar(context, "Failed to sign in: $e");
@@ -217,8 +263,10 @@ class AuthViewModel with ChangeNotifier {
   }
 
   Future<void> signInWithCredential(
-      AuthCredential credential, BuildContext context,
-      {Function? onSuccess}) async {
+    AuthCredential credential,
+    BuildContext context, {
+    Function? onSuccess,
+  }) async {
     startLoading();
     try {
       await auth.signInWithCredential(credential);
@@ -231,8 +279,9 @@ class AuthViewModel with ChangeNotifier {
         final user = auth.currentUser;
         if (user != null) {
           await TelemetryService.instance.identify(merchantId: user.uid);
-          await TelemetryService.instance
-              .capture(const SigninCompleted(method: 'phone'));
+          await TelemetryService.instance.capture(
+            const SigninCompleted(method: 'phone'),
+          );
         }
       }
       handleSuccessfulLogin(context);
@@ -260,8 +309,9 @@ class AuthViewModel with ChangeNotifier {
         // has a person profile keyed by their anonymous Firebase UID; if they
         // later upgrade to a phone account that UID survives via linking.
         await TelemetryService.instance.identify(merchantId: user.uid);
-        await TelemetryService.instance
-            .capture(const SignupCompleted(method: 'anonymous'));
+        await TelemetryService.instance.capture(
+          const SignupCompleted(method: 'anonymous'),
+        );
       }
 
       stopLoading();
@@ -294,8 +344,10 @@ class AuthViewModel with ChangeNotifier {
         String smsCode = "";
 
         return AlertDialog(
-          title: Text('Enter SMS Code',
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5)),
+          title: Text(
+            'Enter SMS Code',
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5),
+          ),
           content: SingleChildScrollView(
             child: Container(
               padding:
@@ -304,11 +356,20 @@ class AuthViewModel with ChangeNotifier {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   PrivateRegion(
+                    // PAS-UX-09: opt into the OS-level SMS autofill
+                    // affordance. On iOS this surfaces the
+                    // "From Messages" suggestion above the keyboard
+                    // as soon as the verification SMS arrives; on
+                    // Android it enables the SMS Retriever / autofill
+                    // bridge. Pure friction reduction — one line, no
+                    // backend change.
                     child: TextField(
                       onChanged: (value) => smsCode = value,
                       decoration: const InputDecoration(hintText: "SMS Code"),
                       keyboardType: TextInputType.number,
                       autofocus: true, // Automatically focus on the TextField
+                      autofillHints: const [AutofillHints.oneTimeCode],
+                      textInputAction: TextInputAction.done,
                     ),
                   ),
                 ],
@@ -317,16 +378,20 @@ class AuthViewModel with ChangeNotifier {
           ),
           actions: [
             TextButton(
-              child: Text('Cancel',
-                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+              child: Text(
+                'Cancel',
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
+              ),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
                 completer.complete();
               },
             ),
             TextButton(
-              child: Text('Verify',
-                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+              child: Text(
+                'Verify',
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
+              ),
               onPressed: () {
                 onVerifyPressed(smsCode);
                 if (Navigator.of(dialogContext).canPop()) {
@@ -439,8 +504,11 @@ class AuthViewModel with ChangeNotifier {
   }
 
   Future<String?> initiatePhoneNumberVerification(
-      String phoneNumber, BuildContext context, VerificationPurpose purpose,
-      {String? referrerUserId}) async {
+    String phoneNumber,
+    BuildContext context,
+    VerificationPurpose purpose, {
+    String? referrerUserId,
+  }) async {
     Completer<String?> completer = Completer();
     auth.verifyPhoneNumber(
       phoneNumber: phoneNumber,
@@ -452,22 +520,25 @@ class AuthViewModel with ChangeNotifier {
             switch (purpose) {
               case VerificationPurpose.registration:
                 // Store user details before navigation
-                await _storeUserDetails(context, user,
-                    referrerUserId: referrerUserId);
+                await _storeUserDetails(
+                  context,
+                  user,
+                  referrerUserId: referrerUserId,
+                );
                 // Auto-verified phone registration -- identify and fire signup.
-                await TelemetryService.instance
-                    .identify(merchantId: user.uid);
-                await TelemetryService.instance
-                    .capture(const SignupCompleted(method: 'phone'));
+                await TelemetryService.instance.identify(merchantId: user.uid);
+                await TelemetryService.instance.capture(
+                  const SignupCompleted(method: 'phone'),
+                );
                 handleSuccessfulLogin(context);
                 break;
               case VerificationPurpose.login:
                 // Auto-verified login. identify() in case this is the first
                 // session for this merchant on this device.
-                await TelemetryService.instance
-                    .identify(merchantId: user.uid);
-                await TelemetryService.instance
-                    .capture(const SigninCompleted(method: 'phone'));
+                await TelemetryService.instance.identify(merchantId: user.uid);
+                await TelemetryService.instance.capture(
+                  const SigninCompleted(method: 'phone'),
+                );
                 handleSuccessfulLogin(context);
                 break;
               case VerificationPurpose.linkAnonymous:
@@ -475,7 +546,10 @@ class AuthViewModel with ChangeNotifier {
                 // inside linkPhoneNumberWithAnonymousAccount once the link
                 // resolves successfully (single source of truth for that path).
                 await linkPhoneNumberWithAnonymousAccount(
-                    credential, context, referrerUserId);
+                  credential,
+                  context,
+                  referrerUserId,
+                );
                 break;
             }
             if (!completer.isCompleted) {
@@ -503,23 +577,31 @@ class AuthViewModel with ChangeNotifier {
     return completer.future;
   }
 
-  Future<void> linkPhoneNumberWithAnonymousAccount(AuthCredential credential,
-      BuildContext context, String? referrerUserId) async {
+  Future<void> linkPhoneNumberWithAnonymousAccount(
+    AuthCredential credential,
+    BuildContext context,
+    String? referrerUserId,
+  ) async {
     try {
       await auth.currentUser!.linkWithCredential(credential);
       User? user = auth.currentUser;
       if (user != null) {
         // Assuming you want to store additional user details on successful link
-        await _storeUserDetailsAfterLinking(context, user,
-            referrerUserId: referrerUserId);
+        await _storeUserDetailsAfterLinking(
+          context,
+          user,
+          referrerUserId: referrerUserId,
+        );
         // Anonymous account upgraded to a phone account. The Firebase UID is
         // unchanged across the link so we re-identify (idempotent) and fire
         // SignupCompleted with method: 'phone' to mark the upgrade in funnels.
         await TelemetryService.instance.identify(merchantId: user.uid);
-        await TelemetryService.instance
-            .capture(const SignupCompleted(method: 'phone'));
+        await TelemetryService.instance.capture(
+          const SignupCompleted(method: 'phone'),
+        );
         handleSuccessfulLogin(
-            context); // Navigate or perform other actions post successful link
+          context,
+        ); // Navigate or perform other actions post successful link
       }
     } catch (e, st) {
       await CrashService.instance.recordNonFatal(
@@ -534,8 +616,11 @@ class AuthViewModel with ChangeNotifier {
     }
   }
 
-  Future<void> _storeUserDetailsAfterLinking(BuildContext context, User? user,
-      {String? referrerUserId}) async {
+  Future<void> _storeUserDetailsAfterLinking(
+    BuildContext context,
+    User? user, {
+    String? referrerUserId,
+  }) async {
     if (user == null) return;
 
     try {
@@ -565,8 +650,11 @@ class AuthViewModel with ChangeNotifier {
     }
   }
 
-  Future<void> _storeUserDetails(BuildContext context, User user,
-      {String? referrerUserId}) async {
+  Future<void> _storeUserDetails(
+    BuildContext context,
+    User user, {
+    String? referrerUserId,
+  }) async {
     try {
       final String rawNumber = registrationMobileNoController.text;
       final String normalized = normalizePhoneNumber(rawNumber);
@@ -624,9 +712,9 @@ class AuthViewModel with ChangeNotifier {
           'amount': 0.0,
           'method': "N/A",
           'status': "N/A",
-          'reference': "N/A"
-        }
-      ]
+          'reference': "N/A",
+        },
+      ],
     });
   }
 
@@ -636,7 +724,14 @@ class AuthViewModel with ChangeNotifier {
   }
 
   void handleSuccessfulLogin(BuildContext context) {
-    Navigator.of(context).pushReplacementNamed('/dashboard');
+    if (context.mounted) {
+      Navigator.of(context).pushReplacementNamed('/dashboard');
+      return;
+    }
+    final navState = navigatorKey.currentState;
+    if (navState != null) {
+      navState.pushReplacementNamed('/dashboard');
+    }
   }
 
   @override

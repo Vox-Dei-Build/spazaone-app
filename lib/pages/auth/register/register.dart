@@ -43,7 +43,8 @@ class _RegisterPageState extends State<RegisterPage> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 6),
+            horizontal: SizeConfig.imageSizeMultiplier * 6,
+          ),
           child: Form(
             key: authViewModel.registrationFormKey,
             child: Column(
@@ -67,16 +68,16 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 PrivateRegion(
                   child: CustomTextField(
-                    label: 'Business Name',
-                    hintText: 'Enter Business Name',
+                    label: 'Business Name (Optional)',
+                    hintText: 'You can add this later in Settings',
                     prefixIcon: Icons.store,
                     controller: authViewModel.shopNameController,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Business Name is required';
-                      }
-                      return null;
-                    },
+                    // PAS-UX-09: Business Name was previously required
+                    // and blocked OTP. It's only used cosmetically
+                    // post-signup (receipts, WhatsApp footer) and can
+                    // be filled in later from Settings. Making it
+                    // optional removes one of three required fields
+                    // ahead of the first value moment.
                   ),
                 ),
                 PrivateRegion(
@@ -96,7 +97,8 @@ class _RegisterPageState extends State<RegisterPage> {
                       return null;
                     },
                   ),
-                ),                SizedBox(height: SizeConfig.heightMultiplier * 1),
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 1),
                 ValueListenableBuilder<bool>(
                   valueListenable: authViewModel.isLoading,
                   builder: (context, isLoading, child) {
@@ -105,25 +107,31 @@ class _RegisterPageState extends State<RegisterPage> {
                       children: [
                         CustomButton(
                           title: 'Register',
-                          onTap: authViewModel.isLoading.value
-                              ? () {}
-                              : () {
-                                  if (authViewModel
-                                      .registrationFormKey.currentState!
-                                      .validate()) {
-                                    // Pass referrerUserId when registering
-                                    authViewModel.registerUser(context,
-                                        referrerUserId: referrerUserId);
-                                  }
-                                },
+                          onTap:
+                              authViewModel.isLoading.value
+                                  ? () {}
+                                  : () {
+                                    if (authViewModel
+                                        .registrationFormKey
+                                        .currentState!
+                                        .validate()) {
+                                      // Pass referrerUserId when registering
+                                      authViewModel.registerUser(
+                                        context,
+                                        referrerUserId: referrerUserId,
+                                      );
+                                    }
+                                  },
                           color: Colors.green,
                           fontSize: SizeConfig.textMultiplier * 2,
                           icon: Icons.person_add,
                         ),
                         if (isLoading)
                           const CircularProgressIndicator(
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white)),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
                       ],
                     );
                   },
@@ -144,24 +152,30 @@ class _RegisterPageState extends State<RegisterPage> {
                 CustomButton(
                   icon: FontAwesomeIcons.whatsapp,
                   title: 'Chat with support',
-                  onTap: () => SupportUtil.sendWhatsAppMessage(
-                      context, WhatsAppMessageType.support),
+                  onTap:
+                      () => SupportUtil.sendWhatsAppMessage(
+                        context,
+                        WhatsAppMessageType.support,
+                      ),
                 ),
                 SizedBox(height: SizeConfig.heightMultiplier * 1),
                 OverflowBar(
                   alignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Text('Already have an account?',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: SizeConfig.textMultiplier * 2,
-                        )),
+                    Text(
+                      'Already have an account?',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: SizeConfig.textMultiplier * 2,
+                      ),
+                    ),
                     TextButton(
                       child: Text(
                         'LOGIN',
                         style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 2,
-                            fontWeight: FontWeight.bold),
+                          fontSize: SizeConfig.textMultiplier * 2,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       onPressed: () {
                         Navigator.pushNamed(context, '/loginPage');

@@ -11,7 +11,6 @@ export 'pages/settings/account/account.dart';
 export 'pages/settings/security/security.dart';
 export 'pages/settings/language/language.dart';
 export 'pages/contact/add_contact/add_contact.dart';
-export 'pages/settings/subscription/subscription.dart';
 export 'pages/profile/widgets/business_type.dart';
 export 'pages/settings/mobile_acc/update_number.dart';
 export 'pages/settings/defaults/find_defaulter.dart';

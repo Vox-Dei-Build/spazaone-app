@@ -34,17 +34,18 @@ class ProductsSectionEnhanced extends StatelessWidget {
               (map['productId'] ?? map['id'] ?? map['productID'] ?? '')
                   .toString();
           final quantity = map['quantity'] ?? map['qty'] ?? 0;
-          final lineTotal = (map['lineTotal'] ?? map['total'] ?? 0);
+          final rawLineTotal = map['lineTotal'] ?? map['total'];
           final inlineName = (map['name'] ?? map['productName'])?.toString();
           final inlinePrice = map['price'] ?? map['sellingPrice'];
 
           if (productId.isEmpty) {
+            final unitPrice = _num(inlinePrice);
             return ProductCardEnhanced(
               productName: inlineName ?? 'Unknown product',
               quantity: quantity,
-              unitPrice: _num(inlinePrice),
+              unitPrice: unitPrice,
               imageUrl: null,
-              lineTotal: lineTotal is num ? lineTotal.toDouble() : null,
+              lineTotal: _lineTotal(rawLineTotal, unitPrice, quantity),
             );
           }
 
@@ -97,7 +98,7 @@ class ProductsSectionEnhanced extends StatelessWidget {
                 quantity: quantity,
                 unitPrice: unitPrice,
                 imageUrl: imageUrl,
-                lineTotal: lineTotal is num ? lineTotal.toDouble() : null,
+                lineTotal: _lineTotal(rawLineTotal, unitPrice, quantity),
               );
             },
           );
@@ -110,5 +111,12 @@ class ProductsSectionEnhanced extends StatelessWidget {
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v) ?? 0;
     return 0;
+  }
+
+  double _lineTotal(dynamic rawLineTotal, double unitPrice, dynamic quantity) {
+    final explicit = _num(rawLineTotal);
+    if (explicit > 0) return explicit;
+    final qty = quantity is num ? quantity.toDouble() : _num(quantity);
+    return unitPrice * qty;
   }
 }

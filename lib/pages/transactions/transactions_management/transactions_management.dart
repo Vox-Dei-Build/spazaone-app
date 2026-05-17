@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
+import 'package:pasella/pages/reports/customer_report/widgets/customer_report_panel.dart';
 import 'package:pasella/pages/transactions/widgets/transactions_list_view.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/balance_summary/balance_summary_card.dart';
@@ -114,6 +115,13 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(height: SizeConfig.heightMultiplier * 1.5),
+                            // PAS-UX-06A: per-customer report panel.
+                            // Collapsed by default so the existing
+                            // ledger-list experience is unchanged for
+                            // merchants who don't expand it. Derived
+                            // entirely from the same transactions list
+                            // rendered below it — zero extra reads.
+                            CustomerReportPanel(transactions: snapshot.data!),
                             Expanded(
                               child: TransactionsListView(
                                   customerManagementViewModel:

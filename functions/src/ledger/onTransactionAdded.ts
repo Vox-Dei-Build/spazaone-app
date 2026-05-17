@@ -76,10 +76,15 @@ export async function updateBalancesWithEdit(
       balanceData.payment.totalAmount += paymentAmount;
       balanceData.lastUpdated = FieldValue.serverTimestamp();
 
-      // Update the customer's balance
+      // Update the customer's balance.
+      // PAS-UX-08: keep `isNPA` in lockstep with balance so the UI status
+      // indicator reflects truth within seconds of any transaction, instead
+      // of waiting up to an hour for the scheduled NPA job. The scheduled
+      // job remains as a safety net.
+      const isNPA = currentCustomerBalance < 0;
       transaction.set(
         customerRef,
-        { balance: currentCustomerBalance },
+        { balance: currentCustomerBalance, isNPA },
         { merge: true },
       );
       // Update the user's balance data

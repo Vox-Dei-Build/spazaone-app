@@ -45,8 +45,7 @@ class RunPromotionPage extends StatefulWidget {
   // promotions tab review path (see PAS-UX-11), not through
   // re-entering this wizard with a pre-filled draft.
 
-  const RunPromotionPage({Key? key, this.initialTemplateId})
-      : super(key: key);
+  const RunPromotionPage({Key? key, this.initialTemplateId}) : super(key: key);
 
   @override
   State<RunPromotionPage> createState() => _RunPromotionPageState();
@@ -189,10 +188,32 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   Future<void> _runSavedPromotion() async {
     if (savedPromotionId == null) return;
     setState(() => sending = true);
-    await Provider.of<PromotionsViewModel>(context, listen: false)
-        .sendSavedPromotion(savedPromotionId!);
+    // PAS-WA-01: surface backend send outcomes. Previously this
+    // awaited a `Future<void>`, ignored exceptions entirely and
+    // popped — leaving the merchant with no idea whether anything
+    // failed. The view-model now returns a structured result with
+    // a message that is always populated (provider detail when
+    // present, Pasella fallback otherwise).
+    final result =
+        await Provider.of<PromotionsViewModel>(context, listen: false)
+            .sendSavedPromotion(savedPromotionId!);
     if (!mounted) return;
     setState(() => sending = false);
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.isOk) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Promotion sent.')),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(result.message ?? 'Send failed.'),
+          backgroundColor:
+              result.outcome == SendPromotionOutcome.failed ? Colors.red : null,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
     Navigator.pop(context);
   }
 
@@ -241,7 +262,8 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       vm.selectTemplate(newest['id'] as String);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Selected your new template "${newest['displayName'] ?? newest['name']}".'),
+        content: Text(
+            'Selected your new template "${newest['displayName'] ?? newest['name']}".'),
       ));
     }
     // No fallback snackbar: TemplateSubmittedSuccessPage already explained

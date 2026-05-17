@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
+import 'package:pasella/pages/promote/utils/template_status.dart';
 
-/// PAS-UX-02: first-session aha checklist.
+/// PAS-UX-02 / PAS-UX-09: first-session aha checklist.
 ///
 /// The audit found that a new merchant landing in the app has no
 /// scaffolded path through the four actions that produce the first
@@ -15,17 +19,36 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 /// Until each step is done, the merchant has no concrete reason to
 /// trust the app, no data on any screen, and no way to evaluate
 /// whether the product fits their workflow. Empty-state CTAs help
-/// (PAS-UX-04 added them on Stock), but they're per-screen and the
-/// merchant has to discover each one.
+/// (PAS-UX-04 added them on Stock, PAS-UX-09 added them on
+/// Customers), but they're per-screen and the merchant has to
+/// discover each one.
 ///
 /// This widget surfaces all four steps as a single dismissible
-/// banner on the default landing surface (Customers tab). Each tile:
+/// banner on the Dashboard scaffold (PAS-UX-09 moved it here from
+/// LedgerPage so it's visible across all three primary tabs —
+/// Customers, Products, Sales — instead of only on the default
+/// landing tab). Each tile:
 ///
 ///   - links to the screen that completes it,
-///   - can be ticked off manually if the merchant has already done
-///     the action through a different path,
-///   - persists state per-user in Hive so the banner doesn't
-///     re-appear once dismissed or once all four are done.
+///   - **auto-completes from real Firestore data** (PAS-UX-09):
+///       * Add Product   → users/{uid}/products has any doc
+///       * Add Customer  → users/{uid}/customers has any doc
+///       * Record Sale   → users/{uid}/sales has any doc
+///       * Approve WA Template → messagingTemplates where userId=uid
+///         contains a doc with `channels.whatsapp.approvalStatus`
+///         resolving to TemplateStatus.approved (uses the canonical
+///         resolver in lib/pages/promote/utils/template_status.dart
+///         so this widget stays in sync with how the rest of the app
+///         reads approval).
+///   - can still be manually ticked off so a merchant who completed
+///     an action through a backend / console path can mark it
+///     resolved without polluting the UI.
+///
+/// The auto-tick streams are subscribed in initState and disposed in
+/// dispose. Each is `.limit(1)` so reads stay cheap even on accounts
+/// with thousands of customers/sales/products. The persisted Hive
+/// state is OR'd with the live data signal — once *either* signal
+/// flips true, the item is done.
 ///
 /// State key in Hive `appBox`:
 ///   `onboarding_checklist:<userId>` -> Map<String, bool>
@@ -39,15 +62,12 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 ///
 /// Out of scope (deferred, see PAS-UX-02 audit notes):
 ///
-///   - Auto-detecting completion from real data signals (would need
-///     a stream watcher per dimension; the manual tick is the
-///     pragmatic v1).
 ///   - Seeding pre-approved starter templates on registration: that
 ///     requires a backend approval-bypass for seeded templates, plus
 ///     Twilio template-id reservation. Tracked as a backend item.
-///   - Empty-state CTAs across Contacts, Sales, Orders: PAS-UX-04
-///     established the pattern on Stock; the other three surfaces
-///     should follow but are deferred to keep this slice focused.
+///   - Empty-state CTAs across Sales, Orders: PAS-UX-04 established
+///     the pattern on Stock, PAS-UX-09 added Customers; the other
+///     two surfaces should follow but are tracked separately.
 class OnboardingChecklist extends StatefulWidget {
   const OnboardingChecklist({
     super.key,
@@ -77,17 +97,105 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
   static const _itemRecordSale = 'record_sale';
   static const _itemApproveTemplate = 'approve_template';
 
-  late final String _stateKey =
-      'onboarding_checklist:${widget.userId}';
+  late final String _stateKey = 'onboarding_checklist:${widget.userId}';
   late final String _dismissedKey = '$_stateKey$_dismissedSuffix';
 
   late Map<String, bool> _state;
   bool _dismissed = false;
 
+  // PAS-UX-09: live data-derived completion. Each flag flips true
+  // when its underlying Firestore collection produces at least one
+  // matching document. The displayed "done" state for each item is
+  // (_state[key] || _autoFlag) so manual ticks and data signals are
+  // both honoured — whichever fires first wins.
+  bool _autoAddProduct = false;
+  bool _autoAddCustomer = false;
+  bool _autoRecordSale = false;
+  bool _autoApproveTemplate = false;
+
+  StreamSubscription<QuerySnapshot>? _productsSub;
+  StreamSubscription<QuerySnapshot>? _customersSub;
+  StreamSubscription<QuerySnapshot>? _salesSub;
+  StreamSubscription<QuerySnapshot>? _templatesSub;
+
   @override
   void initState() {
     super.initState();
     _loadState();
+    _subscribeToDataSignals();
+  }
+
+  @override
+  void dispose() {
+    _productsSub?.cancel();
+    _customersSub?.cancel();
+    _salesSub?.cancel();
+    _templatesSub?.cancel();
+    super.dispose();
+  }
+
+  /// PAS-UX-09: cheap `.limit(1)` listeners on each onboarding signal.
+  /// We don't care about counts or contents — just whether at least
+  /// one doc exists. Once the flag flips true we keep the
+  /// subscription open (the user can delete the last record, in which
+  /// case the item should un-tick — that's the right UX, and the
+  /// stream cost is one doc per merchant per category).
+  void _subscribeToDataSignals() {
+    if (widget.userId.isEmpty) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final userScope = firestore.collection('users').doc(widget.userId);
+
+    _productsSub =
+        userScope.collection('products').limit(1).snapshots().listen((snap) {
+      if (!mounted) return;
+      final exists = snap.docs.isNotEmpty;
+      if (exists != _autoAddProduct) {
+        setState(() => _autoAddProduct = exists);
+      }
+    });
+
+    _customersSub =
+        userScope.collection('customers').limit(1).snapshots().listen((snap) {
+      if (!mounted) return;
+      final exists = snap.docs.isNotEmpty;
+      if (exists != _autoAddCustomer) {
+        setState(() => _autoAddCustomer = exists);
+      }
+    });
+
+    _salesSub =
+        userScope.collection('sales').limit(1).snapshots().listen((snap) {
+      if (!mounted) return;
+      final exists = snap.docs.isNotEmpty;
+      if (exists != _autoRecordSale) {
+        setState(() => _autoRecordSale = exists);
+      }
+    });
+
+    // Templates live in a top-level `messagingTemplates` collection
+    // scoped by `userId`. Approval status is a nested field that the
+    // app reads via `templateStatusOf()` (lib/pages/promote/utils/
+    // template_status.dart) — reuse that resolver so this widget
+    // can't drift from how the rest of the app interprets the doc.
+    // Cap the listener at the first 10 templates so a power-user
+    // merchant with hundreds of templates doesn't trigger a giant
+    // snapshot just to answer "have you got one approved yet".
+    _templatesSub = firestore
+        .collection('messagingTemplates')
+        .where('userId', isEqualTo: widget.userId)
+        .limit(10)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      final anyApproved = snap.docs.any((doc) {
+        final data = doc.data();
+        return templateStatusOf(data) == TemplateStatus.approved;
+      });
+      if (anyApproved != _autoApproveTemplate) {
+        setState(() => _autoApproveTemplate = anyApproved);
+      }
+    });
   }
 
   void _loadState() {
@@ -127,7 +235,31 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
     _persist();
   }
 
-  int get _completedCount => _state.values.where((v) => v).length;
+  /// PAS-UX-09: returns true when either the persisted manual state
+  /// or the live data signal says the item is complete. This is the
+  /// source of truth for the checkbox display and the completed
+  /// count.
+  bool _isDone(String key) {
+    if (_state[key] == true) return true;
+    switch (key) {
+      case _itemAddProduct:
+        return _autoAddProduct;
+      case _itemAddCustomer:
+        return _autoAddCustomer;
+      case _itemRecordSale:
+        return _autoRecordSale;
+      case _itemApproveTemplate:
+        return _autoApproveTemplate;
+    }
+    return false;
+  }
+
+  int get _completedCount => [
+        _itemAddProduct,
+        _itemAddCustomer,
+        _itemRecordSale,
+        _itemApproveTemplate
+      ].where(_isDone).length;
 
   bool get _shouldHideChecklist => _completedCount >= 3;
 
@@ -174,6 +306,10 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
             ),
             const SizedBox(height: 4),
             Text(
+              // The R15 messaging credit is already surfaced
+              // permanently via WalletBalancePill in PageHeader chrome
+              // (lib/shared/widgets/page_header.dart:97), so we don't
+              // need to repeat it in this subtitle.
               'Four quick steps so the rest of the app has data '
               'to work with.',
               style: TextStyle(
@@ -213,19 +349,20 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
     required String label,
     required VoidCallback onTap,
   }) {
-    final done = _state[key] ?? false;
+    final done = _isDone(key);
+    // PAS-UX-09: when a data signal flipped the item done, lock the
+    // checkbox so the merchant can't accidentally untick reality.
+    // Manual ticks remain editable for items still pending data.
+    final dataDerived = done && _state[key] != true;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
-            // Manual tick / untick is intentional: see class doc on why
-            // we don't auto-derive completion from real data signals
-            // in this slice.
             Checkbox(
               value: done,
-              onChanged: (v) => _toggle(key, v ?? false),
+              onChanged: dataDerived ? null : (v) => _toggle(key, v ?? false),
             ),
             Expanded(
               child: Text(

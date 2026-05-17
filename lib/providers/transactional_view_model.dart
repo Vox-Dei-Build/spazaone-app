@@ -33,10 +33,19 @@ class TransactionViewModel extends ChangeNotifier {
     salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(value);
     notifyListeners();
   }
+
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
   List<Product> products = [];
   List<Product> filteredProducts = [];
   Map<String, int> selectedProducts = {};
+
+  /// Products surfaced as quick-add suggestions above the search tile in
+  /// [ProductSelectionWidget]. Default implementation is empty; flows
+  /// that have a customer binding (currently only AddCredit — cash
+  /// sales carry no customerId) override this to return ranked
+  /// previous-transaction picks. Empty list means "no suggestions
+  /// surface" — the picker collapses gracefully.
+  List<Product> get suggestedProducts => const [];
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   int currentPage = 0;
   int itemsPerPage = 5;
@@ -160,17 +169,26 @@ class TransactionViewModel extends ChangeNotifier {
         } else {
           final toastContext = _resolveContext(context);
           if (toastContext != null) {
-            showSnackbar(
-                toastContext, 'Still out of stock. Please add stock.', Colors.red);
+            showSnackbar(toastContext, 'Still out of stock. Please add stock.',
+                Colors.red);
           }
         }
       },
     );
   }
 
+  Product productById(String productId) {
+    return products.firstWhere((p) => p.id == productId,
+        orElse: () => Product());
+  }
+
+  int availableStockFor(String productId) {
+    final quantity = productById(productId).quantity;
+    return quantity == null || quantity < 0 ? 0 : quantity;
+  }
+
   void addProduct(BuildContext context, String productId, int quantity) async {
-    Product? product =
-        products.firstWhere((p) => p.id == productId, orElse: () => Product());
+    Product? product = productById(productId);
     if (product.quantity != null && product.quantity! > 0) {
       if (selectedProducts.containsKey(productId)) {
         selectedProducts[productId] = selectedProducts[productId]! + quantity;
@@ -196,8 +214,7 @@ class TransactionViewModel extends ChangeNotifier {
     if (quantity <= 0) {
       selectedProducts.remove(productId);
     } else {
-      Product? product = products.firstWhere((p) => p.id == productId,
-          orElse: () => Product());
+      Product? product = productById(productId);
       if (product.quantity != null && product.quantity! >= quantity) {
         selectedProducts[productId] = quantity;
       } else {
@@ -218,8 +235,7 @@ class TransactionViewModel extends ChangeNotifier {
   double calculateTotalAmount() {
     double total = 0.0;
     for (var productId in selectedProducts.keys) {
-      Product? product = products.firstWhere((p) => p.id == productId,
-          orElse: () => Product());
+      Product? product = productById(productId);
       if (product.sellingPrice != null) {
         total += product.sellingPrice! * selectedProducts[productId]!;
       }

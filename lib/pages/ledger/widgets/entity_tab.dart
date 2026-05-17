@@ -19,12 +19,22 @@ class EntityTab extends StatefulWidget {
   final ValueNotifier<String?> searchTextNotifier;
   final ValueNotifier<bool> hasCustomersNotifier;
 
+  /// PAS-UX-09: optional inline CTA on the empty state. When supplied
+  /// the empty surface paints a primary action button beneath the
+  /// caption (mirrors the PAS-UX-04 stock empty-state recovery
+  /// pattern). Optional so non-onboarding categories can keep the
+  /// bare image + caption.
+  final String? emptyCtaLabel;
+  final VoidCallback? onEmptyCtaTap;
+
   const EntityTab({
     required this.searchTextNotifier,
     required this.category,
     required this.emptyAsset,
     required this.emptyText,
     required this.hasCustomersNotifier,
+    this.emptyCtaLabel,
+    this.onEmptyCtaTap,
     Key? key,
   }) : super(key: key);
 
@@ -139,51 +149,57 @@ class _EntityTabState extends State<EntityTab> {
         .doc(currentUserId)
         .snapshots()
         .map((snapshot) {
-      if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
-        return <Map<String, dynamic>>[];
-      }
-      return (snapshot.data()?['unreadMessages'] as List<dynamic>)
-          .map((msg) => msg as Map<String, dynamic>)
-          .toList();
-    });
+          if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
+            return <Map<String, dynamic>>[];
+          }
+          return (snapshot.data()?['unreadMessages'] as List<dynamic>)
+              .map((msg) => msg as Map<String, dynamic>)
+              .toList();
+        });
 
-    return Rx.combineLatest2<QuerySnapshot, List<Map<String, dynamic>>,
-        List<CustomerWithTransactions>>(
+    return Rx.combineLatest2<
+      QuerySnapshot,
+      List<Map<String, dynamic>>,
+      List<CustomerWithTransactions>
+    >(
       customersStream,
       unreadMessagesStream,
       (customerSnapshot, unreadMessages) =>
           customerSnapshot.docs.map((customerDoc) {
-        final customerData = customerDoc.data() as Map<String, dynamic>;
-        final double balance =
-            (customerData['balance'] as num?)?.toDouble() ?? 0.0;
+            final customerData = customerDoc.data() as Map<String, dynamic>;
+            final double balance =
+                (customerData['balance'] as num?)?.toDouble() ?? 0.0;
 
-        // 🔵 Chat unread per customer (existing)
-        final chatUnread = unreadMessages
-            .where((msg) => msg['customerNumber'] == customerData['number'])
-            .length;
+            // 🔵 Chat unread per customer (existing)
+            final chatUnread =
+                unreadMessages
+                    .where(
+                      (msg) => msg['customerNumber'] == customerData['number'],
+                    )
+                    .length;
 
-        // 🟠 Orders unread per customer (NEW)
-        final int ordersUnread =
-            (customerData['ordersUnreadCount'] as int?) ?? 0;
+            // 🟠 Orders unread per customer (NEW)
+            final int ordersUnread =
+                (customerData['ordersUnreadCount'] as int?) ?? 0;
 
-        // ✅ Single badge shows combined unread (messages + orders)
-        final int combinedUnread = chatUnread + ordersUnread;
+            // ✅ Single badge shows combined unread (messages + orders)
+            final int combinedUnread = chatUnread + ordersUnread;
 
-        return CustomerWithTransactions(
-          customer: Customer.fromMap({
-            'id': customerDoc.id,
-            'name': formatStringToCamelCase(customerData['name']),
-            'number': customerData['number'],
-            'category': customerData['category'],
-            'lastTransaction': customerData['lastTransaction'],
-            'balance': balance,
-            'isNPA': customerData['isNPA'],
-            'profileImageUrl': customerData['profileImageUrl'],
-          }),
-          transactions: [],
-          unreadCount: combinedUnread, // 👈 now includes orders
-        );
-      }).toList(),
+            return CustomerWithTransactions(
+              customer: Customer.fromMap({
+                'id': customerDoc.id,
+                'name': formatStringToCamelCase(customerData['name']),
+                'number': customerData['number'],
+                'category': customerData['category'],
+                'lastTransaction': customerData['lastTransaction'],
+                'balance': balance,
+                'isNPA': balance < 0,
+                'profileImageUrl': customerData['profileImageUrl'],
+              }),
+              transactions: [],
+              unreadCount: combinedUnread, // 👈 now includes orders
+            );
+          }).toList(),
     );
   }
 
@@ -194,16 +210,17 @@ class _EntityTabState extends State<EntityTab> {
     return Scaffold(
       body: Padding(
         padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.imageSizeMultiplier * 2),
+          horizontal: SizeConfig.imageSizeMultiplier * 2,
+        ),
         child: StreamBuilder<List<CustomerWithTransactions>>(
-          key: ValueKey(dataModel.selectedSortByFilter +
-              dataModel.reminderDateFilter.toString()),
+          key: ValueKey(
+            dataModel.selectedSortByFilter +
+                dataModel.reminderDateFilter.toString(),
+          ),
           stream: streamEntitiesWithTransactions(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -220,14 +237,40 @@ class _EntityTabState extends State<EntityTab> {
                         width: SizeConfig.imageSizeMultiplier * 60,
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      Text(
-                        widget.emptyText,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w500,
-                          fontSize: SizeConfig.textMultiplier * 2,
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: SizeConfig.imageSizeMultiplier * 6,
                         ),
-                        textAlign: TextAlign.center,
+                        child: Text(
+                          widget.emptyText,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: SizeConfig.textMultiplier * 2,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
+                      // PAS-UX-09: inline recovery CTA. Previously the
+                      // empty Customers tab dead-ended on image + text
+                      // and required the merchant to find the floating
+                      // "+" FAB (easy to miss on small screens). Now
+                      // the empty state itself is the onboarding
+                      // moment.
+                      if (widget.emptyCtaLabel != null &&
+                          widget.onEmptyCtaTap != null) ...[
+                        SizedBox(height: SizeConfig.heightMultiplier * 3),
+                        ElevatedButton.icon(
+                          onPressed: widget.onEmptyCtaTap,
+                          icon: const Icon(Icons.person_add),
+                          label: Text(widget.emptyCtaLabel!),
+                          style: ElevatedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: SizeConfig.imageSizeMultiplier * 6,
+                              vertical: SizeConfig.heightMultiplier * 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -243,14 +286,17 @@ class _EntityTabState extends State<EntityTab> {
               widget.hasCustomersNotifier.value = allEntities.isNotEmpty;
             });
 
-            List<CustomerWithTransactions> filteredEntities =
-                dataModel.applyFilters(allEntities);
+            List<CustomerWithTransactions> filteredEntities = dataModel
+                .applyFilters(allEntities);
 
             String? searchTerm = widget.searchTextNotifier.value?.toLowerCase();
             if (searchTerm != null && searchTerm.isNotEmpty) {
-              filteredEntities = filteredEntities.where((entity) {
-                return entity.customer.name.toLowerCase().contains(searchTerm);
-              }).toList();
+              filteredEntities =
+                  filteredEntities.where((entity) {
+                    return entity.customer.name.toLowerCase().contains(
+                      searchTerm,
+                    );
+                  }).toList();
             }
 
             if (filteredEntities.isEmpty) {
@@ -278,39 +324,50 @@ class _EntityTabState extends State<EntityTab> {
 
             return SingleChildScrollView(
               child: Column(
-                children: filteredEntities.map((entityWithTransactions) {
-                  LedgerTransaction? lastTransaction;
-                  double balance = entityWithTransactions.customer.balance;
+                children:
+                    filteredEntities.map((entityWithTransactions) {
+                      LedgerTransaction? lastTransaction;
+                      double balance = entityWithTransactions.customer.balance;
 
-                  if (entityWithTransactions.customer.lastTransaction != null &&
-                      entityWithTransactions
-                          .customer.lastTransaction!.isNotEmpty) {
-                    lastTransaction = LedgerTransaction.fromMap(
-                        entityWithTransactions.customer.lastTransaction!);
-                  }
+                      if (entityWithTransactions.customer.lastTransaction !=
+                              null &&
+                          entityWithTransactions
+                              .customer
+                              .lastTransaction!
+                              .isNotEmpty) {
+                        lastTransaction = LedgerTransaction.fromMap(
+                          entityWithTransactions.customer.lastTransaction!,
+                        );
+                      }
 
-                  return TransactionTile(
-                      color: kTertiaryColor.value,
-                      name: entityWithTransactions.customer.name,
-                      profileImageUrl: entityWithTransactions
-                          .customer.profileImageUrl, // Pass profile image URL
-                      balance: balance,
-                      amount: lastTransaction != null
-                          ? lastTransaction.amount.toDouble()
-                          : 0,
-                      remarks:
-                          lastTransaction?.remarks ?? 'No transactions yet',
-                      status: lastTransaction?.status ?? 'DUE',
-                      type: lastTransaction?.type ?? 'Credit',
-                      date: lastTransaction?.date != null
-                          ? DateFormat('y MMM d, h:mm a')
-                              .format(lastTransaction!.date)
-                          : '',
-                      selectedCustomerId: entityWithTransactions.customer.id,
-                      isNPA: entityWithTransactions.customer.isNPA,
-                      number: entityWithTransactions.customer.number,
-                      unreadCount: entityWithTransactions.unreadCount);
-                }).toList(),
+                      return TransactionTile(
+                        color: kTertiaryColor.value,
+                        name: entityWithTransactions.customer.name,
+                        profileImageUrl:
+                            entityWithTransactions
+                                .customer
+                                .profileImageUrl, // Pass profile image URL
+                        balance: balance,
+                        amount:
+                            lastTransaction != null
+                                ? lastTransaction.amount.toDouble()
+                                : 0,
+                        remarks:
+                            lastTransaction?.remarks ?? 'No transactions yet',
+                        status: lastTransaction?.status ?? 'DUE',
+                        type: lastTransaction?.type ?? 'Credit',
+                        date:
+                            lastTransaction?.date != null
+                                ? DateFormat(
+                                  'y MMM d, h:mm a',
+                                ).format(lastTransaction!.date)
+                                : '',
+                        selectedCustomerId: entityWithTransactions.customer.id,
+                        isNPA: entityWithTransactions.customer.isNPA,
+                        number: entityWithTransactions.customer.number,
+                        unreadCount: entityWithTransactions.unreadCount,
+                      );
+                    }).toList(),
               ),
             );
           },

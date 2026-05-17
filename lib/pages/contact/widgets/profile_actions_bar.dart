@@ -6,6 +6,7 @@ import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
+import 'package:pasella/shared/widgets/payment_status_pill.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/widgets/private_region.dart';
@@ -44,8 +45,20 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
 
     final viewModel =
         Provider.of<CustomerManagementViewModel>(context, listen: true);
+    // PAS-UX-08: listen to the balance summary provider so the NPA dot
+    // rebuilds the instant the customer's balance changes (e.g. after a
+    // payment is recorded). The widget already holds a reference, but
+    // watching ensures notifyListeners() triggers a rebuild here.
+    final balanceSummaryProvider =
+        context.watch<CustomerBalanceSummaryProvider>();
     String customerName = viewModel.customerName;
     String mobileNumber = viewModel.mobileNumber ?? '';
+    // PAS-UX-08: derive NPA state from the live customer balance instead of
+    // hard-coding `true` (which previously made the dot always red on the
+    // customer detail screen, regardless of paid-up status).
+    final double netBalance =
+        balanceSummaryProvider.customerBalanceSummary.netBalance;
+    final bool isNPA = netBalance < 0;
 
     return AppBar(
       leadingWidth: 30,
@@ -53,8 +66,11 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
           profilePicture(context, customerName, viewModel.profileImageUrl,
-              mobileNumber, true,
-              displayIcons: true, profileImage: viewModel.profileImage),
+              mobileNumber, isNPA,
+              displayIcons: true,
+              profileImage: viewModel.profileImage,
+              balance: netBalance,
+              showNPAIndicator: false),
           SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
           Expanded(
             child: InkWell(
@@ -72,77 +88,86 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      customerName,
-                    style: TextStyle(
-                      fontSize:
-                          SizeConfig.textMultiplier * 2, // Responsive font size
-                      fontWeight: FontWeight.w900,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign
-                        .start, // Changed to start for better alignment
-                  ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 0.3),
-                  if (viewModel.isLoading)
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Padding(
-                          padding: EdgeInsets.symmetric(
-                              vertical: SizeConfig.heightMultiplier * 0.5,
-                              horizontal: SizeConfig.imageSizeMultiplier * 2),
-                          child: Shimmer.fromColors(
-                            baseColor: Colors.black12,
-                            highlightColor: Colors.black26,
-                            child: Container(
-                              width: SizeConfig.imageSizeMultiplier * 15,
-                              height: SizeConfig.heightMultiplier * 1,
-                              decoration: BoxDecoration(
-                                color: Colors.grey,
-                                borderRadius: BorderRadius.all(Radius.circular(
-                                    SizeConfig.imageSizeMultiplier * 2)),
+                        Flexible(
+                          child: Text(
+                            customerName,
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 2,
+                              fontWeight: FontWeight.w900,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.start,
+                          ),
+                        ),
+                        SizedBox(width: SizeConfig.imageSizeMultiplier * 1.2),
+                        if (!viewModel.isLoading)
+                          PaymentStatusPill(balance: netBalance, dense: true),
+                      ],
+                    ),
+                    SizedBox(height: SizeConfig.heightMultiplier * 0.3),
+                    if (viewModel.isLoading)
+                      Row(
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                                vertical: SizeConfig.heightMultiplier * 0.5,
+                                horizontal: SizeConfig.imageSizeMultiplier * 2),
+                            child: Shimmer.fromColors(
+                              baseColor: Colors.black12,
+                              highlightColor: Colors.black26,
+                              child: Container(
+                                width: SizeConfig.imageSizeMultiplier * 15,
+                                height: SizeConfig.heightMultiplier * 1,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey,
+                                  borderRadius: BorderRadius.all(
+                                      Radius.circular(
+                                          SizeConfig.imageSizeMultiplier * 2)),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  if (!viewModel.isLoading)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Icon(
-                          mobileNumber.isNotEmpty
-                              ? viewModel.hasWhatsApp
-                                  ? FontAwesomeIcons.whatsapp
-                                  : Icons.sms_outlined
-                              : Icons.error,
-                          color: mobileNumber.isNotEmpty
-                              ? viewModel.hasWhatsApp
-                                  ? WaBrandColour.tealGreenLighter
-                                  : Colors.blue
-                              : Colors.red,
-                          size: SizeConfig.textMultiplier * 1.5,
-                        ),
-                        SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
-                        Expanded(
-                          child: Text(
+                        ],
+                      ),
+                    if (!viewModel.isLoading)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(
                             mobileNumber.isNotEmpty
                                 ? viewModel.hasWhatsApp
-                                    ? "Uses WhatsApp"
-                                    : "Likely Only SMS"
-                                : "No mobile number",
-                            style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.5,
-                              color: Colors.grey,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                                    ? FontAwesomeIcons.whatsapp
+                                    : Icons.sms_outlined
+                                : Icons.error,
+                            color: mobileNumber.isNotEmpty
+                                ? viewModel.hasWhatsApp
+                                    ? WaBrandColour.tealGreenLighter
+                                    : Colors.blue
+                                : Colors.red,
+                            size: SizeConfig.textMultiplier * 1.5,
                           ),
-                        ),
-                      ],
-                    )
-                ],
+                          SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
+                          Expanded(
+                            child: Text(
+                              mobileNumber.isNotEmpty
+                                  ? viewModel.hasWhatsApp
+                                      ? "Uses WhatsApp"
+                                      : "Likely Only SMS"
+                                  : "No mobile number",
+                              style: TextStyle(
+                                fontSize: SizeConfig.textMultiplier * 1.5,
+                                color: Colors.grey,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      )
+                  ],
                 ),
               ),
             ),
@@ -173,8 +198,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
               final confirmed = await ConfirmDialog.showDestructive(
                 context,
                 title: 'Delete customer?',
-                message:
-                    'This permanently deletes $customerName and all their '
+                message: 'This permanently deletes $customerName and all their '
                     'transactions. This cannot be undone.',
                 confirmLabel: 'Delete',
               );
