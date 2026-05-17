@@ -5,6 +5,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_stream_builder_section.dart';
 import 'package:pasella/pages/reports/business_report/view_model/business_report_view_model.dart';
+import 'package:pasella/pages/reports/business_report/widgets/date_range_ledger_drilldown.dart';
 import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
@@ -185,6 +186,20 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                         startDate: _startDate,
                         endDate: _endDate,
                       ),
+                      SizedBox(height: SizeConfig.heightMultiplier * 1),
+                      // PAS-UX-06A: drill-down. The Net Balance card above
+                      // is a single aggregate number; before this widget,
+                      // merchants could not see which transactions or
+                      // customers produced it. The list below is the
+                      // verification surface — same query shape as the
+                      // backend, with an explicit reconciliation line.
+                      // Scoped to Date View only (Summary tab is
+                      // deliberately untouched per PAS-UX-06A scope).
+                      if (_startDate != null && _endDate != null)
+                        DateRangeLedgerDrilldown(
+                          startDate: _startDate!,
+                          endDate: _endDate!,
+                        ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                     ] else if (_selectedView == ReportView.payLater) ...[
                       Card(
@@ -214,6 +229,12 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                       ]));
                                 } else {
                                   Report report = snapshot.data!;
+                                  // PAS-UX-06A: derive Owing Customers from
+                                  // the actual list length so the headline
+                                  // count and the rendered list cannot
+                                  // disagree on screen.
+                                  final int owingCount =
+                                      report.customersWithNPAs.length;
                                   return Padding(
                                     padding: EdgeInsets.all(
                                         SizeConfig.imageSizeMultiplier * 4),
@@ -228,7 +249,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                         MetricTile(
                                           context,
                                           'Owing Customers',
-                                          () async => report.totalNumberofNPAs,
+                                          () async => owingCount,
                                           false,
                                         ),
                                         MetricTile(
@@ -242,13 +263,20 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                           '% Who Owe You',
                                           () async {
                                             final total = totalCustomers ?? 0;
-                                            final npas =
-                                                report.totalNumberofNPAs;
-
-                                            if (total == 0) return '0%';
-
-                                            final ratio = (npas / total) * 100;
-                                            return '${ratio.toStringAsFixed(1)}%'; // e.g. 45.3%
+                                            if (total == 0) {
+                                              return owingCount == 0
+                                                  ? '0%'
+                                                  : '—';
+                                            }
+                                            // PAS-UX-06A: clamp guards
+                                            // against impossible percentages
+                                            // when numerator (all-time NPAs)
+                                            // and denominator (date-filtered
+                                            // total customers) drift apart.
+                                            final raw =
+                                                (owingCount / total) * 100;
+                                            final ratio = raw.clamp(0.0, 100.0);
+                                            return '${ratio.toStringAsFixed(1)}%';
                                           },
                                           false,
                                         ),
@@ -257,7 +285,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                                 SizeConfig.heightMultiplier *
                                                     2),
                                         Text(
-                                          'Customers (${report.totalNumberofNPAs})',
+                                          'Customers ($owingCount)',
                                           style: TextStyle(
                                               fontSize:
                                                   SizeConfig.textMultiplier * 2,

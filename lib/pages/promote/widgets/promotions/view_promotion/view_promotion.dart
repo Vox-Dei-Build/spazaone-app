@@ -38,8 +38,28 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
 
   Future<void> _sendNow(String promoId) async {
     setState(() => _actionLoading = true);
-    await widget.viewModel.sendSavedPromotion(promoId);
-    if (mounted) Navigator.pop(context);
+    // PAS-WA-01: show the merchant what happened. The previous code
+    // awaited a `Future<void>` and popped without feedback even when
+    // every recipient failed. We now read the structured result and
+    // surface either the provider error or the Pasella fallback.
+    final result = await widget.viewModel.sendSavedPromotion(promoId);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.isOk) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Promotion sent.')),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(result.message ?? 'Send failed.'),
+          backgroundColor:
+              result.outcome == SendPromotionOutcome.failed ? Colors.red : null,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+    Navigator.pop(context);
   }
 
   @override
@@ -162,7 +182,8 @@ class _LinkedProductChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.06),
-        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+        border:
+            Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(

@@ -66,7 +66,9 @@ class AddContactViewModel extends ChangeNotifier {
   }
 
   Future<void> addCustomerToFirestore(
-      BuildContext context, AppModel model) async {
+    BuildContext context,
+    AppModel model,
+  ) async {
     if (!_contactConsentAccepted) {
       showSnackbar(
         context,
@@ -83,7 +85,10 @@ class AddContactViewModel extends ChangeNotifier {
 
     if (customerName.isEmpty || currentUserId.isEmpty) {
       showSnackbar(
-          context, 'Validation failed or no user is logged in!', Colors.red);
+        context,
+        'Validation failed or no user is logged in!',
+        Colors.red,
+      );
       _setLoading(false);
       return;
     }
@@ -92,9 +97,10 @@ class AddContactViewModel extends ChangeNotifier {
     if (connectivityResult == ConnectivityResult.none) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showSnackbar(
-            context,
-            'You\'re offline. Action queued and will complete when back online.',
-            Colors.orange);
+          context,
+          'You\'re offline. Action queued and will complete when back online.',
+          Colors.orange,
+        );
       });
     }
 
@@ -124,13 +130,14 @@ class AddContactViewModel extends ChangeNotifier {
     // placeholders ("Walk-in 1", "Walk-in 2") and should not collide.
     final normalizedNumber = newCustomer['number'] as String;
     if (normalizedNumber.isNotEmpty) {
-      final existing = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUserId)
-          .collection('customers')
-          .where('number', isEqualTo: normalizedNumber)
-          .limit(1)
-          .get();
+      final existing =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUserId)
+              .collection('customers')
+              .where('number', isEqualTo: normalizedNumber)
+              .limit(1)
+              .get();
 
       if (existing.docs.isNotEmpty) {
         _setLoading(false);
@@ -139,12 +146,12 @@ class AddContactViewModel extends ChangeNotifier {
         // confusion point in support; merchants tap Confirm again
         // when nothing visible happens.
         // ignore: unawaited_futures
-        TelemetryService.instance
-            .capture(const CustomerCreateBlocked(reason: 'duplicate_number'));
+        TelemetryService.instance.capture(
+          const CustomerCreateBlocked(reason: 'duplicate_number'),
+        );
         final existingDoc = existing.docs.first;
         final existingData = existingDoc.data();
-        final existingName =
-            (existingData['name'] as String?) ?? customerName;
+        final existingName = (existingData['name'] as String?) ?? customerName;
 
         if (!context.mounted) return;
         final openExisting = await ConfirmDialog.show(
@@ -162,11 +169,12 @@ class AddContactViewModel extends ChangeNotifier {
           // came from, not back on the abandoned add form.
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (_) => CustomerManagementPage(
-                customerName: existingName,
-                customerId: existingDoc.id,
-                mobileNumber: normalizedNumber,
-              ),
+              builder:
+                  (_) => CustomerManagementPage(
+                    customerName: existingName,
+                    customerId: existingDoc.id,
+                    mobileNumber: normalizedNumber,
+                  ),
             ),
           );
         }
@@ -194,6 +202,26 @@ class AddContactViewModel extends ChangeNotifier {
     // and surface a success snackbar so the user has explicit
     // confirmation before the route changes.
     try {
+      // PAS-UX-09: detect whether this is the merchant's first customer
+      // BEFORE the write. If it is, the post-save destination is the
+      // new customer's management page (Pay Later / Orders / Messages
+      // tabs — i.e. the hero loop with Credit + Payment + WhatsApp
+      // buttons in reach) instead of bouncing back to Dashboard. This
+      // is the single biggest shortcut from signup to "believable
+      // value moment": one tap creates the customer, the next tap
+      // records the first credit on them.
+      //
+      // For non-first customers we keep the historical Dashboard
+      // destination to respect habituated flow.
+      final priorCustomersSnap =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUserId)
+              .collection('customers')
+              .limit(1)
+              .get();
+      final isFirstCustomer = priorCustomersSnap.docs.isEmpty;
+
       final docRef = await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUserId)
@@ -202,7 +230,9 @@ class AddContactViewModel extends ChangeNotifier {
 
       if (_profileImage != null) {
         final url = await _photoUploadUtil.uploadImage(
-            _profileImage!, 'profile_images/$currentUserId/${docRef.id}.jpg');
+          _profileImage!,
+          'profile_images/$currentUserId/${docRef.id}.jpg',
+        );
         await docRef.update({'profileImageUrl': url});
       }
 
@@ -220,7 +250,8 @@ class AddContactViewModel extends ChangeNotifier {
         // delivery succeeds.
         final expectedChannel =
             await MessagingNotificationService.resolveExpectedChannel(
-                mobileNumber);
+              mobileNumber,
+            );
 
         // Pre-flight cost confirmation. Tri-state outcome — explicit
         // skip is now a labelled action ("Skip & record only"), so the
@@ -242,13 +273,16 @@ class AddContactViewModel extends ChangeNotifier {
         // Safety net for race conditions on the wallet balance. Use the
         // breakdown's quoted total (the primary channel cost) as the
         // affordability gate — matches what the user just confirmed.
-        final canProceed = outcome.shouldSend &&
+        final canProceed =
+            outcome.shouldSend &&
             await BalanceCheckUtil.checkBalanceAndProceed(
-                context, currentUserId, breakdown.total);
+              context,
+              currentUserId,
+              breakdown.total,
+            );
 
         if (canProceed) {
-          await _sendSMS(
-              currentUserId, docRef.id, customerName, mobileNumber);
+          await _sendSMS(currentUserId, docRef.id, customerName, mobileNumber);
         } else if (outcome.isSilent) {
           // Contact persisted, no welcome message. Surface the state.
           showSnackbar(
@@ -270,8 +304,9 @@ class AddContactViewModel extends ChangeNotifier {
       // Fire-and-forget so telemetry can't block the navigator push.
       final createdWithImage = _profileImage != null;
       // ignore: unawaited_futures
-      TelemetryService.instance
-          .capture(CustomerCreated(hasImage: createdWithImage));
+      TelemetryService.instance.capture(
+        CustomerCreated(hasImage: createdWithImage),
+      );
 
       nameController.clear();
       numberController.clear();
@@ -279,16 +314,38 @@ class AddContactViewModel extends ChangeNotifier {
       _contactConsentAccepted = false;
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        final messenger = mobileNumber.isEmpty
-            ? 'Customer added. You can add a number later via "Edit Customer".'
-            : 'Customer added.';
+        final messenger =
+            mobileNumber.isEmpty
+                ? 'Customer added. You can add a number later via "Edit Customer".'
+                : 'Customer added.';
         showSnackbar(context, messenger, Colors.green);
-        Navigator.of(context).pushReplacementNamed('/dashboard');
+        if (isFirstCustomer) {
+          // PAS-UX-09: first-customer fast-path. Replace the AddContact
+          // route with the new customer's management page so the
+          // merchant lands on the balance view with Credit / Payment /
+          // WhatsApp actions one tap away. Back navigation still
+          // resolves to Dashboard via the route stack underneath.
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder:
+                  (_) => CustomerManagementPage(
+                    customerName: customerName,
+                    customerId: docRef.id,
+                    mobileNumber: normalizePhoneNumber(mobileNumber),
+                  ),
+            ),
+          );
+        } else {
+          Navigator.of(context).pushReplacementNamed('/dashboard');
+        }
       });
     } catch (error) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        showSnackbar(context,
-            'Error adding customer. It will retry when online.', Colors.red);
+        showSnackbar(
+          context,
+          'Error adding customer. It will retry when online.',
+          Colors.red,
+        );
       });
     } finally {
       _setLoading(false);
@@ -296,12 +353,20 @@ class AddContactViewModel extends ChangeNotifier {
   }
 
   Future<void> _sendSMS(
-      String userId, String customerId, String name, String number) async {
+    String userId,
+    String customerId,
+    String name,
+    String number,
+  ) async {
     try {
       MessagingNotificationService notificationService =
           await MessagingNotificationService.create();
       await notificationService.sendOnboardingMessage(
-          userId, customerId, name, number);
+        userId,
+        customerId,
+        name,
+        number,
+      );
     } catch (e) {
       print(e);
     }
@@ -320,7 +385,7 @@ class AddContactViewModel extends ChangeNotifier {
       'remarks': 'No transactions yet',
       'status': 'PAID',
       'type': 'Payment',
-      'date': Timestamp.now()
+      'date': Timestamp.now(),
     };
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
+import 'package:pasella/shared/widgets/payment_status_pill.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
@@ -65,7 +66,8 @@ class TransactionTile extends StatelessWidget {
               visualDensity: const VisualDensity(horizontal: -2),
               leading: Stack(
                 children: [
-                  profilePicture(context, name, profileImageUrl, number, isNPA),
+                  profilePicture(context, name, profileImageUrl, number, isNPA,
+                      balance: balance, showNPAIndicator: false),
                 ],
               ),
               title: _buildTitle(),
@@ -125,16 +127,23 @@ class TransactionTile extends StatelessWidget {
               ],
             ),
           ),
-          // Balance text should wrap or shrink if needed
           const SizedBox(width: 8),
-          Text(
-            CurrencyUtil.format(balance),
-            style: TextStyle(
-              color: balance >= 0 ? kPrimaryColor : Colors.red,
-              fontWeight: FontWeight.bold,
-              fontSize: SizeConfig.textMultiplier * 1.8,
-            ),
-            overflow: TextOverflow.ellipsis,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                CurrencyUtil.format(balance),
+                style: TextStyle(
+                  color: balance >= 0 ? kPrimaryColor : Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: SizeConfig.textMultiplier * 1.8,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              SizedBox(height: SizeConfig.heightMultiplier * 0.4),
+              PaymentStatusPill(balance: balance, dense: true),
+            ],
           ),
         ],
       ),

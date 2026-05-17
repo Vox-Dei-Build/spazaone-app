@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 void showSnackbar(BuildContext context, String message, Color color) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+  if (!context.mounted) return;
+  ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
     content: Text(
       message,
       style: TextStyle(
@@ -25,30 +26,32 @@ void showSnackbar(BuildContext context, String message, Color color) {
 
 void showSnackbarWithNavigation(
     BuildContext context, String message, Color color, SnackBarAction action) {
-  if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-          message,
-          style: TextStyle(
-            fontSize: MediaQuery.of(context).size.width *
-                0.04, // Responsive text size
-          ),
+  if (!context.mounted) return;
+  ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      content: Text(
+        message,
+        style: TextStyle(
+          fontSize:
+              MediaQuery.of(context).size.width * 0.04, // Responsive text size
         ),
-        backgroundColor: color,
-        behavior:
-            SnackBarBehavior.floating, // Make the snackbar float above the UI
-        shape: RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(10), // Rounded corners for the snackbar
-        ),
-        duration: Duration(seconds: 10),
-        action: action));
-  }
+      ),
+      backgroundColor: color,
+      behavior:
+          SnackBarBehavior.floating, // Make the snackbar float above the UI
+      shape: RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(10), // Rounded corners for the snackbar
+      ),
+      duration: Duration(seconds: 10),
+      action: action));
 }
 
 void showErrorSnackBar(BuildContext context, String message,
     {bool isWarning = false}) {
-  ScaffoldMessenger.of(context).showSnackBar(
+  if (!context.mounted) return;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  messenger.showSnackBar(
     SnackBar(
       content: Text(
         message,
@@ -76,7 +79,9 @@ void showErrorSnackBar(BuildContext context, String message,
 }
 
 void showSMSSnackBar(BuildContext context, String message, bool success) {
-  final scaffoldMessenger = ScaffoldMessenger.of(context);
+  if (!context.mounted) return;
+  final scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
+  if (scaffoldMessenger == null) return;
   scaffoldMessenger.showSnackBar(
     SnackBar(
       content: Text(

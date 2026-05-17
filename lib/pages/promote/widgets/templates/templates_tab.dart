@@ -37,8 +37,7 @@ class _TemplatesTabState extends State<TemplatesTab> {
         .where((t) => templateStatusOf(t) == TemplateStatus.rejected)
         .length;
     final failedCount = templates
-        .where((t) =>
-            templateStatusOf(t) == TemplateStatus.submissionFailed)
+        .where((t) => templateStatusOf(t) == TemplateStatus.submissionFailed)
         .length;
 
     return RefreshIndicator(
@@ -146,8 +145,7 @@ class _StatusSummary extends StatelessWidget {
       parts.add(_SummaryPart(
         icon: Icons.warning_amber_rounded,
         color: Colors.deepOrange,
-        text:
-            '$failed couldn\'t be submitted to WhatsApp. Tap to retry.',
+        text: '$failed couldn\'t be submitted to WhatsApp. Tap to retry.',
       ));
     }
     if (parts.isEmpty) return const SizedBox.shrink();
@@ -247,8 +245,7 @@ class _TemplateCard extends StatelessWidget {
                     color: status.color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child:
-                      Icon(status.icon, size: 32, color: status.color),
+                  child: Icon(status.icon, size: 32, color: status.color),
                 ),
               SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
               Expanded(
@@ -266,7 +263,8 @@ class _TemplateCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        _StatusPill(status: status),
+                        const SizedBox(width: 6),
+                        Flexible(child: _StatusPill(status: status)),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -344,12 +342,16 @@ class _StatusPill extends StatelessWidget {
         children: [
           Icon(status.icon, size: 12, color: status.color),
           const SizedBox(width: 4),
-          Text(
-            status.label,
-            style: TextStyle(
-              color: status.color,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              status.label,
+              style: TextStyle(
+                color: status.color,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

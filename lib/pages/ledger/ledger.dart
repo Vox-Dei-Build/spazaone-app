@@ -1,17 +1,12 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
-import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_floating_action_button.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_main_content.dart';
-import 'package:pasella/pages/promote/promote_intent_bus.dart';
-import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
-import 'package:pasella/shared/widgets/onboarding/onboarding_checklist.dart';
 import 'package:provider/provider.dart';
 
 class LedgerPage extends StatefulWidget {
@@ -70,54 +65,23 @@ class _LedgerPageState extends State<LedgerPage> {
         body: SafeArea(
           child: Padding(
             padding: LayoutConstants.padding10Horizontal,
+            // PAS-UX-09: the OnboardingChecklist used to mount here as
+            // `belowHeaderCard`. It has moved up to the Dashboard
+            // scaffold (lib/pages/dashboard/dashboard.dart) so it's
+            // visible across Customers / Products / Sales, matching
+            // the industry pattern (Shopify, Stripe, Linear,
+            // Intercom) where activation checklists are anchored to
+            // the home/dashboard chrome rather than a single feature
+            // tab.
             child: LedgerMainContent(
               ledgerViewModel: ledgerViewModel,
               tabIndexNotifier: _tabIndexNotifier,
-              // PAS-UX-02 (pre-release follow-up): the onboarding
-              // checklist now mounts inside the page rhythm — below
-              // the page header and tab bar — rather than as a
-              // top-of-page banner. Release testers flagged the old
-              // placement as visually disconnected from the rest of
-              // the surface and treated it as an interstitial rather
-              // than part of the page.
-              //
-              // The widget is still internally guarded (only paints
-              // when the user hasn't dismissed it and at least one
-              // item is incomplete) so existing merchants see no
-              // visual change. Customers / Ledger remains the
-              // highest-leverage placement because it's the default
-              // landing surface after login.
-              belowHeaderCard:
-                  FirebaseAuth.instance.currentUser?.uid == null
-                      ? null
-                      : OnboardingChecklist(
-                          userId: FirebaseAuth.instance.currentUser!.uid,
-                          onAddProduct: () {
-                            // Switch to Stock tab and push the New
-                            // Product page so the merchant lands on
-                            // the form, not the empty Stock tab.
-                            final app = context.read<AppModel>();
-                            app.updateCurrentIndex(1);
-                          },
-                          onAddCustomer: () => Navigator.pushNamed(
-                              context, AddContactPage.id),
-                          onRecordSale: () =>
-                              context.read<AppModel>().updateCurrentIndex(2),
-                          onApproveTemplate: () {
-                            // Land the merchant on the Templates tab
-                            // so they can create one. The shared
-                            // PromoteIntentBus is the canonical way
-                            // to pre-route the Promote surface.
-                            PromoteIntentBus.instance.set(
-                              const PromoteIntent(tab: 'templates'),
-                            );
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const PromotionsPage(),
-                              ),
-                            );
-                          },
-                        ),
+              // PAS-UX-09: shared "add customer" handler so the empty
+              // Customers tab can offer an inline CTA. The same
+              // handler is used by the floating "+" FAB above, so
+              // both entry points route through one place.
+              onAddCustomer: () =>
+                  Navigator.pushNamed(context, AddContactPage.id),
             ),
           ),
         ),

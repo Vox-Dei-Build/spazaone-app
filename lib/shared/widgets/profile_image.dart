@@ -53,10 +53,31 @@ class ProfileImageWidget extends StatelessWidget {
   }
 }
 
+/// PAS-UX-08: tooltip copy is kept here (rather than in callers) so the
+/// explanation stays consistent everywhere the dots appear.
+///
+/// The NPA dot is being phased out in favour of [PaymentStatusPill] on
+/// surfaces with room for a label (customer list, profile header). On
+/// surfaces that still render the dot (promote, reports, etc.), the dot
+/// remains as a small visual signal without a hidden tooltip — tooltips
+/// are an unreliable affordance because nothing signals interactivity.
+///
+/// The phone icon keeps a tooltip because it surfaces a non-obvious
+/// distinction (number on file vs not) and is sometimes the only thing
+/// telling a merchant they can't message a client.
+String _phoneTooltip(bool hasNumber) => hasNumber
+    ? 'Phone number on file — you can send WhatsApp or SMS reminders.'
+    : 'No phone number — add one to send payment reminders.';
+
 Widget profilePicture(BuildContext context, String name, String? imageUrl,
     String? number, bool? isNPA,
-    {bool displayIcons = true, final double? radius, File? profileImage}) {
+    {bool displayIcons = true,
+    final double? radius,
+    File? profileImage,
+    double? balance,
+    bool showNPAIndicator = true}) {
   var initials = name.isNotEmpty ? name[0] : '';
+  final bool hasNumber = number != null && number.isNotEmpty;
   return Stack(
     children: [
       ProfileImageWidget(
@@ -71,13 +92,15 @@ Widget profilePicture(BuildContext context, String name, String? imageUrl,
               left: 0,
               bottom: 0,
               child: ProfileStatusIcon(
-                isEnabled: number != null && number.isNotEmpty,
+                isEnabled: hasNumber,
                 enabledIcon: Icons.phone_enabled,
                 disabledIcon: Icons.phone_disabled,
+                enabledTooltip: _phoneTooltip(true),
+                disabledTooltip: _phoneTooltip(false),
               ),
             )
           : Container(),
-      displayIcons
+      displayIcons && showNPAIndicator
           ? Positioned(
               right: 0,
               bottom: 0,

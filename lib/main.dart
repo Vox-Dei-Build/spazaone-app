@@ -48,22 +48,20 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 Future<void> setupFlutterNotifications() async {
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@drawable/ic_launcher');
-    const DarwinInitializationSettings initializationSettingsIOS =
-        DarwinInitializationSettings();
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@drawable/ic_launcher');
+  const DarwinInitializationSettings initializationSettingsIOS =
+      DarwinInitializationSettings();
 
-    const InitializationSettings initializationSettings =
-        InitializationSettings(
-            android: initializationSettingsAndroid,
-            iOS: initializationSettingsIOS);
+  const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
 
-    await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (response) {
-        // handle notification tapped logic here
-      },
-    );
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse: (response) {
+      // handle notification tapped logic here
+    },
+  );
 }
 
 Future<void> createNotificationChannel() async {
@@ -92,19 +90,19 @@ void showLocalNotification(RemoteMessage message) async {
     FlutterAppBadger.updateBadgeCount(n);
   }
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'default_channel',
-      'Default Notifications',
-      channelDescription: 'Default notification channel',
-      importance: Importance.max,
-      priority: Priority.high,
-      icon: '@drawable/ic_launcher',
-    );
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'default_channel',
+    'Default Notifications',
+    channelDescription: 'Default notification channel',
+    importance: Importance.max,
+    priority: Priority.high,
+    icon: '@drawable/ic_launcher',
+  );
 
-    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
+  const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
 
-    const notificationDetails =
-        NotificationDetails(android: androidDetails, iOS: iosDetails);
+  const notificationDetails =
+      NotificationDetails(android: androidDetails, iOS: iosDetails);
 
   await flutterLocalNotificationsPlugin.show(
     message.hashCode,
@@ -189,9 +187,9 @@ Future<void> setupMerchantHeartbeatBootHook() async {
     final lastAt = box.get('hb_last_ms') as int?;
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final stale = lastAt == null || (nowMs - lastAt) > 24 * 60 * 60 * 1000; // 24h
-    final changed =
-        lastVersion != currentVersion || lastBuild != currentBuild;
+    final stale =
+        lastAt == null || (nowMs - lastAt) > 24 * 60 * 60 * 1000; // 24h
+    final changed = lastVersion != currentVersion || lastBuild != currentBuild;
 
     if (stale || changed) {
       try {
@@ -380,7 +378,8 @@ class MyApp extends StatelessWidget {
           routes: {
             LoginPage.id: (context) => const LoginPage(),
             RegisterPage.id: (context) => const RegisterPage(),
-            RegisterAnonymousPage.id: (context) => const RegisterAnonymousPage(),
+            RegisterAnonymousPage.id: (context) =>
+                const RegisterAnonymousPage(),
             Dashboard.id: (context) => const Dashboard(),
             AddContactPage.id: (context) => const AddContactPage(),
             SecurityPage.id: (context) => const SecurityPage(),
@@ -390,7 +389,6 @@ class MyApp extends StatelessWidget {
             BusinessReportPage.id: (context) => const BusinessReportPage(),
             ChatPage.id: (context) => const ChatPage(),
             AccountPage.id: (context) => const AccountPage(),
-            SubscriptionPage.id: (context) => const SubscriptionPage(),
             LanguagePage.id: (context) => const LanguagePage(),
             UpdateNumberPage.id: (context) => const UpdateNumberPage(),
             BackupPage.id: (context) => const BackupPage(),

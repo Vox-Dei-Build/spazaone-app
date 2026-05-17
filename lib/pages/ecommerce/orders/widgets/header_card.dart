@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/meta_chip.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/status_pill.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/whatsapp_delivery_pill.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 import 'package:pasella/utils/string_utils.dart';
 
@@ -19,6 +20,7 @@ class HeaderCard extends StatelessWidget {
     this.paymentStatusText,
     this.paymentStatusColor,
     this.collectionPill, // NEW
+    this.whatsAppState, // PAS-AI-02
   });
 
   final String customerName;
@@ -33,6 +35,7 @@ class HeaderCard extends StatelessWidget {
   final String? paymentStatusText;
   final Color? paymentStatusColor;
   final PillMeta? collectionPill;
+  final WhatsAppDeliveryState? whatsAppState;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +109,7 @@ class HeaderCard extends StatelessWidget {
             Wrap(
               spacing: SizeConfig.imageSizeMultiplier * 2,
               runSpacing: SizeConfig.heightMultiplier * 0.8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 MetaChip(
                   icon: Icons.person,
@@ -121,6 +125,10 @@ class HeaderCard extends StatelessWidget {
                     resolvedPayText.isEmpty ? '—' : resolvedPayText,
                   ),
                 ),
+                // PAS-AI-02: WhatsApp delivery / reply visibility. Wraps onto
+                // its own line on narrow screens so mobile layouts stay clean.
+                if (whatsAppState != null)
+                  WhatsAppDeliveryPill(state: whatsAppState!, compact: true),
               ],
             ),
           ],

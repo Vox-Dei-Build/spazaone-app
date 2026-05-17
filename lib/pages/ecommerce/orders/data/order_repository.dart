@@ -51,6 +51,10 @@ class OrderRepository {
         'discount': s['discount'] ?? s['couponDiscount'] ?? 0,
         'total': s['amount'] ?? s['total'] ?? 0,
         'items': (s['items'] is List) ? s['items'] : const [],
+        // PAS-AI-02: surface the WhatsApp delivery state stamped on the order
+        // document so the order detail page can render trust signals without
+        // a second data source.
+        'lastMessage': (s['lastMessage'] is Map) ? s['lastMessage'] : const {},
       };
     });
   }

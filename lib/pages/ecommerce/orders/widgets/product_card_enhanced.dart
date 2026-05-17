@@ -23,6 +23,7 @@ class ProductCardEnhanced extends StatelessWidget {
     SizeConfig().init(context);
     final qty =
         (quantity is num) ? quantity.toInt() : int.tryParse('$quantity') ?? 0;
+    final resolvedLineTotal = lineTotal ?? (unitPrice * qty);
 
     return Card(
       elevation: 2,
@@ -91,13 +92,12 @@ class ProductCardEnhanced extends StatelessWidget {
               ),
             ),
             SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-            if (lineTotal != null)
-              Text(
-                CurrencyUtil.format(lineTotal!),
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: SizeConfig.textMultiplier * 1.9),
-              ),
+            Text(
+              CurrencyUtil.format(resolvedLineTotal),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: SizeConfig.textMultiplier * 1.9),
+            ),
           ],
         ),
       ),

@@ -9,12 +9,14 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.trailing,
     this.onBack = true,
     this.leading,
+    this.onBackPressed,
   });
 
   final String title;
   final Widget? trailing;
   final bool onBack;
   final Widget? leading;
+  final VoidCallback? onBackPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +29,11 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
               onPressed: () {
                 FocusScope.of(context).unfocus();
                 SystemChannels.textInput.invokeMethod('TextInput.hide');
-                Navigator.pop(context);
+                if (onBackPressed != null) {
+                  onBackPressed!();
+                } else {
+                  Navigator.pop(context);
+                }
               },
               icon: Icon(
                 Icons.arrow_back_ios,

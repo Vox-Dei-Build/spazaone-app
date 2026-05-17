@@ -25,13 +25,114 @@ class AddCreditViewModel extends TransactionViewModel {
   DateTime repaymentDate = DateTime.now().add(const Duration(days: 30));
   late final DynamicPricingService pricingService;
 
+  /// Cached ranked product suggestions for this customer, computed from
+  /// the most recent N credit transactions on this customer's ledger.
+  /// Kept in-memory only — refreshed once on construction. We don't
+  /// stream this because the surface is a one-shot "what did this
+  /// person usually buy?" hint, not a live dashboard.
+  List<Product> _suggestedProducts = const [];
+
+  @override
+  List<Product> get suggestedProducts => _suggestedProducts;
+
+  /// Max number of recent credit transactions to scan for the
+  /// heuristic. Keeps the read bounded and the suggestion list
+  /// dominated by current buying patterns rather than ancient ones.
+  static const int _historyScanLimit = 10;
+
+  /// Max suggestion chips to surface. Mobile-first: more than this
+  /// overflows the horizontal scroller and dilutes signal.
+  static const int _maxSuggestions = 5;
+
   AddCreditViewModel({
     required this.customerName,
     required this.customerId,
     this.mobileNumber,
   }) {
-    loadProducts();
+    _initialiseAsync();
     _initServices();
+  }
+
+  Future<void> _initialiseAsync() async {
+    await loadProducts();
+    await _loadPreviousProductSuggestions();
+  }
+
+  /// Heuristic: rank product IDs from the customer's most recent
+  /// [_historyScanLimit] credit transactions by number of transactions
+  /// the product appeared in, tiebroken by most-recent appearance.
+  /// Filter to products that still exist in inventory with stock > 0 so
+  /// a tap on a chip never lands on an invalid add.
+  Future<void> _loadPreviousProductSuggestions() async {
+    try {
+      final snapshot = await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('customers')
+          .doc(customerId)
+          .collection('transactions')
+          .orderBy('date', descending: true)
+          .limit(_historyScanLimit)
+          .get();
+
+      final Map<String, int> frequency = {};
+      final Map<String, int> firstSeenAt = {};
+
+      int txIndex = 0;
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if ((data['type'] as String?) != 'Credit') {
+          txIndex++;
+          continue;
+        }
+        final rawProducts = data['products'];
+        if (rawProducts is! Map) {
+          txIndex++;
+          continue;
+        }
+        for (final key in rawProducts.keys) {
+          final pid = key.toString();
+          frequency.update(pid, (v) => v + 1, ifAbsent: () => 1);
+          firstSeenAt.putIfAbsent(pid, () => txIndex);
+        }
+        txIndex++;
+      }
+
+      if (frequency.isEmpty) {
+        _suggestedProducts = const [];
+        notifyListeners();
+        return;
+      }
+
+      final ranked = frequency.keys.toList()
+        ..sort((a, b) {
+          final byFreq = frequency[b]!.compareTo(frequency[a]!);
+          if (byFreq != 0) return byFreq;
+          return firstSeenAt[a]!.compareTo(firstSeenAt[b]!);
+        });
+
+      final resolved = <Product>[];
+      for (final pid in ranked) {
+        if (resolved.length >= _maxSuggestions) break;
+        final match = products.firstWhere(
+          (p) => p.id == pid,
+          orElse: () => Product(),
+        );
+        if (match.id == null) continue;
+        if (match.quantity == null || match.quantity! <= 0) continue;
+        resolved.add(match);
+      }
+
+      _suggestedProducts = resolved;
+      notifyListeners();
+    } catch (error, st) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        st,
+        reason: 'loadPreviousProductSuggestions failed',
+      );
+      _suggestedProducts = const [];
+    }
   }
 
   /// Updates the credit's repayment date and notifies listeners. The
