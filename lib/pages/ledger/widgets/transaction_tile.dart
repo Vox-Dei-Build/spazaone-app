@@ -64,11 +64,24 @@ class TransactionTile extends StatelessWidget {
             ListTile(
               contentPadding: const EdgeInsets.all(0.0),
               visualDensity: const VisualDensity(horizontal: -2),
-              leading: Stack(
-                children: [
-                  profilePicture(context, name, profileImageUrl, number, isNPA,
-                      balance: balance, showNPAIndicator: false),
-                ],
+              minLeadingWidth: SizeConfig.imageSizeMultiplier * 12,
+              horizontalTitleGap: SizeConfig.imageSizeMultiplier * 2,
+              leading: SizedBox(
+                width: SizeConfig.imageSizeMultiplier * 12,
+                height: SizeConfig.imageSizeMultiplier * 12,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: profilePicture(
+                    context,
+                    name,
+                    profileImageUrl,
+                    number,
+                    isNPA,
+                    balance: balance,
+                    showNPAIndicator: false,
+                    radius: SizeConfig.heightMultiplier * 2.6,
+                  ),
+                ),
               ),
               title: _buildTitle(),
               subtitle: _buildSubtitle(),
