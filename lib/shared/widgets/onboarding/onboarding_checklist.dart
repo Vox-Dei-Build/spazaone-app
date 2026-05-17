@@ -146,32 +146,54 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
     final firestore = FirebaseFirestore.instance;
     final userScope = firestore.collection('users').doc(widget.userId);
 
-    _productsSub =
-        userScope.collection('products').limit(1).snapshots().listen((snap) {
-      if (!mounted) return;
-      final exists = snap.docs.isNotEmpty;
-      if (exists != _autoAddProduct) {
-        setState(() => _autoAddProduct = exists);
-      }
-    });
+    void handleSignalError(String key, Object error, StackTrace stackTrace) {
+      // PAS-UX-09 follow-up: this checklist now mounts at the shared
+      // Dashboard shell level, above Customers / Reports / Products.
+      // A Firestore permission/query failure here must never blank the
+      // whole surface. Treat the signal as unavailable and keep the
+      // checklist interactive instead of crashing the page.
+      debugPrint('[OnboardingChecklist] $key signal failed: $error');
+    }
+
+    _productsSub = userScope.collection('products').limit(1).snapshots().listen(
+      (snap) {
+        if (!mounted) return;
+        final exists = snap.docs.isNotEmpty;
+        if (exists != _autoAddProduct) {
+          setState(() => _autoAddProduct = exists);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        handleSignalError('products', error, stackTrace);
+      },
+    );
 
     _customersSub =
-        userScope.collection('customers').limit(1).snapshots().listen((snap) {
-      if (!mounted) return;
-      final exists = snap.docs.isNotEmpty;
-      if (exists != _autoAddCustomer) {
-        setState(() => _autoAddCustomer = exists);
-      }
-    });
+        userScope.collection('customers').limit(1).snapshots().listen(
+      (snap) {
+        if (!mounted) return;
+        final exists = snap.docs.isNotEmpty;
+        if (exists != _autoAddCustomer) {
+          setState(() => _autoAddCustomer = exists);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        handleSignalError('customers', error, stackTrace);
+      },
+    );
 
-    _salesSub =
-        userScope.collection('sales').limit(1).snapshots().listen((snap) {
-      if (!mounted) return;
-      final exists = snap.docs.isNotEmpty;
-      if (exists != _autoRecordSale) {
-        setState(() => _autoRecordSale = exists);
-      }
-    });
+    _salesSub = userScope.collection('sales').limit(1).snapshots().listen(
+      (snap) {
+        if (!mounted) return;
+        final exists = snap.docs.isNotEmpty;
+        if (exists != _autoRecordSale) {
+          setState(() => _autoRecordSale = exists);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        handleSignalError('sales', error, stackTrace);
+      },
+    );
 
     // Templates live in a top-level `messagingTemplates` collection
     // scoped by `userId`. Approval status is a nested field that the
@@ -186,16 +208,21 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
         .where('userId', isEqualTo: widget.userId)
         .limit(10)
         .snapshots()
-        .listen((snap) {
-      if (!mounted) return;
-      final anyApproved = snap.docs.any((doc) {
-        final data = doc.data();
-        return templateStatusOf(data) == TemplateStatus.approved;
-      });
-      if (anyApproved != _autoApproveTemplate) {
-        setState(() => _autoApproveTemplate = anyApproved);
-      }
-    });
+        .listen(
+      (snap) {
+        if (!mounted) return;
+        final anyApproved = snap.docs.any((doc) {
+          final data = doc.data();
+          return templateStatusOf(data) == TemplateStatus.approved;
+        });
+        if (anyApproved != _autoApproveTemplate) {
+          setState(() => _autoApproveTemplate = anyApproved);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        handleSignalError('messagingTemplates', error, stackTrace);
+      },
+    );
   }
 
   void _loadState() {
