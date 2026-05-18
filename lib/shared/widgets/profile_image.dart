@@ -29,28 +29,25 @@ class ProfileImageWidget extends StatelessWidget {
       onTap: onTap,
       child: CircleAvatar(
         radius: radius,
-        backgroundImage:
-            imageFile != null
-                ? FileImage(imageFile!)
-                : (imageUrl != null
-                    ? CachedNetworkImageProvider(imageUrl!)
-                        as ImageProvider<Object>?
-                    : null),
-        backgroundColor:
-            (imageUrl == null && imageFile == null)
-                ? Color(kTertiaryColor.value)
-                : null,
-        child:
-            (imageFile == null && imageUrl == null)
-                ? Text(
-                  initials.isNotEmpty ? initials[0] : '',
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                  ),
-                )
-                : null,
+        backgroundImage: imageFile != null
+            ? FileImage(imageFile!)
+            : (imageUrl != null
+                ? CachedNetworkImageProvider(imageUrl!)
+                    as ImageProvider<Object>?
+                : null),
+        backgroundColor: (imageUrl == null && imageFile == null)
+            ? Color(kTertiaryColor.value)
+            : null,
+        child: (imageFile == null && imageUrl == null)
+            ? Text(
+                initials.isNotEmpty ? initials[0] : '',
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 2,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -66,10 +63,9 @@ class ProfileImageWidget extends StatelessWidget {
 /// The phone icon keeps a tooltip because it surfaces a non-obvious
 /// distinction (number on file vs not) and is sometimes the only thing
 /// telling a merchant they can't message a client.
-String _phoneTooltip(bool hasNumber) =>
-    hasNumber
-        ? 'Phone number on file — you can send WhatsApp or SMS reminders.'
-        : 'No phone number — add one to send payment reminders.';
+String _phoneTooltip(bool hasNumber) => hasNumber
+    ? 'Phone number on file — you can send WhatsApp or SMS reminders.'
+    : 'No phone number — add one to send payment reminders.';
 
 Widget profilePicture(
   BuildContext context,
@@ -85,48 +81,58 @@ Widget profilePicture(
 }) {
   var initials = name.isNotEmpty ? name[0] : '';
   final bool hasNumber = number != null && number.isNotEmpty;
-  return Stack(
-    children: [
-      ProfileImageWidget(
-        imageUrl: imageUrl,
-        imageFile: profileImage,
-        initials: initials,
-        radius: radius ?? SizeConfig.heightMultiplier * 3,
-        onTap: () => showProfileImageDialog(context, imageUrl, null, initials),
-      ),
-      displayIcons
-          ? Positioned(
-            left: 0,
-            bottom: 0,
-            child: ProfileStatusIcon(
-              isEnabled: hasNumber,
-              enabledIcon: Icons.phone_enabled,
-              disabledIcon: Icons.phone_disabled,
-              enabledTooltip: _phoneTooltip(true),
-              disabledTooltip: _phoneTooltip(false),
-              // PAS-AUTH-02: the affirmative "phone on file" state is the
-              // common case so we leave it icon-only to avoid clutter on
-              // every avatar in the ledger list. The *missing* state is
-              // the actionable signal — merchants can't message a client
-              // without a number — so we render an explicit "No phone"
-              // pill instead of relying on a tooltip nobody taps.
-              disabledLabel: 'No phone',
-            ),
-          )
-          : Container(),
-      displayIcons && showNPAIndicator
-          ? Positioned(
-            right: 0,
-            bottom: 0,
-            child: ProfileStatusIcon(
-              isEnabled: isNPA == true,
-              enabledIcon: Icons.report,
-              disabledIcon: Icons.verified_user,
-              enabledColor: Colors.red,
-              disabledColor: Colors.green,
-            ),
-          )
-          : Container(),
-    ],
+  final double avatarRadius = radius ?? SizeConfig.heightMultiplier * 3;
+  final double extraWidthForMissingPhone =
+      displayIcons && !hasNumber ? SizeConfig.imageSizeMultiplier * 10 : 0;
+
+  return SizedBox(
+    width: (avatarRadius * 2) + extraWidthForMissingPhone,
+    height: avatarRadius * 2,
+    child: Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ProfileImageWidget(
+          imageUrl: imageUrl,
+          imageFile: profileImage,
+          initials: initials,
+          radius: avatarRadius,
+          onTap: () =>
+              showProfileImageDialog(context, imageUrl, null, initials),
+        ),
+        displayIcons
+            ? Positioned(
+                left: 0,
+                bottom: 0,
+                child: ProfileStatusIcon(
+                  isEnabled: hasNumber,
+                  enabledIcon: Icons.phone_enabled,
+                  disabledIcon: Icons.phone_disabled,
+                  enabledTooltip: _phoneTooltip(true),
+                  disabledTooltip: _phoneTooltip(false),
+                  // PAS-AUTH-02: the affirmative "phone on file" state is the
+                  // common case so we leave it icon-only to avoid clutter on
+                  // every avatar in the ledger list. The *missing* state is
+                  // the actionable signal — merchants can't message a client
+                  // without a number — so we render an explicit "No phone"
+                  // pill instead of relying on a tooltip nobody taps.
+                  disabledLabel: 'No phone',
+                ),
+              )
+            : Container(),
+        displayIcons && showNPAIndicator
+            ? Positioned(
+                right: 0,
+                bottom: 0,
+                child: ProfileStatusIcon(
+                  isEnabled: isNPA == true,
+                  enabledIcon: Icons.report,
+                  disabledIcon: Icons.verified_user,
+                  enabledColor: Colors.red,
+                  disabledColor: Colors.green,
+                ),
+              )
+            : Container(),
+      ],
+    ),
   );
 }
