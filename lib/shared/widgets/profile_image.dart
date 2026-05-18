@@ -82,8 +82,13 @@ Widget profilePicture(
   var initials = name.isNotEmpty ? name[0] : '';
   final bool hasNumber = number != null && number.isNotEmpty;
   final double avatarRadius = radius ?? SizeConfig.heightMultiplier * 3;
+  // Only show the explicit "No phone" text pill on larger avatar
+  // surfaces. Dense list tiles do not have enough room, so icon +
+  // tooltip is cleaner and avoids clipping.
+  final bool showMissingPhoneLabel =
+      displayIcons && !hasNumber && avatarRadius >= 28;
   final double extraWidthForMissingPhone =
-      displayIcons && !hasNumber ? SizeConfig.imageSizeMultiplier * 10 : 0;
+      showMissingPhoneLabel ? SizeConfig.imageSizeMultiplier * 10 : 0;
 
   return SizedBox(
     width: (avatarRadius * 2) + extraWidthForMissingPhone,
@@ -109,13 +114,10 @@ Widget profilePicture(
                   disabledIcon: Icons.phone_disabled,
                   enabledTooltip: _phoneTooltip(true),
                   disabledTooltip: _phoneTooltip(false),
-                  // PAS-AUTH-02: the affirmative "phone on file" state is the
-                  // common case so we leave it icon-only to avoid clutter on
-                  // every avatar in the ledger list. The *missing* state is
-                  // the actionable signal — merchants can't message a client
-                  // without a number — so we render an explicit "No phone"
-                  // pill instead of relying on a tooltip nobody taps.
-                  disabledLabel: 'No phone',
+                  // PAS-AUTH-02: show the explicit missing-phone label only
+                  // where the avatar surface is large enough to hold it.
+                  // Compact customer tiles fall back to icon + tooltip.
+                  disabledLabel: showMissingPhoneLabel ? 'No phone' : null,
                 ),
               )
             : Container(),
