@@ -48,17 +48,28 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     _selectedDay = _endDate;
 
     balanceSummaryViewModel.fetchBalanceSummaryWithRange(
-        _startDate!, _endDate!);
+      _startDate!,
+      _endDate!,
+    );
     businessReportViewModel = BusinessReportViewModel(currentUser);
     businessReportViewModel.reportFutureNotifier.value = businessReportViewModel
         .fetchReportWithRange(DateTime(2000, 1, 1), _endDate!);
   }
 
   void _onDateSelected(DateTime selectedDay) {
-    final startOfDay =
-        DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
+    final startOfDay = DateTime(
+      selectedDay.year,
+      selectedDay.month,
+      selectedDay.day,
+    );
     final endOfDay = DateTime(
-        selectedDay.year, selectedDay.month, selectedDay.day, 23, 59, 59);
+      selectedDay.year,
+      selectedDay.month,
+      selectedDay.day,
+      23,
+      59,
+      59,
+    );
 
     setState(() {
       _selectedDay = selectedDay;
@@ -68,7 +79,9 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     });
 
     balanceSummaryViewModel.fetchBalanceSummaryWithRange(
-        _startDate!, _endDate!);
+      _startDate!,
+      _endDate!,
+    );
   }
 
   void _onDateRangeSelected(DateTime start, DateTime end) {
@@ -104,7 +117,8 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     return Consumer<BalanceSummaryProvider>(
       builder: (context, balanceSummary, child) {
         final hasDateRange = _startDate != null && _endDate != null;
-        final isDateViewLoading = balanceSummary.isLedgerLoading ||
+        final isDateViewLoading =
+            balanceSummary.isLedgerLoading ||
             (hasDateRange && _isDateViewRowsLoading);
 
         return Scaffold(
@@ -118,32 +132,30 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                   children: [
                     Padding(
                       padding: EdgeInsets.symmetric(
-                          vertical: SizeConfig.heightMultiplier * 1),
+                        vertical: SizeConfig.heightMultiplier * 1,
+                      ),
                       child: Theme(
                         data: Theme.of(context).copyWith(
                           segmentedButtonTheme: SegmentedButtonThemeData(
                             style: ButtonStyle(
-                              backgroundColor:
-                                  WidgetStateProperty.resolveWith<Color?>(
-                                (Set<WidgetState> states) {
-                                  if (states.contains(WidgetState.selected)) {
-                                    return Colors
-                                        .green; // <-- Your active color
-                                  }
-                                  return Colors.white; // <-- Inactive bg
-                                },
-                              ),
-                              foregroundColor:
-                                  WidgetStateProperty.resolveWith<Color?>(
-                                (Set<WidgetState> states) {
-                                  if (states.contains(WidgetState.selected)) {
-                                    return Colors
-                                        .white; // Text/icon color for active
-                                  }
+                              backgroundColor: WidgetStateProperty.resolveWith<
+                                Color?
+                              >((Set<WidgetState> states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return Colors.green; // <-- Your active color
+                                }
+                                return Colors.white; // <-- Inactive bg
+                              }),
+                              foregroundColor: WidgetStateProperty.resolveWith<
+                                Color?
+                              >((Set<WidgetState> states) {
+                                if (states.contains(WidgetState.selected)) {
                                   return Colors
-                                      .black87; // Text/icon color for inactive
-                                },
-                              ),
+                                      .white; // Text/icon color for active
+                                }
+                                return Colors
+                                    .black87; // Text/icon color for inactive
+                              }),
                             ),
                           ),
                         ),
@@ -165,13 +177,17 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                             ),
                             ButtonSegment(
                               value: ReportView.payLater,
-                              label: Text('Summary',
-                                  style: TextStyle(
-                                    fontSize: SizeConfig.textMultiplier * 1.5,
-                                    fontWeight: FontWeight.bold,
-                                  )),
-                              icon: Icon(Icons.payment,
-                                  size: SizeConfig.textMultiplier * 1.5),
+                              label: Text(
+                                'Summary',
+                                style: TextStyle(
+                                  fontSize: SizeConfig.textMultiplier * 1.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              icon: Icon(
+                                Icons.payment,
+                                size: SizeConfig.textMultiplier * 1.5,
+                              ),
                             ),
                           ],
                           selected: <ReportView>{_selectedView},
@@ -250,16 +266,20 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                 } else if (snapshot.hasError) {
                                   debugPrint('Error: ${snapshot.error}');
                                   return Padding(
-                                      padding:
-                                          LayoutConstants.padding10Horizontal,
-                                      child: Column(children: [
+                                    padding:
+                                        LayoutConstants.padding10Horizontal,
+                                    child: Column(
+                                      children: [
                                         Text(
-                                            'Oops something is wrong, please check your network or refresh the page',
-                                            style: TextStyle(
-                                                fontSize:
-                                                    SizeConfig.textMultiplier *
-                                                        2.5))
-                                      ]));
+                                          'Oops something is wrong, please check your network or refresh the page',
+                                          style: TextStyle(
+                                            fontSize:
+                                                SizeConfig.textMultiplier * 2.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
                                 } else {
                                   Report report = snapshot.data!;
                                   // PAS-UX-06A: derive Owing Customers from
@@ -270,15 +290,18 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                       report.customersWithNPAs.length;
                                   return Padding(
                                     padding: EdgeInsets.all(
-                                        SizeConfig.imageSizeMultiplier * 4),
+                                      SizeConfig.imageSizeMultiplier * 4,
+                                    ),
                                     child: Column(
                                       children: [
                                         MetricTile(
-                                            context,
-                                            'Total Owed',
-                                            () async => CurrencyUtil.format(
-                                                report.cashflowImpact),
-                                            false),
+                                          context,
+                                          'Total Owed',
+                                          () async => CurrencyUtil.format(
+                                            report.cashflowImpact,
+                                          ),
+                                          false,
+                                        ),
                                         MetricTile(
                                           context,
                                           'Owing Customers',
@@ -314,24 +337,26 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                           false,
                                         ),
                                         SizedBox(
-                                            height:
-                                                SizeConfig.heightMultiplier *
-                                                    2),
+                                          height:
+                                              SizeConfig.heightMultiplier * 2,
+                                        ),
                                         Text(
                                           'Customers ($owingCount)',
                                           style: TextStyle(
-                                              fontSize:
-                                                  SizeConfig.textMultiplier * 2,
-                                              fontWeight: FontWeight.bold),
+                                            fontSize:
+                                                SizeConfig.textMultiplier * 2,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                         SizedBox(
-                                            height:
-                                                SizeConfig.heightMultiplier *
-                                                    1.5),
+                                          height:
+                                              SizeConfig.heightMultiplier * 1.5,
+                                        ),
                                         CustomersWithBadLoansTile(
                                           customersWithBadLoansFuture:
                                               Future.value(
-                                                  report.customersWithNPAs),
+                                                report.customersWithNPAs,
+                                              ),
                                         ),
                                       ],
                                     ),
@@ -343,7 +368,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                         ),
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    ]
+                    ],
                   ],
                 ),
               ),
@@ -365,9 +390,7 @@ class _ReportSectionLoader extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: SizeConfig.heightMultiplier * 18,
-      child: const Center(
-        child: CircularProgressIndicator(),
-      ),
+      child: const Center(child: CircularProgressIndicator()),
     );
   }
 }

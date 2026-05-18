@@ -83,10 +83,7 @@ class _MovementTotal extends StatelessWidget {
   final double amount;
   final Color amountColor;
 
-  const _MovementTotal({
-    required this.amount,
-    required this.amountColor,
-  });
+  const _MovementTotal({required this.amount, required this.amountColor});
 
   @override
   Widget build(BuildContext context) {

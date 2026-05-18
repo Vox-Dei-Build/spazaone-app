@@ -20,8 +20,11 @@ class Dashboard extends StatelessWidget {
     if (userId == null) {
       return Scaffold(
         body: Center(
-            child: Text("User not logged in.",
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5))),
+          child: Text(
+            "User not logged in.",
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5),
+          ),
+        ),
       );
     }
 
@@ -42,9 +45,11 @@ class Dashboard extends StatelessWidget {
         if (data == null) {
           return Scaffold(
             body: Center(
-                child: Text("Wallet data not found.",
-                    style:
-                        TextStyle(fontSize: SizeConfig.textMultiplier * 2.5))),
+              child: Text(
+                "Wallet data not found.",
+                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5),
+              ),
+            ),
           );
         }
 
@@ -70,32 +75,45 @@ class Dashboard extends StatelessWidget {
             return Scaffold(
               body: value.navigationOptions[value.currentIndex],
               bottomNavigationBar: ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(SizeConfig.imageSizeMultiplier * 5),
+                borderRadius: BorderRadius.circular(
+                  SizeConfig.imageSizeMultiplier * 5,
+                ),
                 child: NavigationBar(
                   selectedIndex: value.currentIndex,
-                  onDestinationSelected: (index) =>
-                      value.handleNavigation(context, index),
+                  onDestinationSelected:
+                      (index) => value.handleNavigation(context, index),
                   destinations: [
                     NavigationDestination(
-                      icon: Icon(Icons.contacts_outlined,
-                          size: SizeConfig.imageSizeMultiplier * 5),
-                      selectedIcon: Icon(Icons.contacts_outlined,
-                          size: SizeConfig.imageSizeMultiplier * 5),
+                      icon: Icon(
+                        Icons.contacts_outlined,
+                        size: SizeConfig.imageSizeMultiplier * 5,
+                      ),
+                      selectedIcon: Icon(
+                        Icons.contacts_outlined,
+                        size: SizeConfig.imageSizeMultiplier * 5,
+                      ),
                       label: 'Customers',
                     ),
                     NavigationDestination(
-                      icon: Icon(Icons.inventory_outlined,
-                          size: SizeConfig.imageSizeMultiplier * 5),
-                      selectedIcon: Icon(Icons.inventory_outlined,
-                          size: SizeConfig.imageSizeMultiplier * 5),
+                      icon: Icon(
+                        Icons.inventory_outlined,
+                        size: SizeConfig.imageSizeMultiplier * 5,
+                      ),
+                      selectedIcon: Icon(
+                        Icons.inventory_outlined,
+                        size: SizeConfig.imageSizeMultiplier * 5,
+                      ),
                       label: 'Products',
                     ),
                     NavigationDestination(
-                      icon: Icon(Icons.point_of_sale,
-                          size: SizeConfig.imageSizeMultiplier * 5),
-                      selectedIcon: Icon(Icons.point_of_sale,
-                          size: SizeConfig.imageSizeMultiplier * 5),
+                      icon: Icon(
+                        Icons.point_of_sale,
+                        size: SizeConfig.imageSizeMultiplier * 5,
+                      ),
+                      selectedIcon: Icon(
+                        Icons.point_of_sale,
+                        size: SizeConfig.imageSizeMultiplier * 5,
+                      ),
                       label: 'Sales',
                     ),
                   ],

@@ -11,13 +11,16 @@ import 'package:pasella/widgets/private_region.dart';
 class CustomersWithBadLoansTile extends StatelessWidget {
   final Future<List<dynamic>>? customersWithBadLoansFuture;
 
-  const CustomersWithBadLoansTile(
-      {super.key, required this.customersWithBadLoansFuture});
+  const CustomersWithBadLoansTile({
+    super.key,
+    required this.customersWithBadLoansFuture,
+  });
 
   bool reminderSentRecently(customer) {
     if (customer['lastReminderSent'] != null) {
-      DateTime? lastReminderSent =
-          convertMapToDateTime(customer['lastReminderSent']);
+      DateTime? lastReminderSent = convertMapToDateTime(
+        customer['lastReminderSent'],
+      );
       if (lastReminderSent == null) return false;
       return DateTime.now().difference(lastReminderSent).inDays <= 30;
     } else {
@@ -40,87 +43,94 @@ class CustomersWithBadLoansTile extends StatelessWidget {
           List<dynamic> customers = snapshot.data!;
           customers.sort((a, b) => a['balance'].compareTo(b['balance']));
           return Column(
-            children: customers.map((customer) {
-              final balance = customer['balance'].toDouble();
-              final name = customer['name'];
-              final number = customer['number'];
-              final id = customer['id'];
-              final profileImageUrl = customer['profileImageUrl'];
-              final avatarSize = SizeConfig.heightMultiplier * 6;
+            children:
+                customers.map((customer) {
+                  final balance = customer['balance'].toDouble();
+                  final name = customer['name'];
+                  final number = customer['number'];
+                  final id = customer['id'];
+                  final profileImageUrl = customer['profileImageUrl'];
+                  final avatarSize = SizeConfig.heightMultiplier * 6;
 
-              return PrivateRegion(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(0.0),
-                  visualDensity: const VisualDensity(horizontal: -2),
-                  leading: SizedBox(
-                    width: avatarSize,
-                    height: avatarSize,
-                    child: profilePicture(
-                        context, name, profileImageUrl, number, true),
-                  ),
-                  title: _buildTitle(name, balance),
-                  // PAS-UX-06A: surface the phone number directly in the
-                  // reports flow. Merchants chasing debt previously had to
-                  // tap into each profile just to see a number; the bare
-                  // icon-only signal hid the value that makes follow-up
-                  // possible. Formatted via formatPhoneNumber so what's
-                  // shown is exactly what WhatsApp/SMS will be sent to.
-                  subtitle: _buildPhoneLine(context, number),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      number != null && number.isNotEmpty
-                          ? (reminderSentRecently(customer)
-                              ? Tooltip(
-                                  message:
-                                      'Reminder sent within the last month',
-                                  child: Icon(
-                                    Icons.notifications_active_outlined,
-                                    color: Colors.green,
-                                    size: SizeConfig.imageSizeMultiplier * 5,
-                                  ),
-                                )
-                              : Tooltip(
-                                  message:
-                                      'No reminder sent within the last month',
-                                  child: Icon(
-                                    Icons.notifications_off_outlined,
-                                    color: Colors.red,
-                                    size: SizeConfig.imageSizeMultiplier * 5,
-                                  ),
-                                ))
-                          : Tooltip(
-                              message:
-                                  'No number available, cannot send reminder',
-                              child: Icon(
-                                Icons.phone_disabled_outlined,
-                                color: Colors.grey,
-                                size: SizeConfig.imageSizeMultiplier * 5,
-                              ),
-                            ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.visibility,
-                          size: SizeConfig.imageSizeMultiplier * 5,
+                  return PrivateRegion(
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(0.0),
+                      visualDensity: const VisualDensity(horizontal: -2),
+                      leading: SizedBox(
+                        width: avatarSize,
+                        height: avatarSize,
+                        child: profilePicture(
+                          context,
+                          name,
+                          profileImageUrl,
+                          number,
+                          true,
                         ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => CustomerManagementPage(
-                                customerName: name,
-                                customerId: id,
-                                mobileNumber: number,
-                              ),
-                            ),
-                          );
-                        },
                       ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
+                      title: _buildTitle(name, balance),
+                      // PAS-UX-06A: surface the phone number directly in the
+                      // reports flow. Merchants chasing debt previously had to
+                      // tap into each profile just to see a number; the bare
+                      // icon-only signal hid the value that makes follow-up
+                      // possible. Formatted via formatPhoneNumber so what's
+                      // shown is exactly what WhatsApp/SMS will be sent to.
+                      subtitle: _buildPhoneLine(context, number),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          number != null && number.isNotEmpty
+                              ? (reminderSentRecently(customer)
+                                  ? Tooltip(
+                                    message:
+                                        'Reminder sent within the last month',
+                                    child: Icon(
+                                      Icons.notifications_active_outlined,
+                                      color: Colors.green,
+                                      size: SizeConfig.imageSizeMultiplier * 5,
+                                    ),
+                                  )
+                                  : Tooltip(
+                                    message:
+                                        'No reminder sent within the last month',
+                                    child: Icon(
+                                      Icons.notifications_off_outlined,
+                                      color: Colors.red,
+                                      size: SizeConfig.imageSizeMultiplier * 5,
+                                    ),
+                                  ))
+                              : Tooltip(
+                                message:
+                                    'No number available, cannot send reminder',
+                                child: Icon(
+                                  Icons.phone_disabled_outlined,
+                                  color: Colors.grey,
+                                  size: SizeConfig.imageSizeMultiplier * 5,
+                                ),
+                              ),
+                          IconButton(
+                            icon: Icon(
+                              Icons.visibility,
+                              size: SizeConfig.imageSizeMultiplier * 5,
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (context) => CustomerManagementPage(
+                                        customerName: name,
+                                        customerId: id,
+                                        mobileNumber: number,
+                                      ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
           );
         }
       },
@@ -185,8 +195,11 @@ class CustomersWithBadLoansTile extends StatelessWidget {
     if (formatted.isEmpty) {
       return Row(
         children: [
-          Icon(Icons.warning_amber_rounded,
-              size: SizeConfig.textMultiplier * 1.5, color: Colors.orange),
+          Icon(
+            Icons.warning_amber_rounded,
+            size: SizeConfig.textMultiplier * 1.5,
+            color: Colors.orange,
+          ),
           SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
           Flexible(
             child: Text(

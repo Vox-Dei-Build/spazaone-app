@@ -62,14 +62,18 @@ class ReportDateFilterBar extends StatelessWidget {
                   context: context,
                   firstDate: DateTime(2020),
                   lastDate: lastSelectableDate,
-                  initialDateRange: (startDate != null && endDate != null)
-                      ? DateTimeRange(start: startDate!, end: endDate!)
-                      : null,
+                  initialDateRange:
+                      (startDate != null && endDate != null)
+                          ? DateTimeRange(start: startDate!, end: endDate!)
+                          : null,
                 );
                 if (picked != null) {
                   onRangeSelect(
-                    DateTime(picked.start.year, picked.start.month,
-                        picked.start.day),
+                    DateTime(
+                      picked.start.year,
+                      picked.start.month,
+                      picked.start.day,
+                    ),
                     DateTime(picked.end.year, picked.end.month, picked.end.day),
                   );
                 }
@@ -79,26 +83,27 @@ class ReportDateFilterBar extends StatelessWidget {
             SizedBox(width: SizeConfig.imageSizeMultiplier * 2.5),
             PopupMenuButton<_QuickRange>(
               tooltip: 'Quick ranges',
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: _QuickRange.today,
-                  child: Text('Today'),
-                ),
-                const PopupMenuItem(
-                  value: _QuickRange.thisWeek,
-                  child: Text('This Week'),
-                ),
-                const PopupMenuItem(
-                  value: _QuickRange.thisMonth,
-                  child: Text('This Month'),
-                ),
-                if (selectedDay != null ||
-                    (startDate != null && endDate != null))
-                  const PopupMenuItem(
-                    value: _QuickRange.clear,
-                    child: Text('Clear'),
-                  ),
-              ],
+              itemBuilder:
+                  (context) => [
+                    const PopupMenuItem(
+                      value: _QuickRange.today,
+                      child: Text('Today'),
+                    ),
+                    const PopupMenuItem(
+                      value: _QuickRange.thisWeek,
+                      child: Text('This Week'),
+                    ),
+                    const PopupMenuItem(
+                      value: _QuickRange.thisMonth,
+                      child: Text('This Month'),
+                    ),
+                    if (selectedDay != null ||
+                        (startDate != null && endDate != null))
+                      const PopupMenuItem(
+                        value: _QuickRange.clear,
+                        child: Text('Clear'),
+                      ),
+                  ],
               onSelected: (v) {
                 final now = DateTime.now();
                 switch (v) {
@@ -106,10 +111,14 @@ class ReportDateFilterBar extends StatelessWidget {
                     onDaySelect(DateTime(now.year, now.month, now.day));
                     break;
                   case _QuickRange.thisWeek:
-                    final monday =
-                        now.subtract(Duration(days: now.weekday - 1));
-                    final start =
-                        DateTime(monday.year, monday.month, monday.day);
+                    final monday = now.subtract(
+                      Duration(days: now.weekday - 1),
+                    );
+                    final start = DateTime(
+                      monday.year,
+                      monday.month,
+                      monday.day,
+                    );
                     final end = start.add(const Duration(days: 6));
                     onRangeSelect(start, end);
                     break;

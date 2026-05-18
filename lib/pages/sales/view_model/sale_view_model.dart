@@ -37,7 +37,8 @@ class SalesViewModel extends TransactionViewModel {
     loadProducts().then((_) {
       productsLoaded = true;
       _getSalesByDate(
-          DateTime.now()); // Ensure only today's sales load initially
+        DateTime.now(),
+      ); // Ensure only today's sales load initially
     });
   }
 
@@ -73,8 +74,10 @@ class SalesViewModel extends TransactionViewModel {
           .doc(userId)
           .collection('sales')
           .where('type', isEqualTo: 'Cash')
-          .where('dateAdded',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where(
+            'dateAdded',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+          )
           .where('dateAdded', isLessThan: Timestamp.fromDate(endOfDay))
           .orderBy('dateAdded', descending: true)
           .get();
@@ -124,9 +127,16 @@ class SalesViewModel extends TransactionViewModel {
           .doc(userId)
           .collection('sales')
           .where('type', isEqualTo: 'Cash')
-          .where('dateAdded', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('dateAdded',
-              isLessThan: Timestamp.fromDate(end.add(const Duration(days: 1))))
+          .where(
+            'dateAdded',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(start),
+          )
+          .where(
+            'dateAdded',
+            isLessThan: Timestamp.fromDate(
+              end.add(const Duration(days: 1)),
+            ),
+          )
           .orderBy('dateAdded', descending: true)
           .get();
 
@@ -196,7 +206,8 @@ class SalesViewModel extends TransactionViewModel {
         'amount': amountEntered,
         'type': 'Cash',
         'dateAdded': Timestamp.fromDate(
-            DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
+          DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
+        ),
         'products': selectedProducts,
         'remarks': remarksController.text,
         'status': 'paid',
@@ -208,9 +219,10 @@ class SalesViewModel extends TransactionViewModel {
       if (connectivityResult == ConnectivityResult.none) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           showSnackbar(
-              context,
-              'You\'re offline. Action queued and will complete when back online.',
-              Colors.orange);
+            context,
+            'You\'re offline. Action queued and will complete when back online.',
+            Colors.orange,
+          );
         });
       }
 
@@ -229,8 +241,10 @@ class SalesViewModel extends TransactionViewModel {
       );
 
       for (var productId in selectedProducts.keys) {
-        Product? product = products.firstWhere((p) => p.id == productId,
-            orElse: () => Product());
+        Product? product = products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => Product(),
+        );
         if (product.quantity != null) {
           await firestore
               .collection('users')
@@ -238,7 +252,7 @@ class SalesViewModel extends TransactionViewModel {
               .collection('products')
               .doc(productId)
               .update({
-            'quantity': product.quantity! - selectedProducts[productId]!
+            'quantity': product.quantity! - selectedProducts[productId]!,
           });
         }
       }
@@ -246,22 +260,35 @@ class SalesViewModel extends TransactionViewModel {
       DocumentReference merchantRef =
           FirebaseFirestore.instance.collection('users').doc(userId);
 
-      merchantRef.update({
-        'lastSaleTransaction': salesData,
-      });
+      merchantRef.update({'lastSaleTransaction': salesData});
 
       // Cash sale committed. customerIsExisting is always false because the
       // cash-sale flow does not bind to a customer document; credit sales
       // (BNPL on ledger) fire the same event from add_credit_view_model with
       // customerIsExisting: true.
-      await TelemetryService.instance.capture(SaleCompleted(
-        amountBucket: amountBucketZAR(amountEntered),
-        isCredit: false,
-        customerIsExisting: false,
-      ));
+      await TelemetryService.instance.capture(
+        SaleCompleted(
+          amountBucket: amountBucketZAR(amountEntered),
+          isCredit: false,
+          customerIsExisting: false,
+        ),
+      );
 
-      // Reset the form and navigate back
-      resetFormAndNavigateAway(context);
+      if (context.mounted) {
+        final rootMessenger = ScaffoldMessenger.maybeOf(
+              Navigator.of(context, rootNavigator: true).context,
+            ) ??
+            ScaffoldMessenger.maybeOf(context);
+        resetForm();
+        rootMessenger?.hideCurrentSnackBar();
+        rootMessenger?.showSnackBar(
+          const SnackBar(
+            content: Text('Sale added successfully.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop();
+      }
     } catch (error, st) {
       await CrashService.instance.recordNonFatal(
         error,
@@ -286,8 +313,9 @@ class SalesViewModel extends TransactionViewModel {
       salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded);
 
       // Preload the selected products for editing
-      selectedProducts = sale.products
-          .map((productId, quantity) => MapEntry(productId, quantity));
+      selectedProducts = sale.products.map(
+        (productId, quantity) => MapEntry(productId, quantity),
+      );
 
       remarksController.text = sale.remarks ?? '';
 
@@ -304,7 +332,8 @@ class SalesViewModel extends TransactionViewModel {
           var productData = productSnapshot.data() as Map<String, dynamic>;
           Product product = Product.fromMap(productData, productId);
           products.add(
-              product); // Add to the list of available products for reference
+            product,
+          ); // Add to the list of available products for reference
         }
       }
 
@@ -340,7 +369,8 @@ class SalesViewModel extends TransactionViewModel {
         'amount': updatedAmount,
         'products': updatedProducts,
         'dateAdded': Timestamp.fromDate(
-            DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate)),
+          DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
+        ),
         'remarks': remarksController.text,
       };
 
@@ -349,9 +379,10 @@ class SalesViewModel extends TransactionViewModel {
       if (connectivityResult == ConnectivityResult.none) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           showSnackbar(
-              context,
-              'You\'re offline. Action queued and will complete when back online.',
-              Colors.orange);
+            context,
+            'You\'re offline. Action queued and will complete when back online.',
+            Colors.orange,
+          );
         });
       }
 
@@ -371,26 +402,24 @@ class SalesViewModel extends TransactionViewModel {
 
         if (quantityChange != 0) {
           // Update product stock
-          Product? product = products.firstWhere((p) => p.id == productId,
-              orElse: () => Product());
+          Product? product = products.firstWhere(
+            (p) => p.id == productId,
+            orElse: () => Product(),
+          );
           if (product.quantity != null) {
             await firestore
                 .collection('users')
                 .doc(userId)
                 .collection('products')
                 .doc(productId)
-                .update({
-              'quantity': product.quantity! - quantityChange,
-            });
+                .update({'quantity': product.quantity! - quantityChange});
           }
         }
       }
 
       // Update last sale transaction on merchant document
       DocumentReference merchantRef = firestore.collection('users').doc(userId);
-      await merchantRef.update({
-        'lastSaleTransaction': salesData,
-      });
+      await merchantRef.update({'lastSaleTransaction': salesData});
       // Show success message and navigate back
       showSnackbar(context, 'Sale updated successfully!', Colors.green);
 
@@ -420,8 +449,10 @@ class SalesViewModel extends TransactionViewModel {
         final productId = entry.key;
         final qty = entry.value;
         if (qty <= 0) continue;
-        final product = products.firstWhere((p) => p.id == productId,
-            orElse: () => Product());
+        final product = products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => Product(),
+        );
         if (product.quantity != null) {
           await firestore
               .collection('users')
@@ -469,8 +500,11 @@ class SalesViewModel extends TransactionViewModel {
       DateTime startOfMonth = DateTime(now.year, now.month, 1);
       DateTime endOfMonth = DateTime(now.year, now.month + 1, 1);
       int currentQuarter = ((now.month - 1) ~/ 3) + 1;
-      DateTime startOfQuarter =
-          DateTime(now.year, (currentQuarter - 1) * 3 + 1, 1);
+      DateTime startOfQuarter = DateTime(
+        now.year,
+        (currentQuarter - 1) * 3 + 1,
+        1,
+      );
       DateTime endOfQuarter = DateTime(now.year, currentQuarter * 3 + 1, 1);
 
       if (period == 'Today') {
@@ -478,8 +512,10 @@ class SalesViewModel extends TransactionViewModel {
             .collection('users')
             .doc(userId)
             .collection('sales')
-            .where('dateAdded',
-                isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+            .where(
+              'dateAdded',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+            )
             .where('dateAdded', isLessThan: Timestamp.fromDate(endOfDay))
             .orderBy('dateAdded', descending: true)
             .get();
@@ -488,8 +524,10 @@ class SalesViewModel extends TransactionViewModel {
             .collection('users')
             .doc(userId)
             .collection('sales')
-            .where('dateAdded',
-                isGreaterThanOrEqualTo: Timestamp.fromDate(startOfWeek))
+            .where(
+              'dateAdded',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfWeek),
+            )
             .where('dateAdded', isLessThan: Timestamp.fromDate(endOfWeek))
             .orderBy('dateAdded', descending: true)
             .get();
@@ -498,8 +536,10 @@ class SalesViewModel extends TransactionViewModel {
             .collection('users')
             .doc(userId)
             .collection('sales')
-            .where('dateAdded',
-                isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+            .where(
+              'dateAdded',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth),
+            )
             .where('dateAdded', isLessThan: Timestamp.fromDate(endOfMonth))
             .orderBy('dateAdded', descending: true)
             .get();
@@ -508,9 +548,14 @@ class SalesViewModel extends TransactionViewModel {
             .collection('users')
             .doc(userId)
             .collection('sales')
-            .where('dateAdded',
-                isGreaterThanOrEqualTo: Timestamp.fromDate(startOfQuarter))
-            .where('dateAdded', isLessThan: Timestamp.fromDate(endOfQuarter))
+            .where(
+              'dateAdded',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfQuarter),
+            )
+            .where(
+              'dateAdded',
+              isLessThan: Timestamp.fromDate(endOfQuarter),
+            )
             .orderBy('dateAdded', descending: true)
             .get();
       } else {
@@ -524,7 +569,8 @@ class SalesViewModel extends TransactionViewModel {
 
       final sales = snapshot.docs
           .map(
-              (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          )
           .toList();
 
       _salesController.add(sales);
@@ -549,8 +595,10 @@ class SalesViewModel extends TransactionViewModel {
     for (var sale in sales) {
       totalSalesAmount += sale.amount;
       for (var entry in sale.products.entries) {
-        final product = products.firstWhere((p) => p.id == entry.key,
-            orElse: () => Product());
+        final product = products.firstWhere(
+          (p) => p.id == entry.key,
+          orElse: () => Product(),
+        );
         totalCostAmount += (product.cost ?? 0) * entry.value;
       }
     }

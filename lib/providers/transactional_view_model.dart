@@ -15,8 +15,9 @@ class TransactionViewModel extends ChangeNotifier {
   final TextEditingController remarksController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
   DateTime selectedDate = DateTime.now();
-  String salesSelectedDate =
-      DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
+  String salesSelectedDate = DateFormat(
+    "dd-MM-yyyy HH:mm",
+  ).format(DateTime.now());
 
   /// Mutates [selectedDate] and notifies listeners. Use this from the
   /// shared `DateRow` callback so the displayed date refreshes
@@ -115,8 +116,10 @@ class TransactionViewModel extends ChangeNotifier {
           .collection('products')
           .get();
       products = snapshot.docs
-          .map((doc) =>
-              Product.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .map(
+            (doc) =>
+                Product.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+          )
           .toList();
       filteredProducts = products;
 
@@ -145,7 +148,11 @@ class TransactionViewModel extends ChangeNotifier {
   }
 
   SnackBarAction updateStockSnackBar(
-      BuildContext context, String productId, int quantity, Product product) {
+    BuildContext context,
+    String productId,
+    int quantity,
+    Product product,
+  ) {
     return SnackBarAction(
       label: 'Update Stock',
       textColor: Colors.white,
@@ -154,23 +161,26 @@ class TransactionViewModel extends ChangeNotifier {
         if (navContext == null) return;
         await Navigator.of(navContext).push(
           MaterialPageRoute(
-            builder: (_) => ProductDetailsPage(
-              docID: productId,
-              product: product,
-            ),
+            builder: (_) =>
+                ProductDetailsPage(docID: productId, product: product),
           ),
         );
         // After navigating back, reload the products and check stock again
         await loadProducts();
-        Product updatedProduct = products.firstWhere((p) => p.id == productId,
-            orElse: () => Product());
+        Product updatedProduct = products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => Product(),
+        );
         if (updatedProduct.quantity != null && updatedProduct.quantity! > 0) {
           addProduct(context, productId, quantity);
         } else {
           final toastContext = _resolveContext(context);
           if (toastContext != null) {
-            showSnackbar(toastContext, 'Still out of stock. Please add stock.',
-                Colors.red);
+            showSnackbar(
+              toastContext,
+              'Still out of stock. Please add stock.',
+              Colors.red,
+            );
           }
         }
       },
@@ -178,8 +188,10 @@ class TransactionViewModel extends ChangeNotifier {
   }
 
   Product productById(String productId) {
-    return products.firstWhere((p) => p.id == productId,
-        orElse: () => Product());
+    return products.firstWhere(
+      (p) => p.id == productId,
+      orElse: () => Product(),
+    );
   }
 
   int availableStockFor(String productId) {
@@ -210,7 +222,10 @@ class TransactionViewModel extends ChangeNotifier {
   }
 
   void updateProductQuantity(
-      BuildContext context, String productId, int quantity) {
+    BuildContext context,
+    String productId,
+    int quantity,
+  ) {
     if (quantity <= 0) {
       selectedProducts.remove(productId);
     } else {
@@ -248,8 +263,10 @@ class TransactionViewModel extends ChangeNotifier {
       filteredProducts = products;
     } else {
       filteredProducts = products
-          .where((product) =>
-              product.name!.toLowerCase().contains(query.toLowerCase()))
+          .where(
+            (product) =>
+                product.name!.toLowerCase().contains(query.toLowerCase()),
+          )
           .toList();
     }
     notifyListeners();
@@ -257,8 +274,10 @@ class TransactionViewModel extends ChangeNotifier {
 
   List<MapEntry<String, int>> get paginatedSelectedProducts {
     final startIndex = currentPage * itemsPerPage;
-    final endIndex =
-        (startIndex + itemsPerPage).clamp(0, selectedProducts.length);
+    final endIndex = (startIndex + itemsPerPage).clamp(
+      0,
+      selectedProducts.length,
+    );
     return selectedProducts.entries
         .skip(startIndex)
         .take(endIndex - startIndex)
@@ -309,13 +328,17 @@ class TransactionViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void resetFormAndNavigateAway(BuildContext context) {
+  void resetForm() {
     amountController.clear();
     remarksController.clear();
     selectedProducts.clear();
     salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
     setLoading(false);
     notifyListeners();
+  }
+
+  void resetFormAndNavigateAway(BuildContext context) {
+    resetForm();
     Navigator.of(context).pop();
   }
 

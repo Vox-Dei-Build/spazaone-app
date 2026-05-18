@@ -180,9 +180,10 @@ class AddCreditViewModel extends TransactionViewModel {
       if (connectivityResult == ConnectivityResult.none) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           showSnackbar(
-              context,
-              'You\'re offline. Action queued and will complete when back online.',
-              Colors.orange);
+            context,
+            'You\'re offline. Action queued and will complete when back online.',
+            Colors.orange,
+          );
         });
       }
 
@@ -220,7 +221,8 @@ class AddCreditViewModel extends TransactionViewModel {
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
         final expectedChannel =
             await MessagingNotificationService.resolveExpectedChannel(
-                mobileNumber!);
+          mobileNumber!,
+        );
         final breakdown = CostBreakdown.singleMessageMultiChannel(
           title: 'Send credit confirmation?',
           subtitle: 'Message to $customerName',
@@ -245,8 +247,10 @@ class AddCreditViewModel extends TransactionViewModel {
       // means a merchant who instantly backs out before any choice
       // never sees a silent inventory hit.
       for (var productId in selectedProducts.keys) {
-        Product? product = products.firstWhere((p) => p.id == productId,
-            orElse: () => Product());
+        Product? product = products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => Product(),
+        );
         if (product.quantity != null) {
           await firestore
               .collection('users')
@@ -254,7 +258,7 @@ class AddCreditViewModel extends TransactionViewModel {
               .collection('products')
               .doc(productId)
               .update({
-            'quantity': product.quantity! - selectedProducts[productId]!
+            'quantity': product.quantity! - selectedProducts[productId]!,
           });
         }
       }
@@ -264,23 +268,29 @@ class AddCreditViewModel extends TransactionViewModel {
       // user just confirmed.
       final canProceed = outcome.shouldSend &&
           await BalanceCheckUtil.checkBalanceAndProceed(
-              context, userId, quotedTotal);
+            context,
+            userId,
+            quotedTotal,
+          );
+
+      String successMessage = 'Credit added successfully.';
+      Color successColor = Colors.green;
 
       if (canProceed) {
-        await sendSMS(userId, customerId, amountEntered, customerName, "Credit",
-            mobileNumber);
-      } else if (outcome.isSilent &&
-          mobileNumber != null &&
-          mobileNumber!.isNotEmpty) {
-        // Credit recorded; no message sent. Surface the state so the
-        // merchant doesn't have to guess what happened.
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          showSnackbar(
-            context,
-            'Credit recorded. No message sent.',
-            Colors.blueGrey,
-          );
-        });
+        await sendSMS(
+          userId,
+          customerId,
+          amountEntered,
+          customerName,
+          "Credit",
+          mobileNumber,
+        );
+        successMessage = 'Credit added and confirmation sent.';
+      } else if (mobileNumber != null && mobileNumber!.isNotEmpty) {
+        // Credit recorded, but the merchant chose not to send a message or the
+        // balance gate blocked the send. Keep the confirmation explicit.
+        successMessage = 'Credit added. No message sent.';
+        successColor = Colors.blueGrey;
       }
 
       DocumentReference customerRef = FirebaseFirestore.instance
@@ -289,21 +299,34 @@ class AddCreditViewModel extends TransactionViewModel {
           .collection('customers')
           .doc(customerId);
 
-      customerRef.update({
-        'lastTransaction': transactionData,
-      });
+      customerRef.update({'lastTransaction': transactionData});
 
       // Credit-on-ledger sale (BNPL). The customer is bound by construction
       // (this view model takes a customerId/customerName), so customerIsExisting
       // is always true.
-      await TelemetryService.instance.capture(SaleCompleted(
-        amountBucket: amountBucketZAR(amountEntered),
-        isCredit: true,
-        customerIsExisting: true,
-      ));
+      await TelemetryService.instance.capture(
+        SaleCompleted(
+          amountBucket: amountBucketZAR(amountEntered),
+          isCredit: true,
+          customerIsExisting: true,
+        ),
+      );
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        resetFormAndNavigateAway(context);
+        if (!context.mounted) return;
+        final rootMessenger = ScaffoldMessenger.maybeOf(
+              Navigator.of(context, rootNavigator: true).context,
+            ) ??
+            ScaffoldMessenger.maybeOf(context);
+        resetForm();
+        rootMessenger?.hideCurrentSnackBar();
+        rootMessenger?.showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: successColor,
+          ),
+        );
+        Navigator.of(context).pop();
       });
     } catch (error, st) {
       await CrashService.instance.recordNonFatal(
@@ -312,10 +335,7 @@ class AddCreditViewModel extends TransactionViewModel {
         reason: 'addCreditTransaction failed',
       );
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        showErrorSnackBar(
-          context,
-          "Error adding credit. Please retry. :(",
-        );
+        showErrorSnackBar(context, "Error adding credit. Please retry. :(");
       });
     } finally {
       setLoading(false);
