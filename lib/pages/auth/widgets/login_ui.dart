@@ -23,11 +23,35 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
               children: <Widget>[
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
                 const LogoDisplay(),
-                SizedBox(height: SizeConfig.heightMultiplier * 10),
+                SizedBox(height: SizeConfig.heightMultiplier * 6),
+                // PAS-AUTH-01: Make it unambiguous that mobile number is the
+                // primary auth method and an SMS code is on the way. Users
+                // were getting stuck staring at a lone phone field.
+                Text(
+                  'Sign in with your mobile number',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 2.4,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 1),
+                Text(
+                  "We'll text you a 6-digit code to confirm it's you. "
+                  'No password needed.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    color: Colors.grey[700],
+                    height: 1.3,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 3),
                 PrivateRegion(
                   child: CustomTextField(
                     label: 'Mobile Number',
-                    hintText: 'Enter Mobile Number',
+                    hintText: 'e.g. 082 123 4567',
                     prefixIcon: Icons.phone,
                     controller: authViewModel.mobileNoController,
                     textInputType: TextInputType.phone,
