@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/templates/view_template/template_detail_page.dart';
+import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:pasella/utils/text_sanitizer.dart';
 import 'package:provider/provider.dart';
 
@@ -75,36 +77,25 @@ class _TemplatesTabState extends State<TemplatesTab> {
 }
 
 // ─── Empty state ────────────────────────────────────────────────────────────
+// PAS-AUTH-03: replaced the bespoke `_EmptyState` widget with a thin
+// wrapper around the shared [EmptyStateOnboarding] so Templates picks
+// up the same icon → headline → subtitle → walkthrough pattern as
+// Stock. The primary "Create Template" CTA still lives on the parent
+// page's FAB; we don't render a duplicate here for the same reason
+// PAS-UX-09 collapsed the FAB-vs-tab-onTap duplication elsewhere.
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.library_books_outlined,
-                size: 64, color: theme.disabledColor),
-            const SizedBox(height: 16),
-            Text(
-              'No templates yet',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Templates are pre-approved messages you can send to your customers. Tap "Create Template" below to get started.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.disabledColor),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyStateOnboarding(
+      icon: Icons.library_books_outlined,
+      headline: 'No templates yet',
+      subtitle:
+          'Templates are pre-approved messages you can send to your '
+          'customers. Tap "Create Template" below to get started.',
+      tutorialKey: TutorialConfig.TUTORIAL_RUN_PROMOTIONS,
+      tutorialTitle: 'How to create and use templates',
     );
   }
 }
