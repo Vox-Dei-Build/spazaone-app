@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/transactions/transaction_model.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
+import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:provider/provider.dart';
@@ -27,6 +29,14 @@ class EntityTab extends StatefulWidget {
   final String? emptyCtaLabel;
   final VoidCallback? onEmptyCtaTap;
 
+  /// PAS-AUTH-03: optional walkthrough video key. When set and the
+  /// matching Remote Config entry returns a non-empty URL, a "Watch a
+  /// 2-min walkthrough" link is rendered below the primary CTA — same
+  /// pattern Stock already uses. Kept on EntityTab (vs. only on
+  /// CustomerTab) so future tabs (Supplier, etc.) can opt in.
+  final String? tutorialKey;
+  final String tutorialTitle;
+
   const EntityTab({
     required this.searchTextNotifier,
     required this.category,
@@ -35,6 +45,8 @@ class EntityTab extends StatefulWidget {
     required this.hasCustomersNotifier,
     this.emptyCtaLabel,
     this.onEmptyCtaTap,
+    this.tutorialKey,
+    this.tutorialTitle = 'How to use Pasella',
     Key? key,
   }) : super(key: key);
 
@@ -270,6 +282,39 @@ class _EntityTabState extends State<EntityTab> {
                             ),
                           ),
                         ),
+                      ],
+                      // PAS-AUTH-03: secondary walkthrough link. Only
+                      // renders when Remote Config has a URL for the
+                      // tutorial key — silently hidden otherwise so we
+                      // never show a button that opens an empty
+                      // WebView.
+                      if (widget.tutorialKey != null) ...[
+                        Builder(builder: (context) {
+                          final url = TutorialConfig.getTutorialUrl(
+                              widget.tutorialKey!);
+                          if (url.isEmpty) return const SizedBox.shrink();
+                          return Column(
+                            children: [
+                              SizedBox(
+                                  height: SizeConfig.heightMultiplier * 1),
+                              TextButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => LoomVideoPage(
+                                        loomUrl: url,
+                                        title: widget.tutorialTitle,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.play_circle_outline),
+                                label: const Text(
+                                    'Watch a 2-min walkthrough'),
+                              ),
+                            ],
+                          );
+                        }),
                       ],
                     ],
                   ),

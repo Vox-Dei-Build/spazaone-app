@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/pages/reports/customer_report/widgets/customer_report_panel.dart';
 import 'package:pasella/pages/transactions/widgets/transactions_list_view.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/balance_summary/balance_summary_card.dart';
+import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:provider/provider.dart';
 
 class TransactionsManagementPage extends StatefulWidget {
@@ -102,13 +104,22 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                           textAlign: TextAlign.center,
                         ));
                       } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return Center(
-                          child: Text(
-                            'No transactions available.',
-                            style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 2,
-                            ),
-                          ),
+                        // PAS-AUTH-03: replace the bare "No transactions
+                        // available" label with the Stock-style empty
+                        // state. The primary recovery actions (Credit /
+                        // Payment) already live in
+                        // [AddCreditPaymentButtons] right above this
+                        // list, so we don't render a third CTA — just an
+                        // explanatory line and the walkthrough link.
+                        return EmptyStateOnboarding(
+                          icon: Icons.receipt_long_outlined,
+                          headline: 'No transactions yet for ${widget.customerName}',
+                          subtitle:
+                              'Tap Credit when this customer takes goods on '
+                              'account, or Payment when they settle up. Each '
+                              'entry sends a WhatsApp confirmation automatically.',
+                          tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
+                          tutorialTitle: 'How to record a credit transaction',
                         );
                       } else {
                         return Column(

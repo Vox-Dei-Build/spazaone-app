@@ -238,6 +238,22 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                         bottom: true,
                                         child: SalesList(
                                           viewModel: salesVM,
+                                          // PAS-AUTH-03: wire the FAB
+                                          // action into the empty-state
+                                          // CTA so a new merchant lands
+                                          // on a one-tap path to their
+                                          // first sale.
+                                          onAddSale: () {
+                                            TelemetryService.instance
+                                                .capture(const SaleStarted(
+                                                    entryPoint: 'empty_state'));
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => AddSale(
+                                                    salesViewModel: salesVM),
+                                              ),
+                                            );
+                                          },
                                         ),
                                       )
                                     : SafeArea(

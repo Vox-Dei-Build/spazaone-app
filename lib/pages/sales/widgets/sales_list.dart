@@ -1,20 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/sales/widgets/sale_detail_page.dart';
+import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:shimmer/shimmer.dart';
 
 class SalesList extends StatefulWidget {
   final SalesViewModel viewModel;
   final double bottomPadding;
+  // PAS-AUTH-03: opt-in onboarding affordance. When non-null and the
+  // list is empty the placeholder upgrades from a dead-end label into
+  // the Stock-style CTA + walkthrough pattern. The Add Sale FAB still
+  // lives on the parent page; this just exposes the same action where
+  // the user is already looking.
+  final VoidCallback? onAddSale;
 
   const SalesList({
     super.key,
     required this.viewModel,
     this.bottomPadding = 0,
+    this.onAddSale,
   });
 
   @override
@@ -47,11 +56,16 @@ class _SalesListState extends State<SalesList> {
         final data = snapshot.data ?? const <Sale>[];
         if (data.isEmpty) {
           return _paddedScroll(
-            Center(
-              child: Text(
-                "No sales data available",
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-              ),
+            EmptyStateOnboarding(
+              icon: Icons.point_of_sale_outlined,
+              headline: 'No sales recorded yet',
+              subtitle:
+                  'Record your first sale to start tracking revenue, '
+                  'send WhatsApp receipts and build customer history.',
+              ctaLabel: widget.onAddSale != null ? 'Record your first sale' : null,
+              onCtaTap: widget.onAddSale,
+              tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_SALES,
+              tutorialTitle: 'How to record a sale',
             ),
           );
         }
