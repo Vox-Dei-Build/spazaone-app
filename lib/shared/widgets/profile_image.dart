@@ -104,6 +104,13 @@ Widget profilePicture(
               disabledIcon: Icons.phone_disabled,
               enabledTooltip: _phoneTooltip(true),
               disabledTooltip: _phoneTooltip(false),
+              // PAS-AUTH-02: the affirmative "phone on file" state is the
+              // common case so we leave it icon-only to avoid clutter on
+              // every avatar in the ledger list. The *missing* state is
+              // the actionable signal — merchants can't message a client
+              // without a number — so we render an explicit "No phone"
+              // pill instead of relying on a tooltip nobody taps.
+              disabledLabel: 'No phone',
             ),
           )
           : Container(),
