@@ -82,7 +82,7 @@ class AuthViewModel with ChangeNotifier {
       if (verificationId != null) {
         await _promptForVerificationCode(context, verificationId, (smsCode) {
           signInWithVerificationCode(smsCode, verificationId, context);
-        });
+        }, phoneNumber: formattedPhoneNumber);
       } else {
         stopLoading();
       }
@@ -165,7 +165,7 @@ class AuthViewModel with ChangeNotifier {
               }
             },
           );
-        });
+        }, phoneNumber: formattedPhoneNumber);
       } else {
         showErrorSnackBar(
           context,
@@ -236,7 +236,7 @@ class AuthViewModel with ChangeNotifier {
         } finally {
           stopLoading();
         }
-      });
+      }, phoneNumber: formattedPhoneNumber);
     } catch (e) {
       showErrorSnackBar(context, "Failed to link anonymous account: $e");
     } finally {
@@ -333,9 +333,16 @@ class AuthViewModel with ChangeNotifier {
   Future<void> _promptForVerificationCode(
     BuildContext context,
     String verificationId,
-    Function(String smsCode) onVerifyPressed,
-  ) async {
+    Function(String smsCode) onVerifyPressed, {
+    String? phoneNumber,
+  }) async {
     Completer<void> completer = Completer<void>();
+
+    // PAS-AUTH-01: Show the user *which* number we just texted so the OTP
+    // step feels like a continuation of "enter your mobile number" rather
+    // than an out-of-nowhere code prompt. Obfuscate the middle digits so
+    // we don't leak the full PII if the dialog is screenshot/recorded.
+    final String? maskedNumber = _maskPhoneNumber(phoneNumber);
 
     showDialog(
       context: context,
@@ -345,7 +352,7 @@ class AuthViewModel with ChangeNotifier {
 
         return AlertDialog(
           title: Text(
-            'Enter SMS Code',
+            'Enter your 6-digit code',
             style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5),
           ),
           content: SingleChildScrollView(
@@ -354,7 +361,21 @@ class AuthViewModel with ChangeNotifier {
                   LayoutConstants.padding10Horizontal, // Add padding if needed
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    maskedNumber != null
+                        ? "We just sent an SMS to $maskedNumber. "
+                            "Enter the code to continue."
+                        : "We just sent you an SMS. "
+                            "Enter the 6-digit code to continue.",
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.7,
+                      color: Colors.grey[800],
+                      height: 1.3,
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.heightMultiplier * 1.5),
                   PrivateRegion(
                     // PAS-UX-09: opt into the OS-level SMS autofill
                     // affordance. On iOS this surfaces the
@@ -365,7 +386,13 @@ class AuthViewModel with ChangeNotifier {
                     // backend change.
                     child: TextField(
                       onChanged: (value) => smsCode = value,
-                      decoration: const InputDecoration(hintText: "SMS Code"),
+                      decoration: const InputDecoration(
+                        hintText: "6-digit SMS code",
+                        helperText:
+                            "Code didn't arrive? Wait 30 seconds, then "
+                            "tap Cancel and try again.",
+                        helperMaxLines: 2,
+                      ),
                       keyboardType: TextInputType.number,
                       autofocus: true, // Automatically focus on the TextField
                       autofillHints: const [AutofillHints.oneTimeCode],
@@ -406,6 +433,22 @@ class AuthViewModel with ChangeNotifier {
     );
 
     return completer.future;
+  }
+
+  /// PAS-AUTH-01: Mask a phone number for display in the OTP dialog.
+  /// Keeps the country/leading code and the last 3 digits visible so the
+  /// user can confirm they entered the right number, while hiding the
+  /// middle digits to limit PII exposure if the screen is recorded or
+  /// screen-shared. Returns null if [phoneNumber] is null/empty/too short
+  /// so the caller can fall back to a generic message.
+  String? _maskPhoneNumber(String? phoneNumber) {
+    if (phoneNumber == null) return null;
+    final trimmed = phoneNumber.trim();
+    if (trimmed.length < 6) return null;
+    // Keep the first 3 (e.g. "+27") and the last 3, mask the middle.
+    final head = trimmed.substring(0, 3);
+    final tail = trimmed.substring(trimmed.length - 3);
+    return '$head•••$tail';
   }
 
   /// Returns true if the device currently has a usable network connection.

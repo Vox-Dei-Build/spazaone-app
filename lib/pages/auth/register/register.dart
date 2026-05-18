@@ -51,7 +51,31 @@ class _RegisterPageState extends State<RegisterPage> {
               children: <Widget>[
                 SizedBox(height: SizeConfig.heightMultiplier * 5),
                 const LogoDisplay(),
-                SizedBox(height: SizeConfig.heightMultiplier * 5),
+                SizedBox(height: SizeConfig.heightMultiplier * 3),
+                // PAS-AUTH-01: Same OTP-as-primary headline pattern as login.
+                // Reassures new users that the mobile number they enter is
+                // the account itself and they'll receive an SMS code.
+                Text(
+                  'Create your account',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 2.4,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 1),
+                Text(
+                  "Your mobile number is your login. We'll text you a "
+                  '6-digit code to verify it — no password needed.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    color: Colors.grey[700],
+                    height: 1.3,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 3),
                 PrivateRegion(
                   child: CustomTextField(
                     label: 'Full Name',
@@ -82,8 +106,8 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 PrivateRegion(
                   child: CustomTextField(
-                    label: 'Mobile Number',
-                    hintText: 'Enter Mobile Number',
+                    label: 'Mobile Number (we send your code here)',
+                    hintText: 'e.g. 082 123 4567',
                     prefixIcon: Icons.phone,
                     controller: authViewModel.registrationMobileNoController,
                     textInputType: TextInputType.phone,
