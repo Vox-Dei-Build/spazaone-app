@@ -38,10 +38,9 @@ class TwilioService {
     final path = rawPath.startsWith('/') ? rawPath : '/$rawPath';
 
     final uri = Uri.https('api.twilio.com', path);
-    final resp = await _http.get(
-      uri,
-      headers: {'Authorization': 'Basic $creds'},
-    );
+    final resp = await _http.get(uri, headers: {
+      'Authorization': 'Basic $creds',
+    });
     if (resp.statusCode != 200) {
       throw Exception('Failed to load media JSON: ${resp.statusCode}');
     }
@@ -62,10 +61,8 @@ class TwilioService {
     required String customerId,
   }) async {
     final smsToQuery = formatForTwilio(customerNumber, false); // "+27..."
-    final whatsappToQuery = formatForTwilio(
-      customerNumber,
-      true,
-    ); // "whatsapp:+27..."
+    final whatsappToQuery =
+        formatForTwilio(customerNumber, true); // "whatsapp:+27..."
 
     try {
       // Fetch outbound SMS & WhatsApp in parallel. Both Twilio queries are
@@ -91,10 +88,9 @@ class TwilioService {
       for (final message in allMessages) {
         final messageText = (message['message'] ?? '').toString();
         final isWhatsApp = message['isWhatsApp'] == true;
-        final bool isTemplateMessage =
-            isWhatsApp
-                ? await SMSMessages.isTemplateMessage(messageText)
-                : true;
+        final bool isTemplateMessage = isWhatsApp
+            ? await SMSMessages.isTemplateMessage(messageText)
+            : true;
         if (!isTemplateMessage) {
           message['isAI'] = true;
         }
@@ -113,23 +109,21 @@ class TwilioService {
           allMessages.where((m) => (m['num_media'] as int) > 0).toList();
 
       // 3️⃣ Fire off all fetchMediaUrls in parallel
-      await Future.wait(
-        withMedia.map((msg) async {
-          final String? mediaUri = (msg['uri']) as String?;
-          if (mediaUri != null && mediaUri.isNotEmpty) {
-            final mediaJsonPath = buildMediaJsonPath(mediaUri);
-            try {
-              // fetchMediaUrls handles both full & relative URIs
-              final urls = await fetchMediaUrls(mediaJsonPath);
-              msg['mediaUrl'] = urls.isNotEmpty ? urls.first : null;
-            } catch (_) {
-              msg['mediaUrl'] = null;
-            }
-          } else {
+      await Future.wait(withMedia.map((msg) async {
+        final String? mediaUri = (msg['uri']) as String?;
+        if (mediaUri != null && mediaUri.isNotEmpty) {
+          final mediaJsonPath = buildMediaJsonPath(mediaUri);
+          try {
+            // fetchMediaUrls handles both full & relative URIs
+            final urls = await fetchMediaUrls(mediaJsonPath);
+            msg['mediaUrl'] = urls.isNotEmpty ? urls.first : null;
+          } catch (_) {
             msg['mediaUrl'] = null;
           }
-        }),
-      );
+        } else {
+          msg['mediaUrl'] = null;
+        }
+      }));
 
       // ✅ Sort by date (latest at the bottom). Return every recipient-scoped
       // outbound message — visibility is gated solely by Twilio's `To=` query.
@@ -151,41 +145,31 @@ class TwilioService {
     required String twilioMessagingServiceId,
   }) async {
     final smsFromQuery = formatForTwilio(customerNumber, false); // "+27..."
-    final whatsappFromQuery = formatForTwilio(
-      customerNumber,
-      true,
-    ); // "whatsapp:+27..."
+    final whatsappFromQuery =
+        formatForTwilio(customerNumber, true); // "whatsapp:+27..."
     List<Map<String, dynamic>> allMessages = [];
 
     try {
       // ✅ Fetch SMS messages
       final smsUrl = Uri.parse(
-        'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?From=${Uri.encodeComponent(smsFromQuery)}',
-      );
+          'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?From=${Uri.encodeComponent(smsFromQuery)}');
 
-      final smsResponse = await http.get(
-        smsUrl,
-        headers: {
-          'Authorization':
-              'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
-        },
-      );
+      final smsResponse = await http.get(smsUrl, headers: {
+        'Authorization':
+            'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
+      });
 
       if (smsResponse.statusCode == 200) {
         final smsData = jsonDecode(smsResponse.body);
 
         allMessages.addAll(
-          List<Map<String, dynamic>>.from(
-            smsData['messages'].map(
-              (msg) => {
+          List<Map<String, dynamic>>.from(smsData['messages'].map((msg) => {
                 'sid': msg['sid'],
                 'message': msg['body'],
-                'dateSent':
-                    msg['date_sent'] != null
-                        ? DateFormat(
-                          "EEE, dd MMM yyyy HH:mm:ss Z",
-                        ).parse(msg['date_sent'])
-                        : DateTime.now(),
+                'dateSent': msg['date_sent'] != null
+                    ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
+                        .parse(msg['date_sent'])
+                    : DateTime.now(),
                 'status': msg['status'],
                 'direction': "inbound",
                 'num_media': msg['num_media'] ?? 0,
@@ -193,9 +177,7 @@ class TwilioService {
                 'to': msg['to'],
                 'mediaUrl': msg['uri'] ?? '',
                 'isWhatsApp': false, // ✅ Mark as SMS
-              },
-            ),
-          ),
+              })),
         );
       } else {
         await CrashService.instance.recordNonFatal(
@@ -208,41 +190,32 @@ class TwilioService {
 
       // ✅ Fetch WhatsApp messages
       final whatsappUrl = Uri.parse(
-        'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?From=${Uri.encodeComponent(whatsappFromQuery)}',
-      );
+          'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?From=${Uri.encodeComponent(whatsappFromQuery)}');
 
-      final whatsappResponse = await http.get(
-        whatsappUrl,
-        headers: {
-          'Authorization':
-              'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
-        },
-      );
+      final whatsappResponse = await http.get(whatsappUrl, headers: {
+        'Authorization':
+            'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
+      });
 
       if (whatsappResponse.statusCode == 200) {
         final whatsappData = jsonDecode(whatsappResponse.body);
 
         allMessages.addAll(
           List<Map<String, dynamic>>.from(
-            whatsappData['messages'].map(
-              (msg) => {
-                'sid': msg['sid'],
-                'message': msg['body'],
-                'dateSent':
-                    msg['date_sent'] != null
-                        ? DateFormat(
-                          "EEE, dd MMM yyyy HH:mm:ss Z",
-                        ).parse(msg['date_sent'])
+              whatsappData['messages'].map((msg) => {
+                    'sid': msg['sid'],
+                    'message': msg['body'],
+                    'dateSent': msg['date_sent'] != null
+                        ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
+                            .parse(msg['date_sent'])
                         : DateTime.now(),
-                'status': msg['status'],
-                'direction': "inbound",
-                'from': msg['from'],
-                'to': msg['to'],
-                'num_media': msg['num_media'] ?? 0,
-                'isWhatsApp': true, // ✅ Mark as WhatsApp
-              },
-            ),
-          ),
+                    'status': msg['status'],
+                    'direction': "inbound",
+                    'from': msg['from'],
+                    'to': msg['to'],
+                    'num_media': msg['num_media'] ?? 0,
+                    'isWhatsApp': true, // ✅ Mark as WhatsApp
+                  })),
         );
       } else {
         await CrashService.instance.recordNonFatal(
@@ -266,23 +239,21 @@ class TwilioService {
           allMessages.where((m) => (m['num_media'] as int) > 0).toList();
 
       // 3️⃣ Fire off all fetchMediaUrls in parallel
-      await Future.wait(
-        withMedia.map((msg) async {
-          final String? mediaUri = (msg['uri']) as String?;
-          if (mediaUri != null && mediaUri.isNotEmpty) {
-            final mediaJsonPath = buildMediaJsonPath(mediaUri);
-            try {
-              // fetchMediaUrls handles both full & relative URIs
-              final urls = await fetchMediaUrls(mediaJsonPath);
-              msg['mediaUrl'] = urls.isNotEmpty ? urls.first : null;
-            } catch (_) {
-              msg['mediaUrl'] = null;
-            }
-          } else {
+      await Future.wait(withMedia.map((msg) async {
+        final String? mediaUri = (msg['uri']) as String?;
+        if (mediaUri != null && mediaUri.isNotEmpty) {
+          final mediaJsonPath = buildMediaJsonPath(mediaUri);
+          try {
+            // fetchMediaUrls handles both full & relative URIs
+            final urls = await fetchMediaUrls(mediaJsonPath);
+            msg['mediaUrl'] = urls.isNotEmpty ? urls.first : null;
+          } catch (_) {
             msg['mediaUrl'] = null;
           }
-        }),
-      );
+        } else {
+          msg['mediaUrl'] = null;
+        }
+      }));
       allMessages.sort((a, b) => b['dateSent'].compareTo(a['dateSent']));
 
       return allMessages;
@@ -298,46 +269,34 @@ class TwilioService {
 
   /// ✅ Helper: Fetch messages from Twilio API
   Future<List<Map<String, dynamic>>> _fetchTwilioMessages(
-    String toQuery,
-  ) async {
+      String toQuery) async {
     final url = Uri.parse(
-      'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?To=${Uri.encodeComponent(toQuery)}',
-    );
+        'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json?To=${Uri.encodeComponent(toQuery)}');
 
-    final response = await http.get(
-      url,
-      headers: {
-        'Authorization':
-            'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
-      },
-    );
+    final response = await http.get(url, headers: {
+      'Authorization':
+          'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}',
+    });
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
 
-      return List<Map<String, dynamic>>.from(
-        data['messages'].map(
-          (msg) => {
+      return List<Map<String, dynamic>>.from(data['messages'].map((msg) => {
             'sid': msg['sid'],
             'message': msg['body'],
-            'dateSent':
-                msg['date_sent'] != null
-                    ? DateFormat(
-                      "EEE, dd MMM yyyy HH:mm:ss Z",
-                    ).parse(msg['date_sent'])
-                    : DateTime.now(),
+            'dateSent': msg['date_sent'] != null
+                ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
+                    .parse(msg['date_sent'])
+                : DateTime.now(),
             'status': msg['status'],
             'direction': "outbound",
             'from': msg['from'],
             'to': msg['to'],
             'uri': msg['uri'],
             'num_media': msg['num_media'] ?? 0,
-            'isWhatsApp':
-                msg['from'].contains('whatsapp') ||
+            'isWhatsApp': msg['from'].contains('whatsapp') ||
                 msg['to'].contains('whatsapp'),
-          },
-        ),
-      );
+          }));
     } else {
       await CrashService.instance.recordNonFatal(
         'Twilio API non-200',
