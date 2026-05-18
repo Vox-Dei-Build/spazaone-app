@@ -53,14 +53,12 @@ class ProfileImageWidget extends StatelessWidget {
   }
 }
 
-/// PAS-UX-08: tooltip copy is kept here (rather than in callers) so the
-/// explanation stays consistent everywhere the dots appear.
-///
-/// The NPA dot is being phased out in favour of [PaymentStatusPill] on
-/// surfaces with room for a label (customer list, profile header). On
-/// surfaces that still render the dot (promote, reports, etc.), the dot
-/// remains as a small visual signal without a hidden tooltip — tooltips
-/// are an unreliable affordance because nothing signals interactivity.
+/// PAS-UI-01: the legacy red NPA dot has been retired in favour of
+/// [PaymentStatusPill] on every surface that has room for a label
+/// (customer list, profile header, transaction tiles, reports).
+/// [showNPAIndicator] now defaults to `false` so the dot stops
+/// rendering across the app; the parameter is kept for back-compat
+/// only — no production surface should pass `true`.
 ///
 /// The phone icon keeps a tooltip because it surfaces a non-obvious
 /// distinction (number on file vs not) and is sometimes the only thing
@@ -75,7 +73,7 @@ Widget profilePicture(BuildContext context, String name, String? imageUrl,
     final double? radius,
     File? profileImage,
     double? balance,
-    bool showNPAIndicator = true}) {
+    bool showNPAIndicator = false}) {
   var initials = name.isNotEmpty ? name[0] : '';
   final bool hasNumber = number != null && number.isNotEmpty;
   return Stack(

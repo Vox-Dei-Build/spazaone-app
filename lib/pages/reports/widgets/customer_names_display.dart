@@ -46,13 +46,18 @@ class CustomersWithBadLoansTile extends StatelessWidget {
               final number = customer['number'];
               final id = customer['id'];
               final profileImageUrl = customer['profileImageUrl'];
+              final avatarSize = SizeConfig.heightMultiplier * 6;
 
               return PrivateRegion(
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(0.0),
                   visualDensity: const VisualDensity(horizontal: -2),
-                  leading: profilePicture(
-                      context, name, profileImageUrl, number, true),
+                  leading: SizedBox(
+                    width: avatarSize,
+                    height: avatarSize,
+                    child: profilePicture(
+                        context, name, profileImageUrl, number, true),
+                  ),
                   title: _buildTitle(name, balance),
                   // PAS-UX-06A: surface the phone number directly in the
                   // reports flow. Merchants chasing debt previously had to

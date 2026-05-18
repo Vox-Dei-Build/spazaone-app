@@ -34,11 +34,15 @@ import 'package:provider/provider.dart';
 class DateRangeLedgerDrilldown extends StatefulWidget {
   final DateTime startDate;
   final DateTime endDate;
+  final bool showLoadingIndicator;
+  final ValueChanged<bool>? onLoadingChanged;
 
   const DateRangeLedgerDrilldown({
     super.key,
     required this.startDate,
     required this.endDate,
+    this.showLoadingIndicator = true,
+    this.onLoadingChanged,
   });
 
   @override
@@ -52,7 +56,7 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _future = _loadWithNotifications();
   }
 
   @override
@@ -61,9 +65,24 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
     if (oldWidget.startDate != widget.startDate ||
         oldWidget.endDate != widget.endDate) {
       setState(() {
-        _future = _load();
+        _future = _loadWithNotifications();
       });
     }
+  }
+
+  Future<List<_CustomerRangeRollup>> _loadWithNotifications() async {
+    _notifyLoading(true);
+    try {
+      return await _load();
+    } finally {
+      _notifyLoading(false);
+    }
+  }
+
+  void _notifyLoading(bool isLoading) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onLoadingChanged?.call(isLoading);
+    });
   }
 
   Future<List<_CustomerRangeRollup>> _load() async {
@@ -143,6 +162,7 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          if (!widget.showLoadingIndicator) return const SizedBox.shrink();
           return Padding(
             padding:
                 EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 2),
@@ -234,6 +254,7 @@ class _CustomerRangeTile extends StatelessWidget {
     SizeConfig().init(context);
     final isNegative = rollup.netInRange < 0;
     final color = isNegative ? Colors.red : kPrimaryColor;
+    final avatarSize = SizeConfig.heightMultiplier * 6;
 
     return PrivateRegion(
       child: Card(
@@ -252,8 +273,12 @@ class _CustomerRangeTile extends StatelessWidget {
               horizontal: SizeConfig.imageSizeMultiplier * 2,
               vertical: 0,
             ),
-            leading: profilePicture(context, rollup.name,
-                rollup.profileImageUrl, rollup.number, false),
+            leading: SizedBox(
+              width: avatarSize,
+              height: avatarSize,
+              child: profilePicture(context, rollup.name,
+                  rollup.profileImageUrl, rollup.number, false),
+            ),
             title: Text(
               rollup.name,
               style: TextStyle(
@@ -308,7 +333,7 @@ class _CustomerRangeTile extends StatelessWidget {
                       amountColor: kPrimaryColor,
                     ),
                     _SubtotalRow(
-                      label: 'Net for this customer',
+                      label: 'Movement in period',
                       amount: rollup.netInRange,
                       amountColor: color,
                       isBold: true,
@@ -480,9 +505,9 @@ class _ReconciliationLine extends StatelessWidget {
                 child: Text(
                   reconciles
                       ? 'Rows sum to ${CurrencyUtil.format(rowsNet)} — '
-                          'matches Net Balance above.'
+                          'matches Net Movement above.'
                       : 'Rows sum to ${CurrencyUtil.format(rowsNet)}; '
-                          'Net Balance above shows '
+                          'Net Movement above shows '
                           '${CurrencyUtil.format(cardNet)} '
                           '(off by ${CurrencyUtil.format(delta)}).',
                   style: TextStyle(
