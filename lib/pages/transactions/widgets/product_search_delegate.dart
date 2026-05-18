@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
@@ -82,16 +83,22 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                 onProductAdded: (newProduct) async {
                   await viewModel.loadProducts();
                   if (!context.mounted) return;
+                  final productName = formatStringToCamelCase(
+                    newProduct.name ?? 'New Product',
+                  );
                   final picked = await _promptQuantity(
                     context,
-                    title: formatStringToCamelCase(
-                      newProduct.name ?? 'New Product',
-                    ),
+                    title: productName,
                     initialQuantity: 1,
                     maxQuantity: newProduct.quantity ?? 0,
+                    confirmLabel: 'Add to transaction',
                   );
                   if (picked == null) return;
                   viewModel.addProduct(context, newProduct.id!, picked);
+                  _showSelectionFeedback(
+                    context,
+                    '$productName added to this transaction · Qty $picked',
+                  );
                   close(context, newProduct);
                 },
               ),
@@ -148,6 +155,9 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                       title: productName,
                       initialQuantity: selectedQty > 0 ? selectedQty : 1,
                       maxQuantity: stock,
+                      confirmLabel: selectedQty > 0
+                          ? 'Update transaction'
+                          : 'Add to transaction',
                     );
                     if (picked == null) return;
                     viewModel.updateProductQuantity(
@@ -155,7 +165,13 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                       result.id!,
                       picked,
                     );
-                    showSuggestions(context);
+                    _showSelectionFeedback(
+                      context,
+                      selectedQty > 0
+                          ? '$productName updated in this transaction · Qty $picked'
+                          : '$productName added to this transaction · Qty $picked',
+                    );
+                    close(context, result);
                   },
             icon: const Icon(Icons.add),
             label: Text(selectedQty > 0 ? 'Update' : 'Add'),
@@ -168,9 +184,18 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                     title: productName,
                     initialQuantity: selectedQty > 0 ? selectedQty : 1,
                     maxQuantity: stock,
+                    confirmLabel: selectedQty > 0
+                        ? 'Update transaction'
+                        : 'Add to transaction',
                   );
                   if (picked == null) return;
                   viewModel.updateProductQuantity(context, result.id!, picked);
+                  _showSelectionFeedback(
+                    context,
+                    selectedQty > 0
+                        ? '$productName updated in this transaction · Qty $picked'
+                        : '$productName added to this transaction · Qty $picked',
+                  );
                   close(context, result);
                 },
         );
@@ -189,6 +214,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     required String title,
     required int initialQuantity,
     required int maxQuantity,
+    String confirmLabel = 'Add to transaction',
   }) async {
     final controller = TextEditingController(
       text: initialQuantity <= 0 ? '1' : initialQuantity.toString(),
@@ -201,7 +227,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text('Add quantity · $title'),
+              title: Text('Add product to transaction · $title'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,7 +268,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                     }
                     Navigator.pop(dialogContext, parsed);
                   },
-                  child: const Text('Save'),
+                  child: Text(confirmLabel),
                 ),
               ],
             );
@@ -250,5 +276,22 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
         );
       },
     );
+  }
+
+  void _showSelectionFeedback(BuildContext context, String message) {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      final messenger = ScaffoldMessenger.maybeOf(
+            Navigator.of(context, rootNavigator: true).context,
+          ) ??
+          ScaffoldMessenger.maybeOf(context);
+      messenger?.hideCurrentSnackBar();
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+        ),
+      );
+    });
   }
 }

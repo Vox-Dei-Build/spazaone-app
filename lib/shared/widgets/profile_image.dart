@@ -29,25 +29,28 @@ class ProfileImageWidget extends StatelessWidget {
       onTap: onTap,
       child: CircleAvatar(
         radius: radius,
-        backgroundImage: imageFile != null
-            ? FileImage(imageFile!)
-            : (imageUrl != null
-                ? CachedNetworkImageProvider(imageUrl!)
-                    as ImageProvider<Object>?
-                : null),
-        backgroundColor: (imageUrl == null && imageFile == null)
-            ? Color(kTertiaryColor.value)
-            : null,
-        child: (imageFile == null && imageUrl == null)
-            ? Text(
-                initials.isNotEmpty ? initials[0] : '',
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 2,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              )
-            : null,
+        backgroundImage:
+            imageFile != null
+                ? FileImage(imageFile!)
+                : (imageUrl != null
+                    ? CachedNetworkImageProvider(imageUrl!)
+                        as ImageProvider<Object>?
+                    : null),
+        backgroundColor:
+            (imageUrl == null && imageFile == null)
+                ? Color(kTertiaryColor.value)
+                : null,
+        child:
+            (imageFile == null && imageUrl == null)
+                ? Text(
+                  initials.isNotEmpty ? initials[0] : '',
+                  style: TextStyle(
+                    fontSize: SizeConfig.textMultiplier * 2,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                )
+                : null,
       ),
     );
   }
@@ -63,17 +66,23 @@ class ProfileImageWidget extends StatelessWidget {
 /// The phone icon keeps a tooltip because it surfaces a non-obvious
 /// distinction (number on file vs not) and is sometimes the only thing
 /// telling a merchant they can't message a client.
-String _phoneTooltip(bool hasNumber) => hasNumber
-    ? 'Phone number on file — you can send WhatsApp or SMS reminders.'
-    : 'No phone number — add one to send payment reminders.';
+String _phoneTooltip(bool hasNumber) =>
+    hasNumber
+        ? 'Phone number on file — you can send WhatsApp or SMS reminders.'
+        : 'No phone number — add one to send payment reminders.';
 
-Widget profilePicture(BuildContext context, String name, String? imageUrl,
-    String? number, bool? isNPA,
-    {bool displayIcons = true,
-    final double? radius,
-    File? profileImage,
-    double? balance,
-    bool showNPAIndicator = false}) {
+Widget profilePicture(
+  BuildContext context,
+  String name,
+  String? imageUrl,
+  String? number,
+  bool? isNPA, {
+  bool displayIcons = true,
+  final double? radius,
+  File? profileImage,
+  double? balance,
+  bool showNPAIndicator = false,
+}) {
   var initials = name.isNotEmpty ? name[0] : '';
   final bool hasNumber = number != null && number.isNotEmpty;
   return Stack(
@@ -87,29 +96,29 @@ Widget profilePicture(BuildContext context, String name, String? imageUrl,
       ),
       displayIcons
           ? Positioned(
-              left: 0,
-              bottom: 0,
-              child: ProfileStatusIcon(
-                isEnabled: hasNumber,
-                enabledIcon: Icons.phone_enabled,
-                disabledIcon: Icons.phone_disabled,
-                enabledTooltip: _phoneTooltip(true),
-                disabledTooltip: _phoneTooltip(false),
-              ),
-            )
+            left: 0,
+            bottom: 0,
+            child: ProfileStatusIcon(
+              isEnabled: hasNumber,
+              enabledIcon: Icons.phone_enabled,
+              disabledIcon: Icons.phone_disabled,
+              enabledTooltip: _phoneTooltip(true),
+              disabledTooltip: _phoneTooltip(false),
+            ),
+          )
           : Container(),
       displayIcons && showNPAIndicator
           ? Positioned(
-              right: 0,
-              bottom: 0,
-              child: ProfileStatusIcon(
-                isEnabled: isNPA == true,
-                enabledIcon: Icons.report,
-                disabledIcon: Icons.verified_user,
-                enabledColor: Colors.red,
-                disabledColor: Colors.green,
-              ),
-            )
+            right: 0,
+            bottom: 0,
+            child: ProfileStatusIcon(
+              isEnabled: isNPA == true,
+              enabledIcon: Icons.report,
+              disabledIcon: Icons.verified_user,
+              enabledColor: Colors.red,
+              disabledColor: Colors.green,
+            ),
+          )
           : Container(),
     ],
   );

@@ -31,10 +31,12 @@ class ProductViewModel extends ChangeNotifier {
   ProductViewModel(Product product) {
     nameController = TextEditingController(text: product.name);
     costController = TextEditingController(text: product.cost?.toString());
-    sellingPriceController =
-        TextEditingController(text: product.sellingPrice?.toString());
-    quantityController =
-        TextEditingController(text: product.quantity?.toString());
+    sellingPriceController = TextEditingController(
+      text: product.sellingPrice?.toString(),
+    );
+    quantityController = TextEditingController(
+      text: product.quantity?.toString(),
+    );
     companyController = TextEditingController(text: product.company);
     descriptionController = TextEditingController(text: product.description);
     imageUrl = product.image;
@@ -74,8 +76,10 @@ class ProductViewModel extends ChangeNotifier {
         notifyListeners();
 
         try {
-          imageUrl = await _photoUploadUtil.uploadImage(pickedImage,
-              'products/$userId/${pickedImage.path.split('/').last}');
+          imageUrl = await _photoUploadUtil.uploadImage(
+            pickedImage,
+            'products/$userId/${pickedImage.path.split('/').last}',
+          );
           product.image = imageUrl;
         } catch (e) {
           print('Failed to upload image: $e');
@@ -89,7 +93,11 @@ class ProductViewModel extends ChangeNotifier {
   }
 
   Future<Product?> saveProduct(
-      BuildContext context, Product product, String? docID) async {
+    BuildContext context,
+    Product product,
+    String? docID, {
+    bool showSuccessSnackbar = true,
+  }) async {
     if (!_validateInputs(context)) return null;
 
     try {
@@ -134,15 +142,13 @@ class ProductViewModel extends ChangeNotifier {
       final event = (docID == null)
           ? ProductCreated(
               group: product.group,
-              sellingPriceBucket:
-                  amountBucketZAR(product.sellingPrice ?? 0),
+              sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
               costPriceBucket: amountBucketZAR(product.cost ?? 0),
               hasImage: (product.image ?? '').isNotEmpty,
             )
           : ProductUpdated(
               group: product.group,
-              sellingPriceBucket:
-                  amountBucketZAR(product.sellingPrice ?? 0),
+              sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
               costPriceBucket: amountBucketZAR(product.cost ?? 0),
               hasImage: (product.image ?? '').isNotEmpty,
             );
@@ -150,9 +156,11 @@ class ProductViewModel extends ChangeNotifier {
       // ignore: unawaited_futures
       TelemetryService.instance.capture(event);
 
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        showSnackbar(context, 'Saved Successfully!', Colors.green);
-      });
+      if (showSuccessSnackbar) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(context, 'Saved Successfully!', Colors.green);
+        });
+      }
 
       return product;
     } catch (e) {
@@ -196,8 +204,9 @@ class ProductViewModel extends ChangeNotifier {
       // PAS-UX-16: ProductDeleted - fire-and-forget so telemetry
       // can't block the navigator.pop in the post-frame callback.
       // ignore: unawaited_futures
-      TelemetryService.instance
-          .capture(ProductDeleted(group: groupBeforeDelete));
+      TelemetryService.instance.capture(
+        ProductDeleted(group: groupBeforeDelete),
+      );
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showSnackbar(context, 'Deleted Successfully!', Colors.green);
         Navigator.of(context).pop();

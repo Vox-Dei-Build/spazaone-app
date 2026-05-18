@@ -90,61 +90,65 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
     if (uid == null || uid.isEmpty) return [];
 
     final firestore = FirebaseFirestore.instance;
-    final customersRef =
-        firestore.collection('users').doc(uid).collection('customers');
+    final customersRef = firestore
+        .collection('users')
+        .doc(uid)
+        .collection('customers');
     final customersSnap = await customersRef.get();
 
     // Mirror the backend: per-customer, filter the transactions
     // subcollection by date range. Running these in parallel keeps the
     // wall-clock close to a single round-trip.
-    final futures = customersSnap.docs.map((doc) async {
-      final data = doc.data();
-      final name = (data['name'] as String?) ?? 'Customer';
-      final number = data['number'] as String?;
-      final profileImageUrl = data['profileImageUrl'] as String?;
+    final futures =
+        customersSnap.docs.map((doc) async {
+          final data = doc.data();
+          final name = (data['name'] as String?) ?? 'Customer';
+          final number = data['number'] as String?;
+          final profileImageUrl = data['profileImageUrl'] as String?;
 
-      final txnSnap = await customersRef
-          .doc(doc.id)
-          .collection('transactions')
-          .where('date', isGreaterThanOrEqualTo: widget.startDate)
-          .where('date', isLessThanOrEqualTo: widget.endDate)
-          .orderBy('date', descending: true)
-          .get();
+          final txnSnap =
+              await customersRef
+                  .doc(doc.id)
+                  .collection('transactions')
+                  .where('date', isGreaterThanOrEqualTo: widget.startDate)
+                  .where('date', isLessThanOrEqualTo: widget.endDate)
+                  .orderBy('date', descending: true)
+                  .get();
 
-      if (txnSnap.docs.isEmpty) return null;
+          if (txnSnap.docs.isEmpty) return null;
 
-      final lines = <_TxnLine>[];
-      double net = 0.0;
-      double credits = 0.0;
-      double payments = 0.0;
-      for (final txDoc in txnSnap.docs) {
-        final tx = txDoc.data();
-        final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
-        final type = (tx['type'] as String?) ?? '';
-        final rawDate = tx['date'];
-        DateTime? when;
-        if (rawDate is Timestamp) when = rawDate.toDate();
-        if (rawDate is String) when = DateTime.tryParse(rawDate);
-        if (type == 'Payment') {
-          net += amount;
-          payments += amount;
-        } else if (type == 'Credit') {
-          net -= amount;
-          credits += amount;
-        }
-        lines.add(_TxnLine(when: when, type: type, amount: amount));
-      }
-      return _CustomerRangeRollup(
-        customerId: doc.id,
-        name: name,
-        number: number,
-        profileImageUrl: profileImageUrl,
-        netInRange: net,
-        creditsTotal: credits,
-        paymentsTotal: payments,
-        lines: lines,
-      );
-    }).toList();
+          final lines = <_TxnLine>[];
+          double net = 0.0;
+          double credits = 0.0;
+          double payments = 0.0;
+          for (final txDoc in txnSnap.docs) {
+            final tx = txDoc.data();
+            final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
+            final type = (tx['type'] as String?) ?? '';
+            final rawDate = tx['date'];
+            DateTime? when;
+            if (rawDate is Timestamp) when = rawDate.toDate();
+            if (rawDate is String) when = DateTime.tryParse(rawDate);
+            if (type == 'Payment') {
+              net += amount;
+              payments += amount;
+            } else if (type == 'Credit') {
+              net -= amount;
+              credits += amount;
+            }
+            lines.add(_TxnLine(when: when, type: type, amount: amount));
+          }
+          return _CustomerRangeRollup(
+            customerId: doc.id,
+            name: name,
+            number: number,
+            profileImageUrl: profileImageUrl,
+            netInRange: net,
+            creditsTotal: credits,
+            paymentsTotal: payments,
+            lines: lines,
+          );
+        }).toList();
 
     final results = await Future.wait(futures);
     final rollups = results.whereType<_CustomerRangeRollup>().toList();
@@ -164,15 +168,17 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           if (!widget.showLoadingIndicator) return const SizedBox.shrink();
           return Padding(
-            padding:
-                EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 2),
+            padding: EdgeInsets.symmetric(
+              vertical: SizeConfig.heightMultiplier * 2,
+            ),
             child: const Center(child: CircularProgressIndicator()),
           );
         }
         if (snapshot.hasError) {
           return Padding(
-            padding:
-                EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 2),
+            padding: EdgeInsets.symmetric(
+              vertical: SizeConfig.heightMultiplier * 2,
+            ),
             child: Text(
               'Could not load transactions for this date range.',
               style: TextStyle(
@@ -185,8 +191,9 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
         final rollups = snapshot.data ?? const <_CustomerRangeRollup>[];
         if (rollups.isEmpty) {
           return Padding(
-            padding:
-                EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 2),
+            padding: EdgeInsets.symmetric(
+              vertical: SizeConfig.heightMultiplier * 2,
+            ),
             child: Text(
               'No transactions in this date range.',
               style: TextStyle(
@@ -197,8 +204,10 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
           );
         }
 
-        final summedNet =
-            rollups.fold<double>(0.0, (acc, r) => acc + r.netInRange);
+        final summedNet = rollups.fold<double>(
+          0.0,
+          (acc, r) => acc + r.netInRange,
+        );
         final txnCount = rollups.fold<int>(0, (acc, r) => acc + r.lines.length);
 
         return Column(
@@ -210,9 +219,11 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.list_alt,
-                      size: SizeConfig.imageSizeMultiplier * 5,
-                      color: kPrimaryColor),
+                  Icon(
+                    Icons.list_alt,
+                    size: SizeConfig.imageSizeMultiplier * 5,
+                    color: kPrimaryColor,
+                  ),
                   SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
                   Expanded(
                     child: Text(
@@ -259,11 +270,13 @@ class _CustomerRangeTile extends StatelessWidget {
     return PrivateRegion(
       child: Card(
         elevation: 0.5,
-        margin:
-            EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.4),
+        margin: EdgeInsets.symmetric(
+          vertical: SizeConfig.heightMultiplier * 0.4,
+        ),
         shape: RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(SizeConfig.imageSizeMultiplier * 2),
+          borderRadius: BorderRadius.circular(
+            SizeConfig.imageSizeMultiplier * 2,
+          ),
         ),
         child: Theme(
           // Hide the default expansion divider; the Card already separates rows.
@@ -276,8 +289,13 @@ class _CustomerRangeTile extends StatelessWidget {
             leading: SizedBox(
               width: avatarSize,
               height: avatarSize,
-              child: profilePicture(context, rollup.name,
-                  rollup.profileImageUrl, rollup.number, false),
+              child: profilePicture(
+                context,
+                rollup.name,
+                rollup.profileImageUrl,
+                rollup.number,
+                false,
+              ),
             ),
             title: Text(
               rollup.name,
@@ -306,9 +324,11 @@ class _CustomerRangeTile extends StatelessWidget {
                     color: color,
                   ),
                 ),
-                Icon(Icons.expand_more,
-                    size: SizeConfig.imageSizeMultiplier * 5,
-                    color: Colors.black45),
+                Icon(
+                  Icons.expand_more,
+                  size: SizeConfig.imageSizeMultiplier * 5,
+                  color: Colors.black45,
+                ),
               ],
             ),
             children: [
@@ -349,13 +369,16 @@ class _CustomerRangeTile extends StatelessWidget {
                           // directly works without re-providing here —
                           // same pattern entity_tab.dart uses for the
                           // customer list.
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => CustomerManagementPage(
-                              customerName: rollup.name,
-                              customerId: rollup.customerId,
-                              mobileNumber: rollup.number,
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => CustomerManagementPage(
+                                    customerName: rollup.name,
+                                    customerId: rollup.customerId,
+                                    mobileNumber: rollup.number,
+                                  ),
                             ),
-                          ));
+                          );
                         },
                         icon: const Icon(Icons.open_in_new, size: 16),
                         label: const Text('Open customer ledger'),

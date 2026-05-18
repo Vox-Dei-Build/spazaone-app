@@ -48,10 +48,7 @@ class _NewProductPageState extends State<NewProductPage> {
             // adopt this page later if/when ProductForm is decoupled
             // from owning its Form.
             floatingActionButton: Padding(
-              padding: const EdgeInsets.only(
-                bottom: 35,
-                right: 5,
-              ),
+              padding: const EdgeInsets.only(bottom: 35, right: 5),
               child: FloatingActionButton(
                 backgroundColor:
                     viewModel.hasUnsavedChanges ? Colors.green : Colors.grey,
@@ -60,30 +57,43 @@ class _NewProductPageState extends State<NewProductPage> {
                     : () async {
                         if (_formKey.currentState?.validate() ?? false) {
                           Product? addedProduct = await viewModel.saveProduct(
-                              context, _newProduct, null);
-                          if (addedProduct != null &&
-                              widget.onProductAdded != null) {
+                            context,
+                            _newProduct,
+                            null,
+                            showSuccessSnackbar: false,
+                          );
+                          if (addedProduct == null) return;
+                          if (widget.onProductAdded != null) {
                             widget.onProductAdded!(
-                                addedProduct); // Indicate product added
+                              addedProduct,
+                            ); // Indicate product added
                           }
                           SchedulerBinding.instance.addPostFrameCallback((_) {
+                            if (!context.mounted) return;
+                            final rootMessenger = ScaffoldMessenger.maybeOf(
+                                  Navigator.of(
+                                    context,
+                                    rootNavigator: true,
+                                  ).context,
+                                ) ??
+                                ScaffoldMessenger.maybeOf(context);
+                            rootMessenger?.hideCurrentSnackBar();
+                            rootMessenger?.showSnackBar(
+                              const SnackBar(
+                                content: Text('Product added successfully.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
                             Navigator.pop(context);
                           });
                         }
                       },
                 child: viewModel.isLoading
-                    ? const CircularProgressIndicator(
-                        color: Colors.white,
-                      )
-                    : const Icon(
-                        Icons.done,
-                        color: Colors.white,
-                      ),
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Icon(Icons.done, color: Colors.white),
               ),
             ),
-            appBar: const CustomAppBar(
-              title: "New Product",
-            ),
+            appBar: const CustomAppBar(title: "New Product"),
             body: PopScope(
               // PAS-UX-05: unsaved-changes guard. Previously a swipe-
               // back on this page silently discarded everything the
@@ -91,12 +101,10 @@ class _NewProductPageState extends State<NewProductPage> {
               canPop: !viewModel.hasUnsavedChanges,
               onPopInvokedWithResult: (didPop, _) async {
                 if (didPop) return;
-                final shouldDiscard =
-                    await ConfirmDialog.showDestructive(
+                final shouldDiscard = await ConfirmDialog.showDestructive(
                   context,
                   title: 'Discard new product?',
-                  message:
-                      'You have unsaved changes. Leaving now will discard '
+                  message: 'You have unsaved changes. Leaving now will discard '
                       'them.',
                   confirmLabel: 'Discard',
                   cancelLabel: 'Keep editing',
