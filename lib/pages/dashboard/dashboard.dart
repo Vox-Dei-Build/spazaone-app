@@ -3,12 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
-import 'package:pasella/pages/contact/add_contact/add_contact.dart';
-import 'package:pasella/pages/promote/promote_intent_bus.dart';
-import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
-import 'package:pasella/shared/widgets/onboarding/onboarding_checklist.dart';
 import 'package:provider/provider.dart';
 
 class Dashboard extends StatelessWidget {
@@ -61,47 +57,18 @@ class Dashboard extends StatelessWidget {
 
         return Consumer<AppModel>(
           builder: (context, value, child) {
-            // PAS-UX-09: mount OnboardingChecklist at the Dashboard
-            // scaffold level, above the active tab body. Previously
-            // it lived inside LedgerPage and was therefore only
-            // visible on the Customers tab. Industry-standard
-            // activation patterns (Shopify, Stripe, Linear,
-            // Intercom) anchor the activation checklist to the
-            // home/dashboard chrome so it stays visible across every
-            // feature surface until activation is complete. Auto-
-            // tick from real Firestore signals handled inside the
-            // widget — see OnboardingChecklist.
+            // PAS-UI-01: the OnboardingChecklist that previously mounted
+            // here (per PAS-UX-09) has been removed from the visible
+            // dashboard chrome. Merchant feedback was that it consumed
+            // persistent vertical space above every tab while delivering
+            // little ongoing value once one or two items were auto-
+            // ticked. The widget definition
+            // (`lib/shared/widgets/onboarding/onboarding_checklist.dart`)
+            // is intentionally retained un-mounted so its auto-detect
+            // logic and Hive persistence can be reused by a future
+            // activation surface (e.g. a dismissible empty-state).
             return Scaffold(
-              body: Column(
-                children: [
-                  OnboardingChecklist(
-                    userId: userId,
-                    onAddProduct: () =>
-                        context.read<AppModel>().updateCurrentIndex(1),
-                    onAddCustomer: () =>
-                        Navigator.pushNamed(context, AddContactPage.id),
-                    onRecordSale: () =>
-                        context.read<AppModel>().updateCurrentIndex(2),
-                    onApproveTemplate: () {
-                      // Land the merchant on the Templates tab so
-                      // they can create one. The shared
-                      // PromoteIntentBus is the canonical way to
-                      // pre-route the Promote surface.
-                      PromoteIntentBus.instance.set(
-                        const PromoteIntent(tab: 'templates'),
-                      );
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const PromotionsPage(),
-                        ),
-                      );
-                    },
-                  ),
-                  Expanded(
-                    child: value.navigationOptions[value.currentIndex],
-                  ),
-                ],
-              ),
+              body: value.navigationOptions[value.currentIndex],
               bottomNavigationBar: ClipRRect(
                 borderRadius:
                     BorderRadius.circular(SizeConfig.imageSizeMultiplier * 5),

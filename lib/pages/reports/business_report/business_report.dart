@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
-import 'package:pasella/pages/ledger/widgets/ledger_stream_builder_section.dart';
 import 'package:pasella/pages/reports/business_report/view_model/business_report_view_model.dart';
 import 'package:pasella/pages/reports/business_report/widgets/date_range_ledger_drilldown.dart';
-import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
+import 'package:pasella/pages/reports/business_report/widgets/date_range_movement_summary_card.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/metric_tile.dart';
+import 'package:pasella/pages/reports/widgets/report_date_filter_bar.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
@@ -21,7 +21,7 @@ class BusinessReportPage extends StatefulWidget {
   static const id = '/businessReportPage';
 
   @override
-  _BusinessReportPageState createState() => _BusinessReportPageState();
+  State<BusinessReportPage> createState() => _BusinessReportPageState();
 }
 
 class _BusinessReportPageState extends State<BusinessReportPage> {
@@ -31,6 +31,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
   DateTime? _endDate;
   DateTime? _selectedDay;
   ReportView _selectedView = ReportView.summary;
+  bool _isDateViewRowsLoading = true;
 
   @override
   void initState() {
@@ -63,6 +64,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
       _selectedDay = selectedDay;
       _startDate = startOfDay;
       _endDate = endOfDay;
+      _isDateViewRowsLoading = true;
     });
 
     balanceSummaryViewModel.fetchBalanceSummaryWithRange(
@@ -74,9 +76,17 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
       _startDate = start;
       _endDate = end;
       _selectedDay = null;
+      _isDateViewRowsLoading = true;
     });
 
     balanceSummaryViewModel.fetchBalanceSummaryWithRange(start, end);
+  }
+
+  void _setDateViewRowsLoading(bool isLoading) {
+    if (!mounted || _isDateViewRowsLoading == isLoading) return;
+    setState(() {
+      _isDateViewRowsLoading = isLoading;
+    });
   }
 
   @override
@@ -93,6 +103,10 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
 
     return Consumer<BalanceSummaryProvider>(
       builder: (context, balanceSummary, child) {
+        final hasDateRange = _startDate != null && _endDate != null;
+        final isDateViewLoading = balanceSummary.isLedgerLoading ||
+            (hasDateRange && _isDateViewRowsLoading);
+
         return Scaffold(
           body: SafeArea(
             child: SingleChildScrollView(
@@ -110,9 +124,9 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                           segmentedButtonTheme: SegmentedButtonThemeData(
                             style: ButtonStyle(
                               backgroundColor:
-                                  MaterialStateProperty.resolveWith<Color?>(
-                                (Set<MaterialState> states) {
-                                  if (states.contains(MaterialState.selected)) {
+                                  WidgetStateProperty.resolveWith<Color?>(
+                                (Set<WidgetState> states) {
+                                  if (states.contains(WidgetState.selected)) {
                                     return Colors
                                         .green; // <-- Your active color
                                   }
@@ -120,9 +134,9 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                 },
                               ),
                               foregroundColor:
-                                  MaterialStateProperty.resolveWith<Color?>(
-                                (Set<MaterialState> states) {
-                                  if (states.contains(MaterialState.selected)) {
+                                  WidgetStateProperty.resolveWith<Color?>(
+                                (Set<WidgetState> states) {
+                                  if (states.contains(WidgetState.selected)) {
                                     return Colors
                                         .white; // Text/icon color for active
                                   }
@@ -170,7 +184,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                       ),
                     ),
                     if (_selectedView == ReportView.summary) ...[
-                      DateFilterBar(
+                      ReportDateFilterBar(
                         selectedDay: _selectedDay,
                         startDate: _startDate,
                         endDate: _endDate,
@@ -181,26 +195,42 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                           _onDateRangeSelected(s, e);
                         },
                       ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      LedgerStreamBuilderSection(
-                        startDate: _startDate,
-                        endDate: _endDate,
-                      ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 1),
-                      // PAS-UX-06A: drill-down. The Net Balance card above
-                      // is a single aggregate number; before this widget,
-                      // merchants could not see which transactions or
-                      // customers produced it. The list below is the
-                      // verification surface — same query shape as the
-                      // backend, with an explicit reconciliation line.
-                      // Scoped to Date View only (Summary tab is
-                      // deliberately untouched per PAS-UX-06A scope).
-                      if (_startDate != null && _endDate != null)
-                        DateRangeLedgerDrilldown(
-                          startDate: _startDate!,
-                          endDate: _endDate!,
+                      if (isDateViewLoading)
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                            vertical: SizeConfig.heightMultiplier * 5,
+                          ),
+                          child: const Center(
+                            child: CircularProgressIndicator(),
+                          ),
                         ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
+                      Offstage(
+                        offstage: isDateViewLoading,
+                        child: Column(
+                          children: [
+                            SizedBox(height: SizeConfig.heightMultiplier * 2),
+                            const DateRangeMovementSummaryCard(),
+                            SizedBox(height: SizeConfig.heightMultiplier * 1),
+                            // PAS-UX-06A: drill-down. The Net Movement card
+                            // above is a single aggregate number; before this
+                            // widget, merchants could not see which
+                            // transactions or customers produced it. The list
+                            // below is the verification surface — same query
+                            // shape as the backend, with an explicit
+                            // reconciliation line.
+                            // Scoped to Date View only (Summary tab is
+                            // deliberately untouched per PAS-UX-06A scope).
+                            if (hasDateRange)
+                              DateRangeLedgerDrilldown(
+                                startDate: _startDate!,
+                                endDate: _endDate!,
+                                showLoadingIndicator: false,
+                                onLoadingChanged: _setDateViewRowsLoading,
+                              ),
+                            SizedBox(height: SizeConfig.heightMultiplier * 2),
+                          ],
+                        ),
+                      ),
                     ] else if (_selectedView == ReportView.payLater) ...[
                       Card(
                         elevation: 4,
@@ -208,14 +238,17 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                           valueListenable:
                               businessReportViewModel.reportFutureNotifier,
                           builder: (context, future, child) {
+                            if (future == null) {
+                              return const _ReportSectionLoader();
+                            }
                             return FutureBuilder<Report>(
                               future: future,
                               builder: (context, snapshot) {
                                 if (snapshot.connectionState ==
                                     ConnectionState.waiting) {
-                                  return const CircularProgressIndicator();
+                                  return const _ReportSectionLoader();
                                 } else if (snapshot.hasError) {
-                                  print('Error: ${snapshot.error}');
+                                  debugPrint('Error: ${snapshot.error}');
                                   return Padding(
                                       padding:
                                           LayoutConstants.padding10Horizontal,
@@ -318,6 +351,23 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
           ),
         );
       },
+    );
+  }
+}
+
+class _ReportSectionLoader extends StatelessWidget {
+  const _ReportSectionLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig().init(context);
+
+    return SizedBox(
+      width: double.infinity,
+      height: SizeConfig.heightMultiplier * 18,
+      child: const Center(
+        child: CircularProgressIndicator(),
+      ),
     );
   }
 }

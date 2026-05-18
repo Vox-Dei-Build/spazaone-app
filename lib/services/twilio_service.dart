@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:pasella/config/remote_config.dart';
@@ -66,52 +65,34 @@ class TwilioService {
         formatForTwilio(customerNumber, true); // "whatsapp:+27..."
 
     try {
-      // ✅ Fetch SMS & WhatsApp Messages in parallel
-      final messagesFuture = Future.wait([
+      // Fetch outbound SMS & WhatsApp in parallel. Both Twilio queries are
+      // recipient-scoped (`To=<customerNumber>` / `To=whatsapp:<customerNumber>`),
+      // which Twilio enforces server-side, so every row returned is already
+      // for THIS customer's thread. We must not further filter by message
+      // body: doing so previously hid legitimate Botpress / WhatsApp replies
+      // whose payloads (balance, statement, card menus, media-only, etc.)
+      // do not contain the customer name or shop name.
+      final results = await Future.wait([
         _fetchTwilioMessages(smsToQuery),
         _fetchTwilioMessages(whatsappToQuery),
-        _fetchCustomerDetails(currentUserId, customerId),
-        _fetchMerchantDetails(currentUserId),
       ]);
 
-      // ✅ Wait for all tasks to complete
-      final results = await messagesFuture;
-
-      // Ensure the results are cast to List<Map<String, dynamic>>? before spreading
       final List<Map<String, dynamic>> allMessages = [
-        ...?results[0] as List<
-            Map<String, dynamic>>?, // ✅ Ensures it's a list before spreading
-        ...?results[1] as List<
-            Map<String, dynamic>>?, // ✅ Ensures it's a list before spreading
+        ...?results[0] as List<Map<String, dynamic>>?,
+        ...?results[1] as List<Map<String, dynamic>>?,
       ];
 
-      final Map<String, dynamic>? customerData =
-          results[2] as Map<String, dynamic>?;
-      final Map<String, dynamic>? merchantData =
-          results[3] as Map<String, dynamic>?;
-
-      // 🔥 Extract customer & merchant details
-      final customerName = customerData?['name'] ?? "";
-      final shopName = merchantData?['shopName'] ?? "";
-
-      List<Map<String, dynamic>> filteredMessages = [];
-
+      // Classify non-template outbound WhatsApp as AI (badge only — does not
+      // affect visibility). SMS-channel Botpress replies are not produced by
+      // the bot, so SMS is treated as template by default.
       for (final message in allMessages) {
-        final messageText = message['message'];
-        final isWhatsApp = message['isWhatsApp'] ?? false;
-
-        bool isTemplateMessage = isWhatsApp
+        final messageText = (message['message'] ?? '').toString();
+        final isWhatsApp = message['isWhatsApp'] == true;
+        final bool isTemplateMessage = isWhatsApp
             ? await SMSMessages.isTemplateMessage(messageText)
             : true;
-
-        if (isTemplateMessage) {
-          if (messageText.contains(customerName) ||
-              messageText.contains(shopName)) {
-            filteredMessages.add(message);
-          }
-        } else {
+        if (!isTemplateMessage) {
           message['isAI'] = true;
-          filteredMessages.add(message);
         }
       }
 
@@ -144,9 +125,10 @@ class TwilioService {
         }
       }));
 
-      // ✅ Sort by date (latest at the bottom)
-      filteredMessages.sort((a, b) => a['dateSent'].compareTo(b['dateSent']));
-      return filteredMessages;
+      // ✅ Sort by date (latest at the bottom). Return every recipient-scoped
+      // outbound message — visibility is gated solely by Twilio's `To=` query.
+      allMessages.sort((a, b) => a['dateSent'].compareTo(b['dateSent']));
+      return allMessages;
     } catch (e, stackTrace) {
       await CrashService.instance.recordNonFatal(
         e,
@@ -283,25 +265,6 @@ class TwilioService {
       );
       return [];
     }
-  }
-
-  /// ✅ Helper: Fetch customer details from Firestore
-  Future<Map<String, dynamic>?> _fetchCustomerDetails(
-      String userId, String customerId) async {
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('customers')
-        .doc(customerId)
-        .get();
-    return doc.exists ? doc.data() : null;
-  }
-
-  /// ✅ Helper: Fetch merchant details from Firestore
-  Future<Map<String, dynamic>?> _fetchMerchantDetails(String userId) async {
-    final doc =
-        await FirebaseFirestore.instance.collection('users').doc(userId).get();
-    return doc.exists ? doc.data() : null;
   }
 
   /// ✅ Helper: Fetch messages from Twilio API
