@@ -316,13 +316,29 @@ export const runMerchantPromotion = functions.https.onCall(
               // webhook has no way to correlate a later
               // failed/undelivered status back to this promotion
               // and recipient.
+              // PAS-WA-02: contentVariables must be keyed by the
+              // *named* placeholders used when the template was
+              // registered with Twilio (see submitWhatsAppTemplate.ts
+              // -> parseNamedVariables, which submits `customerName`
+              // and `shopName` as the named variables and "Test Shop"
+              // / "Tsepo" as approval samples). The previous payload
+              // used positional keys "1" and "2", which Twilio could
+              // not match against the named template, so it silently
+              // fell back to the registered sample values — that's
+              // why every WhatsApp promotion arrived as
+              // "...The Test Shop team" regardless of the merchant's
+              // actual shop name. Keys here must match the names in
+              // the template body exactly. If a new named placeholder
+              // is added to the boilerplate it must also be added
+              // here. SMS interpolation in the fallback branch below
+              // already does this correctly via local replaceAll.
               const waResp = await twilioClient.messages.create({
                 to: waTo,
                 from: CUSTOMER_WA_SID,
                 contentSid: waSid,
                 contentVariables: JSON.stringify({
-                  "1": cust.name,
-                  "2": shopName,
+                  customerName: cust.name,
+                  shopName: shopName,
                 }),
               });
               sentViaWA = true;

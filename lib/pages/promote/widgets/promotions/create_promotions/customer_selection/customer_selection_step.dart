@@ -5,16 +5,39 @@ import 'package:pasella/utils/currency_util.dart';
 
 class CustomerSelectionStep extends StatelessWidget {
   final bool allCustomers;
+
+  /// Channel-filtered customer list. The wizard now pre-filters
+  /// based on the selected channels (WhatsApp-only hides known
+  /// not-WA customers; SMS-only and Both show everyone with a
+  /// number). See [PromotionsViewModel.filterCustomersForChannels].
   final List<Map<String, dynamic>> customers;
   final Set<String> selectedCustomerIds;
   final ValueChanged<bool> onAllCustomersChanged;
   final ValueChanged<String> onCustomerToggle;
 
-  /// Number of customers filtered out of [customers] because they have
-  /// no phone number. Shown as an inline notice so the merchant
-  /// understands why their customer count here can be smaller than on
-  /// the Ledger page.
+  /// Number of customers filtered out of the *full* numbered-customer
+  /// list because they have no phone number. Shown as an inline
+  /// notice so the merchant understands why their customer count
+  /// here can be smaller than on the Ledger page.
   final int hiddenWithoutNumberCount;
+
+  /// PAS-WA-03: which channels the merchant selected on step 1. The
+  /// banner copy changes per combination so the merchant knows
+  /// exactly which customers are eligible and why the count differs
+  /// from what they see on the ledger.
+  final bool sendWhatsApp;
+  final bool sendSMS;
+
+  /// PAS-WA-03: number of customers excluded by the channel filter
+  /// because they are not WhatsApp-reachable (only relevant when
+  /// WhatsApp is the only selected channel).
+  final int hiddenNotWhatsAppCount;
+
+  /// PAS-WA-03: number of customers included in the list whose
+  /// WhatsApp status hasn't been confirmed yet. The send path will
+  /// do a live check before charging, but we surface this here so
+  /// the merchant knows some of these may not actually receive.
+  final int unknownWhatsAppCount;
 
   const CustomerSelectionStep({
     Key? key,
@@ -24,10 +47,55 @@ class CustomerSelectionStep extends StatelessWidget {
     required this.onAllCustomersChanged,
     required this.onCustomerToggle,
     this.hiddenWithoutNumberCount = 0,
+    this.sendWhatsApp = true,
+    this.sendSMS = false,
+    this.hiddenNotWhatsAppCount = 0,
+    this.unknownWhatsAppCount = 0,
   }) : super(key: key);
+
+  /// PAS-WA-03: build the channel-aware banner copy. Returns null
+  /// when there's nothing useful to surface (both channels selected
+  /// and no numberless customers hidden).
+  String? _channelBannerText() {
+    final shownCount = customers.length;
+    if (sendWhatsApp && sendSMS) {
+      return 'Showing all $shownCount customers with a phone number. '
+          'WhatsApp will be used where available, otherwise SMS.';
+    }
+    if (sendWhatsApp && !sendSMS) {
+      final parts = <String>[];
+      parts.add(
+        shownCount == 1
+            ? '1 WhatsApp-reachable customer shown.'
+            : '$shownCount WhatsApp-reachable customers shown.',
+      );
+      if (hiddenNotWhatsAppCount > 0) {
+        parts.add(
+          hiddenNotWhatsAppCount == 1
+              ? '1 customer is hidden because their number is not on WhatsApp — enable SMS to include them.'
+              : '$hiddenNotWhatsAppCount customers are hidden because their numbers are not on WhatsApp — enable SMS to include them.',
+        );
+      }
+      if (unknownWhatsAppCount > 0) {
+        parts.add(
+          unknownWhatsAppCount == 1
+              ? "1 customer's WhatsApp status is unknown and will be checked at send-time."
+              : "$unknownWhatsAppCount customers' WhatsApp status is unknown and will be checked at send-time.",
+        );
+      }
+      return parts.join(' ');
+    }
+    if (!sendWhatsApp && sendSMS) {
+      return shownCount == 1
+          ? '1 customer shown. All will receive SMS.'
+          : '$shownCount customers shown. All will receive SMS.';
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final channelBanner = _channelBannerText();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -35,6 +103,33 @@ class CustomerSelectionStep extends StatelessWidget {
             style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: SizeConfig.textMultiplier * 2)),
+        if (channelBanner != null)
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: SizeConfig.imageSizeMultiplier * 2,
+              vertical: SizeConfig.heightMultiplier * 0.5,
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.08),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.35)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 18, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      channelBanner,
+                      style: const TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         if (hiddenWithoutNumberCount > 0)
           Padding(
             padding: EdgeInsets.symmetric(
@@ -42,8 +137,7 @@ class CustomerSelectionStep extends StatelessWidget {
               vertical: SizeConfig.heightMultiplier * 0.5,
             ),
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.amber.withValues(alpha: 0.10),
                 border: Border.all(color: Colors.amber.withValues(alpha: 0.45)),
@@ -51,8 +145,7 @@ class CustomerSelectionStep extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline,
-                      size: 18, color: Colors.amber),
+                  const Icon(Icons.info_outline, size: 18, color: Colors.amber),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -84,6 +177,13 @@ class CustomerSelectionStep extends StatelessWidget {
               final balance = customer['balance']?.toDouble() ?? 0.0;
               final id = customer['id'];
               final profileImageUrl = customer['profileImageUrl'];
+              // PAS-UI-02: use the customer's real NPA flag rather
+              // than hardcoding `true` for every row (which was a
+              // copy-paste bug — the indicator is now hidden by
+              // default app-wide via `showNPAIndicator: false`, but
+              // passing the wrong value was still inconsistent with
+              // every other avatar usage in the app).
+              final bool? isNPA = customer['isNPA'] as bool?;
 
               final isSelected = selectedCustomerIds.contains(id);
 
@@ -94,8 +194,20 @@ class CustomerSelectionStep extends StatelessWidget {
                     : (_) => onCustomerToggle(id),
                 title: Row(
                   children: [
+                    // PAS-UI-02: align with the canonical avatar
+                    // usage (see `TransactionTile`): pass radius and
+                    // `showNPAIndicator: false` so the phone-status
+                    // pill is the only overlay — same visual as the
+                    // ledger, customer detail header, etc.
                     profilePicture(
-                        context, name, profileImageUrl, number, true),
+                      context,
+                      name,
+                      profileImageUrl,
+                      number,
+                      isNPA,
+                      showNPAIndicator: false,
+                      radius: SizeConfig.heightMultiplier * 2.6,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(

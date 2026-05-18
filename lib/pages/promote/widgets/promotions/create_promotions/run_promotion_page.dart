@@ -37,6 +37,18 @@ class RunPromotionPage extends StatefulWidget {
   /// selected. The merchant can still change it before tapping Next.
   final String? initialTemplateId;
 
+  /// PAS-UX-18: pre-fill the wizard from a previously-run promotion
+  /// so merchants can launch the same promotion again without
+  /// re-picking the template, channels and linked product. Recipients
+  /// are intentionally NOT carried: the merchant is on a fresh send
+  /// flow and almost always wants to revisit "who" (new customers may
+  /// have signed up, some may no longer be relevant). They reach
+  /// step 2 with a clean selection.
+  ///
+  /// Shape matches a promotion document read from Firestore
+  /// (`templateId`, `sendWhatsApp`, `sendSMS`, `linkedProduct`).
+  final Map<String, dynamic>? rerunFromPromo;
+
   // PAS-UX-17: removed `promoToEdit` field and `RunPromotionPage.edit`
   // named constructor. Both were dead -- no callsite anywhere in the
   // codebase, and `promoToEdit` was never read inside the State. The
@@ -45,7 +57,11 @@ class RunPromotionPage extends StatefulWidget {
   // promotions tab review path (see PAS-UX-11), not through
   // re-entering this wizard with a pre-filled draft.
 
-  const RunPromotionPage({Key? key, this.initialTemplateId}) : super(key: key);
+  const RunPromotionPage({
+    Key? key,
+    this.initialTemplateId,
+    this.rerunFromPromo,
+  }) : super(key: key);
 
   @override
   State<RunPromotionPage> createState() => _RunPromotionPageState();
@@ -84,6 +100,19 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     // merchant arriving from "Use this template" sees their choice
     // already selected on Step 1.
     selectedTemplateId = widget.initialTemplateId;
+    // PAS-UX-18: pre-fill from a previously-run promotion when the
+    // wizard is opened via "Run again". Recipients are deliberately
+    // not carried — see the field doc.
+    final rerun = widget.rerunFromPromo;
+    if (rerun != null) {
+      selectedTemplateId = rerun['templateId'] as String? ?? selectedTemplateId;
+      sendWhatsApp = rerun['sendWhatsApp'] as bool? ?? sendWhatsApp;
+      sendSMS = rerun['sendSMS'] as bool? ?? sendSMS;
+      final lp = rerun['linkedProduct'];
+      if (lp is Map<String, dynamic>) {
+        linkedProduct = LinkedProductRef.fromMap(lp);
+      }
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final vm = Provider.of<PromotionsViewModel>(context, listen: false);
       // PAS-UX-rel #3c: targeted refresh on entry. Approval state can
@@ -94,6 +123,13 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       // we'd reach for a Firestore stream only if this proves
       // insufficient in practice.
       vm.loadTemplatesData();
+      // PAS-UX-18: when re-running, also push the selected template
+      // into the VM so price calculation & template-content getters
+      // line up with what initState pre-filled.
+      final tplId = selectedTemplateId;
+      if (tplId != null) {
+        vm.selectTemplate(tplId);
+      }
       if (allCustomers) {
         vm.selectAllCustomers();
       }
@@ -112,6 +148,28 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
 
     // Step 1 validation is shown inline via canProceed/UI hints — no SnackBar.
+
+    if (currentStep == RunPromotionStep.templateAndDetails) {
+      // PAS-WA-03: load WhatsApp capability for the loaded customers
+      // so the channel-aware filter and banner on step 2 have real
+      // data to work with. Cheap one-shot batched read; we only do
+      // it here (not in `loadInitialData`) so merchants who never
+      // reach step 2 don't pay for it.
+      setState(() => calculating = true);
+      await vm.loadWhatsAppCapability();
+      if (!mounted) return;
+      // Re-sync the "All customers" selection against the filtered
+      // eligibility set so we don't carry forward selections of
+      // customers who are about to be hidden.
+      if (allCustomers) {
+        final filtered = vm.filterCustomersForChannels(
+          sendWhatsApp: sendWhatsApp,
+          sendSMS: sendSMS,
+        );
+        vm.selectAllFromEligible(filtered.eligible);
+      }
+      setState(() => calculating = false);
+    }
 
     if (currentStep == RunPromotionStep.customerSelection) {
       if (vm.selectedCustomerIds.isEmpty) {
@@ -364,16 +422,30 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
         );
 
       case RunPromotionStep.customerSelection:
+        // PAS-WA-03: filter the customer list by the selected
+        // channels so the merchant only sees recipients that are
+        // actually reachable on the chosen channel(s). Banner copy
+        // (rendered inside CustomerSelectionStep) reflects the
+        // current channel selection and explains hidden/unknown
+        // counts.
+        final filtered = vm.filterCustomersForChannels(
+          sendWhatsApp: sendWhatsApp,
+          sendSMS: sendSMS,
+        );
         return CustomerSelectionStep(
           allCustomers: allCustomers,
-          customers: vm.customers,
+          customers: filtered.eligible,
           hiddenWithoutNumberCount: vm.customersWithoutNumberCount,
+          sendWhatsApp: sendWhatsApp,
+          sendSMS: sendSMS,
+          hiddenNotWhatsAppCount: filtered.hiddenNotWhatsApp,
+          unknownWhatsAppCount: filtered.unknownIncluded,
           selectedCustomerIds: vm.selectedCustomerIds.toSet(),
           onAllCustomersChanged: (val) {
             setState(() {
               allCustomers = val;
               if (val) {
-                vm.selectAllCustomers();
+                vm.selectAllFromEligible(filtered.eligible);
               } else {
                 vm.clearCustomerSelection();
               }
