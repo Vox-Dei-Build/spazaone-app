@@ -26,6 +26,24 @@ class PromotionsViewModel extends ChangeNotifier {
   /// rather than silently dropping them.
   int customersWithoutNumberCount = 0;
 
+  /// PAS-WA-03: cached WhatsApp capability keyed by customer id.
+  ///
+  /// - `true`  → we have a `successfulWhatsAppNumbers` record marking
+  ///   this number as WA-reachable.
+  /// - `false` → we have a record explicitly marking it not reachable
+  ///   (e.g. a previous send proved it).
+  /// - missing → we've never checked. Treated as "unknown" by the
+  ///   customer selection step so the merchant isn't denied the
+  ///   ability to attempt a send (the runtime path already does a
+  ///   live check before charging).
+  ///
+  /// Populated by [loadWhatsAppCapability], called by the wizard
+  /// just-in-time before showing step 2 so we don't pay the
+  /// per-customer Firestore lookup cost during the initial load.
+  Map<String, bool> whatsAppCapableById = {};
+  bool _loadingWhatsAppCapability = false;
+  bool get loadingWhatsAppCapability => _loadingWhatsAppCapability;
+
   /// Returns true if [customer] has a non-empty `number` field. Used to
   /// keep numberless customers out of the promotion recipient list
   /// (they would be skipped at send time anyway — there's no value in
@@ -194,6 +212,139 @@ class PromotionsViewModel extends ChangeNotifier {
     selectedCustomerIds = customers.map((c) => c['id'] as String).toList();
     calculatePrice();
     notifyListeners();
+  }
+
+  /// PAS-WA-03: select every customer in [eligible] (typically the
+  /// channel-filtered subset shown in step 2). Used by "All Customers"
+  /// so the selection matches what the merchant sees rather than the
+  /// full numbered-customer list.
+  void selectAllFromEligible(List<Map<String, dynamic>> eligible) {
+    selectedCustomerIds = eligible.map((c) => c['id'] as String).toList();
+    calculatePrice();
+    notifyListeners();
+  }
+
+  /// PAS-WA-03: batch-load WhatsApp capability for the loaded
+  /// customers. We hit `successfulWhatsAppNumbers` once per
+  /// (normalized) number — the collection isn't keyed by id so a
+  /// single `whereIn` is the cheapest way to populate the cache
+  /// without N round-trips. Firestore `whereIn` caps at 30 values per
+  /// query, so we chunk.
+  ///
+  /// Customers with no record are simply absent from
+  /// [whatsAppCapableById] — i.e. "unknown". The wizard treats
+  /// unknown as "include in WhatsApp-only filter and surface in the
+  /// banner" (see audit decision: "Include them, mark in banner")
+  /// rather than excluding pre-emptively, because the send path
+  /// already does a live check and only charges on success.
+  Future<void> loadWhatsAppCapability() async {
+    if (customers.isEmpty) return;
+    _loadingWhatsAppCapability = true;
+    notifyListeners();
+    try {
+      final numbers = <String>{};
+      final numberToCustomerIds = <String, List<String>>{};
+      for (final c in customers) {
+        final raw = c['number'];
+        if (raw == null) continue;
+        final normalized = normalizePhoneNumber(raw.toString());
+        if (normalized.isEmpty) continue;
+        numbers.add(normalized);
+        numberToCustomerIds
+            .putIfAbsent(normalized, () => <String>[])
+            .add(c['id'] as String);
+      }
+
+      final result = <String, bool>{};
+      final list = numbers.toList();
+      // Firestore `whereIn` allows up to 30 elements per query.
+      const chunkSize = 30;
+      for (var i = 0; i < list.length; i += chunkSize) {
+        final chunk = list.sublist(
+          i,
+          i + chunkSize > list.length ? list.length : i + chunkSize,
+        );
+        final snap = await _firestore
+            .collection('successfulWhatsAppNumbers')
+            .where('phoneNumber', whereIn: chunk)
+            .get();
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final phone = data['phoneNumber'] as String?;
+          final has = data['hasWhatsApp'] as bool? ?? false;
+          if (phone == null) continue;
+          final ids = numberToCustomerIds[phone];
+          if (ids == null) continue;
+          for (final id in ids) {
+            result[id] = has;
+          }
+        }
+      }
+      whatsAppCapableById = result;
+    } catch (e) {
+      debugPrint('Failed to load WhatsApp capability: $e');
+    } finally {
+      _loadingWhatsAppCapability = false;
+      notifyListeners();
+    }
+  }
+
+  /// PAS-WA-03: filter the loaded customers down to the subset that
+  /// is reachable given the selected channels. Logic:
+  ///
+  /// - **SMS only**: every numbered customer is eligible (any number
+  ///   we can format can receive SMS).
+  /// - **WhatsApp only**: known-WA customers + customers with no cached
+  ///   capability (unknown). Known not-WA customers are excluded — the
+  ///   merchant would be paying for sends Twilio is going to drop.
+  /// - **Both**: every numbered customer is eligible (WA where possible,
+  ///   SMS otherwise).
+  ///
+  /// Returns a record of: the filtered list, the count of
+  /// known-not-WA customers hidden by the filter (so the banner can
+  /// explain), and the count of unknown-capability customers included
+  /// (so the banner can warn that some sends may fall back / not
+  /// deliver).
+  ({
+    List<Map<String, dynamic>> eligible,
+    int hiddenNotWhatsApp,
+    int unknownIncluded,
+  }) filterCustomersForChannels({
+    required bool sendWhatsApp,
+    required bool sendSMS,
+  }) {
+    if (sendSMS || (!sendWhatsApp && !sendSMS)) {
+      // SMS-only or both → every numbered customer. (The "neither"
+      // case shouldn't happen because step 1 validation requires
+      // ≥1 channel, but degrade gracefully.)
+      return (
+        eligible: customers,
+        hiddenNotWhatsApp: 0,
+        unknownIncluded: 0,
+      );
+    }
+    // WhatsApp only.
+    final eligible = <Map<String, dynamic>>[];
+    var hiddenNotWa = 0;
+    var unknown = 0;
+    for (final c in customers) {
+      final id = c['id'] as String?;
+      if (id == null) continue;
+      final cap = whatsAppCapableById[id];
+      if (cap == true) {
+        eligible.add(c);
+      } else if (cap == false) {
+        hiddenNotWa++;
+      } else {
+        eligible.add(c);
+        unknown++;
+      }
+    }
+    return (
+      eligible: eligible,
+      hiddenNotWhatsApp: hiddenNotWa,
+      unknownIncluded: unknown,
+    );
   }
 
   void clearCustomerSelection() {

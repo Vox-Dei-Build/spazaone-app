@@ -2,8 +2,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/promotions/view_promotion/view_promotion.dart';
+import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/utils/text_sanitizer.dart';
@@ -38,13 +41,29 @@ class _PromotionsTabState extends State<PromotionsTab> {
     }
 
     if (promos.isEmpty) {
+      // PAS-AUTH-03: align with Stock-style empty state. Primary CTA is
+      // intentionally omitted — the parent `PromotionsPage` already
+      // owns a "Run Promotion" FAB that runs the approved-templates
+      // gate; a second button here would have to duplicate that
+      // predicate (the exact mistake PAS-UX-09 was fixing). Tutorial
+      // link uses the existing TUTORIAL_RUN_PROMOTIONS Remote Config
+      // entry.
       return RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 120),
-            Center(child: Text("No saved promotions.")),
+          children: [
+            SizedBox(height: SizeConfig.heightMultiplier * 8),
+            const EmptyStateOnboarding(
+              icon: Icons.campaign_outlined,
+              headline: 'No promotions yet',
+              subtitle: 'Run a promotion to send WhatsApp specials, restock '
+                  'announcements or seasonal offers to your saved '
+                  'customers. Use the "Run Promotion" button below to '
+                  'pick a template and recipients.',
+              tutorialKey: TutorialConfig.TUTORIAL_RUN_PROMOTIONS,
+              tutorialTitle: 'How to run a promotion',
+            ),
           ],
         ),
       );
@@ -74,6 +93,15 @@ class _PromotionsTabState extends State<PromotionsTab> {
               : status == 'processing'
                   ? Colors.orange
                   : Colors.green;
+
+          // PAS-UX-18: terminal promotions (complete/partial/failed)
+          // get an inline "Run again" affordance so the merchant
+          // doesn't have to open the detail view and scroll just to
+          // re-launch the same campaign. Saved/processing promos are
+          // intentionally excluded — saved already has its own
+          // pending-send affordance, processing is in flight.
+          final isTerminal =
+              status.isNotEmpty && status != 'saved' && status != 'processing';
 
           // lookup template name
           final templateId = promo['templateId'] as String;
@@ -245,6 +273,49 @@ class _PromotionsTabState extends State<PromotionsTab> {
                                   ),
                                 ),
                               ],
+                            ),
+                          ],
+                          if (isTerminal) ...[
+                            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                            // Use a constrained OutlinedButton rather
+                            // than a full-width one — the card row is
+                            // already crowded with the thumbnail and
+                            // title, and we want the affordance
+                            // present but not louder than the
+                            // primary "tap card to view detail"
+                            // interaction.
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  minimumSize: const Size(0, 32),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                onPressed: () {
+                                  // Clear any selection that may
+                                  // belong to a previously-viewed
+                                  // promo before pushing the wizard
+                                  // so step 2 starts fresh — the
+                                  // ViewPromotionPage flow does the
+                                  // same thing.
+                                  vm.clearCustomerSelection();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => RunPromotionPage(
+                                        rerunFromPromo: promo,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.replay, size: 16),
+                                label: const Text(
+                                  'Run again',
+                                  style: TextStyle(fontSize: 12.5),
+                                ),
+                              ),
                             ),
                           ],
                         ],

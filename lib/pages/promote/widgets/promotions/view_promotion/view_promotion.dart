@@ -6,9 +6,20 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+
+/// PAS-UX-18: a promotion is in a terminal state once the backend has
+/// written one of `complete`, `partial` or `failed`. `saved` is
+/// waiting for the merchant to send; `processing` is in flight.
+/// Anything else (legacy / unknown) is treated as terminal so we
+/// don't accidentally hide the re-run affordance on older docs.
+bool _isTerminalStatus(String? status) {
+  if (status == null || status.isEmpty) return false;
+  return status != 'saved' && status != 'processing';
+}
 
 class ViewPromotionPage extends StatefulWidget {
   final PromotionsViewModel viewModel;
@@ -60,6 +71,30 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
       );
     }
     Navigator.pop(context);
+  }
+
+  /// PAS-UX-18: launch the run-promotion wizard pre-filled from this
+  /// promotion (template, channels, linked product). Recipients are
+  /// deliberately not carried — see `RunPromotionPage.rerunFromPromo`.
+  /// We clear the VM's selection state before pushing so the merchant
+  /// arrives on step 2 with a clean slate rather than the recipients
+  /// from the promotion they were viewing.
+  Future<void> _runAgain() async {
+    final vm = widget.viewModel;
+    vm.clearCustomerSelection();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RunPromotionPage(rerunFromPromo: widget.promo),
+      ),
+    );
+    if (!mounted) return;
+    // After returning from the wizard, pop this view so the merchant
+    // lands back on the promotions list (which already refreshes its
+    // own reports). Avoids leaving a stale "viewing the old promo"
+    // surface behind a freshly-sent newer one.
+    Navigator.of(context).pop();
   }
 
   @override
@@ -157,6 +192,25 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
                       confirmIcon: Icons.send,
                       busy: _actionLoading,
                       onConfirm: () => _sendNow(promo['id'] as String),
+                    ),
+                  // PAS-UX-18: re-run affordance for any terminal
+                  // state (complete / partial / failed). Saved
+                  // promotions get "Send now" above instead;
+                  // processing is in-flight so there's nothing to
+                  // re-run yet.
+                  if (_isTerminalStatus(promo['status'] as String?))
+                    Padding(
+                      padding: EdgeInsets.only(
+                        top: SizeConfig.heightMultiplier * 0.5,
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _actionLoading ? null : _runAgain,
+                          icon: const Icon(Icons.replay),
+                          label: const Text('Run again'),
+                        ),
+                      ),
                     ),
                 ],
               ),
