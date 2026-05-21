@@ -32,24 +32,22 @@ class AddSale extends StatelessWidget {
           // The view model still stores `salesSelectedDate` as a string
           // for backwards-compat with the firestore write path. Parse
           // for display, write back through `setSalesSelectedDate`.
-          final selectedDate =
-              _saleDateFmt.parse(transactionViewModel.salesSelectedDate);
+          final selectedDate = _saleDateFmt.parse(
+            transactionViewModel.salesSelectedDate,
+          );
 
           return TransactionFormScaffold(
-            title: 'Add Sale',
+            title: 'Record Sale',
             scaffoldKey: transactionViewModel.scaffoldKey,
             formKey: transactionViewModel.formKey,
             isLoading: transactionViewModel.isLoading,
             isDirty: transactionViewModel.isDirty,
-            primaryActionLabel: 'Add Sale',
+            primaryActionLabel: 'Save Sale',
             primaryActionIcon: Icons.point_of_sale,
             primaryActionColor: Colors.green,
             totalLabel: Text(
               'Total: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             onPrimaryAction: () async {
               await transactionViewModel.addSalesTransaction(context);
@@ -58,9 +56,24 @@ class AddSale extends StatelessWidget {
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Container(
+                  padding: const EdgeInsets.all(LayoutConstants.spaceMd),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.green.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: const Text(
+                    'Record one day-end revenue total, or itemize a sale with products when you want stock and profit detail.',
+                    style: TextStyle(height: 1.3),
+                  ),
+                ),
+                const SizedBox(height: LayoutConstants.spaceMd),
                 CustomTextField(
-                  label: 'Amount',
-                  hintText: 'Enter Amount',
+                  label: 'Sales amount',
+                  hintText: 'Enter day total or sale amount',
                   prefixIcon: Icons.money,
                   controller: transactionViewModel.amountController,
                   textInputType: TextInputType.number,

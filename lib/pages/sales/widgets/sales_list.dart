@@ -27,7 +27,7 @@ class SalesList extends StatefulWidget {
   });
 
   @override
-  _SalesListState createState() => _SalesListState();
+  State<SalesList> createState() => _SalesListState();
 }
 
 class _SalesListState extends State<SalesList> {
@@ -60,9 +60,9 @@ class _SalesListState extends State<SalesList> {
               icon: Icons.point_of_sale_outlined,
               headline: 'No sales recorded yet',
               subtitle:
-                  'Record your first sale to start tracking revenue, '
-                  'send WhatsApp receipts and build customer history.',
-              ctaLabel: widget.onAddSale != null ? 'Record your first sale' : null,
+                  'Use Sales for a day-end revenue total or individual cash sale. Add products only when you need stock and profit detail.',
+              ctaLabel:
+                  widget.onAddSale != null ? 'Record your first sale' : null,
               onCtaTap: widget.onAddSale,
               tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_SALES,
               tutorialTitle: 'How to record a sale',
