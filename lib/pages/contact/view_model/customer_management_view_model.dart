@@ -83,9 +83,14 @@ class CustomerManagementViewModel extends ChangeNotifier {
         if (snapshot.exists) {
           var unreadMessages = snapshot.data()?['unreadMessages'] ?? [];
 
-          // 🔥 Filter messages for this specific `customerId`
+          // 🔥 Filter messages for this specific `customerId`. V1 truth-
+          // surface: outbound bot mirrors share the unreadMessages array but
+          // should not ring the merchant's bell — only inbound entries count.
           var filteredMessages = unreadMessages
-              .where((msg) => msg['customerNumber'] == mobileNumber)
+              .where((msg) =>
+                  msg['customerNumber'] == mobileNumber &&
+                  (msg['direction'] == null ||
+                      msg['direction'].toString().toLowerCase() == 'inbound'))
               .toList();
 
           unreadMessagesCount = filteredMessages.length;

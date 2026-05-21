@@ -183,10 +183,17 @@ class _EntityTabState extends State<EntityTab> {
                 (customerData['balance'] as num?)?.toDouble() ?? 0.0;
 
             // 🔵 Chat unread per customer (existing)
+            // V1 truth-surface: only count inbound customer messages toward
+            // the unread badge — outbound bot mirrors share the same array
+            // but should not ring the bell.
             final chatUnread =
                 unreadMessages
                     .where(
-                      (msg) => msg['customerNumber'] == customerData['number'],
+                      (msg) =>
+                          msg['customerNumber'] == customerData['number'] &&
+                          (msg['direction'] == null ||
+                              msg['direction'].toString().toLowerCase() ==
+                                  'inbound'),
                     )
                     .length;
 
