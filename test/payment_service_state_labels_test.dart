@@ -24,12 +24,22 @@ void main() {
     'ACCEPT_ORDER',
     'REJECT_ORDER',
     'ASSIGN_DRIVER',
+    'UNASSIGN_DRIVER',
+    'MARK_OUT_FOR_DELIVERY',
+    'MARK_DELIVERED',
     'ACCEPT_BNPL',
     'REJECT_BNPL',
     'MARK_CASH_RECEIVED',
     'MARK_COLLECTED',
     'SETTLE_BNPL',
     'CANCEL_ORDER',
+  };
+
+  // Actions that intentionally do NOT trigger a customer notification.
+  // Keep this list explicit so accidental "silent" actions are easy to
+  // spot in review.
+  const silentActions = <String>{
+    'UNASSIGN_DRIVER',
   };
 
   group('PaymentService state labels', () {
@@ -82,9 +92,10 @@ void main() {
 
     test('all order actions currently trigger a customer message', () {
       for (final action in serverAllowedActions) {
+        final shouldNotify = !silentActions.contains(action);
         expect(
           PaymentService.actionTriggersMessage[action],
-          isTrue,
+          shouldNotify,
           reason: '"$action" has the wrong messaging intent.',
         );
       }

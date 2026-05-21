@@ -61,12 +61,16 @@ class OrderStatusMessagingService {
         'Order update: the shop could not accept your order. Reference: {{1}}. Reason: {{2}}. Reply here and the shop can help adjust it.',
     'ASSIGN_DRIVER':
         'Delivery update: a driver has been assigned to your order. Reference: {{1}}. Driver: {{2}}. Phone: {{3}}. Please keep your phone nearby.',
+    'MARK_OUT_FOR_DELIVERY':
+        'On the way 🚗 Your order {{1}} is out for delivery. Driver: {{2}}. Phone: {{3}}. Please keep your phone nearby.',
+    'MARK_DELIVERED':
+        'Delivered ✅\nHi {{customerName}}, order {{orderId}} has been delivered.\nThank you for shopping with us!',
     'ACCEPT_BNPL':
         'BNPL approved 🎉\nHi {{customerName}}, your Pay Later request for order {{orderId}} is approved.\nTotal: {{amount}} · Items: {{itemsCount}}\nCollect at: {{pickupLocation}}. We’ll remind you until it’s settled.\nNeed help? {{support}}',
     'REJECT_BNPL':
         'BNPL decision\nHi {{customerName}}, your Pay Later request for order {{orderId}} wasn’t approved.\nYou can still pay cash {{amount}} and collect.\nQuestions? {{support}}',
     'MARK_CASH_RECEIVED':
-        'Payment received ✅\nThanks {{customerName}}! We received {{amount}} for order {{orderId}} ({{itemsCount}} items).\nCollect at {{pickupLocation}}.\nKeep this for your records.',
+        'Payment received ✅\nThanks {{customerName}}! We received {{amount}} for order {{orderId}} ({{itemsCount}} items).\n{{pickupLocation}}\nKeep this for your records.',
     'MARK_COLLECTED':
         'Order collected 📦\nHi {{customerName}}, order {{orderId}} has been marked collected.\nThank you for shopping with us!\nWe appreciate you.',
     'SETTLE_BNPL':
@@ -89,6 +93,20 @@ class OrderStatusMessagingService {
         'ACCEPT_ORDER': rc.getString('TWILIO_ACCEPT_ORDER_TID'),
         'REJECT_ORDER': rc.getString('TWILIO_REJECT_ORDER_TID'),
         'ASSIGN_DRIVER': rc.getString('TWILIO_ASSIGN_DRIVER_TID'),
+        // The two new dispatch templates fall back to the existing
+        // ASSIGN_DRIVER template SID when their dedicated key is not
+        // configured. This keeps an operationally usable signal going
+        // out (driver + phone + reference) the moment merchants tap
+        // these actions, even before product rolls a separate template
+        // through Twilio approval.
+        'MARK_OUT_FOR_DELIVERY':
+            rc.getString('TWILIO_MARK_OUT_FOR_DELIVERY_TID').isNotEmpty
+                ? rc.getString('TWILIO_MARK_OUT_FOR_DELIVERY_TID')
+                : rc.getString('TWILIO_ASSIGN_DRIVER_TID'),
+        'MARK_DELIVERED':
+            rc.getString('TWILIO_MARK_DELIVERED_TID').isNotEmpty
+                ? rc.getString('TWILIO_MARK_DELIVERED_TID')
+                : rc.getString('TWILIO_MARK_COLLECTED_TID'),
         'ACCEPT_BNPL': rc.getString('TWILIO_ACCEPT_BNPL_TID'),
         'REJECT_BNPL': rc.getString('TWILIO_REJECT_BNPL_TID'),
         'MARK_CASH_RECEIVED': rc.getString('TWILIO_MARK_CASH_RECEIVED_TID'),
@@ -342,7 +360,7 @@ class OrderStatusMessagingService {
         '2': rejectionReason ?? 'Unavailable right now',
       };
     }
-    if (action == 'ASSIGN_DRIVER') {
+    if (action == 'ASSIGN_DRIVER' || action == 'MARK_OUT_FOR_DELIVERY') {
       return {
         '1': orderId,
         '2': (driverName ?? '').isNotEmpty ? driverName : 'the shop driver',

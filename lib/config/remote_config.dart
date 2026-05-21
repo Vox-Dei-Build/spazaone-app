@@ -34,6 +34,10 @@ class RemoteConfigService {
             dotenv.env['TWILIO_REJECT_ORDER_TID'] ?? '',
         'TWILIO_ASSIGN_DRIVER_TID':
             dotenv.env['TWILIO_ASSIGN_DRIVER_TID'] ?? '',
+        'TWILIO_MARK_OUT_FOR_DELIVERY_TID':
+            dotenv.env['TWILIO_MARK_OUT_FOR_DELIVERY_TID'] ?? '',
+        'TWILIO_MARK_DELIVERED_TID':
+            dotenv.env['TWILIO_MARK_DELIVERED_TID'] ?? '',
         'TWILIO_MARK_CASH_RECEIVED_TID':
             dotenv.env['TWILIO_MARK_CASH_RECEIVED_TID'] ?? '',
         'TWILIO_MARK_COLLECTED_TID':
