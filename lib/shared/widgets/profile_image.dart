@@ -27,27 +27,62 @@ class ProfileImageWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      child: CircleAvatar(
+      child: _buildAvatar(),
+    );
+  }
+
+  Widget _buildAvatar() {
+    // Local file image: render directly. FileImage failures are extremely
+    // rare and not the source of the production 403 crashes.
+    if (imageFile != null) {
+      return CircleAvatar(
         radius: radius,
-        backgroundImage: imageFile != null
-            ? FileImage(imageFile!)
-            : (imageUrl != null
-                ? CachedNetworkImageProvider(imageUrl!)
-                    as ImageProvider<Object>?
-                : null),
-        backgroundColor: (imageUrl == null && imageFile == null)
-            ? Color(kTertiaryColor.value)
-            : null,
-        child: (imageFile == null && imageUrl == null)
-            ? Text(
-                initials.isNotEmpty ? initials[0] : '',
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 2,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              )
-            : null,
+        backgroundImage: FileImage(imageFile!),
+      );
+    }
+
+    // No image at all -> initials placeholder.
+    if (imageUrl == null || imageUrl!.isEmpty) {
+      return _initialsAvatar();
+    }
+
+    // PAS-PROFILE-IMG-403: Remote image. We deliberately use
+    // [CachedNetworkImage] (not [CachedNetworkImageProvider] inside
+    // [CircleAvatar.backgroundImage]) so we can attach an [errorWidget]
+    // and gracefully fall back when Firebase Storage returns 403/404 on
+    // stale signed URLs. Using the provider directly bubbles the load
+    // failure up through the image stream and is reported as a fatal
+    // FlutterError by Crashlytics.
+    final double diameter = radius * 2;
+    return ClipOval(
+      child: SizedBox(
+        width: diameter,
+        height: diameter,
+        child: CachedNetworkImage(
+          imageUrl: imageUrl!,
+          fit: BoxFit.cover,
+          width: diameter,
+          height: diameter,
+          // Show the initials placeholder while loading so the avatar
+          // surface is never blank.
+          placeholder: (context, url) => _initialsAvatar(),
+          errorWidget: (context, url, error) => _initialsAvatar(),
+        ),
+      ),
+    );
+  }
+
+  Widget _initialsAvatar() {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Color(kTertiaryColor.value),
+      child: Text(
+        initials.isNotEmpty ? initials[0] : '',
+        style: TextStyle(
+          fontSize: SizeConfig.textMultiplier * 2,
+          color: Colors.white,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
