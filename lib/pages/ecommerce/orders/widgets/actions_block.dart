@@ -18,10 +18,19 @@ class ActionsBlock extends StatelessWidget {
     this.onAcceptOrder,
     this.onRejectOrder,
     this.onAssignDriver,
+    this.onReassignDriver,
+    this.onUnassignDriver,
+    this.onMarkOutForDelivery,
+    this.onMarkDelivered,
     required this.showMarkCollected,
     this.showMarkCash,
     this.showAcceptReject = false,
     this.showAssignDriver = false,
+    this.showReassignDriver = false,
+    this.showUnassignDriver = false,
+    this.showMarkOutForDelivery = false,
+    this.showMarkDelivered = false,
+    this.isDelivery = false,
     this.busy = false,
     this.busyAction,
     this.showEmptyMessage = true,
@@ -43,10 +52,24 @@ class ActionsBlock extends StatelessWidget {
   final VoidCallback? onAcceptOrder;
   final VoidCallback? onRejectOrder;
   final VoidCallback? onAssignDriver;
+  final VoidCallback? onReassignDriver;
+  final VoidCallback? onUnassignDriver;
+  final VoidCallback? onMarkOutForDelivery;
+  final VoidCallback? onMarkDelivered;
   final bool showMarkCollected;
   final bool? showMarkCash;
   final bool showAcceptReject;
   final bool showAssignDriver;
+  final bool showReassignDriver;
+  final bool showUnassignDriver;
+  final bool showMarkOutForDelivery;
+  final bool showMarkDelivered;
+
+  /// When true, fulfillment-related buttons render with delivery copy
+  /// ("Mark Delivered" instead of "Mark Collected"). Drives the
+  /// language only — the underlying server action depends on which
+  /// `show*` flag is set.
+  final bool isDelivery;
   final bool busy;
   final String? busyAction;
 
@@ -84,6 +107,38 @@ class ActionsBlock extends StatelessWidget {
         icon: Icons.local_shipping_outlined,
         onTap: onAssignDriver ?? () {},
         busy: busy && busyAction == 'ASSIGN_DRIVER',
+      ));
+    }
+
+    if (showMarkOutForDelivery) {
+      addGap();
+      buttons.add(_ActionBtn(
+        label: 'Mark Out for Delivery',
+        icon: Icons.directions_car_outlined,
+        onTap: onMarkOutForDelivery ?? () {},
+        busy: busy && busyAction == 'MARK_OUT_FOR_DELIVERY',
+      ));
+    }
+
+    if (showReassignDriver) {
+      addGap();
+      buttons.add(_ActionBtn(
+        label: 'Reassign Driver',
+        icon: Icons.swap_horiz_outlined,
+        onTap: onReassignDriver ?? () {},
+        busy: busy && busyAction == 'ASSIGN_DRIVER',
+        tonal: true,
+      ));
+    }
+
+    if (showUnassignDriver) {
+      addGap();
+      buttons.add(_ActionBtn(
+        label: 'Unassign Driver',
+        icon: Icons.person_remove_outlined,
+        onTap: onUnassignDriver ?? () {},
+        busy: busy && busyAction == 'UNASSIGN_DRIVER',
+        tonal: true,
       ));
     }
 
@@ -136,11 +191,23 @@ class ActionsBlock extends StatelessWidget {
       ));
     }
 
+    if (showMarkDelivered) {
+      addGap();
+      buttons.add(_ActionBtn(
+        label: 'Mark Delivered',
+        icon: Icons.check_circle_outline,
+        onTap: onMarkDelivered ?? () {},
+        busy: busy && busyAction == 'MARK_DELIVERED',
+      ));
+    }
+
     if (showMarkCollected) {
       addGap();
       buttons.add(_ActionBtn(
-        label: 'Mark Collected',
-        icon: Icons.inventory_2_outlined,
+        label: isDelivery ? 'Mark Delivered' : 'Mark Collected',
+        icon: isDelivery
+            ? Icons.check_circle_outline
+            : Icons.inventory_2_outlined,
         onTap: onMarkCollected,
         busy: busy && busyAction == 'MARK_COLLECTED',
       ));
@@ -175,6 +242,7 @@ class _ActionBtn extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.busy = false,
+    this.tonal = false,
   });
 
   final String label;
@@ -182,26 +250,40 @@ class _ActionBtn extends StatelessWidget {
   final VoidCallback onTap;
   final bool busy;
 
+  /// When true, renders as a tonal button (lower visual weight) so
+  /// secondary corrective actions like "Unassign Driver" don't compete
+  /// with the primary state-advancing action above them.
+  final bool tonal;
+
   @override
   Widget build(BuildContext context) {
+    final progress = busy
+        ? SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                tonal
+                    ? Theme.of(context).colorScheme.onSecondaryContainer
+                    : Theme.of(context).colorScheme.onPrimary,
+              ),
+            ),
+          )
+        : Icon(icon);
     return SizedBox(
       width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: busy ? null : onTap,
-        icon: busy
-            ? SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              )
-            : Icon(icon),
-        label: Text(busy ? 'Working…' : label),
-      ),
+      child: tonal
+          ? FilledButton.tonalIcon(
+              onPressed: busy ? null : onTap,
+              icon: progress,
+              label: Text(busy ? 'Working…' : label),
+            )
+          : FilledButton.icon(
+              onPressed: busy ? null : onTap,
+              icon: progress,
+              label: Text(busy ? 'Working…' : label),
+            ),
     );
   }
 }

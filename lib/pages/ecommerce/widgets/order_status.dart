@@ -9,6 +9,7 @@ class PillMeta {
 enum OrderStatus {
   all,
   pending,
+  accepted,
   paid,
   cancelled,
   /* fulfilled,
@@ -16,6 +17,8 @@ enum OrderStatus {
   refunded, */
   uncollected,
   collected,
+  outForDelivery,
+  delivered,
   bnplPending,
   bnplOutstanding,
   bnplRejected,
@@ -25,6 +28,7 @@ extension OrderStatusLabel on OrderStatus {
   String get label => switch (this) {
         OrderStatus.all => 'All',
         OrderStatus.pending => 'Pending',
+        OrderStatus.accepted => 'Accepted',
         OrderStatus.paid => 'Paid',
         OrderStatus.cancelled => 'Cancelled',
         /* OrderStatus.fulfilled => 'Fulfilled',
@@ -32,6 +36,8 @@ extension OrderStatusLabel on OrderStatus {
         OrderStatus.refunded => 'Refunded', */
         OrderStatus.uncollected => 'Uncollected',
         OrderStatus.collected => 'Collected',
+        OrderStatus.outForDelivery => 'Out for Delivery',
+        OrderStatus.delivered => 'Delivered',
         OrderStatus.bnplPending => 'BNPL Pending',
         OrderStatus.bnplOutstanding => 'BNPL Outstanding',
         OrderStatus.bnplRejected => 'BNPL Rejected',
@@ -41,6 +47,7 @@ extension OrderStatusLabel on OrderStatus {
 extension OrderStatusX on OrderStatus {
   Color color(BuildContext c) => switch (this) {
         OrderStatus.pending => Colors.amber,
+        OrderStatus.accepted => Colors.indigo,
         OrderStatus.paid => Colors.green,
         /* OrderStatus.fulfilled => Colors.blue,
         OrderStatus.cancelled => Colors.red,
@@ -48,6 +55,8 @@ extension OrderStatusX on OrderStatus {
         OrderStatus.cancelled => Colors.red,
         OrderStatus.uncollected => Colors.orange,
         OrderStatus.collected => Colors.teal,
+        OrderStatus.outForDelivery => Colors.blue,
+        OrderStatus.delivered => Colors.teal,
         OrderStatus.bnplRejected => Colors.deepOrange,
         OrderStatus.bnplPending => Colors.amber,
         OrderStatus.bnplOutstanding => Colors.brown,
@@ -145,7 +154,19 @@ OrderStatus resolveOrderStatus({
     return OrderStatus.bnplPending;
   }
 
-  // 2) Payment/fulfillment/cancellation/refund
+  // 2) Delivery / collection terminal states win over generic "paid" so
+  //    the merchant always sees the freshest fulfillment truth on the
+  //    order header. A delivered/collected order is implicitly paid in
+  //    this V1 — payment status is surfaced separately on its own pill.
+  if (s == 'delivered' || s.contains('delivered')) {
+    return OrderStatus.delivered;
+  }
+  if (s == 'out_for_delivery' || s.contains('out_for_delivery')) {
+    return OrderStatus.outForDelivery;
+  }
+  if (isCollected || s.contains('collected')) return OrderStatus.collected;
+
+  // 3) Payment/fulfillment/cancellation/refund
   if (isPaid || s == 'paid' || s == 'fulfilled' || ps == 'paid') {
     return OrderStatus.paid;
   }
@@ -154,18 +175,19 @@ OrderStatus resolveOrderStatus({
   if (s.contains('fulfill') || ps == 'fulfilled') return OrderStatus.fulfilled; */
   if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
 
-  // 3) Only now consider collection state
-  if (isCollected || s.contains('collected')) return OrderStatus.collected;
+  // 4) Accepted (merchant approved but not yet dispatched/paid)
+  if (s == 'accepted') return OrderStatus.accepted;
+
   if (s.contains('uncollected') || ps == 'uncollected') {
     return OrderStatus.uncollected;
   }
 
-  // 4) Pending / default
+  // 5) Pending / default
   if (s.contains('pending') || s.isEmpty || ps == 'pending') {
     return OrderStatus.pending;
   }
 
-  // 5) Fallback to parser
+  // 6) Fallback to parser
   return OrderStatusX.fromString(status,
       paymentMethod: paymentMethod, type: type, paymentStatus: paymentStatus);
 }
@@ -228,7 +250,19 @@ StatusMeta buildPaymentStatusMeta(
 
 PillMeta? buildCollectionPill({
   required bool isCollected,
+  bool isDelivery = false,
+  bool isOutForDelivery = false,
 }) {
+  // Delivery orders speak the language of "delivered / out for delivery
+  // / awaiting dispatch", not collection. Pickup orders keep the
+  // existing "collected / uncollected" labels.
+  if (isDelivery) {
+    if (isCollected) return const PillMeta('Delivered', Colors.teal);
+    if (isOutForDelivery) {
+      return const PillMeta('Out for Delivery', Colors.blue);
+    }
+    return const PillMeta('Awaiting Dispatch', Colors.orange);
+  }
   if (isCollected) {
     return const PillMeta('Collected', Colors.teal);
   } else {
