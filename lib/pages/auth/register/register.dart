@@ -92,16 +92,29 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 PrivateRegion(
                   child: CustomTextField(
-                    label: 'Business Name (Optional)',
-                    hintText: 'You can add this later in Settings',
+                    label: 'Business Name',
+                    hintText: 'e.g. The Corner Shop',
                     prefixIcon: Icons.store,
                     controller: authViewModel.shopNameController,
-                    // PAS-UX-09: Business Name was previously required
-                    // and blocked OTP. It's only used cosmetically
-                    // post-signup (receipts, WhatsApp footer) and can
-                    // be filled in later from Settings. Making it
-                    // optional removes one of three required fields
-                    // ahead of the first value moment.
+                    textCapitalization: TextCapitalization.words,
+                    // PAS-UX-09 reversal: Business Name is required again.
+                    // Optional + "fix it later in Settings" left a long tail
+                    // of merchants whose receipts, SMS and WhatsApp messages
+                    // rendered with no shop identity. The field is short,
+                    // and customers see this name on every message we send
+                    // on the merchant's behalf — it's load-bearing, not
+                    // cosmetic. Recovery for legacy blanks is handled by
+                    // the soft-gate in main.dart + Settings → Business Name.
+                    validator: (value) {
+                      final v = (value ?? '').trim();
+                      if (v.isEmpty) {
+                        return 'Business Name is required';
+                      }
+                      if (v.length < 2) {
+                        return 'Business name is too short';
+                      }
+                      return null;
+                    },
                   ),
                 ),
                 PrivateRegion(

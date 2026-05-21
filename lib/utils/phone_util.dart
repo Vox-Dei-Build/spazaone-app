@@ -145,7 +145,13 @@ Future<String?> fetchShopNameForUser(String currentUserId) async {
       .doc(currentUserId)
       .get();
   Map<String, dynamic>? dataMap = snapshot.data() as Map<String, dynamic>?;
-  return dataMap?['shopName'] as String?;
+  // PAS-UX-09 follow-up: shopName is optional. Some legacy merchants have
+  // an empty string stored from when it was a blank required field; treat
+  // empty/whitespace as missing so callers' `?? fallback` chains fire.
+  final raw = dataMap?['shopName'];
+  if (raw is! String) return null;
+  final trimmed = raw.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
 
 Future<String?> fetchNameForUser(String currentUserId) async {
