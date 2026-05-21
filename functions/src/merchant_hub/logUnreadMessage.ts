@@ -3,57 +3,127 @@ import { AndroidConfig } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
 
 /**
- * Cloud Function: Log unread message & trigger push notification
+ * Cloud Function: Append a message entry to the merchant truth surface and
+ * (for inbound only) trigger the unread-count badge + FCM push.
  *
- * @param {functions.https.Request} req - The HTTP request object from Twilio, containing status information.
- * @param {functions.Response} res - The HTTP response object to send back to Twilio.
+ * V1 truth-surface (`fix/pas-wa-v1-bot-message-truth`):
+ *
+ *   - Legacy callers (Twilio receive hooks, older Botpress paths) post
+ *     `{ merchantId, customerNumber, message }` and are treated as inbound.
+ *   - New callers (Botpress bot mirror) additionally pass `direction`,
+ *     `senderRole`, `channel`, `kind`, `externalId`, `timestamp` so the
+ *     merchant Connect tab can render bot replies (balance, statement, menu,
+ *     clarifications, payment links, …) faithfully.
+ *
+ * Persistence model: appended to `users/{merchantId}.unreadMessages[]` (same
+ * array the existing app already streams). Each entry now carries the
+ * extended fields. The unread badge counter (`unreadCount`) and the FCM push
+ * are gated on `direction === 'inbound'` so the bot's own outbound mirrors
+ * do not ring the merchant's bell.
+ *
+ * Idempotency: when `externalId` is provided we skip persistence if any
+ * existing entry in the array already has the same `externalId`. This makes
+ * the bot's "send then mirror" flow safe to retry.
  */
 export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
   try {
-    const { merchantId, customerNumber, message } = req.body;
+    const {
+      merchantId,
+      customerNumber,
+      message,
+      direction,
+      senderRole,
+      channel,
+      kind,
+      externalId,
+      timestamp,
+    } = req.body ?? {};
 
     if (!merchantId || !customerNumber || !message) {
       res.status(400).json({ error: "Missing required fields" });
-      return; // ✅ Ensure function stops execution
+      return;
     }
 
-    // Reference to merchant document in Firestore
-    const merchantRef = db.collection("users").doc(merchantId);
+    // Default direction to 'inbound' so legacy callers (Twilio receive hooks)
+    // keep their existing behaviour: badge + FCM ring on the merchant.
+    const resolvedDirection: "inbound" | "outbound" =
+      direction === "outbound" ? "outbound" : "inbound";
+    const resolvedSenderRole: string =
+      senderRole ?? (resolvedDirection === "outbound" ? "bot" : "customer");
+    const resolvedChannel: string = channel ?? "whatsapp";
+    const resolvedKind: string = kind ?? "text";
+    const resolvedTimestamp: string =
+      typeof timestamp === "string" && timestamp
+        ? timestamp
+        : new Date().toISOString();
 
-    // Get existing unread count and messages
+    const merchantRef = db.collection("users").doc(merchantId);
     const merchantDoc = await merchantRef.get();
     let unreadCount = 0;
-    let unreadMessages = [];
+    let unreadMessages: Array<Record<string, unknown>> = [];
 
     if (merchantDoc.exists) {
       const data = merchantDoc.data();
-      unreadMessages = data?.unreadMessages || [];
-      unreadCount = data?.unreadCount || 0;
+      unreadMessages = (data?.unreadMessages as Array<Record<string, unknown>>) ?? [];
+      unreadCount = (data?.unreadCount as number) ?? 0;
     }
 
-    // ✅ Generate timestamp first
-    const timestamp = new Date(); // ✅ Use JavaScript Date instead of Firestore serverTimestamp
+    // Idempotency: if the caller supplies an externalId we never persist the
+    // same message twice. Bot retries (network, function cold start, etc.)
+    // become safe.
+    if (
+      externalId &&
+      unreadMessages.some(
+        (entry) =>
+          (entry as { externalId?: string }).externalId === externalId,
+      )
+    ) {
+      res.status(200).json({
+        message: "Duplicate externalId — message already logged.",
+        deduped: true,
+      });
+      return;
+    }
 
-    // ✅ Append the new message with a normal timestamp
+    // Append the new entry. We keep `customerNumber`, `message`, `timestamp`
+    // for backwards compatibility with the existing app stream and add the
+    // structured fields for the Connect tab's truth-surface renderer.
     unreadMessages.push({
       customerNumber,
       message,
-      timestamp: timestamp.toISOString(), // 🔥 Convert timestamp to a string format
+      timestamp: resolvedTimestamp,
+      direction: resolvedDirection,
+      senderRole: resolvedSenderRole,
+      channel: resolvedChannel,
+      kind: resolvedKind,
+      ...(externalId ? { externalId } : {}),
     });
 
-    // ✅ Update Firestore with new unread messages and increment count
+    // Outbound bot replies should NOT ring the merchant's bell — the merchant
+    // already saw their bot reply in the conversation, this is just truth
+    // capture. Only inbound entries advance the unread counter.
+    const nextUnreadCount =
+      resolvedDirection === "inbound" ? unreadCount + 1 : unreadCount;
+
     await merchantRef.set(
       {
-        unreadMessages: unreadMessages,
-        unreadCount: unreadCount + 1,
+        unreadMessages,
+        unreadCount: nextUnreadCount,
       },
       { merge: true },
     );
 
-    // Fetch merchant FCM token from Firestore
+    // FCM push only fires for inbound (legacy + new customer messages).
+    if (resolvedDirection !== "inbound") {
+      res.status(200).json({
+        message: "Outbound reply mirrored to truth surface.",
+        direction: resolvedDirection,
+      });
+      return;
+    }
+
     const merchantData = await merchantRef.get();
     const merchantFCMToken = merchantData.data()?.fcmToken;
-    console.log(merchantFCMToken);
 
     if (!merchantFCMToken) {
       console.log("Merchant FCM Token not found.");
@@ -66,12 +136,11 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
     const androidConfig: AndroidConfig = {
       priority: "high",
       notification: {
-        channelId: "default_channel", // ✅ Correct key for channel ID
+        channelId: "default_channel",
         sound: "default",
       },
     };
 
-    // ✅ Send push notification via Firebase Cloud Messaging
     const payload = {
       notification: {
         title: "New Customer Message 📩",
@@ -79,12 +148,10 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
       },
       android: androidConfig,
       data: {
-        unreadCount: (unreadCount + 1).toString(),
+        unreadCount: nextUnreadCount.toString(),
       },
       token: merchantFCMToken,
     };
-
-    console.log("Sending FCM notification:", payload);
 
     try {
       const response = await admin.messaging().send(payload);
