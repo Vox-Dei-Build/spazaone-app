@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import { computeCartSig } from "./cartSig";
 
 type PaymentType = "Cash" | "Online" | "BNPL" | string;
+type FulfillmentType = "pickup" | "delivery" | string;
 
 function idempotencyDocId(value: string | null): string | null {
   const normalized = String(value || "").trim();
@@ -26,6 +27,14 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       remarks = "",
       pickupAt = null,
       pickupLabel = null,
+      orderRequest = false,
+      orderChannel = null,
+      fulfillmentType = null,
+      deliveryAddress = "",
+      requestedFulfillmentTime = "",
+      cashChangeFor = null,
+      customerNote = "",
+      mediaRefs = [],
       preview = false, // <— only flag we keep
       idempotencyKey = null, // optional, for deduping sale creation
     } = (req.body || {}) as {
@@ -36,6 +45,14 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       remarks?: string;
       pickupAt?: string | null;
       pickupLabel?: string | null;
+      orderRequest?: boolean;
+      orderChannel?: string | null;
+      fulfillmentType?: FulfillmentType | null;
+      deliveryAddress?: string;
+      requestedFulfillmentTime?: string;
+      cashChangeFor?: number | string | null;
+      customerNote?: string;
+      mediaRefs?: string[];
       preview?: boolean;
       idempotencyKey?: string | null;
     };
@@ -163,14 +180,33 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     );
 
     const now = admin.firestore.FieldValue.serverTimestamp();
-    const initialStatus =
-      ptype === "cash"
+    const isOrderRequest = orderRequest === true;
+    const initialStatus = isOrderRequest
+      ? "pending_merchant_review"
+      : ptype === "cash"
         ? "awaiting_collection"
         : ptype === "bnpl"
           ? "pending_review"
           : ptype === "online"
             ? "pending_payment"
             : "pending";
+    const initialPaymentStatus = isOrderRequest
+      ? "unpaid"
+      : ptype === "online"
+        ? "pending"
+        : ptype === "bnpl"
+          ? "pending"
+          : undefined;
+    const paymentMethod =
+      ptype === "cash"
+        ? "Cash"
+        : ptype === "transfer" || ptype === "eft"
+          ? "Transfer"
+          : ptype === "bnpl"
+            ? "BNPL"
+            : ptype === "online"
+              ? "Online"
+              : paymentType;
 
     // PREVIEW: return computed snapshot only
     if (preview) {
@@ -212,7 +248,11 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       .get();
 
     const bodySupersede = Boolean((req.body || {}).supersedeOpenSale);
-    const canSupersedeStatuses = new Set(["pending_payment", "pending_review"]);
+    const canSupersedeStatuses = new Set([
+      "pending_payment",
+      "pending_review",
+      "pending_merchant_review",
+    ]);
 
     if (!openQ.empty) {
       const os = openQ.docs[0].data();
@@ -222,6 +262,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
           "pending_payment",
           "awaiting_collection",
           "pending_review",
+          "pending_merchant_review",
           "bnpl_outstanding",
         ].includes(openStatus)
       ) {
@@ -283,8 +324,12 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       {
         id: saleRef.id,
         customerId,
-        type: paymentType,
+        type: ptype === "transfer" || ptype === "eft" ? "Cash" : paymentType,
         status: initialStatus,
+        paymentMethod,
+        ...(initialPaymentStatus
+          ? { paymentStatus: initialPaymentStatus }
+          : {}),
         amount: total,
         itemsCount,
         currency: "ZAR",
@@ -292,7 +337,15 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
         items,
         cartSig,
         deliveryInfo: deliveryInfo || "",
+        fulfillmentType: fulfillmentType || null,
+        deliveryAddress: deliveryAddress || "",
+        requestedFulfillmentTime: requestedFulfillmentTime || "",
+        cashChangeFor: cashChangeFor || null,
         remarks: remarks || "",
+        customerNote: customerNote || remarks || "",
+        mediaRefs: Array.isArray(mediaRefs) ? mediaRefs : [],
+        orderRequest: isOrderRequest,
+        orderChannel: orderChannel || (isOrderRequest ? "whatsapp" : null),
         pickupAt: pickupAt || null,
         pickupLabel: pickupLabel || null,
         dateAdded: now,

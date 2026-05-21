@@ -3,6 +3,9 @@ import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
 
 const ALLOWED = new Set([
+  "ACCEPT_ORDER",
+  "REJECT_ORDER",
+  "ASSIGN_DRIVER",
   "ACCEPT_BNPL",
   "REJECT_BNPL",
   "MARK_CASH_RECEIVED",
@@ -195,6 +198,65 @@ export const updateOrderPayment = functions.https.onCall(
         orderData.products ?? orderData.items ?? orderData.cart ?? [];
 
       switch (paymentAction) {
+        case "ACCEPT_ORDER": {
+          patch = {
+            ...patch,
+            status: "accepted",
+            acceptedAt: now,
+            acceptedBy: context.auth?.uid || merchantId,
+            paymentStatus: orderData.paymentStatus || "unpaid",
+            collected: false,
+          };
+          break;
+        }
+
+        case "REJECT_ORDER": {
+          patch = {
+            ...patch,
+            status: "rejected",
+            paymentStatus: orderData.paymentStatus || "unpaid",
+            rejectedAt: now,
+            rejectedBy: context.auth?.uid || merchantId,
+            collected: false,
+          };
+          if (customerId) {
+            const cartDoc = db
+              .collection("users")
+              .doc(merchantId)
+              .collection("carts")
+              .doc(customerId);
+            await cartDoc.set(
+              { lock: admin.firestore.FieldValue.delete() },
+              { merge: true },
+            );
+          }
+          break;
+        }
+
+        case "ASSIGN_DRIVER": {
+          const driverName = (data?.driverName ?? "").toString().trim();
+          const driverPhone = (data?.driverPhone ?? "").toString().trim();
+          const driverId = (data?.driverId ?? "").toString().trim();
+          if (!driverName && !driverPhone && !driverId) {
+            throw new functions.https.HttpsError(
+              "invalid-argument",
+              "driverName, driverPhone, or driverId is required",
+            );
+          }
+          patch = {
+            ...patch,
+            driver: {
+              id: driverId || null,
+              name: driverName || null,
+              phone: driverPhone || null,
+              assignedAt: now,
+              assignedBy: context.auth?.uid || merchantId,
+            },
+            driverAssignedAt: now,
+          };
+          break;
+        }
+
         case "ACCEPT_BNPL": {
           patch = {
             ...patch,
@@ -266,9 +328,16 @@ export const updateOrderPayment = functions.https.onCall(
         }
 
         case "MARK_CASH_RECEIVED": {
+          const existingMethod = String(
+            orderData.paymentMethod || orderData.type || "",
+          );
           patch = {
             ...patch,
-            paymentMethod: "Cash",
+            paymentMethod:
+              existingMethod.toLowerCase() === "transfer" ||
+              existingMethod.toLowerCase() === "eft"
+                ? "Transfer"
+                : "Cash",
             paymentStatus: "paid",
             status: "paid",
             cashReceivedAt: now,

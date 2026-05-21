@@ -86,6 +86,9 @@ class PaymentService {
   /// Firebase context.
   @visibleForTesting
   static const Map<String, String> actionStateLabels = {
+    'ACCEPT_ORDER': 'Order accepted',
+    'REJECT_ORDER': 'Order rejected',
+    'ASSIGN_DRIVER': 'Driver assigned',
     'ACCEPT_BNPL': 'BNPL approved',
     'REJECT_BNPL': 'BNPL rejected',
     'MARK_CASH_RECEIVED': 'Cash received recorded',
@@ -100,6 +103,9 @@ class PaymentService {
   /// `lib/services/order_status_messaging_service.dart:13`.
   @visibleForTesting
   static const Map<String, bool> actionTriggersMessage = {
+    'ACCEPT_ORDER': true,
+    'REJECT_ORDER': true,
+    'ASSIGN_DRIVER': true,
     'ACCEPT_BNPL': true,
     'REJECT_BNPL': true,
     'MARK_CASH_RECEIVED': true,
@@ -115,6 +121,7 @@ class PaymentService {
   static Future<OrderPaymentResult> updateOrderPayment({
     required String orderId,
     required String action,
+    Map<String, dynamic> extraData = const {},
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid.isEmpty) {
@@ -152,6 +159,7 @@ class PaymentService {
         'merchantId': uid,
         'orderId': orderId,
         'paymentAction': action,
+        ...extraData,
       });
       if (stateLabel == null) {
         return OrderPaymentResult(

@@ -94,6 +94,14 @@ class SalesViewModel extends TransactionViewModel {
             if (['cancelled', 'rejected'].contains(status)) {
               return false;
             }
+            if ([
+              'awaiting_collection',
+              'pending_merchant_review',
+              'accepted',
+            ].contains(status) &&
+                paymentStatus != 'paid') {
+              return false;
+            }
             if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
               return false;
             }
@@ -150,6 +158,14 @@ class SalesViewModel extends TransactionViewModel {
                 (data['paymentMethod'] ?? '').toString().toLowerCase();
 
             if (['cancelled', 'rejected'].contains(status)) {
+              return false;
+            }
+            if ([
+              'awaiting_collection',
+              'pending_merchant_review',
+              'accepted',
+            ].contains(status) &&
+                paymentStatus != 'paid') {
               return false;
             }
             if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {

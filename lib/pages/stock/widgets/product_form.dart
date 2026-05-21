@@ -224,6 +224,22 @@ class _ProductFormState extends State<ProductForm> {
                               textInputType: TextInputType.number,
                             ),
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              secondary: const Icon(Icons.storefront_outlined),
+                              title: const Text('Show in WhatsApp ordering'),
+                              subtitle: const Text(
+                                'Customers can see and order this product in the WhatsApp store.',
+                              ),
+                              value: widget.product.whatsappListed,
+                              onChanged: (value) {
+                                viewModel.markUnsavedChanges();
+                                setState(() {
+                                  widget.product.whatsappListed = value;
+                                });
+                              },
+                            ),
+                            SizedBox(height: SizeConfig.heightMultiplier * 2),
                             // Progressive disclosure: keep optional fields out
                             // of the merchant's way during initial create. Auto
                             // expands when an existing product already has data

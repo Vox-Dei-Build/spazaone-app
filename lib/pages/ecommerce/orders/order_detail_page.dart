@@ -56,7 +56,11 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     vsync: this,
   ); // 2 tabs now
 
-  Future<void> _callPayment(String action, Map<String, dynamic> order) async {
+  Future<void> _callPayment(
+    String action,
+    Map<String, dynamic> order, {
+    Map<String, dynamic> extraData = const {},
+  }) async {
     setState(() {
       _actionLoading = true;
       _busyAction = action;
@@ -68,6 +72,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     final result = await PaymentService.updateOrderPayment(
       orderId: widget.orderId,
       action: action,
+      extraData: extraData,
     );
 
     if (!mounted) return;
@@ -125,6 +130,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null && result.sendIntent) {
       final msgSvc = await OrderStatusMessagingService.create();
+      final driver = (order['driver'] is Map)
+          ? Map<String, dynamic>.from(order['driver'] as Map)
+          : <String, dynamic>{};
       final notif = await msgSvc.sendStatusMessage(
         action: action,
         merchantId: uid,
@@ -133,7 +141,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         orderId: widget.orderId,
         amount: CurrencyUtil.format(OrderRepository.asNum(order['total'])),
         itemsCount: ((order['items'] as List?)?.length ?? 0).toString(),
-        pickupLocation: (order['pickupLabel'] ?? '').toString(),
+        pickupLocation: _fulfillmentSummary(order),
+        driverName: (driver['name'] ?? '').toString(),
+        driverPhone: (driver['phone'] ?? '').toString(),
       );
 
       if (!mounted) return;
@@ -153,6 +163,75 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       _actionLoading = false;
       _busyAction = null;
     });
+  }
+
+  String _fulfillmentSummary(Map<String, dynamic> order) {
+    final fulfillment = (order['fulfillmentType'] ?? '').toString();
+    final time = (order['requestedFulfillmentTime'] ?? '').toString();
+    final pickup = (order['pickupLabel'] ?? '').toString();
+    final delivery = (order['deliveryAddress'] ?? order['deliveryInfo'] ?? '')
+        .toString();
+    final parts = <String>[
+      if (fulfillment.isNotEmpty)
+        fulfillment == 'delivery' ? 'Delivery' : 'Collection',
+      if (time.isNotEmpty) time,
+      if (fulfillment != 'delivery' && pickup.isNotEmpty) pickup,
+      if (fulfillment == 'delivery' && delivery.isNotEmpty) delivery,
+    ];
+    return parts.isEmpty
+        ? 'The shop will confirm collection or delivery.'
+        : parts.join(', ');
+  }
+
+  Future<void> _assignDriver(Map<String, dynamic> order) async {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Assign driver'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Driver name'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: phoneController,
+              decoration: const InputDecoration(labelText: 'Driver phone'),
+              keyboardType: TextInputType.phone,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, {
+              'driverName': nameController.text.trim(),
+              'driverPhone': phoneController.text.trim(),
+            }),
+            child: const Text('Assign'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+    phoneController.dispose();
+    if (result == null) return;
+    if ((result['driverName'] ?? '').isEmpty &&
+        (result['driverPhone'] ?? '').isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a driver name or phone number.')),
+      );
+      return;
+    }
+    await _callPayment('ASSIGN_DRIVER', order, extraData: result);
   }
 
   /// Builds the final snackbar shown after the customer-notification
@@ -277,22 +356,73 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           final isCancelled = status.contains('cancel');
           final isRejected = status.contains('reject') ||
               paymentStatus.toLowerCase() == 'rejected';
+          final isTerminal = isCancelled || isRejected;
+          final isPendingMerchantReview = status == 'pending_merchant_review';
+          final isAcceptedOrder = status == 'accepted';
+          final isDelivery =
+              (order['fulfillmentType'] ?? '').toString().toLowerCase() ==
+                      'delivery' ||
+                  (order['deliveryAddress'] ?? '').toString().isNotEmpty ||
+                  (order['deliveryInfo'] ?? '').toString().isNotEmpty;
+          final driver = (order['driver'] is Map)
+              ? Map<String, dynamic>.from(order['driver'] as Map)
+              : <String, dynamic>{};
+          final hasDriver =
+              (driver['name'] ?? '').toString().isNotEmpty ||
+                  (driver['phone'] ?? '').toString().isNotEmpty ||
+                  (driver['id'] ?? '').toString().isNotEmpty;
+          final showAcceptReject =
+              isPendingMerchantReview && !isCancelled && !isRejected;
+          final showAssignDriver =
+              isAcceptedOrder && isDelivery && !hasDriver && !isTerminal;
           final showMarkCollected = !isCollected &&
-              !(methodForLogic == 'cash' && !isPaid) &&
+              !isPendingMerchantReview &&
+              !((methodForLogic == 'cash' ||
+                      methodForLogic == 'transfer' ||
+                      methodForLogic == 'eft') &&
+                  !isPaid) &&
               !(isCancelled || isRejected);
 
           final createdAt = createdAtDt != null
               ? DateFormat('dd MMM yyyy · HH:mm').format(createdAtDt)
               : '—';
-          final isTerminal = isCancelled || isRejected;
-          final canMarkCash =
-              (methodForLogic == 'cash') && !isPaid && !isTerminal;
+          final canMarkCash = (methodForLogic == 'cash' ||
+                  methodForLogic == 'transfer' ||
+                  methodForLogic == 'eft') &&
+              !isPaid &&
+              !isTerminal &&
+              !isPendingMerchantReview;
 
           final subtotal = OrderRepository.asNum(order['subtotal']);
           final delivery = OrderRepository.asNum(order['deliveryFee']);
           final discount = OrderRepository.asNum(order['discount']);
           final total = OrderRepository.asNum(order['total']);
           final List items = (order['items'] as List?) ?? const [];
+          final reviewRows = <MapEntry<String, String>>[
+            if ((order['fulfillmentType'] ?? '').toString().isNotEmpty)
+              MapEntry('Fulfillment', order['fulfillmentType'].toString()),
+            if ((order['requestedFulfillmentTime'] ?? '').toString().isNotEmpty)
+              MapEntry('Requested time',
+                  order['requestedFulfillmentTime'].toString()),
+            if ((order['deliveryAddress'] ?? '').toString().isNotEmpty)
+              MapEntry('Delivery address', order['deliveryAddress'].toString()),
+            if ((order['deliveryInfo'] ?? '').toString().isNotEmpty)
+              MapEntry('Delivery note', order['deliveryInfo'].toString()),
+            if (order['cashChangeFor'] != null)
+              MapEntry('Cash change for', 'R${order['cashChangeFor']}'),
+            if ((order['customerNote'] ?? '').toString().isNotEmpty)
+              MapEntry('Customer note', order['customerNote'].toString()),
+            if (hasDriver)
+              MapEntry(
+                'Driver',
+                [
+                  if ((driver['name'] ?? '').toString().isNotEmpty)
+                    driver['name'].toString(),
+                  if ((driver['phone'] ?? '').toString().isNotEmpty)
+                    driver['phone'].toString(),
+                ].join(' · '),
+              ),
+          ];
 
           // Fire BnplOfferShown once when the merchant first sees a pending
           // BNPL request. We defer to the next frame because we cannot fire
@@ -382,6 +512,30 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 isBnplApproved: isBnplApproved,
                 isCancelled: isCancelled,
                 isRejected: isRejected,
+                onAcceptOrder: () => _callPayment('ACCEPT_ORDER', order),
+                onRejectOrder: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Reject order?'),
+                      content: const Text(
+                        'This will reject the WhatsApp order request.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Keep'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Reject'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true) _callPayment('REJECT_ORDER', order);
+                },
+                onAssignDriver: () => _assignDriver(order),
                 onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
                 onRejectBnpl: () async {
                   final ok = await showDialog<bool>(
@@ -432,6 +586,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 },
                 showMarkCollected: showMarkCollected,
                 showMarkCash: canMarkCash,
+                showAcceptReject: showAcceptReject,
+                showAssignDriver: showAssignDriver,
                 busy: _actionLoading,
                 busyAction: _busyAction,
                 showEmptyMessage: false,
@@ -514,6 +670,19 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                             height:
                                                 SizeConfig.heightMultiplier * 2,
                                           ),
+                                          if (reviewRows.isNotEmpty) ...[
+                                            Section(
+                                              title: 'WhatsApp order',
+                                              child: _ReviewDetailsCard(
+                                                rows: reviewRows,
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              height:
+                                                  SizeConfig.heightMultiplier *
+                                                      2,
+                                            ),
+                                          ],
                                           Section(
                                             title: 'Amounts',
                                             child: AmountsCard(
@@ -562,6 +731,44 @@ class _OrderDetailPageState extends State<OrderDetailPage>
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _ReviewDetailsCard extends StatelessWidget {
+  const _ReviewDetailsCard({required this.rows});
+
+  final List<MapEntry<String, String>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rows
+              .map(
+                (row) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        row.key,
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(row.value),
+                    ],
+                  ),
+                ),
+              )
+              .toList(),
+        ),
       ),
     );
   }

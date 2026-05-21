@@ -55,6 +55,12 @@ class OrderStatusMessagingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const Map<String, String> _messageTemplates = {
+    'ACCEPT_ORDER':
+        'Order status update: your order {{1}} is now being prepared. Total due: {{2}}. {{3}}. Reply here if you need help.',
+    'REJECT_ORDER':
+        'Order update: the shop could not accept your order. Reference: {{1}}. Reason: {{2}}. Reply here and the shop can help adjust it.',
+    'ASSIGN_DRIVER':
+        'Delivery update: a driver has been assigned to your order. Reference: {{1}}. Driver: {{2}}. Phone: {{3}}. Please keep your phone nearby.',
     'ACCEPT_BNPL':
         'BNPL approved 🎉\nHi {{customerName}}, your Pay Later request for order {{orderId}} is approved.\nTotal: {{amount}} · Items: {{itemsCount}}\nCollect at: {{pickupLocation}}. We’ll remind you until it’s settled.\nNeed help? {{support}}',
     'REJECT_BNPL':
@@ -80,6 +86,9 @@ class OrderStatusMessagingService {
     final pricing = await DynamicPricingService.initialize();
     return OrderStatusMessagingService._(
       {
+        'ACCEPT_ORDER': rc.getString('TWILIO_ACCEPT_ORDER_TID'),
+        'REJECT_ORDER': rc.getString('TWILIO_REJECT_ORDER_TID'),
+        'ASSIGN_DRIVER': rc.getString('TWILIO_ASSIGN_DRIVER_TID'),
         'ACCEPT_BNPL': rc.getString('TWILIO_ACCEPT_BNPL_TID'),
         'REJECT_BNPL': rc.getString('TWILIO_REJECT_BNPL_TID'),
         'MARK_CASH_RECEIVED': rc.getString('TWILIO_MARK_CASH_RECEIVED_TID'),
@@ -101,6 +110,9 @@ class OrderStatusMessagingService {
     String? amount,
     String? itemsCount,
     String? pickupLocation,
+    String? driverName,
+    String? driverPhone,
+    String? rejectionReason,
     String? support,
   }) async {
     final templateSid = _templateIds[action];
@@ -128,13 +140,17 @@ class OrderStatusMessagingService {
       );
     }
 
-    final variables = <String, dynamic>{
-      'customerName': customerName,
-      'orderId': orderId,
-    };
-    if (amount != null) variables['amount'] = amount;
-    if (itemsCount != null) variables['itemsCount'] = itemsCount;
-    if (pickupLocation != null) variables['pickupLocation'] = pickupLocation;
+    final variables = _variablesForAction(
+      action: action,
+      customerName: customerName,
+      orderId: orderId,
+      amount: amount,
+      itemsCount: itemsCount,
+      pickupLocation: pickupLocation,
+      driverName: driverName,
+      driverPhone: driverPhone,
+      rejectionReason: rejectionReason,
+    );
     if (support != null) {
       variables['support'] = support;
     } else if (_supportNumber.isNotEmpty) {
@@ -300,6 +316,47 @@ class OrderStatusMessagingService {
       message = message.replaceAll('{{$key}}', value?.toString() ?? '');
     });
     return message;
+  }
+
+  Map<String, dynamic> _variablesForAction({
+    required String action,
+    required String customerName,
+    required String orderId,
+    String? amount,
+    String? itemsCount,
+    String? pickupLocation,
+    String? driverName,
+    String? driverPhone,
+    String? rejectionReason,
+  }) {
+    if (action == 'ACCEPT_ORDER') {
+      return {
+        '1': orderId,
+        '2': amount ?? 'the order total',
+        '3': pickupLocation ?? 'The shop will confirm collection or delivery.',
+      };
+    }
+    if (action == 'REJECT_ORDER') {
+      return {
+        '1': orderId,
+        '2': rejectionReason ?? 'Unavailable right now',
+      };
+    }
+    if (action == 'ASSIGN_DRIVER') {
+      return {
+        '1': orderId,
+        '2': (driverName ?? '').isNotEmpty ? driverName : 'the shop driver',
+        '3': (driverPhone ?? '').isNotEmpty ? driverPhone : 'the shop',
+      };
+    }
+    final variables = <String, dynamic>{
+      'customerName': customerName,
+      'orderId': orderId,
+    };
+    if (amount != null) variables['amount'] = amount;
+    if (itemsCount != null) variables['itemsCount'] = itemsCount;
+    if (pickupLocation != null) variables['pickupLocation'] = pickupLocation;
+    return variables;
   }
 
   Future<void> _storeNotification({
