@@ -1,16 +1,57 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
+import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart';
 import 'package:provider/provider.dart';
 
-class Dashboard extends StatelessWidget {
+class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
 
   static const id = '/dashboard';
+
+  @override
+  State<Dashboard> createState() => _DashboardState();
+}
+
+class _DashboardState extends State<Dashboard> {
+  bool _introScheduled = false;
+
+  Future<void> _showOnboardingIntroIfNeeded(String userId) async {
+    if (_introScheduled || userId.isEmpty) return;
+    _introScheduled = true;
+
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    final box = Hive.box('appBox');
+    final seenKey = 'merchant_onboarding_intro_seen:$userId';
+    final seen = box.get(seenKey, defaultValue: false) as bool;
+    if (seen) return;
+
+    await box.put(seenKey, true);
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder:
+          (_) => MerchantOnboardingIntro(
+            onOpenProducts: () {
+              if (!mounted) return;
+              context.read<AppModel>().updateCurrentIndex(1);
+            },
+          ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +103,9 @@ class Dashboard extends StatelessWidget {
 
         return Consumer<AppModel>(
           builder: (context, value, child) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _showOnboardingIntroIfNeeded(userId);
+            });
             // PAS-UI-01: the OnboardingChecklist that previously mounted
             // here (per PAS-UX-09) has been removed from the visible
             // dashboard chrome. Merchant feedback was that it consumed
