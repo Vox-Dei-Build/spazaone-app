@@ -4,6 +4,8 @@ import { db, functions } from "../config/main";
 const OPEN_STATUSES = new Set([
   "pending_payment", // Online waiting for payment
   "awaiting_collection", // Cash (not yet collected)
+  "pending_merchant_review", // WhatsApp order request waiting for merchant
+  "accepted", // Merchant accepted; payment/collection still outstanding
   "pending_review", // BNPL
   "bnpl_outstanding", // BNPL approved but unpaid
 ]);

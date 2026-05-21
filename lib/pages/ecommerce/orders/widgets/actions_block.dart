@@ -15,8 +15,13 @@ class ActionsBlock extends StatelessWidget {
     required this.onSettleBnpl,
     required this.onMarkCollected,
     required this.onCancelOrder,
+    this.onAcceptOrder,
+    this.onRejectOrder,
+    this.onAssignDriver,
     required this.showMarkCollected,
     this.showMarkCash,
+    this.showAcceptReject = false,
+    this.showAssignDriver = false,
     this.busy = false,
     this.busyAction,
     this.showEmptyMessage = true,
@@ -35,8 +40,13 @@ class ActionsBlock extends StatelessWidget {
   final VoidCallback onSettleBnpl;
   final VoidCallback onMarkCollected;
   final VoidCallback onCancelOrder;
+  final VoidCallback? onAcceptOrder;
+  final VoidCallback? onRejectOrder;
+  final VoidCallback? onAssignDriver;
   final bool showMarkCollected;
   final bool? showMarkCash;
+  final bool showAcceptReject;
+  final bool showAssignDriver;
   final bool busy;
   final String? busyAction;
 
@@ -49,6 +59,32 @@ class ActionsBlock extends StatelessWidget {
 
     void addGap() {
       if (buttons.isNotEmpty) buttons.add(const SizedBox(height: 8));
+    }
+
+    if (showAcceptReject) {
+      buttons.add(_ActionBtn(
+        label: 'Accept Order',
+        icon: Icons.check_circle_outline,
+        onTap: onAcceptOrder ?? () {},
+        busy: busy && busyAction == 'ACCEPT_ORDER',
+      ));
+      addGap();
+      buttons.add(_ActionBtn(
+        label: 'Reject Order',
+        icon: Icons.cancel_outlined,
+        onTap: onRejectOrder ?? () {},
+        busy: busy && busyAction == 'REJECT_ORDER',
+      ));
+    }
+
+    if (showAssignDriver) {
+      addGap();
+      buttons.add(_ActionBtn(
+        label: 'Assign Driver',
+        icon: Icons.local_shipping_outlined,
+        onTap: onAssignDriver ?? () {},
+        busy: busy && busyAction == 'ASSIGN_DRIVER',
+      ));
     }
 
     if (!isPaid && isBnpl && !isBnplApproved) {
@@ -77,12 +113,13 @@ class ActionsBlock extends StatelessWidget {
       ));
     }
 
-    final canShowCash =
-        (showMarkCash ?? true) && !isPaid && payMethod == 'cash';
+    final canShowCash = (showMarkCash ?? true) &&
+        !isPaid &&
+        (payMethod == 'cash' || payMethod == 'transfer' || payMethod == 'eft');
     if (canShowCash) {
       addGap();
       buttons.add(_ActionBtn(
-        label: 'Mark Cash Received',
+        label: payMethod == 'cash' ? 'Mark Cash Received' : 'Mark Payment Received',
         icon: Icons.payments_outlined,
         onTap: onMarkCash,
         busy: busy && busyAction == 'MARK_CASH_RECEIVED',

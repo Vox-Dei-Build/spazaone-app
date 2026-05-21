@@ -172,7 +172,10 @@ export const onSaleCreatedNotify = functions.firestore
       return;
     }
 
-    const title = "New order placed 🛒";
+    const isOrderRequest = sale.orderRequest === true;
+    const title = isOrderRequest
+      ? "New WhatsApp order request"
+      : "New order placed 🛒";
     const amountString =
       typeof orderTotal === "number"
         ? `${currency} ${orderTotal.toFixed(2)}`
@@ -196,6 +199,7 @@ export const onSaleCreatedNotify = functions.firestore
       eventType: "ORDER_PLACED",
       orderId: saleId,
       merchantId,
+      orderRequest: isOrderRequest ? "true" : "false",
       paymentMethod: paymentMethod || "",
       orderTotal: typeof orderTotal === "number" ? String(orderTotal) : "",
       currency,
