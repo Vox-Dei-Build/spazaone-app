@@ -8,6 +8,7 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
@@ -310,6 +311,15 @@ class AddCreditViewModel extends TransactionViewModel {
           isCredit: true,
           customerIsExisting: true,
         ),
+      );
+
+      // PAS-GROWTH: BNPL sale completed -- another genuine value moment.
+      // ReviewPromptService internally throttles, so even a merchant who
+      // hits both this and the cash-sale trigger in the same week will see
+      // at most one OS prompt every 90 days. Fire-and-forget.
+      // ignore: unawaited_futures
+      ReviewPromptService.instance.maybePrompt(
+        ReviewTrigger.saleCompletedCredit,
       );
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
