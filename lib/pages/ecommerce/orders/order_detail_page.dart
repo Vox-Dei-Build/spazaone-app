@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/actions_block.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/actions_dock.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/amounts_card.dart';
@@ -183,16 +185,34 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         : parts.join(', ');
   }
 
-  Future<void> _assignDriver(Map<String, dynamic> order) async {
-    final nameController = TextEditingController();
-    final phoneController = TextEditingController();
+  Future<void> _assignDriver(
+    Map<String, dynamic> order, {
+    bool reassign = false,
+  }) async {
+    final driver = (order['driver'] is Map)
+        ? Map<String, dynamic>.from(order['driver'] as Map)
+        : <String, dynamic>{};
+    final nameController = TextEditingController(
+      text: reassign ? (driver['name'] ?? '').toString() : '',
+    );
+    final phoneController = TextEditingController(
+      text: reassign ? (driver['phone'] ?? '').toString() : '',
+    );
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Assign driver'),
+        title: Text(reassign ? 'Reassign driver' : 'Assign driver'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (reassign)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Update the name or phone to switch driver. The customer '
+                  'will get a fresh driver-assigned message.',
+                ),
+              ),
             TextField(
               controller: nameController,
               decoration: const InputDecoration(labelText: 'Driver name'),
@@ -215,7 +235,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               'driverName': nameController.text.trim(),
               'driverPhone': phoneController.text.trim(),
             }),
-            child: const Text('Assign'),
+            child: Text(reassign ? 'Reassign' : 'Assign'),
           ),
         ],
       ),
@@ -232,6 +252,142 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       return;
     }
     await _callPayment('ASSIGN_DRIVER', order, extraData: result);
+  }
+
+  Future<void> _confirmUnassignDriver(Map<String, dynamic> order) async {
+    final driver = (order['driver'] is Map)
+        ? Map<String, dynamic>.from(order['driver'] as Map)
+        : <String, dynamic>{};
+    final name = (driver['name'] ?? '').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Unassign driver?'),
+        content: Text(
+          name.isEmpty
+              ? 'This clears the driver from this order so you can assign '
+                  'a different one. The customer is not notified.'
+              : 'This removes $name from this order so you can assign a '
+                  'different driver. The customer is not notified.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Unassign'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _callPayment('UNASSIGN_DRIVER', order);
+    }
+  }
+
+  Future<void> _confirmMarkOutForDelivery(Map<String, dynamic> order) async {
+    final driver = (order['driver'] is Map)
+        ? Map<String, dynamic>.from(order['driver'] as Map)
+        : <String, dynamic>{};
+    final name = (driver['name'] ?? '').toString();
+    final phone = (driver['phone'] ?? '').toString();
+    final summary = [
+      if (name.isNotEmpty) name,
+      if (phone.isNotEmpty) phone,
+    ].join(' · ');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Mark out for delivery?'),
+        content: Text(
+          summary.isEmpty
+              ? 'The customer will be told the order is on its way.'
+              : 'Driver $summary is leaving the shop. The customer will be '
+                  'told the order is on its way.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not yet'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('On the way'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _callPayment('MARK_OUT_FOR_DELIVERY', order);
+    }
+  }
+
+  Future<void> _confirmMarkDelivered(Map<String, dynamic> order) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Mark delivered?'),
+        content: const Text(
+          'This finalises the order. Stock will be deducted and the customer '
+          'will receive a delivered confirmation.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Mark Delivered'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _callPayment('MARK_DELIVERED', order);
+    }
+  }
+
+  Future<void> _launchExternal(Uri uri, String fallbackLabel) async {
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open $fallbackLabel.')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open $fallbackLabel.')),
+      );
+    }
+  }
+
+  Future<void> _callDriver(String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.isEmpty) return;
+    await _launchExternal(Uri.parse('tel:$cleaned'), 'phone dialer');
+  }
+
+  Future<void> _whatsAppDriver(String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.isEmpty) return;
+    final waNumber = cleaned.startsWith('+') ? cleaned.substring(1) : cleaned;
+    await _launchExternal(
+      Uri.parse('https://wa.me/$waNumber'),
+      'WhatsApp',
+    );
+  }
+
+  Future<void> _copyDriverPhone(String phone) async {
+    await Clipboard.setData(ClipboardData(text: phone));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Driver phone copied.')),
+    );
   }
 
   /// Builds the final snackbar shown after the customer-notification
@@ -359,6 +515,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           final isTerminal = isCancelled || isRejected;
           final isPendingMerchantReview = status == 'pending_merchant_review';
           final isAcceptedOrder = status == 'accepted';
+          final isOutForDelivery = status == 'out_for_delivery';
+          final isDelivered = status == 'delivered';
           final isDelivery =
               (order['fulfillmentType'] ?? '').toString().toLowerCase() ==
                       'delivery' ||
@@ -373,10 +531,37 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                   (driver['id'] ?? '').toString().isNotEmpty;
           final showAcceptReject =
               isPendingMerchantReview && !isCancelled && !isRejected;
+          // Driver-allocation lifecycle:
+          //  * Assign     — first allocation while order is queued for dispatch
+          //  * Reassign   — same UI as assign, prefilled with current driver
+          //  * Unassign   — corrective: clears the driver, walks back from
+          //                 out_for_delivery to accepted on the server
+          //  * OutForDelivery — driver has departed; only valid once a driver
+          //                 is attached and the order isn't already delivered
+          //  * Delivered  — terminal for delivery orders (parallel to
+          //                 MARK_COLLECTED for pickup orders)
+          final isInDriverAllocationWindow =
+              (isAcceptedOrder || isOutForDelivery) && !isTerminal;
           final showAssignDriver =
               isAcceptedOrder && isDelivery && !hasDriver && !isTerminal;
+          final showReassignDriver =
+              isInDriverAllocationWindow && isDelivery && hasDriver;
+          final showUnassignDriver =
+              isInDriverAllocationWindow && isDelivery && hasDriver;
+          final showMarkOutForDelivery = isAcceptedOrder &&
+              isDelivery &&
+              hasDriver &&
+              !isTerminal;
+          final showMarkDelivered =
+              isOutForDelivery && isDelivery && !isDelivered && !isTerminal;
+          // The legacy "Mark Collected" button stays for non-delivery
+          // orders. We deliberately suppress it for delivery orders so
+          // the merchant follows the explicit out-for-delivery → delivered
+          // flow instead of skipping straight to "collected" — which
+          // would mute the on-the-way customer ping.
           final showMarkCollected = !isCollected &&
               !isPendingMerchantReview &&
+              !isDelivery &&
               !((methodForLogic == 'cash' ||
                       methodForLogic == 'transfer' ||
                       methodForLogic == 'eft') &&
@@ -412,16 +597,6 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               MapEntry('Cash change for', 'R${order['cashChangeFor']}'),
             if ((order['customerNote'] ?? '').toString().isNotEmpty)
               MapEntry('Customer note', order['customerNote'].toString()),
-            if (hasDriver)
-              MapEntry(
-                'Driver',
-                [
-                  if ((driver['name'] ?? '').toString().isNotEmpty)
-                    driver['name'].toString(),
-                  if ((driver['phone'] ?? '').toString().isNotEmpty)
-                    driver['phone'].toString(),
-                ].join(' · '),
-              ),
           ];
 
           // Fire BnplOfferShown once when the merchant first sees a pending
@@ -459,7 +634,11 @@ class _OrderDetailPageState extends State<OrderDetailPage>
             type: orderType,
           );
 
-          final pill = buildCollectionPill(isCollected: isCollected == true);
+          final pill = buildCollectionPill(
+            isCollected: isCollected == true || isDelivered,
+            isDelivery: isDelivery,
+            isOutForDelivery: isOutForDelivery,
+          );
 
           // PAS-AI-02: WhatsApp delivery state read off the order doc.
           final lastMessage = (order['lastMessage'] is Map)
@@ -536,6 +715,12 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                   if (ok == true) _callPayment('REJECT_ORDER', order);
                 },
                 onAssignDriver: () => _assignDriver(order),
+                onReassignDriver: () =>
+                    _assignDriver(order, reassign: true),
+                onUnassignDriver: () => _confirmUnassignDriver(order),
+                onMarkOutForDelivery: () =>
+                    _confirmMarkOutForDelivery(order),
+                onMarkDelivered: () => _confirmMarkDelivered(order),
                 onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
                 onRejectBnpl: () async {
                   final ok = await showDialog<bool>(
@@ -588,6 +773,11 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 showMarkCash: canMarkCash,
                 showAcceptReject: showAcceptReject,
                 showAssignDriver: showAssignDriver,
+                showReassignDriver: showReassignDriver,
+                showUnassignDriver: showUnassignDriver,
+                showMarkOutForDelivery: showMarkOutForDelivery,
+                showMarkDelivered: showMarkDelivered,
+                isDelivery: isDelivery,
                 busy: _actionLoading,
                 busyAction: _busyAction,
                 showEmptyMessage: false,
@@ -670,6 +860,26 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                             height:
                                                 SizeConfig.heightMultiplier * 2,
                                           ),
+                                          if (isDelivery) ...[
+                                            Section(
+                                              title: 'Delivery',
+                                              child: _DriverCard(
+                                                hasDriver: hasDriver,
+                                                driver: driver,
+                                                isOutForDelivery:
+                                                    isOutForDelivery,
+                                                isDelivered: isDelivered,
+                                                onCall: _callDriver,
+                                                onWhatsApp: _whatsAppDriver,
+                                                onCopy: _copyDriverPhone,
+                                              ),
+                                            ),
+                                            SizedBox(
+                                              height:
+                                                  SizeConfig.heightMultiplier *
+                                                      2,
+                                            ),
+                                          ],
                                           if (reviewRows.isNotEmpty) ...[
                                             Section(
                                               title: 'WhatsApp order',
@@ -768,6 +978,202 @@ class _ReviewDetailsCard extends StatelessWidget {
                 ),
               )
               .toList(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact delivery panel for the order detail page. Renders one of:
+///   * "No driver yet" placeholder so the merchant always knows the
+///     dispatch state of a delivery order
+///   * The currently assigned driver, with tap-to-call / WhatsApp /
+///     copy affordances and a fulfillment-stage chip
+///
+/// Lifted out of the inline review-rows so the driver row gets actual
+/// real-estate (icons, status chip) and so a missing driver is visible
+/// even when the order has no other WhatsApp metadata to display.
+class _DriverCard extends StatelessWidget {
+  const _DriverCard({
+    required this.hasDriver,
+    required this.driver,
+    required this.isOutForDelivery,
+    required this.isDelivered,
+    required this.onCall,
+    required this.onWhatsApp,
+    required this.onCopy,
+  });
+
+  final bool hasDriver;
+  final Map<String, dynamic> driver;
+  final bool isOutForDelivery;
+  final bool isDelivered;
+  final ValueChanged<String> onCall;
+  final ValueChanged<String> onWhatsApp;
+  final ValueChanged<String> onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final name = (driver['name'] ?? '').toString();
+    final phone = (driver['phone'] ?? '').toString();
+
+    final stageChip = _stageChip(theme);
+
+    if (!hasDriver) {
+      return Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(
+                Icons.local_shipping_outlined,
+                color: theme.colorScheme.outline,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'No driver yet',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Use Assign Driver below to dispatch this delivery.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (stageChip != null) ...[
+                const SizedBox(width: 8),
+                stageChip,
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.person_outline,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.isEmpty ? 'Driver' : name,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      if (phone.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(phone, style: theme.textTheme.bodyMedium),
+                      ],
+                    ],
+                  ),
+                ),
+                if (stageChip != null) stageChip,
+              ],
+            ),
+            if (phone.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => onCall(phone),
+                    icon: const Icon(Icons.call_outlined, size: 18),
+                    label: const Text('Call'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => onWhatsApp(phone),
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('WhatsApp'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => onCopy(phone),
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    label: const Text('Copy'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget? _stageChip(ThemeData theme) {
+    if (isDelivered) {
+      return _Chip(
+        label: 'Delivered',
+        color: Colors.teal,
+        theme: theme,
+      );
+    }
+    if (isOutForDelivery) {
+      return _Chip(
+        label: 'On the way',
+        color: Colors.blue,
+        theme: theme,
+      );
+    }
+    if (hasDriver) {
+      return _Chip(
+        label: 'Awaiting dispatch',
+        color: Colors.orange,
+        theme: theme,
+      );
+    }
+    return null;
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.label,
+    required this.color,
+    required this.theme,
+  });
+  final String label;
+  final Color color;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
