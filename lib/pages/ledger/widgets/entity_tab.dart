@@ -8,6 +8,7 @@ import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/transactions/transaction_model.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
+import 'package:pasella/services/whatsapp_capability_cache.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
@@ -331,6 +332,22 @@ class _EntityTabState extends State<EntityTab> {
               widget.hasCustomersNotifier.value = allEntities.isNotEmpty;
             });
 
+            // PAS-WA-V1: prime the WhatsApp-capability cache for any
+            // numbers we haven't looked up yet. Bulk-loads via chunked
+            // `whereIn`, so the per-row Firestore cost stays at zero
+            // even on a 200-customer ledger. Already-known numbers are
+            // skipped inside the cache, making this safe to call on
+            // every stream tick.
+            final numbers = allEntities
+                .map((e) => e.customer.number)
+                .whereType<String>()
+                .where((n) => n.isNotEmpty)
+                .toSet();
+            if (numbers.isNotEmpty) {
+              // ignore: unawaited_futures
+              WhatsAppCapabilityCache.instance.primeFor(numbers);
+            }
+
             List<CustomerWithTransactions> filteredEntities = dataModel
                 .applyFilters(allEntities);
 
@@ -367,53 +384,62 @@ class _EntityTabState extends State<EntityTab> {
               );
             }
 
-            return SingleChildScrollView(
-              child: Column(
-                children:
-                    filteredEntities.map((entityWithTransactions) {
-                      LedgerTransaction? lastTransaction;
-                      double balance = entityWithTransactions.customer.balance;
+            // PAS-WA-V1: rebuild only the list when capability data
+            // arrives — the rest of the surface (filters, empty state,
+            // etc.) is already settled by this point.
+            return AnimatedBuilder(
+              animation: WhatsAppCapabilityCache.instance,
+              builder: (context, _) {
+                return SingleChildScrollView(
+                  child: Column(
+                    children:
+                        filteredEntities.map((entityWithTransactions) {
+                          LedgerTransaction? lastTransaction;
+                          double balance =
+                              entityWithTransactions.customer.balance;
 
-                      if (entityWithTransactions.customer.lastTransaction !=
-                              null &&
-                          entityWithTransactions
-                              .customer
-                              .lastTransaction!
-                              .isNotEmpty) {
-                        lastTransaction = LedgerTransaction.fromMap(
-                          entityWithTransactions.customer.lastTransaction!,
-                        );
-                      }
+                          if (entityWithTransactions
+                                      .customer.lastTransaction !=
+                                  null &&
+                              entityWithTransactions
+                                  .customer
+                                  .lastTransaction!
+                                  .isNotEmpty) {
+                            lastTransaction = LedgerTransaction.fromMap(
+                              entityWithTransactions.customer.lastTransaction!,
+                            );
+                          }
 
-                      return TransactionTile(
-                        color: kTertiaryColor.value,
-                        name: entityWithTransactions.customer.name,
-                        profileImageUrl:
-                            entityWithTransactions
-                                .customer
-                                .profileImageUrl, // Pass profile image URL
-                        balance: balance,
-                        amount:
-                            lastTransaction != null
+                          return TransactionTile(
+                            color: kTertiaryColor.value,
+                            name: entityWithTransactions.customer.name,
+                            profileImageUrl: entityWithTransactions
+                                .customer.profileImageUrl,
+                            balance: balance,
+                            amount: lastTransaction != null
                                 ? lastTransaction.amount.toDouble()
                                 : 0,
-                        remarks:
-                            lastTransaction?.remarks ?? 'No transactions yet',
-                        status: lastTransaction?.status ?? 'DUE',
-                        type: lastTransaction?.type ?? 'Credit',
-                        date:
-                            lastTransaction?.date != null
-                                ? DateFormat(
-                                  'y MMM d, h:mm a',
-                                ).format(lastTransaction!.date)
+                            remarks: lastTransaction?.remarks ??
+                                'No transactions yet',
+                            status: lastTransaction?.status ?? 'DUE',
+                            type: lastTransaction?.type ?? 'Credit',
+                            date: lastTransaction?.date != null
+                                ? DateFormat('y MMM d, h:mm a')
+                                    .format(lastTransaction!.date)
                                 : '',
-                        selectedCustomerId: entityWithTransactions.customer.id,
-                        isNPA: entityWithTransactions.customer.isNPA,
-                        number: entityWithTransactions.customer.number,
-                        unreadCount: entityWithTransactions.unreadCount,
-                      );
-                    }).toList(),
-              ),
+                            selectedCustomerId:
+                                entityWithTransactions.customer.id,
+                            isNPA: entityWithTransactions.customer.isNPA,
+                            number: entityWithTransactions.customer.number,
+                            unreadCount: entityWithTransactions.unreadCount,
+                            hasWhatsApp: WhatsAppCapabilityCache.instance
+                                .capabilityFor(
+                                    entityWithTransactions.customer.number),
+                          );
+                        }).toList(),
+                  ),
+                );
+              },
             );
           },
         ),

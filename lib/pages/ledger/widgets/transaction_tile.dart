@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
+import 'package:pasella/shared/widgets/channel_capability_badge.dart';
 import 'package:pasella/shared/widgets/payment_status_pill.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -23,6 +24,7 @@ class TransactionTile extends StatelessWidget {
     this.number,
     this.profileImageUrl, // Add profileImageUrl
     required this.unreadCount,
+    this.hasWhatsApp,
   });
 
   final int color;
@@ -38,6 +40,11 @@ class TransactionTile extends StatelessWidget {
   final String? number;
   final String? profileImageUrl; // Add profileImageUrl
   final int? unreadCount;
+
+  /// PAS-WA-V1: tri-state channel capability used to render the
+  /// WhatsApp/SMS badge. `null` means "not known yet" — the badge
+  /// shows a neutral phone glyph rather than guessing.
+  final bool? hasWhatsApp;
 
   @override
   Widget build(BuildContext context) {
@@ -164,47 +171,70 @@ class TransactionTile extends StatelessWidget {
   }
 
   Widget _buildSubtitle() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Text.rich(
-            TextSpan(
-              style: TextStyle(
-                color: status == 'PAID' ? kPrimaryColor : Colors.red,
-                fontWeight: FontWeight.w500,
-                fontSize: SizeConfig.textMultiplier * 1.5,
+        Row(
+          children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    color: status == 'PAID' ? kPrimaryColor : Colors.red,
+                    fontWeight: FontWeight.w500,
+                    fontSize: SizeConfig.textMultiplier * 1.5,
+                  ),
+                  children: [
+                    TextSpan(text: CurrencyUtil.format(amount)),
+                    TextSpan(
+                      text: type.isNotEmpty ? ' $type added on ' : ' ',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    TextSpan(
+                      text: date,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              children: [
-                TextSpan(text: CurrencyUtil.format(amount)),
-                TextSpan(
-                  text: type.isNotEmpty ? ' $type added on ' : ' ',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                TextSpan(
-                  text: date,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              ],
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+            SizedBox(width: SizeConfig.heightMultiplier * 2),
+            Text(
+              remarks,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: SizeConfig.textMultiplier * 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
-        SizedBox(width: SizeConfig.heightMultiplier * 2),
-        Text(
-          remarks,
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: SizeConfig.textMultiplier * 1.4,
-            fontWeight: FontWeight.w500,
+        // PAS-WA-V1: at-a-glance channel reachability. Sits on its own
+        // line so the existing transaction summary keeps its full row;
+        // the badge is small (icon + one word) so the tile stays
+        // mobile-readable. Hidden entirely when there is no number AND
+        // we have nothing meaningful to show — but we DO surface the
+        // explicit "No phone" state because it's the single most
+        // actionable thing for a merchant trying to chase a balance.
+        Padding(
+          padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 0.4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ChannelCapabilityBadge(
+              hasNumber: number != null && number!.isNotEmpty,
+              hasWhatsApp: hasWhatsApp,
+            ),
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
