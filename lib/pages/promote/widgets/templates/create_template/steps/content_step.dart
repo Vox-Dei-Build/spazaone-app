@@ -86,8 +86,14 @@ class ContentStep extends StatelessWidget {
         const SizedBox(height: 8),
         const Text('Kind regards,',
             style: TextStyle(fontStyle: FontStyle.italic)),
-        Text('The $shopName team',
-            style: const TextStyle(fontStyle: FontStyle.italic)),
+        // PAS-UX-09 follow-up: shopName may be blank for legacy merchants;
+        // avoid rendering "The  team" in the preview.
+        Text(
+          shopName.trim().isEmpty
+              ? 'The Pasella team'
+              : 'The ${shopName.trim()} team',
+          style: const TextStyle(fontStyle: FontStyle.italic),
+        ),
         Divider(
           color: Colors.grey,
           thickness: SizeConfig.heightMultiplier * 0,

@@ -7,6 +7,8 @@ export 'pages/settings/help/help.dart';
 export 'pages/settings/share/share.dart';
 export 'pages/settings/backup/backup.dart';
 export 'pages/profile/profile.dart';
+export 'pages/profile/business_name_page.dart';
+export 'pages/profile/business_name_gate.dart';
 export 'pages/settings/account/account.dart';
 export 'pages/settings/security/security.dart';
 export 'pages/settings/language/language.dart';
