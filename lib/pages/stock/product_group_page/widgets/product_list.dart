@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
+import 'package:pasella/pages/promote/promotions_page.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
+import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
+import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
+import 'package:pasella/shared/widgets/onboarding/whatsapp_store_readiness_card.dart';
+import 'package:provider/provider.dart';
 
 class ProductList extends StatelessWidget {
   final StockViewModel viewModel;
@@ -30,14 +37,10 @@ class ProductList extends StatelessWidget {
       stream: viewModel.streamProductsByGroup(groupName),
       builder: (BuildContext context, AsyncSnapshot<List<Product>> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-            child: Text('Error: ${snapshot.error}'),
-          );
+          return Center(child: Text('Error: ${snapshot.error}'));
         }
         final products = snapshot.data ?? [];
         if (products.isEmpty) {
@@ -52,8 +55,7 @@ class ProductList extends StatelessWidget {
           // don't pass handlers and keep the bare placeholder, since
           // an empty group is a different signal than an empty
           // catalogue.
-          final showOnboarding =
-              groupName == null && onAddProduct != null;
+          final showOnboarding = groupName == null && onAddProduct != null;
           return Center(
             child: Padding(
               padding: EdgeInsets.symmetric(
@@ -82,8 +84,9 @@ class ProductList extends StatelessWidget {
                   if (showOnboarding) ...[
                     SizedBox(height: SizeConfig.heightMultiplier * 1),
                     Text(
-                      'Add products so you can record sales, '
-                      'track stock and run promotions.',
+                      'Add products so you can record sales, choose what '
+                      'appears in WhatsApp ordering, and keep internal-only '
+                      'items off the store.',
                       style: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.6,
                         color: Colors.grey[700],
@@ -116,23 +119,68 @@ class ProductList extends StatelessWidget {
             ),
           );
         }
-        return Padding(
-          padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
-          child: GridView.builder(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.7,
-              mainAxisSpacing: SizeConfig.heightMultiplier * 1.5,
-              crossAxisSpacing: SizeConfig.imageSizeMultiplier * 2,
+        final showStoreReadiness = groupName == null && onAddProduct != null;
+
+        return CustomScrollView(
+          slivers: [
+            if (showStoreReadiness)
+              SliverToBoxAdapter(
+                child: WhatsAppStoreReadinessCard(
+                  userId: viewModel.userId,
+                  products: products,
+                  onAddProduct: onAddProduct!,
+                  onChooseWhatsAppProduct: () {
+                    final firstProduct = products.first;
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder:
+                            (_) => ProductDetailsPage(
+                              docID: firstProduct.id!,
+                              product: firstProduct,
+                            ),
+                      ),
+                    );
+                  },
+                  onOpenCustomers: () {
+                    context.read<AppModel>().updateCurrentIndex(0);
+                  },
+                  onOpenPromotions: () {
+                    Navigator.of(context).pushNamed(PromotionsPage.id);
+                  },
+                  onOpenBanking: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder:
+                            (_) => const WalletPage(
+                              initialTab: WalletInitialTab.account,
+                              initialAccountView: InfoView.banking,
+                            ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            SliverPadding(
+              padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.7,
+                  mainAxisSpacing: SizeConfig.heightMultiplier * 1.5,
+                  crossAxisSpacing: SizeConfig.imageSizeMultiplier * 2,
+                ),
+                delegate: SliverChildBuilderDelegate((
+                  BuildContext context,
+                  int index,
+                ) {
+                  return ProductCard(
+                    product: products[index],
+                    docID: products[index].id!,
+                  );
+                }, childCount: products.length),
+              ),
             ),
-            itemCount: products.length,
-            itemBuilder: (BuildContext context, int index) {
-              return ProductCard(
-                product: products[index],
-                docID: products[index].id!,
-              );
-            },
-          ),
+          ],
         );
       },
     );

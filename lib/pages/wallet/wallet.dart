@@ -11,13 +11,22 @@ import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/wallet_utils.dart';
 
+enum WalletInitialTab { withdraw, topUp, account }
+
 class WalletPage extends StatefulWidget {
-  const WalletPage({super.key});
+  const WalletPage({
+    super.key,
+    this.initialTab = WalletInitialTab.withdraw,
+    this.initialAccountView,
+  });
 
   static const id = '/walletPage';
 
+  final WalletInitialTab initialTab;
+  final InfoView? initialAccountView;
+
   @override
-  _WalletPageState createState() => _WalletPageState();
+  State<WalletPage> createState() => _WalletPageState();
 }
 
 class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
@@ -27,7 +36,11 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _getTabCount(), vsync: this);
+    _tabController = TabController(
+      length: _getTabCount(),
+      vsync: this,
+      initialIndex: _getInitialTabIndex(),
+    );
     _tabController.addListener(() {
       setState(() {}); // Rerender when tab changes
     });
@@ -53,16 +66,30 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     return count;
   }
 
+  bool get _hasInfoTab =>
+      FeatureFlags.enableCashAdvance ||
+      FeatureFlags.enableTransactionHistory ||
+      FeatureFlags.enableBankingDetails ||
+      FeatureFlags.enablePricingInfo;
+
+  int _getInitialTabIndex() {
+    switch (widget.initialTab) {
+      case WalletInitialTab.withdraw:
+        return 0;
+      case WalletInitialTab.topUp:
+        return FeatureFlags.enableTopUp ? 1 : 0;
+      case WalletInitialTab.account:
+        return _hasInfoTab ? _getTabCount() - 1 : 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // 🔥 Dynamically generate the tab views based on feature flags
     final List<Widget> tabViews = [];
     final List<Tab> tabLabels = [];
 
-    final bool hasInfoTab = FeatureFlags.enableCashAdvance ||
-        FeatureFlags.enableTransactionHistory ||
-        FeatureFlags.enableBankingDetails ||
-        FeatureFlags.enablePricingInfo;
+    final bool hasInfoTab = _hasInfoTab;
 
     // Sales tab always enabled
     tabLabels.add(const Tab(text: 'Withdraw'));
@@ -75,7 +102,12 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
     if (hasInfoTab) {
       tabLabels.add(const Tab(text: 'Account'));
-      tabViews.add(InfoCenterTab(walletVM: walletVM));
+      tabViews.add(
+        InfoCenterTab(
+          walletVM: walletVM,
+          initialView: widget.initialAccountView,
+        ),
+      );
     }
 
     return DefaultTabController(
@@ -172,8 +204,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }) {
     return Container(
       padding: EdgeInsets.symmetric(
-          vertical: SizeConfig.heightMultiplier * 2,
-          horizontal: SizeConfig.imageSizeMultiplier * 4),
+        vertical: SizeConfig.heightMultiplier * 2,
+        horizontal: SizeConfig.imageSizeMultiplier * 4,
+      ),
       margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
@@ -196,8 +229,11 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
             children: [
               CircleAvatar(
                 backgroundColor: color.withOpacity(0.2),
-                child: Icon(icon,
-                    size: SizeConfig.textMultiplier * 2.5, color: color),
+                child: Icon(
+                  icon,
+                  size: SizeConfig.textMultiplier * 2.5,
+                  color: color,
+                ),
               ),
               SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
               Column(
@@ -251,8 +287,10 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
           future: WalletUtils.computeBreakdown(walletState),
           builder: (context, snapshot) {
             final due = snapshot.data?.totalOwed ?? '...';
-            return Text("💸 Repayment Due: $due",
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6));
+            return Text(
+              "💸 Repayment Due: $due",
+              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
+            );
           },
         ),
         trailing: TextButton(
@@ -264,7 +302,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }
 
   void _showRepaymentBottomSheet(
-      BuildContext context, WalletState walletState) {
+    BuildContext context,
+    WalletState walletState,
+  ) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -297,10 +337,13 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                     ),
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  Text('Repayment Details',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: SizeConfig.textMultiplier * 2)),
+                  Text(
+                    'Repayment Details',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: SizeConfig.textMultiplier * 2,
+                    ),
+                  ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   _infoRow('Fee Charged', b.advanceFee),
                   _infoRow('Bank Fee', b.bankFee),
@@ -315,7 +358,8 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                         context,
                         MaterialPageRoute(
                           builder: (context) => FullRepaymentReportPage(
-                              walletState: walletState),
+                            walletState: walletState,
+                          ),
                         ),
                       );
                     },
@@ -325,8 +369,10 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('View Full Report',
-                        style: TextStyle(color: Colors.white)),
+                    child: const Text(
+                      'View Full Report',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                 ],
               );
@@ -339,18 +385,23 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
   Widget _infoRow(String label, String value) {
     return Padding(
-      padding:
-          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.5),
+      padding: EdgeInsets.symmetric(
+        vertical: SizeConfig.heightMultiplier * 0.5,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6)),
-          Text(value,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: SizeConfig.textMultiplier * 1.6,
-              )),
+          Text(
+            label,
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: SizeConfig.textMultiplier * 1.6,
+            ),
+          ),
         ],
       ),
     );
