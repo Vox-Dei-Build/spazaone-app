@@ -9,6 +9,7 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -288,6 +289,17 @@ class SalesViewModel extends TransactionViewModel {
           isCredit: false,
           customerIsExisting: false,
         ),
+      );
+
+      // PAS-GROWTH: a completed cash sale is the strongest "the app just
+      // worked for me" moment in the ledger flow. Hand it to the review
+      // service which decides whether to actually surface the OS prompt
+      // (gated by a 3-trigger minimum, 2-day install age and 90-day
+      // cooldown -- see ReviewPromptService for full rules). Fire-and-
+      // forget so review logic can never block the navigator pop below.
+      // ignore: unawaited_futures
+      ReviewPromptService.instance.maybePrompt(
+        ReviewTrigger.saleCompletedCash,
       );
 
       if (context.mounted) {
