@@ -353,25 +353,26 @@ class CustomerManagementViewModel extends ChangeNotifier {
     if (shouldSend) await _sendReminder(context);
   }
 
-  Future<DateTime?> _getLastReminderSentDate() async {
-    var customerDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('customers')
-        .doc(customerId)
-        .get();
-
-    return customerDoc.data()?['lastReminderSent']?.toDate();
-  }
-
+  // PAS-WA-V1: Reminder caps audit. Historic versions of this app
+  // gated reminders to "once per month" via a `lastReminderSent`
+  // cooldown read here. Pasella now charges per send (paid-usage
+  // model), so a count-based cap is invalid — merchants pay for the
+  // value they get and the only legitimate gates are: (1) settled
+  // balance, (2) phone-on-file, (3) wallet credit. The previous
+  // helper was already orphaned (no callers in `lib/`) but is
+  // removed outright to make the audit conclusion explicit and stop
+  // future readers reintroducing a cap by re-wiring it.
+  //
+  // `lastReminderSent` is still written on each send (see
+  // `_sendReminder`) and read by the reports tile for a purely
+  // cosmetic "reminder sent recently" badge — that surface is the
+  // only legitimate consumer.
   Future<void> _sendReminder(BuildContext context) async {
     sendingReminderNotifier.value = true;
 
     final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
     double netBalance =
         customerBalanceSummaryProvider.customerBalanceSummary.netBalance;
-
-    sendingReminderNotifier.value = true;
 
     // Connectivity check
     var connectivityResult = await Connectivity().checkConnectivity();
@@ -385,10 +386,19 @@ class CustomerManagementViewModel extends ChangeNotifier {
       });
     }
 
-    final reminderMessageCost = SMSPricingUtil.calculateCost(
+    // PAS-WA-V1: balance check must cover the worst-case channel
+    // cost. The dispatcher decides WhatsApp-vs-SMS at send-time
+    // (including a 30-day recheck for stale "no" cache entries), so
+    // we cannot know in advance which price will be deducted. Gate
+    // on the larger of the two so the wallet can never be driven
+    // negative by a fallback we didn't quote against.
+    final smsCost = SMSPricingUtil.calculateCost(
       text: SMSMessages.reminderShort,
       unitCost: pricingService.smsReminderTemplatePrice,
     );
+    final whatsappCost = pricingService.whatsappUtilityPrice;
+    final reminderMessageCost =
+        smsCost > whatsappCost ? smsCost : whatsappCost;
 
     bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
         context, userId, reminderMessageCost);
