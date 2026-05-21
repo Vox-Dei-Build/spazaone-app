@@ -89,6 +89,9 @@ class PaymentService {
     'ACCEPT_ORDER': 'Order accepted',
     'REJECT_ORDER': 'Order rejected',
     'ASSIGN_DRIVER': 'Driver assigned',
+    'UNASSIGN_DRIVER': 'Driver unassigned',
+    'MARK_OUT_FOR_DELIVERY': 'Order out for delivery',
+    'MARK_DELIVERED': 'Order marked delivered',
     'ACCEPT_BNPL': 'BNPL approved',
     'REJECT_BNPL': 'BNPL rejected',
     'MARK_CASH_RECEIVED': 'Cash received recorded',
@@ -106,6 +109,12 @@ class PaymentService {
     'ACCEPT_ORDER': true,
     'REJECT_ORDER': true,
     'ASSIGN_DRIVER': true,
+    // Unassign is an internal correction. We deliberately do NOT
+    // notify the customer because the next ASSIGN_DRIVER will, and a
+    // "your driver was unassigned" ping is more confusing than useful.
+    'UNASSIGN_DRIVER': false,
+    'MARK_OUT_FOR_DELIVERY': true,
+    'MARK_DELIVERED': true,
     'ACCEPT_BNPL': true,
     'REJECT_BNPL': true,
     'MARK_CASH_RECEIVED': true,
