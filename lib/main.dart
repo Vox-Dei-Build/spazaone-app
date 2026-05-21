@@ -380,10 +380,17 @@ class MyApp extends StatelessWidget {
             RegisterPage.id: (context) => const RegisterPage(),
             RegisterAnonymousPage.id: (context) =>
                 const RegisterAnonymousPage(),
-            Dashboard.id: (context) => const Dashboard(),
+            // PAS-UX-09 follow-up: wrap Dashboard in BusinessNameGate so
+            // legacy merchants whose shopName was never set (when the field
+            // was optional) are forced through a one-field recovery before
+            // they can interact with the app. New signups already pass the
+            // gate because the register validator now requires the field.
+            Dashboard.id: (context) =>
+                const BusinessNameGate(child: Dashboard()),
             AddContactPage.id: (context) => const AddContactPage(),
             SecurityPage.id: (context) => const SecurityPage(),
             ProfilePage.id: (context) => const ProfilePage(),
+            BusinessNamePage.id: (context) => const BusinessNamePage(),
             BusinessTypePage.id: (context) => const BusinessTypePage(),
             BusinessCategoryPage.id: (context) => const BusinessCategoryPage(),
             BusinessReportPage.id: (context) => const BusinessReportPage(),

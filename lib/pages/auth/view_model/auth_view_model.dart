@@ -669,15 +669,26 @@ class AuthViewModel with ChangeNotifier {
     try {
       final String rawNumber = registrationMobileNoController.text;
       final String normalized = normalizePhoneNumber(rawNumber);
-      // Set root user details
-      await _firestore.collection('users').doc(user.uid).set({
+      // PAS-UX-09 follow-up: shopName is optional at signup. Persist as a
+      // trimmed string and skip the field entirely when blank, so empty
+      // strings don't leak into outbound SMS / WhatsApp templates as
+      // visible blanks. Merchants recover this via Settings → Business Name.
+      final String trimmedShopName = shopNameController.text.trim();
+      final Map<String, dynamic> rootData = {
         'name': nameController.text,
-        'shopName': shopNameController.text,
         'mobileNumber': rawNumber,
         'mobileNumberNormalized': normalized,
         'referralCount': 0,
         'referrerUserId': referrerUserId ?? "",
-      }, SetOptions(merge: true));
+      };
+      if (trimmedShopName.isNotEmpty) {
+        rootData['shopName'] = trimmedShopName;
+      }
+      // Set root user details
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(rootData, SetOptions(merge: true));
 
       // DRY ✅ create wallet doc
       await _createInitialWallet(user.uid);
@@ -701,13 +712,18 @@ class AuthViewModel with ChangeNotifier {
     try {
       final String rawNumber = registrationMobileNoController.text;
       final String normalized = normalizePhoneNumber(rawNumber);
+      // PAS-UX-09 follow-up: see _storeUserDetailsAfterLinking — only
+      // persist shopName when the merchant actually entered one.
+      final String trimmedShopName = shopNameController.text.trim();
       final Map<String, dynamic> userData = {
         'name': nameController.text,
-        'shopName': shopNameController.text,
         'mobileNumber': rawNumber,
         'mobileNumberNormalized': normalized,
         'referralCount': 0,
       };
+      if (trimmedShopName.isNotEmpty) {
+        userData['shopName'] = trimmedShopName;
+      }
 
       if (referrerUserId != null) {
         userData['referrerUserId'] = referrerUserId;
