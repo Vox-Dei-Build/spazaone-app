@@ -66,6 +66,12 @@ dependencies:
   # Crashlytics 4.x targets firebase_core 3.x (FlutterFire 3.x coordinated set).
   firebase_crashlytics: ^4.3.0
 
+  # Native in-app review prompt (Google Play In-App Review on Android,
+  # SKStoreReviewController on iOS). Used by ReviewPromptService to surface
+  # a tasteful rating ask after real value moments. 2.0.10 is the highest
+  # release compatible with Dart 3.0+/Flutter 3.29.
+  in_app_review: ^2.0.9
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

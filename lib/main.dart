@@ -21,6 +21,7 @@ import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -270,6 +271,13 @@ void main() async {
     await CrashService.instance.init();
     await CrashService.instance.applyConsent(ConsentService.instance.state);
     await TelemetryService.instance.init();
+
+    // Review nudge state is local-only (Hive `appBox`), independent of
+    // analytics consent: counters and cooldown timestamps are persisted
+    // even if the merchant has opted out of telemetry. Init must run after
+    // `Hive.openBox('appBox')` above and is safe before sign-in because it
+    // does not touch FirebaseAuth.
+    await ReviewPromptService.instance.init();
 
     // Tag Crashlytics with the merchant id (and clear it on sign-out) so
     // crash reports can be grouped per merchant without leaking PII.
