@@ -19,7 +19,7 @@ class ProductForm extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _ProductFormState createState() => _ProductFormState();
+  State<ProductForm> createState() => _ProductFormState();
 }
 
 class _ProductFormState extends State<ProductForm> {
@@ -65,7 +65,8 @@ class _ProductFormState extends State<ProductForm> {
                         vertical: SizeConfig.heightMultiplier * 6,
                       ),
                       margin: EdgeInsets.only(
-                          top: SizeConfig.heightMultiplier * 10),
+                        top: SizeConfig.heightMultiplier * 10,
+                      ),
                       decoration: const BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.only(
@@ -113,8 +114,9 @@ class _ProductFormState extends State<ProductForm> {
                                     },
                                     onChanged: (value) {
                                       viewModel.markUnsavedChanges();
-                                      widget.product.cost =
-                                          double.tryParse(value);
+                                      widget.product.cost = double.tryParse(
+                                        value,
+                                      );
                                       setState(() {
                                         _cost = double.tryParse(value);
                                       });
@@ -123,7 +125,8 @@ class _ProductFormState extends State<ProductForm> {
                                   ),
                                 ),
                                 SizedBox(
-                                    width: SizeConfig.imageSizeMultiplier * 5),
+                                  width: SizeConfig.imageSizeMultiplier * 5,
+                                ),
                                 Expanded(
                                   child: CustomTextField(
                                     label: "Selling Price*",
@@ -145,8 +148,7 @@ class _ProductFormState extends State<ProductForm> {
                                       widget.product.sellingPrice =
                                           double.tryParse(value);
                                       setState(() {
-                                        _sellingPrice =
-                                            double.tryParse(value);
+                                        _sellingPrice = double.tryParse(value);
                                       });
                                     },
                                     textInputType: TextInputType.number,
@@ -162,22 +164,18 @@ class _ProductFormState extends State<ProductForm> {
                             if (_cost != null &&
                                 _sellingPrice != null &&
                                 _sellingPrice! < _cost!) ...[
-                              SizedBox(
-                                  height: SizeConfig.heightMultiplier * 1),
+                              SizedBox(height: SizeConfig.heightMultiplier * 1),
                               Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Icon(
                                     Icons.info_outline,
-                                    size:
-                                        SizeConfig.imageSizeMultiplier * 4,
+                                    size: SizeConfig.imageSizeMultiplier * 4,
                                     color: Colors.orange[700],
                                   ),
                                   SizedBox(
-                                      width:
-                                          SizeConfig.imageSizeMultiplier *
-                                              1.5),
+                                    width: SizeConfig.imageSizeMultiplier * 1.5,
+                                  ),
                                   Expanded(
                                     child: Text(
                                       'Heads up: selling price is below '
@@ -227,9 +225,9 @@ class _ProductFormState extends State<ProductForm> {
                             SwitchListTile(
                               contentPadding: EdgeInsets.zero,
                               secondary: const Icon(Icons.storefront_outlined),
-                              title: const Text('Show in WhatsApp ordering'),
+                              title: const Text('List in WhatsApp Store'),
                               subtitle: const Text(
-                                'Customers can see and order this product in the WhatsApp store.',
+                                'On: customers can see and order it. Off: internal-only, still usable for stock and sales.',
                               ),
                               value: widget.product.whatsappListed,
                               onChanged: (value) {
@@ -246,21 +244,19 @@ class _ProductFormState extends State<ProductForm> {
                             // in either field (edit surface) so values stay
                             // visible.
                             Theme(
-                              data: Theme.of(context).copyWith(
-                                dividerColor: Colors.transparent,
-                              ),
+                              data: Theme.of(
+                                context,
+                              ).copyWith(dividerColor: Colors.transparent),
                               child: ExpansionTile(
                                 tilePadding: EdgeInsets.zero,
                                 childrenPadding: EdgeInsets.zero,
                                 initiallyExpanded: (viewModel
-                                            .companyController.text.isNotEmpty) ||
+                                        .companyController.text.isNotEmpty) ||
                                     (viewModel
                                         .descriptionController.text.isNotEmpty),
                                 title: const Text(
                                   'More details (optional)',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.w500),
                                 ),
                                 children: [
                                   CustomTextField(
@@ -274,7 +270,8 @@ class _ProductFormState extends State<ProductForm> {
                                     },
                                   ),
                                   SizedBox(
-                                      height: SizeConfig.heightMultiplier * 2),
+                                    height: SizeConfig.heightMultiplier * 2,
+                                  ),
                                   CustomTextField(
                                     label: "Description",
                                     hintText: "Description",
@@ -296,10 +293,13 @@ class _ProductFormState extends State<ProductForm> {
                       alignment: Alignment.topCenter,
                       child: Padding(
                         padding: EdgeInsets.only(
-                            top: SizeConfig.heightMultiplier * 1.5),
+                          top: SizeConfig.heightMultiplier * 1.5,
+                        ),
                         child: GestureDetector(
                           onTap: () => viewModel.handleImagePick(
-                              context, widget.product),
+                            context,
+                            widget.product,
+                          ),
                           child: SizedBox(
                             height: SizeConfig.heightMultiplier * 12,
                             width: SizeConfig.heightMultiplier * 12,

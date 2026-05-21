@@ -110,10 +110,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                       labelStyle: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.8,
                       ),
-                      tabs: const [
-                        Tab(text: 'Sales'),
-                        Tab(text: 'Marketing'),
-                      ],
+                      tabs: const [Tab(text: 'Sales'), Tab(text: 'Marketing')],
                     ),
                     Expanded(
                       child: TabBarView(
@@ -131,14 +128,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                       backgroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                WidgetState.selected)
+                                          WidgetState.selected,
+                                        )
                                             ? Colors.green
                                             : Colors.white,
                                       ),
                                       foregroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                WidgetState.selected)
+                                          WidgetState.selected,
+                                        )
                                             ? Colors.white
                                             : Colors.black87,
                                       ),
@@ -149,27 +148,33 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   segments: [
                                     ButtonSegment(
                                       value: SalesViewType.cash,
-                                      label: Text('Cash',
-                                          style: TextStyle(
-                                              fontSize:
-                                                  SizeConfig.textMultiplier *
-                                                      1.5,
-                                              fontWeight: FontWeight.bold)),
-                                      icon: Icon(Icons.attach_money,
-                                          size:
-                                              SizeConfig.textMultiplier * 1.5),
+                                      label: Text(
+                                        'Cash',
+                                        style: TextStyle(
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        Icons.attach_money,
+                                        size: SizeConfig.textMultiplier * 1.5,
+                                      ),
                                     ),
                                     ButtonSegment(
                                       value: SalesViewType.online,
-                                      label: Text('Online',
-                                          style: TextStyle(
-                                              fontSize:
-                                                  SizeConfig.textMultiplier *
-                                                      1.5,
-                                              fontWeight: FontWeight.bold)),
-                                      icon: Icon(Icons.wifi,
-                                          size:
-                                              SizeConfig.textMultiplier * 1.5),
+                                      label: Text(
+                                        'Online',
+                                        style: TextStyle(
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        Icons.wifi,
+                                        size: SizeConfig.textMultiplier * 1.5,
+                                      ),
                                     ),
                                   ],
                                   selected: {_selectedSalesView},
@@ -181,20 +186,26 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                         SalesViewType.cash) {
                                       // refresh using current date/range selection
                                       if (_selectedDay != null) {
-                                        _salesVM
-                                            .updateSelectedDate(_selectedDay!);
+                                        _salesVM.updateSelectedDate(
+                                          _selectedDay!,
+                                        );
                                       } else if (_startDate != null &&
                                           _endDate != null) {
                                         _salesVM.updateSelectedDateRange(
-                                            _startDate!, _endDate!);
+                                          _startDate!,
+                                          _endDate!,
+                                        );
                                       } else {
-                                        _salesVM
-                                            .updateSelectedDate(DateTime.now());
+                                        _salesVM.updateSelectedDate(
+                                          DateTime.now(),
+                                        );
                                       }
                                     }
                                   },
                                 ),
                               ),
+                              if (_selectedSalesView == SalesViewType.cash)
+                                const _SalesMeaningHint(),
 
                               DateFilterBar(
                                 selectedDay: _selectedDay,
@@ -227,7 +238,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                               ],
 
                               SizedBox(
-                                  height: SizeConfig.heightMultiplier * 1.0),
+                                height: SizeConfig.heightMultiplier * 1.0,
+                              ),
 
                               Expanded(
                                 child: _selectedSalesView == SalesViewType.cash
@@ -244,13 +256,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                           // on a one-tap path to their
                                           // first sale.
                                           onAddSale: () {
-                                            TelemetryService.instance
-                                                .capture(const SaleStarted(
-                                                    entryPoint: 'empty_state'));
+                                            TelemetryService.instance.capture(
+                                              const SaleStarted(
+                                                entryPoint: 'empty_state',
+                                              ),
+                                            );
                                             Navigator.of(context).push(
                                               MaterialPageRoute(
                                                 builder: (_) => AddSale(
-                                                    salesViewModel: salesVM),
+                                                  salesViewModel: salesVM,
+                                                ),
                                               ),
                                             );
                                           },
@@ -271,7 +286,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                           startDate: _startDate,
                                           endDate: _endDate,
                                           // If Online list scrolls, add a similar bottom padding prop there too.
-                                        )),
+                                        ),
+                                      ),
                               ),
                             ],
                           ),
@@ -288,14 +304,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                       backgroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                WidgetState.selected)
+                                          WidgetState.selected,
+                                        )
                                             ? Colors.green
                                             : Colors.white,
                                       ),
                                       foregroundColor: WidgetStateProperty
                                           .resolveWith<Color?>(
                                         (states) => states.contains(
-                                                WidgetState.selected)
+                                          WidgetState.selected,
+                                        )
                                             ? Colors.white
                                             : Colors.black87,
                                       ),
@@ -306,27 +324,33 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   segments: [
                                     ButtonSegment(
                                       value: MarketingViewType.promotions,
-                                      label: Text('Promotions',
-                                          style: TextStyle(
-                                              fontSize:
-                                                  SizeConfig.textMultiplier *
-                                                      1.5,
-                                              fontWeight: FontWeight.bold)),
-                                      icon: Icon(Icons.campaign_outlined,
-                                          size:
-                                              SizeConfig.textMultiplier * 1.5),
+                                      label: Text(
+                                        'Promotions',
+                                        style: TextStyle(
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        Icons.campaign_outlined,
+                                        size: SizeConfig.textMultiplier * 1.5,
+                                      ),
                                     ),
                                     ButtonSegment(
                                       value: MarketingViewType.templates,
-                                      label: Text('Templates',
-                                          style: TextStyle(
-                                              fontSize:
-                                                  SizeConfig.textMultiplier *
-                                                      1.5,
-                                              fontWeight: FontWeight.bold)),
-                                      icon: Icon(Icons.library_books_outlined,
-                                          size:
-                                              SizeConfig.textMultiplier * 1.5),
+                                      label: Text(
+                                        'Templates',
+                                        style: TextStyle(
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        Icons.library_books_outlined,
+                                        size: SizeConfig.textMultiplier * 1.5,
+                                      ),
                                     ),
                                   ],
                                   selected: {_selectedMarketingView},
@@ -370,8 +394,9 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       return _selectedSalesView == SalesViewType.cash
           ? FloatingActionButton.extended(
               onPressed: () {
-                TelemetryService.instance
-                    .capture(const SaleStarted(entryPoint: 'fab'));
+                TelemetryService.instance.capture(
+                  const SaleStarted(entryPoint: 'fab'),
+                );
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => AddSale(salesViewModel: salesVM),
@@ -379,8 +404,10 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                 );
               },
               icon: const Icon(Icons.add_outlined, color: Colors.white),
-              label:
-                  const Text('Add Sale', style: TextStyle(color: Colors.white)),
+              label: const Text(
+                'Record Sale',
+                style: TextStyle(color: Colors.white),
+              ),
             )
           : null;
     } else {
@@ -402,20 +429,25 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                   context,
                   viewModel: promoVM,
                   onGoToTemplates: () {
-                    setState(() => _selectedMarketingView =
-                        MarketingViewType.templates);
+                    setState(
+                      () =>
+                          _selectedMarketingView = MarketingViewType.templates,
+                    );
                     promoVM.loadTemplatesData();
                   },
                 );
               },
               icon: const Icon(Icons.campaign_outlined, color: Colors.white),
-              label: const Text('Run Promotion',
-                  style: TextStyle(color: Colors.white)),
+              label: const Text(
+                'Run Promotion',
+                style: TextStyle(color: Colors.white),
+              ),
             )
           : FloatingActionButton.extended(
               onPressed: () async {
-                final result =
-                    await Navigator.of(context).push<TemplateSubmitResult>(
+                final result = await Navigator.of(
+                  context,
+                ).push<TemplateSubmitResult>(
                   MaterialPageRoute(
                     builder: (_) => CreateTemplatePage(viewModel: promoVM),
                   ),
@@ -433,9 +465,48 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
               },
               icon:
                   const Icon(Icons.library_books_outlined, color: Colors.white),
-              label: const Text('Create Template',
-                  style: TextStyle(color: Colors.white)),
+              label: const Text(
+                'Create Template',
+                style: TextStyle(color: Colors.white),
+              ),
             );
     }
+  }
+}
+
+class _SalesMeaningHint extends StatelessWidget {
+  const _SalesMeaningHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: LayoutConstants.spaceSm),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(LayoutConstants.spaceSm),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.green.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, size: 18, color: Colors.green),
+            const SizedBox(width: LayoutConstants.spaceSm),
+            Expanded(
+              child: Text(
+                'Record day-end revenue totals here, or capture individual cash sales when stock and profit detail matters.',
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 1.4,
+                  height: 1.25,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

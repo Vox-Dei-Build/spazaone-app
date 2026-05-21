@@ -21,17 +21,13 @@ class ProductCard extends StatelessWidget {
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => ProductDetailsPage(
-              docID: docID,
-              product: product,
-            ),
+            builder: (context) =>
+                ProductDetailsPage(docID: docID, product: product),
           ),
         );
       },
       child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 4,
         shadowColor: Colors.black.withOpacity(0.2),
         child: Padding(
@@ -63,23 +59,35 @@ class ProductCard extends StatelessWidget {
                   child: SizedBox(
                     height: SizeConfig.heightMultiplier * 12,
                     width: double.infinity,
-                    child: (product.image == null)
-                        ? Center(
-                            child: Icon(
-                              Icons.image,
-                              size: SizeConfig.imageSizeMultiplier * 15,
-                              color: Colors.grey.withOpacity(0.5),
-                            ),
-                          )
-                        : CachedNetworkImage(
-                            fit: BoxFit.cover,
-                            imageUrl: product.image!,
-                            errorWidget: (context, url, error) => Icon(
-                              Icons.image,
-                              size: SizeConfig.imageSizeMultiplier * 15,
-                              color: Colors.grey.withOpacity(0.5),
-                            ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        (product.image == null)
+                            ? Center(
+                                child: Icon(
+                                  Icons.image,
+                                  size: SizeConfig.imageSizeMultiplier * 15,
+                                  color: Colors.grey.withOpacity(0.5),
+                                ),
+                              )
+                            : CachedNetworkImage(
+                                fit: BoxFit.cover,
+                                imageUrl: product.image!,
+                                errorWidget: (context, url, error) => Icon(
+                                  Icons.image,
+                                  size: SizeConfig.imageSizeMultiplier * 15,
+                                  color: Colors.grey.withOpacity(0.5),
+                                ),
+                              ),
+                        Positioned(
+                          right: SizeConfig.imageSizeMultiplier * 1,
+                          top: SizeConfig.heightMultiplier * 0.6,
+                          child: _StoreListingChip(
+                            listed: product.whatsappListed,
                           ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -129,6 +137,51 @@ class ProductCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StoreListingChip extends StatelessWidget {
+  const _StoreListingChip({required this.listed});
+
+  final bool listed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = listed ? Colors.green.shade700 : Colors.grey.shade800;
+    final background = listed ? Colors.green.shade50 : Colors.white;
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 96),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: background.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            listed ? Icons.storefront : Icons.lock_outline,
+            size: 11,
+            color: color,
+          ),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              listed ? 'WhatsApp' : 'Internal',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

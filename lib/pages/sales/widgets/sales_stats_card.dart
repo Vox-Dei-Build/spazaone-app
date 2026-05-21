@@ -65,7 +65,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                     child: Row(
                       children: [
                         _MiniStatPill(
-                          label: 'Sales',
+                          label: 'Revenue',
                           value: CurrencyUtil.format(sales),
                           fg: const Color(0xFF0B5FFF),
                           bg: const Color(0x140B5FFF),
@@ -81,7 +81,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                         ),
                         SizedBox(width: pillGap / 2),
                         _MiniStatPill(
-                          label: 'Count',
+                          label: 'Entries',
                           value: count.toString(),
                           fg: const Color(0xFF6A1B9A),
                           bg: const Color(0x146A1B9A),
@@ -134,7 +134,8 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                     width: 32,
                     height: 4,
                     margin: EdgeInsets.only(
-                        right: SizeConfig.imageSizeMultiplier * 2),
+                      right: SizeConfig.imageSizeMultiplier * 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black26,
                       borderRadius: BorderRadius.circular(4),
@@ -142,7 +143,11 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                   ),
                   Expanded(
                     child: Text(
-                      'Sales Overview',
+                      _buildPeriodText(
+                        widget.selectedDay,
+                        widget.startDate,
+                        widget.endDate,
+                      ),
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: SizeConfig.textMultiplier * 2, // ~15–16px
@@ -168,7 +173,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                 childAspectRatio: 2.4, // denser
                 children: [
                   _StatChip(
-                    title: 'Total Sales',
+                    title: 'Revenue Recorded',
                     value: CurrencyUtil.format(toDouble(sales)),
                     icon: Icons.point_of_sale,
                     fg: const Color(0xFF0B5FFF),
@@ -189,7 +194,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                     bg: const Color(0x162E7D32),
                   ),
                   _StatChip(
-                    title: 'No. of Sales',
+                    title: 'No. of Entries',
                     value: count.toString(),
                     icon: Icons.receipt_long_outlined,
                     fg: const Color(0xFF6A1B9A),
@@ -213,7 +218,10 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
   }
 
   String _buildPeriodText(
-      DateTime? selectedDay, DateTime? startDate, DateTime? endDate) {
+    DateTime? selectedDay,
+    DateTime? startDate,
+    DateTime? endDate,
+  ) {
     String fmt(DateTime d) => DateFormat.yMMMd().format(d);
     if (startDate != null && endDate != null) {
       return 'Sales: ${fmt(startDate)} — ${fmt(endDate)}';
@@ -251,8 +259,10 @@ class _MiniStatPill extends StatelessWidget {
         horizontal: SizeConfig.imageSizeMultiplier * 2.2, // ~9px
         vertical: SizeConfig.heightMultiplier * 0.7, // ~5px
       ),
-      decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
