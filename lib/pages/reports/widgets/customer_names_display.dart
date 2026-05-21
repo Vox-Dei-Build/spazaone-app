@@ -78,11 +78,21 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // PAS-WA-V1: this badge is purely informational.
+                          // It surfaces "have I nudged this customer
+                          // recently?" — it does NOT gate the next send.
+                          // There is no monthly cap; merchants pay per
+                          // message and can re-send at any time. The
+                          // wording below is deliberate: no "cannot",
+                          // no "blocked", and the off-state uses a
+                          // muted grey instead of the previous red so
+                          // it doesn't read as a denial.
                           number != null && number.isNotEmpty
                               ? (reminderSentRecently(customer)
                                   ? Tooltip(
                                     message:
-                                        'Reminder sent within the last month',
+                                        'Reminder sent in the last 30 days',
+                                    triggerMode: TooltipTriggerMode.tap,
                                     child: Icon(
                                       Icons.notifications_active_outlined,
                                       color: Colors.green,
@@ -91,10 +101,11 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                                   )
                                   : Tooltip(
                                     message:
-                                        'No reminder sent within the last month',
+                                        'No reminder in the last 30 days — you can send one now',
+                                    triggerMode: TooltipTriggerMode.tap,
                                     child: Icon(
-                                      Icons.notifications_off_outlined,
-                                      color: Colors.red,
+                                      Icons.notifications_none_outlined,
+                                      color: Colors.grey.shade600,
                                       size: SizeConfig.imageSizeMultiplier * 5,
                                     ),
                                   ))
