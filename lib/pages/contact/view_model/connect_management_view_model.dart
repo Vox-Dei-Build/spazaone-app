@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_app_badger_plus/flutter_app_badger_plus.dart';
@@ -29,6 +30,15 @@ class ConnectManagementViewModel {
   late TwilioService _twilio;
   late BotpressService _botpress;
   Timer? _poll;
+
+  // V1 truth-surface (`fix/pas-wa-v1-bot-message-truth`): the Botpress bot
+  // mirrors every outbound reply (balance, statement, menu, clarifications,
+  // payment links, …) into Firestore via /logUnreadMessage. We subscribe to
+  // that array as a 4th source so the merchant sees what the bot said even
+  // when the live Twilio/Botpress fetch fails or lags.
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _truthSurfaceSubscription;
+  List<Map<String, dynamic>> _truthSurfaceEntries = const [];
 
   ConnectManagementViewModel(this.customerId) {
     _initFuture = _init();
@@ -73,6 +83,11 @@ class ConnectManagementViewModel {
         loadingNotifier.value = false;
         return;
       }
+
+      // Lazily subscribe to the Pasella truth-surface (mirrored bot replies +
+      // legacy unreadMessages). The subscription is keyed by the merchant doc
+      // (a single document), so this is one cheap listener per ViewModel.
+      _ensureTruthSurfaceSubscription(customerNumber);
 
       final rc = await RemoteConfigService.getInstance();
       final twilioSmsNumber = rc.getString('TWILIO_NUMBER');
@@ -132,6 +147,14 @@ class ConnectManagementViewModel {
         ...normalize(sentSms, isSmsDefault: true, isWaDefault: false),
         ...normalize(receivedSms, isSmsDefault: true, isWaDefault: false),
         ...normalize(wa, isSmsDefault: false, isWaDefault: true),
+        // Pasella truth surface: bot replies + handoff/payment-proof entries
+        // mirrored from the bot. These are the source of truth for "what the
+        // bot replied" — they always render, even if Twilio/Botpress polling
+        // fails. Authoritative `direction` and `isAI` flags are pre-set in
+        // `_truthSurfaceEntries` so the default heuristic in `normalize` is
+        // bypassed.
+        ...normalize(_truthSurfaceEntries,
+            isSmsDefault: false, isWaDefault: true),
       ];
 
       for (final m in mergedIter) {
@@ -159,6 +182,7 @@ class ConnectManagementViewModel {
   DateTime? _asDate(dynamic v) {
     if (v == null) return null;
     if (v is DateTime) return v.toLocal();
+    if (v is Timestamp) return v.toDate().toLocal();
     try {
       return DateTime.parse(v.toString()).toLocal();
     } catch (_) {
@@ -313,8 +337,116 @@ class ConnectManagementViewModel {
   void dispose() {
     isDisposed = true;
     _poll?.cancel();
+    _truthSurfaceSubscription?.cancel();
     loadingNotifier.dispose();
     if (_isInitialized) _botpress.dispose();
     _controller.close();
+  }
+}
+
+/// V1 truth-surface helpers (`fix/pas-wa-v1-bot-message-truth`).
+///
+/// We keep these as module-private helpers to keep the ViewModel surface
+/// small. They translate a `users/{merchantId}.unreadMessages[]` Firestore
+/// entry into the same `Map<String, dynamic>` shape the Connect tab's
+/// `MessageCard` already consumes.
+extension _TruthSurfaceSubscription on ConnectManagementViewModel {
+  void _ensureTruthSurfaceSubscription(String customerNumber) {
+    if (_truthSurfaceSubscription != null) return;
+
+    final docRef =
+        FirebaseFirestore.instance.collection('users').doc(currentUserId);
+    final phoneSuffix = _digitsOnlySuffix(customerNumber);
+
+    _truthSurfaceSubscription = docRef.snapshots().listen(
+      (snapshot) {
+        if (isDisposed) return;
+        final raw = snapshot.data()?['unreadMessages'];
+        if (raw is! List) {
+          _truthSurfaceEntries = const [];
+        } else {
+          _truthSurfaceEntries = raw
+              .whereType<Map<String, dynamic>>()
+              .where((entry) =>
+                  _matchesCustomer(entry['customerNumber'], phoneSuffix))
+              .map(_truthSurfaceToMessage)
+              .whereType<Map<String, dynamic>>()
+              .toList(growable: false);
+        }
+        // Re-publish merged set without going back to Twilio/Botpress.
+        unawaited(_republishMerged());
+      },
+      onError: (Object e, StackTrace st) {
+        // ignore: avoid_print
+        print('🔥 truth-surface stream error: $e\n$st');
+      },
+    );
+  }
+
+  /// Convert a persisted unreadMessages[] entry into the message shape used by
+  /// MessageCard. Returns null for entries that fail validation (no body,
+  /// unparseable timestamp).
+  Map<String, dynamic>? _truthSurfaceToMessage(Map<String, dynamic> entry) {
+    final body = (entry['message'] ?? '').toString();
+    if (body.isEmpty) return null;
+    final ts = _asDate(entry['timestamp']);
+    if (ts == null) return null;
+
+    // Direction: legacy entries (no field) were always inbound customer
+    // signals; bot V1 mirror sets it explicitly.
+    final direction =
+        (entry['direction']?.toString().toLowerCase() ?? 'inbound');
+    final senderRole = entry['senderRole']?.toString().toLowerCase();
+    final channel = entry['channel']?.toString().toLowerCase() ?? 'whatsapp';
+
+    final externalId = entry['externalId']?.toString();
+    final id = externalId != null && externalId.isNotEmpty
+        ? 'truth::$externalId'
+        : 'truth::${ts.toIso8601String()}::$direction::$body';
+
+    return {
+      'id': id,
+      'message': body,
+      'dateSent': ts,
+      'direction': direction,
+      'isWhatsApp': channel == 'whatsapp',
+      'isSMS': channel == 'sms',
+      'isAI': senderRole == 'bot',
+      'kind': entry['kind']?.toString() ?? 'text',
+      'source': 'truth-surface',
+      // Treat mirrored entries as delivered — Twilio status, when available,
+      // will overwrite via the dedupe-by-id pipeline if a richer entry shows
+      // up from the live polling source.
+      'status': entry['status']?.toString() ?? 'delivered',
+    };
+  }
+
+  /// Republish the merged stream without re-fetching Twilio/Botpress. Used
+  /// when only the truth-surface snapshot changed.
+  Future<void> _republishMerged() async {
+    // Cheap path: simply trigger a fetch. _fetchMessages is guarded against
+    // re-entrancy, so concurrent calls coalesce. This keeps a single merge
+    // pipeline in one place.
+    await _fetchMessages();
+  }
+
+  bool _matchesCustomer(dynamic stored, String phoneSuffix) {
+    if (stored == null) return false;
+    final s = _digitsOnlySuffix(stored.toString());
+    if (s.isEmpty || phoneSuffix.isEmpty) return false;
+    // Match on the last 9 digits to be robust across +27/0/27 prefixes.
+    final n = phoneSuffix.length < 9 ? phoneSuffix.length : 9;
+    final m = s.length < 9 ? s.length : 9;
+    final k = n < m ? n : m;
+    return phoneSuffix.substring(phoneSuffix.length - k) ==
+        s.substring(s.length - k);
+  }
+
+  String _digitsOnlySuffix(String raw) {
+    final buf = StringBuffer();
+    for (final c in raw.codeUnits) {
+      if (c >= 0x30 && c <= 0x39) buf.writeCharCode(c);
+    }
+    return buf.toString();
   }
 }

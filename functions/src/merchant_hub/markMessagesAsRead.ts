@@ -30,9 +30,19 @@ export const markMessagesAsRead = functions.https.onRequest(
       const unreadMessages = merchantData?.unreadMessages || [];
       const unreadCount = merchantData?.unreadCount || 0;
 
-      // 🔥 Filter out only the messages from this specific customer
+      // V1 truth-surface (`fix/pas-wa-v1-bot-message-truth`): outbound bot
+      // mirrors share the same array as legacy inbound entries. We only want
+      // to "consume" inbound entries on read — outbound mirrors must remain
+      // so the merchant can scroll back through what the bot replied even if
+      // the live Botpress polling fails. Legacy entries (no `direction`)
+      // continue to be treated as inbound for backwards compatibility.
+      const isInbound = (msg: any) =>
+        msg?.direction == null ||
+        String(msg.direction).toLowerCase() === "inbound";
+
       const updatedMessages = unreadMessages.filter(
-        (msg: any) => msg.customerNumber !== customerNumber,
+        (msg: any) =>
+          msg.customerNumber !== customerNumber || !isInbound(msg),
       );
       const removedMessagesCount =
         unreadMessages.length - updatedMessages.length;
