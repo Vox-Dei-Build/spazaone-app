@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 
@@ -36,14 +37,45 @@ class CrashService {
       if (kDebugMode) {
         FlutterError.dumpErrorToConsole(details);
       }
+      // Classify recoverable network / backend errors (e.g. Cloud Functions
+      // transient failures, App Check token churn) as NON-fatal. These flow
+      // into FlutterError.onError via FutureBuilder when an async future
+      // rejects, but they are not real crashes and inflate the fatal crash
+      // rate. UI surfaces them via snapshot.hasError already.
+      if (_isRecoverableBackendError(details.exception)) {
+        FirebaseCrashlytics.instance.recordFlutterError(details);
+        return;
+      }
       FirebaseCrashlytics.instance.recordFlutterFatalError(details);
     };
 
     // Catch async errors that escape the Flutter framework.
     PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      final fatal = !_isRecoverableBackendError(error);
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: fatal);
       return true;
     };
+  }
+
+  /// Errors that represent transient backend / network / token failures rather
+  /// than programming bugs. Recording these as fatal misleads the crash-free
+  /// users metric and drowns real crashes in noise.
+  bool _isRecoverableBackendError(Object error) {
+    if (error is FirebaseFunctionsException) {
+      // Transient codes worth retrying; everything else (permission-denied,
+      // unauthenticated, invalid-argument, etc.) is still classified as
+      // non-fatal because a misbehaving Cloud Function is not an app crash.
+      return true;
+    }
+    // The Functions plugin sometimes wraps transient errors in a generic
+    // FlutterError whose message contains the Java `ExecutionException`
+    // text. Match on that as a backstop.
+    final msg = error.toString();
+    if (msg.contains('underlying tasks failed') ||
+        msg.contains('firebase_functions/')) {
+      return true;
+    }
+    return false;
   }
 
   /// Reflects the current [ConsentState.crash] value in Crashlytics' native
