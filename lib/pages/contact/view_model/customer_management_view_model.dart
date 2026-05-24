@@ -343,6 +343,13 @@ class CustomerManagementViewModel extends ChangeNotifier {
     // merchant doesn't send), so the legacy bool API still maps cleanly:
     // user explicitly confirms -> send, anything else -> do nothing.
     // No silent state to surface.
+    //
+    // PAS-UX-12: There is no underlying record being saved alongside this
+    // dispatch — the reminder *is* the action — so the "Save without
+    // sending" secondary button is suppressed (`showSkip: false`).
+    // Merchants who change their mind dismiss via the close (X) icon in
+    // the sheet header (or back gesture / scrim), all of which map to
+    // dismissed and result in no send.
     final shouldSend = await CostConfirmationSheet.show(
       context,
       breakdown: CostBreakdown.singleMessageMultiChannel(
@@ -353,6 +360,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         expected: expectedChannel,
       ),
       confirmLabel: 'Send Reminder',
+      showSkip: false,
     );
 
     if (shouldSend) await _sendReminder(context);
