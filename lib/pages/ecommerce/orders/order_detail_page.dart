@@ -58,6 +58,12 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     vsync: this,
   ); // 2 tabs now
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _callPayment(
     String action,
     Map<String, dynamic> order, {
