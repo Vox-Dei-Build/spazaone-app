@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/whatsapp_messaging_service.dart';
@@ -93,20 +94,13 @@ class OrderStatusMessagingService {
         'ACCEPT_ORDER': rc.getString('TWILIO_ACCEPT_ORDER_TID'),
         'REJECT_ORDER': rc.getString('TWILIO_REJECT_ORDER_TID'),
         'ASSIGN_DRIVER': rc.getString('TWILIO_ASSIGN_DRIVER_TID'),
-        // The two new dispatch templates fall back to the existing
-        // ASSIGN_DRIVER template SID when their dedicated key is not
-        // configured. This keeps an operationally usable signal going
-        // out (driver + phone + reference) the moment merchants tap
-        // these actions, even before product rolls a separate template
-        // through Twilio approval.
+        // Delivery lifecycle messages must use templates approved for the
+        // exact lifecycle event. Falling back to assign-driver/collected
+        // templates produced customer-visible lies: "driver assigned" on
+        // dispatch and "marked collected" on delivery.
         'MARK_OUT_FOR_DELIVERY':
-            rc.getString('TWILIO_MARK_OUT_FOR_DELIVERY_TID').isNotEmpty
-                ? rc.getString('TWILIO_MARK_OUT_FOR_DELIVERY_TID')
-                : rc.getString('TWILIO_ASSIGN_DRIVER_TID'),
-        'MARK_DELIVERED':
-            rc.getString('TWILIO_MARK_DELIVERED_TID').isNotEmpty
-                ? rc.getString('TWILIO_MARK_DELIVERED_TID')
-                : rc.getString('TWILIO_MARK_COLLECTED_TID'),
+            rc.getString('TWILIO_MARK_OUT_FOR_DELIVERY_TID'),
+        'MARK_DELIVERED': rc.getString('TWILIO_MARK_DELIVERED_TID'),
         'ACCEPT_BNPL': rc.getString('TWILIO_ACCEPT_BNPL_TID'),
         'REJECT_BNPL': rc.getString('TWILIO_REJECT_BNPL_TID'),
         'MARK_CASH_RECEIVED': rc.getString('TWILIO_MARK_CASH_RECEIVED_TID'),
@@ -158,9 +152,11 @@ class OrderStatusMessagingService {
       );
     }
 
-    final variables = _variablesForAction(
+    final merchantDisplayName = await _fetchMerchantDisplayName(merchantId);
+    final variables = variablesForActionForTest(
       action: action,
       customerName: customerName,
+      merchantDisplayName: merchantDisplayName,
       orderId: orderId,
       amount: amount,
       itemsCount: itemsCount,
@@ -336,9 +332,11 @@ class OrderStatusMessagingService {
     return message;
   }
 
-  Map<String, dynamic> _variablesForAction({
+  @visibleForTesting
+  static Map<String, dynamic> variablesForActionForTest({
     required String action,
     required String customerName,
+    required String merchantDisplayName,
     required String orderId,
     String? amount,
     String? itemsCount,
@@ -349,9 +347,13 @@ class OrderStatusMessagingService {
   }) {
     if (action == 'ACCEPT_ORDER') {
       return {
-        '1': orderId,
-        '2': amount ?? 'the order total',
-        '3': pickupLocation ?? 'The shop will confirm collection or delivery.',
+        '1': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '2': orderId,
+        '3': amount ?? 'the order total',
+        '4': pickupLocation ?? 'The shop will confirm collection or delivery.',
+        'customerName': customerName,
+        'orderId': orderId,
+        if (pickupLocation != null) 'pickupLocation': pickupLocation,
       };
     }
     if (action == 'REJECT_ORDER') {
@@ -360,11 +362,35 @@ class OrderStatusMessagingService {
         '2': rejectionReason ?? 'Unavailable right now',
       };
     }
-    if (action == 'ASSIGN_DRIVER' || action == 'MARK_OUT_FOR_DELIVERY') {
+    if (action == 'ASSIGN_DRIVER') {
       return {
-        '1': orderId,
-        '2': (driverName ?? '').isNotEmpty ? driverName : 'the shop driver',
-        '3': (driverPhone ?? '').isNotEmpty ? driverPhone : 'the shop',
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': orderId,
+        '3': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '4': (driverName ?? '').isNotEmpty ? driverName : 'the shop driver',
+        '5': (driverPhone ?? '').isNotEmpty ? driverPhone : 'the shop',
+        'customerName': customerName,
+        'orderId': orderId,
+      };
+    }
+    if (action == 'MARK_OUT_FOR_DELIVERY') {
+      return {
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': orderId,
+        '3': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '4': (driverName ?? '').isNotEmpty ? driverName : 'the shop driver',
+        '5': (driverPhone ?? '').isNotEmpty ? driverPhone : 'the shop',
+        'customerName': customerName,
+        'orderId': orderId,
+      };
+    }
+    if (action == 'MARK_DELIVERED') {
+      return {
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': orderId,
+        '3': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        'customerName': customerName,
+        'orderId': orderId,
       };
     }
     final variables = <String, dynamic>{
@@ -375,6 +401,25 @@ class OrderStatusMessagingService {
     if (itemsCount != null) variables['itemsCount'] = itemsCount;
     if (pickupLocation != null) variables['pickupLocation'] = pickupLocation;
     return variables;
+  }
+
+  Future<String> _fetchMerchantDisplayName(String merchantId) async {
+    try {
+      final snap = await _firestore.collection('users').doc(merchantId).get();
+      final data = snap.data() ?? const <String, dynamic>{};
+      for (final key in const [
+        'shopName',
+        'businessName',
+        'name',
+        'displayName'
+      ]) {
+        final value = (data[key] ?? '').toString().trim();
+        if (value.isNotEmpty) return value;
+      }
+    } catch (_) {
+      // Best-effort only; template variables still get a non-blank fallback.
+    }
+    return '';
   }
 
   Future<void> _storeNotification({

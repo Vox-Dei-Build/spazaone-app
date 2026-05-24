@@ -135,6 +135,12 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       final driver = (order['driver'] is Map)
           ? Map<String, dynamic>.from(order['driver'] as Map)
           : <String, dynamic>{};
+      final driverName = action == 'ASSIGN_DRIVER'
+          ? (extraData['driverName'] ?? driver['name'] ?? '').toString()
+          : (driver['name'] ?? '').toString();
+      final driverPhone = action == 'ASSIGN_DRIVER'
+          ? (extraData['driverPhone'] ?? driver['phone'] ?? '').toString()
+          : (driver['phone'] ?? '').toString();
       final notif = await msgSvc.sendStatusMessage(
         action: action,
         merchantId: uid,
@@ -144,8 +150,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         amount: CurrencyUtil.format(OrderRepository.asNum(order['total'])),
         itemsCount: ((order['items'] as List?)?.length ?? 0).toString(),
         pickupLocation: _fulfillmentSummary(order),
-        driverName: (driver['name'] ?? '').toString(),
-        driverPhone: (driver['phone'] ?? '').toString(),
+        driverName: driverName,
+        driverPhone: driverPhone,
       );
 
       if (!mounted) return;
@@ -171,8 +177,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     final fulfillment = (order['fulfillmentType'] ?? '').toString();
     final time = (order['requestedFulfillmentTime'] ?? '').toString();
     final pickup = (order['pickupLabel'] ?? '').toString();
-    final delivery = (order['deliveryAddress'] ?? order['deliveryInfo'] ?? '')
-        .toString();
+    final delivery =
+        (order['deliveryAddress'] ?? order['deliveryInfo'] ?? '').toString();
     final parts = <String>[
       if (fulfillment.isNotEmpty)
         fulfillment == 'delivery' ? 'Delivery' : 'Collection',
@@ -192,56 +198,14 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     final driver = (order['driver'] is Map)
         ? Map<String, dynamic>.from(order['driver'] as Map)
         : <String, dynamic>{};
-    final nameController = TextEditingController(
-      text: reassign ? (driver['name'] ?? '').toString() : '',
-    );
-    final phoneController = TextEditingController(
-      text: reassign ? (driver['phone'] ?? '').toString() : '',
-    );
     final result = await showDialog<Map<String, String>>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(reassign ? 'Reassign driver' : 'Assign driver'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (reassign)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Update the name or phone to switch driver. The customer '
-                  'will get a fresh driver-assigned message.',
-                ),
-              ),
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'Driver name'),
-              textInputAction: TextInputAction.next,
-            ),
-            TextField(
-              controller: phoneController,
-              decoration: const InputDecoration(labelText: 'Driver phone'),
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, {
-              'driverName': nameController.text.trim(),
-              'driverPhone': phoneController.text.trim(),
-            }),
-            child: Text(reassign ? 'Reassign' : 'Assign'),
-          ),
-        ],
+      builder: (_) => _DriverAssignmentDialog(
+        reassign: reassign,
+        initialName: reassign ? (driver['name'] ?? '').toString() : '',
+        initialPhone: reassign ? (driver['phone'] ?? '').toString() : '',
       ),
     );
-    nameController.dispose();
-    phoneController.dispose();
     if (result == null) return;
     if ((result['driverName'] ?? '').isEmpty &&
         (result['driverPhone'] ?? '').isEmpty) {
@@ -525,10 +489,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           final driver = (order['driver'] is Map)
               ? Map<String, dynamic>.from(order['driver'] as Map)
               : <String, dynamic>{};
-          final hasDriver =
-              (driver['name'] ?? '').toString().isNotEmpty ||
-                  (driver['phone'] ?? '').toString().isNotEmpty ||
-                  (driver['id'] ?? '').toString().isNotEmpty;
+          final hasDriver = (driver['name'] ?? '').toString().isNotEmpty ||
+              (driver['phone'] ?? '').toString().isNotEmpty ||
+              (driver['id'] ?? '').toString().isNotEmpty;
           final showAcceptReject =
               isPendingMerchantReview && !isCancelled && !isRejected;
           // Driver-allocation lifecycle:
@@ -548,10 +511,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               isInDriverAllocationWindow && isDelivery && hasDriver;
           final showUnassignDriver =
               isInDriverAllocationWindow && isDelivery && hasDriver;
-          final showMarkOutForDelivery = isAcceptedOrder &&
-              isDelivery &&
-              hasDriver &&
-              !isTerminal;
+          final showMarkOutForDelivery =
+              isAcceptedOrder && isDelivery && hasDriver && !isTerminal;
           final showMarkDelivered =
               isOutForDelivery && isDelivery && !isDelivered && !isTerminal;
           // The legacy "Mark Collected" button stays for non-delivery
@@ -657,19 +618,19 @@ class _OrderDetailPageState extends State<OrderDetailPage>
             final queued = OrderRepository.parseTs(lastMessage['queuedAt']);
             if (replied != null) {
               waAt = replied;
-              waLabel = 'Replied';
+              waLabel = 'WhatsApp replied';
             } else if (delivered != null) {
               waAt = delivered;
-              waLabel = 'Delivered';
+              waLabel = 'WhatsApp delivered';
             } else if (failed != null) {
               waAt = failed;
-              waLabel = 'Failed';
+              waLabel = 'WhatsApp failed';
             } else if (sent != null) {
               waAt = sent;
-              waLabel = 'Sent';
+              waLabel = 'WhatsApp sent';
             } else if (queued != null) {
               waAt = queued;
-              waLabel = 'Queued';
+              waLabel = 'WhatsApp queued';
             } else {
               waLabel = WhatsAppDeliveryPill.labelFor(
                 waState,
@@ -715,11 +676,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                   if (ok == true) _callPayment('REJECT_ORDER', order);
                 },
                 onAssignDriver: () => _assignDriver(order),
-                onReassignDriver: () =>
-                    _assignDriver(order, reassign: true),
+                onReassignDriver: () => _assignDriver(order, reassign: true),
                 onUnassignDriver: () => _confirmUnassignDriver(order),
-                onMarkOutForDelivery: () =>
-                    _confirmMarkOutForDelivery(order),
+                onMarkOutForDelivery: () => _confirmMarkOutForDelivery(order),
                 onMarkDelivered: () => _confirmMarkDelivered(order),
                 onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
                 onRejectBnpl: () async {
@@ -942,6 +901,84 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           );
         },
       ),
+    );
+  }
+}
+
+class _DriverAssignmentDialog extends StatefulWidget {
+  const _DriverAssignmentDialog({
+    required this.reassign,
+    required this.initialName,
+    required this.initialPhone,
+  });
+
+  final bool reassign;
+  final String initialName;
+  final String initialPhone;
+
+  @override
+  State<_DriverAssignmentDialog> createState() =>
+      _DriverAssignmentDialogState();
+}
+
+class _DriverAssignmentDialogState extends State<_DriverAssignmentDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initialName);
+    _phoneController = TextEditingController(text: widget.initialPhone);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.reassign ? 'Reassign driver' : 'Assign driver'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.reassign)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Update the name or phone to switch driver. The customer '
+                'will get a fresh driver-assigned message.',
+              ),
+            ),
+          TextField(
+            controller: _nameController,
+            decoration: const InputDecoration(labelText: 'Driver name'),
+            textInputAction: TextInputAction.next,
+          ),
+          TextField(
+            controller: _phoneController,
+            decoration: const InputDecoration(labelText: 'Driver phone'),
+            keyboardType: TextInputType.phone,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, {
+            'driverName': _nameController.text.trim(),
+            'driverPhone': _phoneController.text.trim(),
+          }),
+          child: Text(widget.reassign ? 'Reassign' : 'Assign'),
+        ),
+      ],
     );
   }
 }
