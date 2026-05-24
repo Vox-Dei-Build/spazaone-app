@@ -40,22 +40,44 @@ export const markMessagesAsRead = functions.https.onRequest(
         msg?.direction == null ||
         String(msg.direction).toLowerCase() === "inbound";
 
-      const updatedMessages = unreadMessages.filter(
-        (msg: any) =>
-          msg.customerNumber !== customerNumber || !isInbound(msg),
-      );
-      const removedMessagesCount =
-        unreadMessages.length - updatedMessages.length;
+      const digitsOnly = (raw: unknown) =>
+        String(raw ?? "").replace(/\D/g, "");
+      const matchesCustomer = (stored: unknown, next: unknown) => {
+        const a = digitsOnly(stored);
+        const b = digitsOnly(next);
+        if (!a || !b) return false;
+        const len = Math.min(9, a.length, b.length);
+        return a.slice(-len) === b.slice(-len);
+      };
 
-      if (removedMessagesCount === 0) {
+      let markedMessagesCount = 0;
+      const readAt = new Date().toISOString();
+      const updatedMessages = unreadMessages.map((msg: any) => {
+        if (
+          matchesCustomer(msg.customerNumber, customerNumber) &&
+          isInbound(msg) &&
+          msg?.isRead !== true
+        ) {
+          markedMessagesCount += 1;
+          return {
+            ...msg,
+            isRead: true,
+            readAt,
+          };
+        }
+        return msg;
+      });
+
+      if (markedMessagesCount === 0) {
         res
           .status(200)
           .json({ message: "No unread messages for this customer." });
         return;
       }
 
-      // 🔥 Decrement unreadCount based on removed messages
-      const newUnreadCount = Math.max(0, unreadCount - removedMessagesCount);
+      // 🔥 Decrement unreadCount based on newly read inbound messages while
+      // keeping the truth-surface history visible in the merchant app.
+      const newUnreadCount = Math.max(0, unreadCount - markedMessagesCount);
 
       await merchantRef.update({
         unreadMessages: updatedMessages,
@@ -63,7 +85,7 @@ export const markMessagesAsRead = functions.https.onRequest(
       });
 
       res.status(200).json({
-        message: `Marked ${removedMessagesCount} messages as read for customer ${customerNumber}.`,
+        message: `Marked ${markedMessagesCount} messages as read for customer ${customerNumber}.`,
       });
     } catch (error) {
       console.error("Error marking messages as read:", error);

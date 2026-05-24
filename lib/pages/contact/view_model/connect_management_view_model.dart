@@ -414,6 +414,8 @@ extension _TruthSurfaceSubscription on ConnectManagementViewModel {
       'isAI': senderRole == 'bot',
       'kind': entry['kind']?.toString() ?? 'text',
       'source': 'truth-surface',
+      'isRead': entry['isRead'] == true,
+      'readAt': _asDate(entry['readAt']),
       // Treat mirrored entries as delivered — Twilio status, when available,
       // will overwrite via the dedupe-by-id pipeline if a richer entry shows
       // up from the live polling source.
