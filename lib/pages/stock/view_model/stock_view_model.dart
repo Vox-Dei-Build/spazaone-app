@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_group_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/models/stock/products_initial_data.dart';
@@ -89,6 +88,15 @@ class StockViewModel with ChangeNotifier {
 
   Future<void> editProductGroup(
       BuildContext context, String oldName, String newName) async {
+    // PAS-CRASH-_dependents: capture the Navigator synchronously *before*
+    // any await. Previously this method scheduled `pop()` +
+    // `pushReplacement()` inside a `addPostFrameCallback` and then ran
+    // `setLoading(false)` (which calls `notifyListeners()`) in the
+    // `finally` block. That sequence — pop + pushReplacement + notify in
+    // the same frame — left the dialog's InheritedElement being
+    // deactivated while its Consumer was still registered, tripping
+    // `_dependents.isEmpty: is not true` at framework.dart:6179.
+    final navigator = Navigator.of(context);
     setLoading(true);
     try {
       var productGroupQuery = await _firestore
@@ -113,19 +121,20 @@ class StockViewModel with ChangeNotifier {
         await doc.reference.update({'group': newName});
       }
 
-      // Navigate to the updated group page after successful update
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).pop();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) =>
-                ProductGroupPage(name: newName, viewModel: this),
-          ),
-        );
-      });
+      // Finish state mutation first, then perform navigation. Pop the
+      // dialog, then in a microtask push the replacement so the two
+      // route transitions don't collide in the same frame.
+      isLoading = false;
+      notifyListeners();
+      navigator.pop();
+      await Future<void>.delayed(Duration.zero);
+      navigator.pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => ProductGroupPage(name: newName, viewModel: this),
+        ),
+      );
     } catch (e) {
       setErrorMessage("An error occurred while editing the product group");
-    } finally {
       setLoading(false);
     }
   }
@@ -197,21 +206,33 @@ class StockViewModel with ChangeNotifier {
 
   Future<void> onAddProductGroup(BuildContext context) async {
     if (newProductGroupController.text.isNotEmpty) {
+      // PAS-CRASH-_dependents: capture the Navigator synchronously and
+      // finalize state before popping. The previous version scheduled
+      // `pop()` in a `addPostFrameCallback` and then continued to flip
+      // `isLoading`, `notifyListeners()`, and clear the controller in
+      // the `finally` block — i.e. it rebuilt the dialog's still-mounted
+      // Consumer after the route was already on its way out. That's the
+      // race that surfaced as `_dependents.isEmpty: is not true` at
+      // framework.dart:6179.
+      final navigator = Navigator.of(context);
       isLoading = true;
       notifyListeners();
       try {
         var formattedText =
             formatStringToCamelCase(newProductGroupController.text);
         await addProductGroup(formattedText);
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          Navigator.of(context).pop();
-        });
+        // Finalize state first…
+        isLoading = false;
+        newProductGroupController.clear();
+        notifyListeners();
+        // …then pop synchronously, on the next microtask, so the
+        // teardown does not collide with the notification above.
+        await Future<void>.delayed(Duration.zero);
+        navigator.pop();
       } catch (e) {
         setErrorMessage("An error occurred while adding the product group");
-      } finally {
         isLoading = false;
         notifyListeners();
-        newProductGroupController.clear();
       }
     } else {
       setErrorMessage("Please enter a product group name");

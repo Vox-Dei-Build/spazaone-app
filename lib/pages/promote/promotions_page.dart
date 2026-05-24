@@ -201,55 +201,50 @@ class _PromotionsPageState extends State<PromotionsPage>
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    return ChangeNotifierProvider<PromotionsViewModel>(
-      create: (context) {
-        final vm = PromotionsViewModel();
-        // Defer to after first frame so notifyListeners() isn't called during build:
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          vm.loadInitialData();
-        });
-        return vm;
-      },
-      child: Consumer<PromotionsViewModel>(
-        builder: (context, viewModel, _) {
-          final current = _tabs[_tabController.index];
+    // PAS-CRASH-_dependents: the PromotionsViewModel is owned by the root
+    // MultiProvider (main.dart). Re-wrapping with a page-scoped
+    // ChangeNotifierProvider produced a second instance whose lifetime ended
+    // mid-transition while pushed routes (e.g. RunPromotionPage) still held
+    // dependents, tripping the framework's `_dependents.isEmpty` assertion.
+    return Consumer<PromotionsViewModel>(
+      builder: (context, viewModel, _) {
+        final current = _tabs[_tabController.index];
 
-          return Scaffold(
-            floatingActionButton:
-                _buildFloatingActionButton(viewModel, current),
-            body: SafeArea(
-              child: Padding(
-                padding: LayoutConstants.padding10Horizontal,
-                child: Column(
-                  children: [
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    const PromotionsPageHeader(),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    TabBar(
+        return Scaffold(
+          floatingActionButton:
+              _buildFloatingActionButton(viewModel, current),
+          body: SafeArea(
+            child: Padding(
+              padding: LayoutConstants.padding10Horizontal,
+              child: Column(
+                children: [
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  const PromotionsPageHeader(),
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  TabBar(
+                    controller: _tabController,
+                    labelStyle: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                    ),
+                    tabs: _tabs
+                        .map((t) => Tab(text: t.title))
+                        .toList(growable: false),
+                  ),
+                  Expanded(
+                    child: TabBarView(
                       controller: _tabController,
-                      labelStyle: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.8,
-                      ),
-                      unselectedLabelStyle: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.8,
-                      ),
-                      tabs: _tabs
-                          .map((t) => Tab(text: t.title))
-                          .toList(growable: false),
+                      children: _tabs.map((t) => t.content).toList(),
                     ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: _tabs.map((t) => t.content).toList(),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -266,6 +261,12 @@ class _PromotionsPageState extends State<PromotionsPage>
     // no-approved dialog. The Templates tab's onTap is unaffected
     // because it doesn't touch the launcher.
     return FloatingActionButton.extended(
+      // PAS-CRASH-_dependents: explicit heroTag avoids the default
+      // `<default FloatingActionButton tag>` Hero collision with FABs on
+      // other surfaces. Collisions reparent the FAB subtree through the
+      // Navigator overlay during transitions, which is one of the known
+      // ways to leave an InheritedElement with non-empty `_dependents`.
+      heroTag: 'promotions-page-fab',
       onPressed: () => current.onTap(context, vm),
       icon: Icon(
         current.fabIcon,
