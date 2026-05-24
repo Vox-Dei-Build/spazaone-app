@@ -173,11 +173,12 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                           : 'Add to transaction',
                     );
                     if (picked == null || !context.mounted) return;
-                    viewModel.updateProductQuantity(
+                    await viewModel.updateProductQuantity(
                       context,
                       result.id!,
                       picked,
                     );
+                    if (!context.mounted) return;
                     _showSelectionFeedback(
                       context,
                       selectedQty > 0
@@ -207,7 +208,8 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                   selectedQty > 0 ? 'Update transaction' : 'Add to transaction',
             );
             if (picked == null || !context.mounted) return;
-            viewModel.updateProductQuantity(context, result.id!, picked);
+            await viewModel.updateProductQuantity(context, result.id!, picked);
+            if (!context.mounted) return;
             _showSelectionFeedback(
               context,
               selectedQty > 0
@@ -267,7 +269,8 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     );
     if (picked == null || !context.mounted) return;
 
-    viewModel.updateProductQuantity(context, productId, picked);
+    await viewModel.updateProductQuantity(context, productId, picked);
+    if (!context.mounted) return;
     _showSelectionFeedback(
       context,
       selectedQty > 0
@@ -311,6 +314,56 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                       errorText: errorText,
                       border: const OutlineInputBorder(),
                     ),
+                    onChanged: (_) {
+                      // Trigger rebuild so the over-stock hint
+                      // re-evaluates and the prior errorText (if any)
+                      // is cleared as the merchant edits.
+                      setState(() {
+                        errorText = null;
+                      });
+                    },
+                  ),
+                  // PAS-UX-XX: surface an *inline non-blocking* heads-up
+                  // when the typed quantity exceeds on-hand stock. The
+                  // merchant can still submit — the top-up confirmation
+                  // is handled centrally in
+                  // `TransactionViewModel.updateProductQuantity` so the
+                  // recovery flow stays in one place.
+                  Builder(
+                    builder: (_) {
+                      final parsed = int.tryParse(controller.text.trim());
+                      if (parsed != null &&
+                          parsed > 0 &&
+                          maxQuantity >= 0 &&
+                          parsed > maxQuantity) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: Colors.orange,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Exceeds stock by '
+                                  '${parsed - maxQuantity}. We\'ll ask to '
+                                  'top up your inventory before adding.',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
                   ),
                 ],
               ),
@@ -328,12 +381,11 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                       });
                       return;
                     }
-                    if (maxQuantity > 0 && parsed > maxQuantity) {
-                      setState(() {
-                        errorText = 'Only $maxQuantity item(s) available.';
-                      });
-                      return;
-                    }
+                    // PAS-UX-XX: removed the hard "Only N available"
+                    // block here. The merchant is allowed to enter any
+                    // positive integer; if it exceeds stock,
+                    // `updateProductQuantity` will prompt to top up
+                    // inventory before accepting the line.
                     Navigator.pop(dialogContext, parsed);
                   },
                   child: Text(confirmLabel),
