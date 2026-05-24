@@ -190,9 +190,11 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       );
       vm.totalPrice = breakdown['total'];
       vm.promoBreakdown = breakdown;
+      if (!mounted) return;
       setState(() => calculating = false);
     }
 
+    if (!mounted) return;
     setState(() {
       currentStep = RunPromotionStep.values[currentStep.index + 1];
     });

@@ -60,18 +60,23 @@ class CustomerManagementViewModel extends ChangeNotifier {
     _setLoading(true);
     try {
       notificationService = await MessagingNotificationService.create();
+      if (_disposed) return;
       pricingService = await DynamicPricingService.initialize();
+      if (_disposed) return;
       hasWhatsApp = (mobileNumber != null)
           ? await notificationService
               .isWhatsAppEnabled(normalizePhoneNumber(mobileNumber))
           : false;
+      if (_disposed) return;
 
       fetchNumberOfUnreadMessages(); // (messages) already in your code
       _listenOrdersUnread(); // 👈 NEW: orders
       _setLoading(false);
     } catch (e) {
+      if (_disposed) return;
       _setLoading(false);
     }
+    if (_disposed) return;
     notifyListeners();
   }
 
@@ -84,6 +89,11 @@ class CustomerManagementViewModel extends ChangeNotifier {
           .doc(userId) // 🔥 Replace with actual merchant ID
           .snapshots()
           .listen((snapshot) {
+        // Stream cancellation is async (returns a Future); events already
+        // queued before cancel() completes can still arrive after the
+        // view-model has been disposed. Guard the callback so we don't
+        // mutate state or notify on a disposed ChangeNotifier.
+        if (_disposed) return;
         if (snapshot.exists) {
           var unreadMessages = snapshot.data()?['unreadMessages'] ?? [];
 
@@ -119,6 +129,9 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .doc(customerId)
         .snapshots()
         .listen((doc) {
+      // Same disposal race as _messagesUnreadSub: cancel() is async, so
+      // late events may arrive post-dispose.
+      if (_disposed) return;
       if (doc.exists) {
         ordersUnreadCount = (doc.data()?['ordersUnreadCount'] as int?) ?? 0;
         notifyListeners();
@@ -172,6 +185,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .doc(customerId);
 
     DocumentSnapshot customerDoc = await customerRef.get();
+    if (_disposed) return;
     Map<String, dynamic> customerData =
         customerDoc.data() as Map<String, dynamic>;
     nameController.text = customerData['name'] ?? '';

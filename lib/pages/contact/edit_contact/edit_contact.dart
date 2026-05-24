@@ -125,9 +125,9 @@ class _EditCustomerPageState extends State<EditCustomerPage> {
                 color: Colors.green, // Make icon color pop
               ),
               onPressed: () async {
-                await widget.viewModel.handleImagePick(context).then((value) =>
-                    setState(
-                        () {})); // 🔥 Force UI to rebuild after selecting an image);
+                await widget.viewModel.handleImagePick(context);
+                if (!mounted) return;
+                setState(() {}); // 🔥 Force UI to rebuild after selecting an image
               },
             ),
           ],

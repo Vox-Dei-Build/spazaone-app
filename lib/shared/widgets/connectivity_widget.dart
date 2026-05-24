@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:pasella/config/size_config.dart';
@@ -14,23 +16,33 @@ class ConnectivityIndicator extends StatefulWidget {
 class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
   ConnectivityResult _connectionStatus = ConnectivityResult.none;
   final Connectivity _connectivity = Connectivity();
+  StreamSubscription<ConnectivityResult>? _connectivitySubscription;
   DateTime? _lastSendAttempt;
 
   @override
   void initState() {
     super.initState();
     _initConnectivity();
-    _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = null;
+    super.dispose();
   }
 
   Future<void> _initConnectivity() async {
-    ConnectivityResult? result;
+    ConnectivityResult result = ConnectivityResult.none;
     try {
       result = await _connectivity.checkConnectivity();
     } catch (e) {
       print("Couldn't check connectivity status: $e");
     }
-    return _updateConnectionStatus(result!);
+    if (!mounted) return;
+    return _updateConnectionStatus(result);
   }
 
   Future<void> _updateConnectionStatus(ConnectivityResult result) async {
@@ -44,6 +56,7 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
       _lastSendAttempt = now;
     }
 
+    if (!mounted) return;
     setState(() {
       _connectionStatus = result;
     });

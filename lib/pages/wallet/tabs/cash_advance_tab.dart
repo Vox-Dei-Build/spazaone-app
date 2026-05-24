@@ -24,6 +24,7 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
 
   Future<void> _fetchMaxAmount() async {
     double fetchedAmount = await walletVM.getMaxCashAdvanceAmount();
+    if (!mounted) return;
     setState(() {
       maxAmount = fetchedAmount;
     });

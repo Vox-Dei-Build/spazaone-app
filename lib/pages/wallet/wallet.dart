@@ -42,6 +42,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       initialIndex: _getInitialTabIndex(),
     );
     _tabController.addListener(() {
+      if (!mounted) return;
       setState(() {}); // Rerender when tab changes
     });
   }

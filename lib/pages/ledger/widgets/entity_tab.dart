@@ -76,6 +76,7 @@ class _EntityTabState extends State<EntityTab> {
   }
 
   void _handleSearch() {
+    if (!mounted) return;
     setState(() {});
   }
 
