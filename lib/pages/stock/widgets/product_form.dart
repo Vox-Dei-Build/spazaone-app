@@ -3,7 +3,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
+import 'package:pasella/pages/stock/widgets/whatsapp_listing_preview.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:provider/provider.dart';
 
 class ProductForm extends StatefulWidget {
@@ -30,12 +32,30 @@ class _ProductFormState extends State<ProductForm> {
   double? _cost;
   double? _sellingPrice;
 
+  /// PAS-UX-XX: shop name is fetched once for the WhatsApp listing preview
+  /// "Reply to buy from {shop}" line. Null while loading and falls back to
+  /// a generic placeholder inside the preview widget.
+  String? _shopName;
+
   @override
   void initState() {
     super.initState();
     final viewModel = context.read<ProductViewModel>();
     _cost = double.tryParse(viewModel.costController.text);
     _sellingPrice = double.tryParse(viewModel.sellingPriceController.text);
+    _loadShopName();
+  }
+
+  Future<void> _loadShopName() async {
+    try {
+      final name = await fetchShopName();
+      if (!mounted) return;
+      setState(() {
+        _shopName = name;
+      });
+    } catch (_) {
+      // Non-fatal: preview falls back to a generic label.
+    }
   }
 
   @override
@@ -236,6 +256,50 @@ class _ProductFormState extends State<ProductForm> {
                                   widget.product.whatsappListed = value;
                                 });
                               },
+                            ),
+                            // PAS-UX-XX: live preview of the listing as it
+                            // appears to customers in the WhatsApp Store.
+                            // Only rendered when the toggle is ON — the
+                            // toggle copy already explains the OFF state
+                            // ("internal-only") so the preview would just
+                            // add noise there. Bound to the live form
+                            // values so it updates as the merchant types.
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              transitionBuilder: (child, animation) =>
+                                  SizeTransition(
+                                sizeFactor: animation,
+                                axisAlignment: -1,
+                                child: FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                              ),
+                              child: widget.product.whatsappListed
+                                  ? Padding(
+                                      key: const ValueKey('wa-preview-on'),
+                                      padding: EdgeInsets.only(
+                                        top: SizeConfig.heightMultiplier * 0.5,
+                                      ),
+                                      child: WhatsappListingPreview(
+                                        name: viewModel.nameController.text,
+                                        sellingPrice: double.tryParse(
+                                          viewModel.sellingPriceController.text,
+                                        ),
+                                        company:
+                                            viewModel.companyController.text,
+                                        description: viewModel
+                                            .descriptionController.text,
+                                        imageUrl: viewModel.imageUrl,
+                                        shopName: _shopName,
+                                      ),
+                                    )
+                                  : const SizedBox(
+                                      key: ValueKey('wa-preview-off'),
+                                      width: double.infinity,
+                                    ),
                             ),
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
                             // Progressive disclosure: keep optional fields out
