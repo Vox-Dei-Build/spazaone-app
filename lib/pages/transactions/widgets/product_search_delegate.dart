@@ -292,11 +292,12 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     );
     String? errorText;
 
-    return showDialog<int>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
+    try {
+      return await showDialog<int>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setState) {
             return AlertDialog(
               title: Text('Add product to transaction · $title'),
               content: Column(
@@ -395,7 +396,10 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
           },
         );
       },
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   void _showSelectionFeedback(

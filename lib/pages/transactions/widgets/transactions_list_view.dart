@@ -29,6 +29,12 @@ class _TransactionsListViewState extends State<TransactionsListView> {
   final ScrollController _scrollController = ScrollController();
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(covariant TransactionsListView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
