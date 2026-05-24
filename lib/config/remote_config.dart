@@ -24,14 +24,10 @@ class RemoteConfigService {
         'TWILIO_NUMBER': dotenv.env['TWILIO_NUMBER'] ?? '',
         'TWILIO_MESSAGING_SERVICE_ID':
             dotenv.env['TWILIO_MESSAGING_SERVICE_ID'] ?? '',
-        'TWILIO_ACCEPT_BNPL_TID':
-            dotenv.env['TWILIO_ACCEPT_BNPL_TID'] ?? '',
-        'TWILIO_REJECT_BNPL_TID':
-            dotenv.env['TWILIO_REJECT_BNPL_TID'] ?? '',
-        'TWILIO_ACCEPT_ORDER_TID':
-            dotenv.env['TWILIO_ACCEPT_ORDER_TID'] ?? '',
-        'TWILIO_REJECT_ORDER_TID':
-            dotenv.env['TWILIO_REJECT_ORDER_TID'] ?? '',
+        'TWILIO_ACCEPT_BNPL_TID': dotenv.env['TWILIO_ACCEPT_BNPL_TID'] ?? '',
+        'TWILIO_REJECT_BNPL_TID': dotenv.env['TWILIO_REJECT_BNPL_TID'] ?? '',
+        'TWILIO_ACCEPT_ORDER_TID': dotenv.env['TWILIO_ACCEPT_ORDER_TID'] ?? '',
+        'TWILIO_REJECT_ORDER_TID': dotenv.env['TWILIO_REJECT_ORDER_TID'] ?? '',
         'TWILIO_ASSIGN_DRIVER_TID':
             dotenv.env['TWILIO_ASSIGN_DRIVER_TID'] ?? '',
         'TWILIO_MARK_OUT_FOR_DELIVERY_TID':
@@ -42,41 +38,29 @@ class RemoteConfigService {
             dotenv.env['TWILIO_MARK_CASH_RECEIVED_TID'] ?? '',
         'TWILIO_MARK_COLLECTED_TID':
             dotenv.env['TWILIO_MARK_COLLECTED_TID'] ?? '',
-        'TWILIO_SETTLE_BNPL_TID':
-            dotenv.env['TWILIO_SETTLE_BNPL_TID'] ?? '',
-        'TWILIO_CANCEL_ORDER_TID':
-            dotenv.env['TWILIO_CANCEL_ORDER_TID'] ?? '',
+        'TWILIO_SETTLE_BNPL_TID': dotenv.env['TWILIO_SETTLE_BNPL_TID'] ?? '',
+        'TWILIO_CANCEL_ORDER_TID': dotenv.env['TWILIO_CANCEL_ORDER_TID'] ?? '',
         'WA_SUPPORT_NUMBER': dotenv.env['WA_SUPPORT_NUMBER'] ?? '',
-        'USD_SMS_REMINDER_PRICE':
-            dotenv.env['USD_SMS_REMINDER_PRICE'] ?? '0',
-        'USD_SMS_PAYMENT_PRICE':
-            dotenv.env['USD_SMS_PAYMENT_PRICE'] ?? '0',
+        'USD_SMS_REMINDER_PRICE': dotenv.env['USD_SMS_REMINDER_PRICE'] ?? '0',
+        'USD_SMS_PAYMENT_PRICE': dotenv.env['USD_SMS_PAYMENT_PRICE'] ?? '0',
         'USD_WHATSAPP_UTILITY_PRICE':
             dotenv.env['USD_WHATSAPP_UTILITY_PRICE'] ?? '0',
         'USD_WHATSAPP_PROMOTIONAL_PRICE':
             dotenv.env['USD_WHATSAPP_PROMOTIONAL_PRICE'] ?? '0',
-        'MARKUP_SMS_PERCENTAGE':
-            dotenv.env['MARKUP_SMS_PERCENTAGE'] ?? '0',
+        'MARKUP_SMS_PERCENTAGE': dotenv.env['MARKUP_SMS_PERCENTAGE'] ?? '0',
         'MARKUP_WHATSAPP_PERCENTAGE':
             dotenv.env['MARKUP_WHATSAPP_PERCENTAGE'] ?? '0',
         'MARKUP_PROMOTIONAL_PERCENTAGE':
             dotenv.env['MARKUP_PROMOTIONAL_PERCENTAGE'] ?? '0',
-        'USD_ZAR_EXCHANGE_RATE':
-            dotenv.env['USD_ZAR_EXCHANGE_RATE'] ?? '19.0',
-        'PAYSTACK_LOCAL_PERCENT':
-            dotenv.env['PAYSTACK_LOCAL_PERCENT'] ?? '2.9',
-        'PAYSTACK_LOCAL_FLAT':
-            dotenv.env['PAYSTACK_LOCAL_FLAT'] ?? '1.0',
-        'PAYSTACK_EFT_PERCENT':
-            dotenv.env['PAYSTACK_EFT_PERCENT'] ?? '2.0',
-        'PAYSTACK_INT_PERCENT':
-            dotenv.env['PAYSTACK_INT_PERCENT'] ?? '3.1',
-        'PAYSTACK_INT_FLAT':
-            dotenv.env['PAYSTACK_INT_FLAT'] ?? '1.0',
+        'USD_ZAR_EXCHANGE_RATE': dotenv.env['USD_ZAR_EXCHANGE_RATE'] ?? '19.0',
+        'PAYSTACK_LOCAL_PERCENT': dotenv.env['PAYSTACK_LOCAL_PERCENT'] ?? '2.9',
+        'PAYSTACK_LOCAL_FLAT': dotenv.env['PAYSTACK_LOCAL_FLAT'] ?? '1.0',
+        'PAYSTACK_EFT_PERCENT': dotenv.env['PAYSTACK_EFT_PERCENT'] ?? '2.0',
+        'PAYSTACK_INT_PERCENT': dotenv.env['PAYSTACK_INT_PERCENT'] ?? '3.1',
+        'PAYSTACK_INT_FLAT': dotenv.env['PAYSTACK_INT_FLAT'] ?? '1.0',
         'PAYSTACK_SETTLEMENT_FEE':
             dotenv.env['PAYSTACK_SETTLEMENT_FEE'] ?? '3.0',
-        'PAYSTACK_VAT_PERCENT':
-            dotenv.env['PAYSTACK_VAT_PERCENT'] ?? '15.0',
+        'PAYSTACK_VAT_PERCENT': dotenv.env['PAYSTACK_VAT_PERCENT'] ?? '15.0',
         // SMS template defaults — these mirror the production Remote Config
         // values (post-QW-0 with ASCII hyphens in the sign-off). Defaults
         // guarantee that if the RC fetch fails or a key is unset, the app
