@@ -201,7 +201,8 @@ class TransactionViewModel extends ChangeNotifier {
 
   void addProduct(BuildContext context, String productId, int quantity) async {
     Product? product = productById(productId);
-    if (product.quantity != null && product.quantity! > 0) {
+    final available = product.quantity ?? 0;
+    if (available >= quantity && quantity > 0) {
       if (selectedProducts.containsKey(productId)) {
         selectedProducts[productId] = selectedProducts[productId]! + quantity;
       } else {
@@ -209,42 +210,195 @@ class TransactionViewModel extends ChangeNotifier {
       }
       notifyListeners();
     } else {
-      final toastContext = _resolveContext(context);
-      if (toastContext != null) {
-        showSnackbarWithNavigation(
-          toastContext,
-          'Cannot add product. Stock is zero or not available.',
-          Colors.orange,
-          updateStockSnackBar(context, productId, 1, product),
-        );
-      }
-    }
-  }
-
-  void updateProductQuantity(
-    BuildContext context,
-    String productId,
-    int quantity,
-  ) {
-    if (quantity <= 0) {
-      selectedProducts.remove(productId);
-    } else {
-      Product? product = productById(productId);
-      if (product.quantity != null && product.quantity! >= quantity) {
-        selectedProducts[productId] = quantity;
+      // PAS-UX-XX: instead of hard-blocking with a "Stock is zero" toast,
+      // give the merchant an explicit one-tap top-up. A merchant who is
+      // mid-transaction almost always knows their on-hand count is stale
+      // (just received a delivery, hand-counted the shelf, etc.) and
+      // wants to proceed without context-switching to the product page.
+      // Falling back to the snackbar+navigate path only when the
+      // confirmation is declined or the write fails.
+      final topUp = await _confirmAndTopUpStock(
+        context,
+        product: product,
+        productId: productId,
+        currentStock: available,
+        requestedQuantity: quantity,
+      );
+      if (topUp) {
+        if (selectedProducts.containsKey(productId)) {
+          selectedProducts[productId] = selectedProducts[productId]! + quantity;
+        } else {
+          selectedProducts[productId] = quantity;
+        }
+        notifyListeners();
       } else {
         final toastContext = _resolveContext(context);
         if (toastContext != null) {
           showSnackbarWithNavigation(
             toastContext,
-            'Insufficient stock for ${product.name}.',
+            'Cannot add product. Stock is zero or not available.',
             Colors.orange,
             updateStockSnackBar(context, productId, 1, product),
           );
         }
       }
     }
-    notifyListeners();
+  }
+
+  Future<void> updateProductQuantity(
+    BuildContext context,
+    String productId,
+    int quantity,
+  ) async {
+    if (quantity <= 0) {
+      selectedProducts.remove(productId);
+      notifyListeners();
+      return;
+    }
+    Product product = productById(productId);
+    final available = product.quantity ?? 0;
+    if (available >= quantity) {
+      selectedProducts[productId] = quantity;
+      notifyListeners();
+      return;
+    }
+
+    // PAS-UX-XX: requested qty exceeds on-hand stock. Previously this
+    // path silently dropped the request and showed an orange snackbar
+    // with an "Update Stock" action that forced the merchant to leave
+    // the transaction, edit the product, and start over. For a SMB
+    // merchant typing in a sale at the till, that interrupt is the
+    // single most common reason transactions get abandoned (see
+    // user feedback). Replace the wall with an inline confirmation:
+    // "Only N in stock — add M more and continue?" with one tap.
+    final topUp = await _confirmAndTopUpStock(
+      context,
+      product: product,
+      productId: productId,
+      currentStock: available,
+      requestedQuantity: quantity,
+    );
+    if (topUp) {
+      selectedProducts[productId] = quantity;
+      notifyListeners();
+    } else {
+      // User declined — preserve the previous behaviour so the snackbar
+      // recovery path still works for merchants who'd rather edit the
+      // product details.
+      final toastContext = _resolveContext(context);
+      if (toastContext != null) {
+        showSnackbarWithNavigation(
+          toastContext,
+          'Insufficient stock for ${product.name}.',
+          Colors.orange,
+          updateStockSnackBar(context, productId, 1, product),
+        );
+      }
+      notifyListeners();
+    }
+  }
+
+  /// Prompts the merchant to top up the on-hand stock so the requested
+  /// transaction line can proceed. On confirm, writes the new quantity
+  /// to Firestore (`users/{uid}/products/{id}.quantity`) and updates the
+  /// in-memory [products] list so subsequent reads (`productById`,
+  /// `availableStockFor`) see the bumped value immediately.
+  ///
+  /// Returns `true` if the merchant confirmed AND the write succeeded;
+  /// `false` on cancel or write failure. Callers must fall back to the
+  /// blocking snackbar path on `false`.
+  Future<bool> _confirmAndTopUpStock(
+    BuildContext context, {
+    required Product product,
+    required String productId,
+    required int currentStock,
+    required int requestedQuantity,
+  }) async {
+    final dialogContext = _resolveContext(context);
+    if (dialogContext == null) return false;
+
+    final shortfall = requestedQuantity - currentStock;
+    final productName = product.name ?? 'this product';
+
+    final confirmed = await showDialog<bool>(
+      context: dialogContext,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Add more stock?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                currentStock <= 0
+                    ? '$productName is currently out of stock.'
+                    : 'Only $currentStock of $productName in stock — you '
+                        'asked for $requestedQuantity.',
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Add $shortfall more to inventory and continue with this '
+                'transaction?',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your inventory will be updated immediately.',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Add $shortfall & continue'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return false;
+
+    try {
+      await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('products')
+          .doc(productId)
+          .update({'quantity': requestedQuantity});
+      // Keep the in-memory list in sync so the very next gate
+      // (e.g. tapping `+` again) reads the new value without a round
+      // trip to Firestore.
+      product.quantity = requestedQuantity;
+      final idx = products.indexWhere((p) => p.id == productId);
+      if (idx >= 0) products[idx] = product;
+      final fIdx = filteredProducts.indexWhere((p) => p.id == productId);
+      if (fIdx >= 0) filteredProducts[fIdx] = product;
+      final toastContext = _resolveContext(context);
+      if (toastContext != null) {
+        showSnackbar(
+          toastContext,
+          'Stock for $productName updated to $requestedQuantity.',
+          Colors.green,
+        );
+      }
+      return true;
+    } catch (e) {
+      final toastContext = _resolveContext(context);
+      if (toastContext != null) {
+        showSnackbar(
+          toastContext,
+          'Could not update stock: $e',
+          Colors.red,
+        );
+      }
+      return false;
+    }
   }
 
   double calculateTotalAmount() {
