@@ -77,7 +77,12 @@ class ProfileImageWidget extends StatelessWidget {
       radius: radius,
       backgroundColor: Color(kTertiaryColor.value),
       child: Text(
-        initials.isNotEmpty ? initials[0] : '',
+        // PAS-UI-UTF16: Use [_firstGrapheme] instead of indexing with
+        // `String[0]` — the latter returns a single UTF-16 code unit and
+        // will split a surrogate pair (e.g. when the customer name starts
+        // with an emoji), producing a malformed string that crashes
+        // [TextPainter.layout] with "string is not well-formed UTF-16".
+        _firstGrapheme(initials),
         style: TextStyle(
           fontSize: SizeConfig.textMultiplier * 2,
           color: Colors.white,
@@ -86,6 +91,19 @@ class ProfileImageWidget extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Returns the first user-perceived character of [value] without splitting
+/// a UTF-16 surrogate pair. Falls back to an empty string when [value] is
+/// empty. We intentionally take the first *rune* rather than `value[0]` so
+/// that names starting with astral-plane characters (emoji, many CJK
+/// extensions, etc.) do not produce a lone high-surrogate that would crash
+/// the text engine.
+String _firstGrapheme(String value) {
+  if (value.isEmpty) return '';
+  final runes = value.runes;
+  if (runes.isEmpty) return '';
+  return String.fromCharCode(runes.first);
 }
 
 /// PAS-UI-01: the legacy red NPA dot has been retired in favour of
@@ -114,7 +132,11 @@ Widget profilePicture(
   double? balance,
   bool showNPAIndicator = false,
 }) {
-  var initials = name.isNotEmpty ? name[0] : '';
+  // PAS-UI-UTF16: see [_firstGrapheme] — never index a String with `[0]`
+  // when the value comes from user input or server data, otherwise an
+  // emoji at the start of the name will be split mid-surrogate and crash
+  // the text engine.
+  var initials = _firstGrapheme(name);
   final bool hasNumber = number != null && number.isNotEmpty;
   final double avatarRadius = radius ?? SizeConfig.heightMultiplier * 3;
   // Only show the explicit "No phone" text pill on larger avatar
