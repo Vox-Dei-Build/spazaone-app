@@ -13,6 +13,7 @@ class GlobalSearchViewModel extends ChangeNotifier {
   String? groupName;
   List<Product> searchResults = [];
   StreamSubscription<QuerySnapshot>? _subscription;
+  bool _disposed = false;
 
   GlobalSearchViewModel()
       : userId = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -28,7 +29,7 @@ class GlobalSearchViewModel extends ChangeNotifier {
   void searchProducts() {
     if (searchQuery.isEmpty) {
       searchResults = [];
-      notifyListeners();
+      if (!_disposed) notifyListeners();
       _subscription?.cancel();
       return;
     }
@@ -40,6 +41,7 @@ class GlobalSearchViewModel extends ChangeNotifier {
         .collection('products')
         .snapshots()
         .listen((snapshot) {
+      if (_disposed) return;
       searchResults = snapshot.docs
           .map((doc) =>
               Product.fromMap(doc.data() as Map<String, dynamic>, doc.id))
@@ -52,6 +54,7 @@ class GlobalSearchViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _subscription?.cancel();
     super.dispose();
   }

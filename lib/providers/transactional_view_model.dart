@@ -498,9 +498,31 @@ class TransactionViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    // PAS-CRASH-_dependents: flip the disposed flag *before* tearing
+    // down anything that listens to this notifier (controllers' own
+    // listeners call `notifyListeners`). That way late callbacks fired
+    // from in-flight Futures (`updateSale`, `deleteSale`,
+    // `loadSaleDetails`, etc.) are silently dropped via the override
+    // below instead of throwing "A ChangeNotifier was used after being
+    // disposed", and the framework's `_dependents.isEmpty` assertion
+    // gets one less way to be violated by a stray rebuild during route
+    // teardown.
+    _disposed = true;
     amountController.dispose();
     remarksController.dispose();
     searchController.dispose();
     super.dispose();
+  }
+
+  bool _disposed = false;
+
+  /// Public read-only flag so subclasses / async tasks can early-exit
+  /// rather than rely solely on the `notifyListeners` guard.
+  bool get isDisposed => _disposed;
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
   }
 }

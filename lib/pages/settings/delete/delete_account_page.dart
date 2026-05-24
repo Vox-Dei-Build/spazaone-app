@@ -28,6 +28,7 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
   void initState() {
     super.initState();
     _confirmationController.addListener(() {
+      if (!mounted) return;
       setState(() {});
     });
   }

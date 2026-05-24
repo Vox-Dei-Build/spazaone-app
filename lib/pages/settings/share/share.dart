@@ -42,9 +42,11 @@ class _SharePageState extends State<SharePage> {
 
       if (userSnapshot.exists) {
         final userData = userSnapshot.data();
-        setState(() {
-          referralCount = userData?['referralCount'] ?? 0;
-        });
+        if (mounted) {
+          setState(() {
+            referralCount = userData?['referralCount'] ?? 0;
+          });
+        }
 
         if (userData != null && userData['referralCount'] == null) {
           await userRef.update({'referralCount': 0});
@@ -84,6 +86,7 @@ class _SharePageState extends State<SharePage> {
     final snapshot = await linkRef.get();
     if (snapshot.exists && snapshot.data() != null) {
       final data = snapshot.data() as Map<String, dynamic>;
+      if (!mounted) return;
       setState(() {
         referralLink = data['link'];
       });
@@ -92,6 +95,7 @@ class _SharePageState extends State<SharePage> {
 
     // No longer generating new referral links via Branch SDK.
     // If no existing link is found, share message will not include a link.
+    if (!mounted) return;
     setState(() {
       referralLink = null;
     });

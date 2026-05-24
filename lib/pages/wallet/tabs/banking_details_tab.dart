@@ -29,8 +29,10 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
   }
 
   Future<void> _loadBankingDetails() async {
+    if (!mounted) return;
     setState(() => isLoading = true);
     await walletViewModel.initializeBankingDetails();
+    if (!mounted) return;
     setState(() => isLoading = false);
   }
 
