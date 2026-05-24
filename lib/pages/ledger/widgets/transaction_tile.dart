@@ -107,11 +107,11 @@ class TransactionTile extends StatelessWidget {
     var unreadMessageCount = unreadCount ?? 0;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 3.0),
+      padding: const EdgeInsets.only(bottom: 1.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Wrap the name + badge in Expanded so it doesn't overflow the balance
+          // Wrap the name + badges in Expanded so it doesn't overflow the balance
           Expanded(
             child: Row(
               children: [
@@ -144,6 +144,21 @@ class TransactionTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                // PAS-WA-V1: at-a-glance channel reachability. Rendered
+                // inline at the end of the name row so it tracks the name's
+                // baseline and stays compact (no extra vertical line, and
+                // no row-to-row drift like when it was in the subtitle).
+                // The name above is wrapped in Flexible so it ellipsizes
+                // to make room for the badge rather than pushing it off
+                // the row.
+                Padding(
+                  padding: EdgeInsets.only(
+                      left: SizeConfig.imageSizeMultiplier * 1.5),
+                  child: ChannelCapabilityBadge(
+                    hasNumber: number != null && number!.isNotEmpty,
+                    hasWhatsApp: hasWhatsApp,
+                  ),
+                ),
               ],
             ),
           ),
@@ -161,7 +176,7 @@ class TransactionTile extends StatelessWidget {
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.4),
+              SizedBox(height: SizeConfig.heightMultiplier * 0.2),
               PaymentStatusPill(balance: balance, dense: true),
             ],
           ),
@@ -171,43 +186,63 @@ class TransactionTile extends StatelessWidget {
   }
 
   Widget _buildSubtitle() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+    // Detect the "no real transactions yet" state. New contacts are
+    // initialised with a synthetic placeholder transaction
+    // (`getDefaultTransaction` in add_contact_view_model.dart) whose
+    // `remarks` field is the literal string "No transactions yet" —
+    // and `entity_tab` falls back to the same string when there is no
+    // last transaction at all. Either way, that exact remarks value is
+    // our signal not to render the fake "R0,00 Payment added on ..."
+    // line.
+    final hasTransaction = remarks != 'No transactions yet';
+    if (!hasTransaction) {
+      return Text(
+        'No transactions yet',
+        style: TextStyle(
+          color: Colors.grey.shade600,
+          fontSize: SizeConfig.textMultiplier * 1.5,
+          fontWeight: FontWeight.w400,
+          fontStyle: FontStyle.italic,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text.rich(
-                TextSpan(
-                  style: TextStyle(
-                    color: status == 'PAID' ? kPrimaryColor : Colors.red,
-                    fontWeight: FontWeight.w500,
-                    fontSize: SizeConfig.textMultiplier * 1.5,
-                  ),
-                  children: [
-                    TextSpan(text: CurrencyUtil.format(amount)),
-                    TextSpan(
-                      text: type.isNotEmpty ? ' $type added on ' : ' ',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    TextSpan(
-                      text: date,
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: TextStyle(
+                color: status == 'PAID' ? kPrimaryColor : Colors.red,
+                fontWeight: FontWeight.w500,
+                fontSize: SizeConfig.textMultiplier * 1.5,
               ),
+              children: [
+                TextSpan(text: CurrencyUtil.format(amount)),
+                TextSpan(
+                  text: type.isNotEmpty ? ' $type added on ' : ' ',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                TextSpan(
+                  text: date,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ],
             ),
-            SizedBox(width: SizeConfig.heightMultiplier * 2),
-            Text(
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (remarks.isNotEmpty) ...[
+          SizedBox(width: SizeConfig.heightMultiplier * 2),
+          Flexible(
+            child: Text(
               remarks,
               style: TextStyle(
                 color: Colors.grey.shade600,
@@ -217,25 +252,8 @@ class TransactionTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-          ],
-        ),
-        // PAS-WA-V1: at-a-glance channel reachability. Sits on its own
-        // line so the existing transaction summary keeps its full row;
-        // the badge is small (icon + one word) so the tile stays
-        // mobile-readable. Hidden entirely when there is no number AND
-        // we have nothing meaningful to show — but we DO surface the
-        // explicit "No phone" state because it's the single most
-        // actionable thing for a merchant trying to chase a balance.
-        Padding(
-          padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 0.4),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ChannelCapabilityBadge(
-              hasNumber: number != null && number!.isNotEmpty,
-              hasWhatsApp: hasWhatsApp,
-            ),
           ),
-        ),
+        ],
       ],
     );
   }
