@@ -45,6 +45,9 @@ class CustomerManagementViewModel extends ChangeNotifier {
   final TextEditingController numberController = TextEditingController();
   int unreadMessagesCount = 0;
   int ordersUnreadCount = 0;
+  bool _disposed = false;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _messagesUnreadSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _ordersUnreadSub;
 
   CustomerManagementViewModel(this.customerId, this.customerName,
@@ -75,7 +78,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
   void fetchNumberOfUnreadMessages() async {
     try {
       // ✅ Listen for unread messages from Firestore **for this customer only**
-      FirebaseFirestore.instance
+      _messagesUnreadSub?.cancel();
+      _messagesUnreadSub = FirebaseFirestore.instance
           .collection('users')
           .doc(userId) // 🔥 Replace with actual merchant ID
           .snapshots()
@@ -90,7 +94,8 @@ class CustomerManagementViewModel extends ChangeNotifier {
               .where((msg) =>
                   msg['customerNumber'] == mobileNumber &&
                   (msg['direction'] == null ||
-                      msg['direction'].toString().toLowerCase() == 'inbound'))
+                      msg['direction'].toString().toLowerCase() == 'inbound') &&
+                  msg['isRead'] != true)
               .toList();
 
           unreadMessagesCount = filteredMessages.length;
@@ -397,8 +402,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
       unitCost: pricingService.smsReminderTemplatePrice,
     );
     final whatsappCost = pricingService.whatsappUtilityPrice;
-    final reminderMessageCost =
-        smsCost > whatsappCost ? smsCost : whatsappCost;
+    final reminderMessageCost = smsCost > whatsappCost ? smsCost : whatsappCost;
 
     bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
         context, userId, reminderMessageCost);
@@ -501,7 +505,15 @@ class CustomerManagementViewModel extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
+    _messagesUnreadSub?.cancel();
     _ordersUnreadSub?.cancel();
     sendingReminderNotifier.dispose();
     nameController.dispose();
