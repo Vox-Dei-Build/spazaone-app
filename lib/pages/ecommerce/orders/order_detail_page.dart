@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/actions_block.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/actions_dock.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/order_progress_tracker.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/amounts_card.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/error_empty.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/header_card.dart';
@@ -224,30 +225,64 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     await _callPayment('ASSIGN_DRIVER', order, extraData: result);
   }
 
-  Future<void> _confirmUnassignDriver(Map<String, dynamic> order) async {
+  Future<void> _confirmUnassignDriver(
+    Map<String, dynamic> order, {
+    bool isOutForDelivery = false,
+  }) async {
     final driver = (order['driver'] is Map)
         ? Map<String, dynamic>.from(order['driver'] as Map)
         : <String, dynamic>{};
     final name = (driver['name'] ?? '').toString();
+    final who = name.isEmpty ? 'this driver' : name;
+
+    // Two very different conversations:
+    //  * accepted window  — driver hasn't left, swapping them out is a
+    //    routine dispatch change and the customer was never told who
+    //    was coming.
+    //  * out_for_delivery — the customer was already pinged "on the way".
+    //    Unassigning rolls the order state back to accepted on the
+    //    server, so the merchant needs to know they're effectively
+    //    walking the order backwards and will need to re-notify.
+    final String title;
+    final String body;
+    final String confirmLabel;
+    if (isOutForDelivery) {
+      title = 'Pull $who off this delivery?';
+      body =
+          'The customer was already told their order is on the way. '
+          'Unassigning will reset this order to "Accepted" so you can '
+          'arrange a new driver — only do this if $who can no longer '
+          'complete the delivery (accident, package lost, etc.).';
+      confirmLabel = 'Yes, recall driver';
+    } else {
+      title = 'Unassign driver?';
+      body = name.isEmpty
+          ? 'This clears the driver from this order so you can assign '
+              'a different one. The customer is not notified.'
+          : 'This removes $name from this order so you can assign a '
+              'different driver. The customer is not notified.';
+      confirmLabel = 'Unassign';
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Unassign driver?'),
-        content: Text(
-          name.isEmpty
-              ? 'This clears the driver from this order so you can assign '
-                  'a different one. The customer is not notified.'
-              : 'This removes $name from this order so you can assign a '
-                  'different driver. The customer is not notified.',
-        ),
+        title: Text(title),
+        content: Text(body),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Keep'),
           ),
           FilledButton(
+            style: isOutForDelivery
+                ? FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Theme.of(context).colorScheme.onError,
+                  )
+                : null,
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Unassign'),
+            child: Text(confirmLabel),
           ),
         ],
       ),
@@ -502,9 +537,20 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               isPendingMerchantReview && !isCancelled && !isRejected;
           // Driver-allocation lifecycle:
           //  * Assign     — first allocation while order is queued for dispatch
-          //  * Reassign   — same UI as assign, prefilled with current driver
-          //  * Unassign   — corrective: clears the driver, walks back from
-          //                 out_for_delivery to accepted on the server
+          //  * Reassign   — same UI as assign, prefilled with current driver.
+          //                 Restricted to the `accepted` window: once the
+          //                 driver is out_for_delivery they're physically
+          //                 carrying the goods, so a silent swap would point
+          //                 the customer's "on the way" ping at the wrong
+          //                 person. To change drivers mid-trip the merchant
+          //                 must Unassign (which rolls state back) and then
+          //                 Assign + Mark out for delivery again.
+          //  * Unassign   — corrective recovery: clears the driver, walks
+          //                 back from out_for_delivery to accepted on the
+          //                 server. Available in both windows but the UI
+          //                 surfaces an explicit confirmation during
+          //                 out_for_delivery because the customer was
+          //                 already notified.
           //  * OutForDelivery — driver has departed; only valid once a driver
           //                 is attached and the order isn't already delivered
           //  * Delivered  — terminal for delivery orders (parallel to
@@ -514,36 +560,50 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           final showAssignDriver =
               isAcceptedOrder && isDelivery && !hasDriver && !isTerminal;
           final showReassignDriver =
-              isInDriverAllocationWindow && isDelivery && hasDriver;
+              isAcceptedOrder && isDelivery && hasDriver && !isTerminal;
           final showUnassignDriver =
               isInDriverAllocationWindow && isDelivery && hasDriver;
           final showMarkOutForDelivery =
               isAcceptedOrder && isDelivery && hasDriver && !isTerminal;
           final showMarkDelivered =
               isOutForDelivery && isDelivery && !isDelivered && !isTerminal;
-          // The legacy "Mark Collected" button stays for non-delivery
-          // orders. We deliberately suppress it for delivery orders so
-          // the merchant follows the explicit out-for-delivery → delivered
-          // flow instead of skipping straight to "collected" — which
-          // would mute the on-the-way customer ping.
+          // "Mark Collected" is the pickup-side counterpart to
+          // "Mark Delivered" for delivery orders. We deliberately
+          // suppress it for delivery orders so the merchant follows the
+          // explicit out-for-delivery → delivered flow instead of
+          // skipping straight to "collected" — which would mute the
+          // on-the-way customer ping.
+          //
+          // Order of operations for pickup-with-cash is **collect first,
+          // then mark cash received** (mirrors the delivery flow where
+          // the driver marks delivered before settling). The cash button
+          // is gated on `hasHandedOver` (see `canMarkCash` above), so
+          // we no longer hide Collected while cash is owed — doing so
+          // would deadlock the order with no available action.
           final showMarkCollected = !isCollected &&
               !isPendingMerchantReview &&
               !isDelivery &&
-              !((methodForLogic == 'cash' ||
-                      methodForLogic == 'transfer' ||
-                      methodForLogic == 'eft') &&
-                  !isPaid) &&
               !(isCancelled || isRejected);
 
           final createdAt = createdAtDt != null
               ? DateFormat('dd MMM yyyy · HH:mm').format(createdAtDt)
               : '—';
+          // Cash / transfer / EFT is settled in person at handover, so
+          // gate "Mark Payment Received" on the goods actually having
+          // changed hands:
+          //  * Delivery orders  → driver has confirmed `delivered`.
+          //  * Pickup orders    → customer has `collected`.
+          // Without this gate a merchant can mark cash received on an
+          // order still sitting in the shop or out on a truck, which
+          // silently reconciles money that hasn't moved.
+          final hasHandedOver = isDelivery ? isDelivered : (isCollected == true);
           final canMarkCash = (methodForLogic == 'cash' ||
                   methodForLogic == 'transfer' ||
                   methodForLogic == 'eft') &&
               !isPaid &&
               !isTerminal &&
-              !isPendingMerchantReview;
+              !isPendingMerchantReview &&
+              hasHandedOver;
 
           final subtotal = OrderRepository.asNum(order['subtotal']);
           final delivery = OrderRepository.asNum(order['deliveryFee']);
@@ -683,7 +743,10 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 },
                 onAssignDriver: () => _assignDriver(order),
                 onReassignDriver: () => _assignDriver(order, reassign: true),
-                onUnassignDriver: () => _confirmUnassignDriver(order),
+                onUnassignDriver: () => _confirmUnassignDriver(
+                  order,
+                  isOutForDelivery: isOutForDelivery,
+                ),
                 onMarkOutForDelivery: () => _confirmMarkOutForDelivery(order),
                 onMarkDelivered: () => _confirmMarkDelivered(order),
                 onAcceptBnpl: () => _callPayment('ACCEPT_BNPL', order),
@@ -780,6 +843,29 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                       ),
                                       sliver: SliverList.list(
                                         children: [
+                                          OrderProgressTracker(
+                                            stage: resolveOrderStage(
+                                              isPendingMerchantReview:
+                                                  isPendingMerchantReview,
+                                              isAcceptedOrder: isAcceptedOrder,
+                                              isOutForDelivery: isOutForDelivery,
+                                              isDelivered: isDelivered,
+                                              isCollected: isCollected == true,
+                                              isDelivery: isDelivery,
+                                              hasDriver: hasDriver,
+                                            ),
+                                            isDelivery: isDelivery,
+                                            isTerminal: isTerminal,
+                                            terminalLabel: isCancelled
+                                                ? 'Order cancelled'
+                                                : (isRejected
+                                                    ? 'Order rejected'
+                                                    : null),
+                                          ),
+                                          SizedBox(
+                                            height:
+                                                SizeConfig.heightMultiplier * 2,
+                                          ),
                                           HeaderCard(
                                             customerName: widget.customerName,
                                             statusText: statusLabel(st),
