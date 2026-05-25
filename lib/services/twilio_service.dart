@@ -168,7 +168,7 @@ class TwilioService {
                 'message': msg['body'],
                 'dateSent': msg['date_sent'] != null
                     ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
-                        .parse(msg['date_sent'])
+                        .parseUtc(msg['date_sent'])
                     : DateTime.now(),
                 'status': msg['status'],
                 'direction': "inbound",
@@ -207,7 +207,7 @@ class TwilioService {
                     'message': msg['body'],
                     'dateSent': msg['date_sent'] != null
                         ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
-                            .parse(msg['date_sent'])
+                            .parseUtc(msg['date_sent'])
                         : DateTime.now(),
                     'status': msg['status'],
                     'direction': "inbound",
@@ -286,7 +286,7 @@ class TwilioService {
             'message': msg['body'],
             'dateSent': msg['date_sent'] != null
                 ? DateFormat("EEE, dd MMM yyyy HH:mm:ss Z")
-                    .parse(msg['date_sent'])
+                    .parseUtc(msg['date_sent'])
                 : DateTime.now(),
             'status': msg['status'],
             'direction': "outbound",

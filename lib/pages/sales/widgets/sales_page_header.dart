@@ -10,23 +10,21 @@ class SalesPageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PageHeader(
-      actionWidget: Expanded(
-        child: IconButton(
-            icon: Icon(Icons.help_outline,
-                color: Colors.black, size: SizeConfig.imageSizeMultiplier * 5),
-            onPressed: () {
-              final url = TutorialConfig.getTutorialUrl(
-                  TutorialConfig.TUTORIAL_CAPTURE_SALES);
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => LoomVideoPage(
-                    loomUrl: url,
-                    title: 'How to Capture Sales',
-                  ),
+      actionWidget: IconButton(
+          icon: Icon(Icons.help_outline,
+              color: Colors.black, size: SizeConfig.imageSizeMultiplier * 5),
+          onPressed: () {
+            final url = TutorialConfig.getTutorialUrl(
+                TutorialConfig.TUTORIAL_CAPTURE_SALES);
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => LoomVideoPage(
+                  loomUrl: url,
+                  title: 'How to Capture Sales',
                 ),
-              );
-            }),
-      ),
+              ),
+            );
+          }),
     );
   }
 }

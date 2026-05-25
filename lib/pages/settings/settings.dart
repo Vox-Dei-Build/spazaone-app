@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/pages/settings/help/help.dart';
 import 'package:pasella/pages/settings/privacy/privacy_page.dart';
 import 'package:pasella/utils/auth_util.dart';
@@ -36,6 +37,16 @@ class SettingsPage extends StatelessWidget {
                   Expanded(
                     child: ListView(
                       children: [
+                        SettingTile(
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            BusinessNamePage.id,
+                          ),
+                          icon: Icons.store,
+                          title: 'Business Name',
+                          subTitle:
+                              'Shown on receipts and customer messages',
+                        ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(
                             context,

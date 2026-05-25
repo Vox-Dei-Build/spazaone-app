@@ -9,6 +9,7 @@ class Product {
   int? quantity;
   String? image;
   String? description;
+  bool whatsappListed;
 
   Product({
     this.id,
@@ -21,6 +22,7 @@ class Product {
     this.quantity,
     this.image,
     this.description,
+    this.whatsappListed = false,
   });
 
   factory Product.fromMap(Map<String, dynamic> json, String id) => Product(
@@ -34,6 +36,9 @@ class Product {
         quantity: json["quantity"] as int?,
         image: json["image"] as String?,
         description: json["description"] as String?,
+        whatsappListed: json["whatsappListed"] == true ||
+            json["whatsappEnabled"] == true ||
+            json["availableOnWhatsApp"] == true,
       );
 
   Map<String, dynamic> toMap() => {
@@ -46,5 +51,6 @@ class Product {
         "quantity": quantity,
         "image": image,
         "description": description,
+        "whatsappListed": whatsappListed,
       };
 }

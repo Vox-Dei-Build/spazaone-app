@@ -45,6 +45,9 @@ class CustomerManagementViewModel extends ChangeNotifier {
   final TextEditingController numberController = TextEditingController();
   int unreadMessagesCount = 0;
   int ordersUnreadCount = 0;
+  bool _disposed = false;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _messagesUnreadSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _ordersUnreadSub;
 
   CustomerManagementViewModel(this.customerId, this.customerName,
@@ -57,35 +60,52 @@ class CustomerManagementViewModel extends ChangeNotifier {
     _setLoading(true);
     try {
       notificationService = await MessagingNotificationService.create();
+      if (_disposed) return;
       pricingService = await DynamicPricingService.initialize();
+      if (_disposed) return;
       hasWhatsApp = (mobileNumber != null)
           ? await notificationService
               .isWhatsAppEnabled(normalizePhoneNumber(mobileNumber))
           : false;
+      if (_disposed) return;
 
       fetchNumberOfUnreadMessages(); // (messages) already in your code
       _listenOrdersUnread(); // 👈 NEW: orders
       _setLoading(false);
     } catch (e) {
+      if (_disposed) return;
       _setLoading(false);
     }
+    if (_disposed) return;
     notifyListeners();
   }
 
   void fetchNumberOfUnreadMessages() async {
     try {
       // ✅ Listen for unread messages from Firestore **for this customer only**
-      FirebaseFirestore.instance
+      _messagesUnreadSub?.cancel();
+      _messagesUnreadSub = FirebaseFirestore.instance
           .collection('users')
           .doc(userId) // 🔥 Replace with actual merchant ID
           .snapshots()
           .listen((snapshot) {
+        // Stream cancellation is async (returns a Future); events already
+        // queued before cancel() completes can still arrive after the
+        // view-model has been disposed. Guard the callback so we don't
+        // mutate state or notify on a disposed ChangeNotifier.
+        if (_disposed) return;
         if (snapshot.exists) {
           var unreadMessages = snapshot.data()?['unreadMessages'] ?? [];
 
-          // 🔥 Filter messages for this specific `customerId`
+          // 🔥 Filter messages for this specific `customerId`. V1 truth-
+          // surface: outbound bot mirrors share the unreadMessages array but
+          // should not ring the merchant's bell — only inbound entries count.
           var filteredMessages = unreadMessages
-              .where((msg) => msg['customerNumber'] == mobileNumber)
+              .where((msg) =>
+                  msg['customerNumber'] == mobileNumber &&
+                  (msg['direction'] == null ||
+                      msg['direction'].toString().toLowerCase() == 'inbound') &&
+                  msg['isRead'] != true)
               .toList();
 
           unreadMessagesCount = filteredMessages.length;
@@ -109,6 +129,9 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .doc(customerId)
         .snapshots()
         .listen((doc) {
+      // Same disposal race as _messagesUnreadSub: cancel() is async, so
+      // late events may arrive post-dispose.
+      if (_disposed) return;
       if (doc.exists) {
         ordersUnreadCount = (doc.data()?['ordersUnreadCount'] as int?) ?? 0;
         notifyListeners();
@@ -162,6 +185,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         .doc(customerId);
 
     DocumentSnapshot customerDoc = await customerRef.get();
+    if (_disposed) return;
     Map<String, dynamic> customerData =
         customerDoc.data() as Map<String, dynamic>;
     nameController.text = customerData['name'] ?? '';
@@ -333,6 +357,13 @@ class CustomerManagementViewModel extends ChangeNotifier {
     // merchant doesn't send), so the legacy bool API still maps cleanly:
     // user explicitly confirms -> send, anything else -> do nothing.
     // No silent state to surface.
+    //
+    // PAS-UX-12: There is no underlying record being saved alongside this
+    // dispatch — the reminder *is* the action — so the "Save without
+    // sending" secondary button is suppressed (`showSkip: false`).
+    // Merchants who change their mind dismiss via the close (X) icon in
+    // the sheet header (or back gesture / scrim), all of which map to
+    // dismissed and result in no send.
     final shouldSend = await CostConfirmationSheet.show(
       context,
       breakdown: CostBreakdown.singleMessageMultiChannel(
@@ -343,30 +374,32 @@ class CustomerManagementViewModel extends ChangeNotifier {
         expected: expectedChannel,
       ),
       confirmLabel: 'Send Reminder',
+      showSkip: false,
     );
 
     if (shouldSend) await _sendReminder(context);
   }
 
-  Future<DateTime?> _getLastReminderSentDate() async {
-    var customerDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('customers')
-        .doc(customerId)
-        .get();
-
-    return customerDoc.data()?['lastReminderSent']?.toDate();
-  }
-
+  // PAS-WA-V1: Reminder caps audit. Historic versions of this app
+  // gated reminders to "once per month" via a `lastReminderSent`
+  // cooldown read here. Pasella now charges per send (paid-usage
+  // model), so a count-based cap is invalid — merchants pay for the
+  // value they get and the only legitimate gates are: (1) settled
+  // balance, (2) phone-on-file, (3) wallet credit. The previous
+  // helper was already orphaned (no callers in `lib/`) but is
+  // removed outright to make the audit conclusion explicit and stop
+  // future readers reintroducing a cap by re-wiring it.
+  //
+  // `lastReminderSent` is still written on each send (see
+  // `_sendReminder`) and read by the reports tile for a purely
+  // cosmetic "reminder sent recently" badge — that surface is the
+  // only legitimate consumer.
   Future<void> _sendReminder(BuildContext context) async {
     sendingReminderNotifier.value = true;
 
     final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
     double netBalance =
         customerBalanceSummaryProvider.customerBalanceSummary.netBalance;
-
-    sendingReminderNotifier.value = true;
 
     // Connectivity check
     var connectivityResult = await Connectivity().checkConnectivity();
@@ -380,10 +413,18 @@ class CustomerManagementViewModel extends ChangeNotifier {
       });
     }
 
-    final reminderMessageCost = SMSPricingUtil.calculateCost(
+    // PAS-WA-V1: balance check must cover the worst-case channel
+    // cost. The dispatcher decides WhatsApp-vs-SMS at send-time
+    // (including a 30-day recheck for stale "no" cache entries), so
+    // we cannot know in advance which price will be deducted. Gate
+    // on the larger of the two so the wallet can never be driven
+    // negative by a fallback we didn't quote against.
+    final smsCost = SMSPricingUtil.calculateCost(
       text: SMSMessages.reminderShort,
       unitCost: pricingService.smsReminderTemplatePrice,
     );
+    final whatsappCost = pricingService.whatsappUtilityPrice;
+    final reminderMessageCost = smsCost > whatsappCost ? smsCost : whatsappCost;
 
     bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
         context, userId, reminderMessageCost);
@@ -486,7 +527,15 @@ class CustomerManagementViewModel extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
+    _messagesUnreadSub?.cancel();
     _ordersUnreadSub?.cancel();
     sendingReminderNotifier.dispose();
     nameController.dispose();

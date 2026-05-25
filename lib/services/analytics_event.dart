@@ -512,6 +512,29 @@ class CustomerDeleted extends AnalyticsEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Review nudge
+// ---------------------------------------------------------------------------
+
+/// Fired when ReviewPromptService actually asked the OS to show the native
+/// in-app review sheet. Note: the OS may suppress the prompt silently
+/// (Apple/Google quotas), so this is an "asked" signal, not a "displayed"
+/// one. We carry only the trigger name -- never sale amounts or customer
+/// ids -- to keep the event PII-free.
+class ReviewNudgeShown extends AnalyticsEvent {
+  final String triggerName;
+
+  const ReviewNudgeShown({required this.triggerName});
+
+  @override
+  String get name => 'review_nudge_shown';
+
+  @override
+  Map<String, Object?> get properties => {
+        'trigger': triggerName,
+      };
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

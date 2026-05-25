@@ -15,7 +15,6 @@ class BalanceSummaryCardContent extends StatelessWidget {
     SizeConfig().init(context);
     Color balanceColor =
         balanceSummary.netBalance < 0 ? Colors.red : Colors.green;
-    List<Widget>? children = balanceSummary.children;
 
     return Card(
       elevation: 4.0,
@@ -38,8 +37,6 @@ class BalanceSummaryCardContent extends StatelessWidget {
               balanceSummary: balanceSummary,
               balanceColor: balanceColor,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
-            if (children != null) ...children,
           ],
         ),
       ),

@@ -110,11 +110,21 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _pricingService = await DynamicPricingService.initialize();
+      if (!mounted) return;
       setState(() {
         _whatsappPrice = _pricingService?.whatsappPromotionPrice;
         _smsPricePerSegment = _pricingService?.smsReminderTemplatePrice;
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _templateNameController.dispose();
+    _whatsappContentController.dispose();
+    _smsContentController.dispose();
+    _mediaUrlController.dispose();
+    super.dispose();
   }
 
   void nextStep() {
@@ -245,7 +255,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     } catch (e) {
       debugPrint("Failed to save template: $e");
     } finally {
-      setState(() => saving = false);
+      if (mounted) setState(() => saving = false);
     }
   }
 

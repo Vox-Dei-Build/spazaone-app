@@ -31,20 +31,15 @@ void showProfileImageDialog(
                             imageUrl: imageUrl,
                             placeholder: (context, url) =>
                                 const CircularProgressIndicator(),
+                            // PAS-PROFILE-IMG-403: stale Firebase Storage
+                            // URLs return 403; fall back to the initials
+                            // avatar instead of a generic error glyph so
+                            // the dialog still feels intentional and the
+                            // failure never escalates to a fatal error.
                             errorWidget: (context, url, error) =>
-                                const Icon(Icons.error),
+                                _initialsFallback(initials),
                           )
-                        : CircleAvatar(
-                            radius: SizeConfig.imageSizeMultiplier * 15,
-                            backgroundColor: Color(kTertiaryColor.value),
-                            child: Text(
-                              initials,
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: SizeConfig.textMultiplier * 2,
-                                  fontWeight: FontWeight.w500),
-                            ),
-                          )),
+                        : _initialsFallback(initials)),
                 SizedBox(height: SizeConfig.heightMultiplier * 3),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -59,5 +54,20 @@ void showProfileImageDialog(
         ),
       );
     },
+  );
+}
+
+CircleAvatar _initialsFallback(String initials) {
+  return CircleAvatar(
+    radius: SizeConfig.imageSizeMultiplier * 15,
+    backgroundColor: Color(kTertiaryColor.value),
+    child: Text(
+      initials,
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: SizeConfig.textMultiplier * 2,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
   );
 }

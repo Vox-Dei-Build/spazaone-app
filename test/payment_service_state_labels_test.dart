@@ -21,12 +21,25 @@ void main() {
   // Source of truth: the server whitelist
   // `functions/src/ecommerce/updateOrderPayment.ts:5`.
   const serverAllowedActions = <String>{
+    'ACCEPT_ORDER',
+    'REJECT_ORDER',
+    'ASSIGN_DRIVER',
+    'UNASSIGN_DRIVER',
+    'MARK_OUT_FOR_DELIVERY',
+    'MARK_DELIVERED',
     'ACCEPT_BNPL',
     'REJECT_BNPL',
     'MARK_CASH_RECEIVED',
     'MARK_COLLECTED',
     'SETTLE_BNPL',
     'CANCEL_ORDER',
+  };
+
+  // Actions that intentionally do NOT trigger a customer notification.
+  // Keep this list explicit so accidental "silent" actions are easy to
+  // spot in review.
+  const silentActions = <String>{
+    'UNASSIGN_DRIVER',
   };
 
   group('PaymentService state labels', () {
@@ -77,16 +90,13 @@ void main() {
       );
     });
 
-    test('all known actions currently trigger a customer message', () {
-      // All six template keys in OrderStatusMessagingService have a
-      // matching template. If a future action is added that should be
-      // silent (no customer notification), update this test and the
-      // intent map together — never leave the merchant guessing.
+    test('all order actions currently trigger a customer message', () {
       for (final action in serverAllowedActions) {
+        final shouldNotify = !silentActions.contains(action);
         expect(
           PaymentService.actionTriggersMessage[action],
-          isTrue,
-          reason: '"$action" silently dropped its messaging intent.',
+          shouldNotify,
+          reason: '"$action" has the wrong messaging intent.',
         );
       }
     });

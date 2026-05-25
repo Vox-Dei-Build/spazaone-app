@@ -62,6 +62,7 @@ class WalletViewModel extends ChangeNotifier {
 
   String? editingDocumentId;
   final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  bool _disposed = false;
 
   // State Notifiers
   final ValueNotifier<bool> isProcessing = ValueNotifier<bool>(false);
@@ -72,6 +73,8 @@ class WalletViewModel extends ChangeNotifier {
   // Wallet state stream
   final StreamController<WalletState> _walletStateController =
       StreamController<WalletState>.broadcast();
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _walletDocSubscription;
   Stream<WalletState> get walletStateStream => _walletStateController.stream;
 
   WalletViewModel() {
@@ -95,7 +98,8 @@ class WalletViewModel extends ChangeNotifier {
         .collection('wallet')
         .doc('current');
 
-    walletDocRef.snapshots().listen((snapshot) async {
+    _walletDocSubscription = walletDocRef.snapshots().listen((snapshot) async {
+      if (_disposed) return;
       final data = snapshot.data();
 
       final balance = data?['virtualBalance']?.toDouble() ?? 0.0;
@@ -117,7 +121,9 @@ class WalletViewModel extends ChangeNotifier {
           data?['totalCashAdvanceRepaid']?.toDouble() ?? 0.0;
 
       final hasBankAccount = await hasBankingDetails(userId);
+      if (_disposed) return;
       final hasPendingPayout = await hasPendingOrProcessingPayout();
+      if (_disposed) return;
 
       final repaymentHistory =
           (data?['repaymentHistory'] as List<dynamic>?)?.map((entry) {
@@ -345,8 +351,10 @@ class WalletViewModel extends ChangeNotifier {
 
   Future<void> initializeBankingDetails() async {
     editingDocumentId = await checkAndFetchBankingDetailsDocId(userId);
+    if (_disposed) return;
     if (editingDocumentId != null) {
       final details = await fetchBankingDetails(editingDocumentId!, userId);
+      if (_disposed) return;
       if (details != null) {
         bankName.text = details.bankName;
         accountHolderName.text = details.accountHolderName;
@@ -571,6 +579,7 @@ class WalletViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     bankName.dispose();
     accountHolderName.dispose();
     accountNumber.dispose();
@@ -579,6 +588,7 @@ class WalletViewModel extends ChangeNotifier {
     reference.dispose();
     isProcessing.dispose();
     isProcessingPayoutRequest.dispose();
+    _walletDocSubscription?.cancel();
     _walletStateController.close();
     super.dispose();
   }

@@ -3,6 +3,12 @@ import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
 
 const ALLOWED = new Set([
+  "ACCEPT_ORDER",
+  "REJECT_ORDER",
+  "ASSIGN_DRIVER",
+  "UNASSIGN_DRIVER",
+  "MARK_OUT_FOR_DELIVERY",
+  "MARK_DELIVERED",
   "ACCEPT_BNPL",
   "REJECT_BNPL",
   "MARK_CASH_RECEIVED",
@@ -195,6 +201,128 @@ export const updateOrderPayment = functions.https.onCall(
         orderData.products ?? orderData.items ?? orderData.cart ?? [];
 
       switch (paymentAction) {
+        case "ACCEPT_ORDER": {
+          patch = {
+            ...patch,
+            status: "accepted",
+            acceptedAt: now,
+            acceptedBy: context.auth?.uid || merchantId,
+            paymentStatus: orderData.paymentStatus || "unpaid",
+            collected: false,
+          };
+          break;
+        }
+
+        case "REJECT_ORDER": {
+          patch = {
+            ...patch,
+            status: "rejected",
+            paymentStatus: orderData.paymentStatus || "unpaid",
+            rejectedAt: now,
+            rejectedBy: context.auth?.uid || merchantId,
+            collected: false,
+          };
+          if (customerId) {
+            const cartDoc = db
+              .collection("users")
+              .doc(merchantId)
+              .collection("carts")
+              .doc(customerId);
+            await cartDoc.set(
+              { lock: admin.firestore.FieldValue.delete() },
+              { merge: true },
+            );
+          }
+          break;
+        }
+
+        case "ASSIGN_DRIVER": {
+          const driverName = (data?.driverName ?? "").toString().trim();
+          const driverPhone = (data?.driverPhone ?? "").toString().trim();
+          const driverId = (data?.driverId ?? "").toString().trim();
+          if (!driverName && !driverPhone && !driverId) {
+            throw new functions.https.HttpsError(
+              "invalid-argument",
+              "driverName, driverPhone, or driverId is required",
+            );
+          }
+          patch = {
+            ...patch,
+            driver: {
+              id: driverId || null,
+              name: driverName || null,
+              phone: driverPhone || null,
+              assignedAt: now,
+              assignedBy: context.auth?.uid || merchantId,
+            },
+            driverAssignedAt: now,
+          };
+          break;
+        }
+
+        case "UNASSIGN_DRIVER": {
+          // Clears the driver assignment so the merchant can reassign.
+          // We deliberately keep the order's status as-is (typically
+          // "accepted" or "out_for_delivery") so the merchant can pick
+          // up exactly where they left off after fixing the dispatch.
+          patch = {
+            ...patch,
+            driver: admin.firestore.FieldValue.delete(),
+            driverAssignedAt: admin.firestore.FieldValue.delete(),
+            driverUnassignedAt: now,
+            driverUnassignedBy: context.auth?.uid || merchantId,
+          };
+          // If the order was already out for delivery, walk it back to
+          // "accepted" — there is no driver any more, so it can't be
+          // out for delivery. Keeps the state machine honest.
+          if (orderData.status === "out_for_delivery") {
+            patch.status = "accepted";
+          }
+          break;
+        }
+
+        case "MARK_OUT_FOR_DELIVERY": {
+          // Driver has departed the shop. Requires a driver to be
+          // assigned — otherwise there's nothing operationally true to
+          // tell the customer.
+          const driver = orderData.driver || {};
+          const hasDriver =
+            !!(driver.id || driver.name || driver.phone);
+          if (!hasDriver) {
+            throw new functions.https.HttpsError(
+              "failed-precondition",
+              "Assign a driver before marking the order out for delivery.",
+            );
+          }
+          patch = {
+            ...patch,
+            status: "out_for_delivery",
+            outForDeliveryAt: now,
+            outForDeliveryBy: context.auth?.uid || merchantId,
+          };
+          break;
+        }
+
+        case "MARK_DELIVERED": {
+          // Terminal state for delivery orders — parallel to
+          // MARK_COLLECTED for pickup. We also flip `collected: true`
+          // so legacy reads (sales filters, BNPL fulfilment checks)
+          // that key off `collected` continue to work without
+          // duplicating the meaning of "the customer has the goods".
+          patch = {
+            ...patch,
+            status: "delivered",
+            collected: true,
+            deliveredAt: now,
+            collectedAt: now,
+            deliveredBy: context.auth?.uid || merchantId,
+          };
+          if (customerId) {
+            await finalizeInventoryOnce({ merchantId, orderId, customerId });
+          }
+          break;
+        }
+
         case "ACCEPT_BNPL": {
           patch = {
             ...patch,
@@ -266,9 +394,16 @@ export const updateOrderPayment = functions.https.onCall(
         }
 
         case "MARK_CASH_RECEIVED": {
+          const existingMethod = String(
+            orderData.paymentMethod || orderData.type || "",
+          );
           patch = {
             ...patch,
-            paymentMethod: "Cash",
+            paymentMethod:
+              existingMethod.toLowerCase() === "transfer" ||
+              existingMethod.toLowerCase() === "eft"
+                ? "Transfer"
+                : "Cash",
             paymentStatus: "paid",
             status: "paid",
             cashReceivedAt: now,

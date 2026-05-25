@@ -21,11 +21,11 @@ import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/show_toast.dart';
-import 'package:pasella/widgets/consent_modal.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -141,7 +141,26 @@ void _handleNotificationRoute(RemoteMessage message) {
 
   // Strip query params before pushing — the routes table only knows about
   // bare paths. Anything page-specific is delivered via PromoteIntentBus.
-  navigatorKey.currentState?.pushNamed(uri.path);
+  //
+  // IMPORTANT: pushing an unknown route triggers MaterialApp's default
+  // onUnknownRoute path which asserts `onUnknownRoute!`, crashing with
+  // "Null check operator used on a null value" when no handler is set.
+  // Guard against unknown routes from FCM payloads (typos, stale links,
+  // routes from newer app versions) by checking against the known routes
+  // table before pushing. Also funnel any miss into Crashlytics so we can
+  // see which routes are being sent that we don't handle.
+  final path = uri.path;
+  if (!MyApp.knownRoutes.contains(path)) {
+    CrashService.instance.recordNonFatal(
+      StateError('Unknown notification route: $path'),
+      StackTrace.current,
+      reason: 'notification route not registered',
+      context: {'route': route},
+    );
+    return;
+  }
+
+  navigatorKey.currentState?.pushNamed(path);
 }
 
 Future<void> _initializeRemoteConfigAndSmartlook() async {
@@ -235,6 +254,24 @@ void main() async {
     // Initialize Firebase
     await Firebase.initializeApp();
 
+    // TODO(app-check): Activate Firebase App Check here.
+    //
+    // `firebase_app_check` is in pubspec.yaml and two call sites
+    // (online_sales_list.dart, online_sale_detail_page.dart) already
+    // call `FirebaseAppCheck.instance.getToken()`, but no provider is
+    // registered so those calls return null and the backend is not
+    // protected against script/scraper/billing-bombing abuse.
+    //
+    // Suspected contributor to the Crashlytics
+    //   `[firebase_functions/unknown] 1 out of 2 underlying tasks failed`
+    // signature (the Android Functions SDK awaits auth + AppCheck
+    // tokens in parallel; the missing provider can fail that Task).
+    //
+    // Rollout plan: see docs/firebase_app_check_todo.md
+    //   Phase 1: activate with playIntegrity / deviceCheck, monitor-only.
+    //   Phase 2: enforce per service in Firebase Console.
+    //   Phase 3: drop manual `X-Firebase-AppCheck` header plumbing.
+
     FirebaseFirestore.instance.settings =
         const Settings(persistenceEnabled: true);
 
@@ -271,6 +308,13 @@ void main() async {
     await CrashService.instance.applyConsent(ConsentService.instance.state);
     await TelemetryService.instance.init();
 
+    // Review nudge state is local-only (Hive `appBox`), independent of
+    // analytics consent: counters and cooldown timestamps are persisted
+    // even if the merchant has opted out of telemetry. Init must run after
+    // `Hive.openBox('appBox')` above and is safe before sign-in because it
+    // does not touch FirebaseAuth.
+    await ReviewPromptService.instance.init();
+
     // Tag Crashlytics with the merchant id (and clear it on sign-out) so
     // crash reports can be grouped per merchant without leaking PII.
     FirebaseAuth.instance.authStateChanges().listen((user) {
@@ -293,8 +337,9 @@ void main() async {
     FirebaseMessaging.onMessage
         .listen(showLocalNotification); // ✅ listen and display
 
-    // When app is opened from a notification
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationRoute);
+    // NOTE: onMessageOpenedApp is already wired above via
+    // `_onMessageOpenedAppHandler`; do not subscribe twice or
+    // `_handleNotificationRoute` will fire for each tap once per listener.
 
     // Setup merchant heartbeat boot hook
     await setupMerchantHeartbeatBootHook();
@@ -323,17 +368,53 @@ void main() async {
       }
     });
 
-    // Show the consent modal on first launch. Defer to the next frame so
-    // navigatorKey.currentContext is populated.
-    final ctx = navigatorKey.currentContext;
-    if (ctx != null) {
-      ConsentModal.showIfNeeded(ctx);
-    }
+    // PAS-UX-DESIGN: the first-run telemetry consent modal is now shown
+    // from the Dashboard's initState (the first authenticated screen)
+    // instead of here. Surfacing it pre-login was abrupt and gave the
+    // user no app context to anchor the decision.
   });
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
+  /// Static route table. Exposed as a separate map (instead of being inlined
+  /// in `build`) so notification handlers can validate a target route exists
+  /// before calling `pushNamed`, avoiding the framework's
+  /// `onUnknownRoute!` null-check crash.
+  static final Map<String, WidgetBuilder> _routes = {
+    LoginPage.id: (context) => const LoginPage(),
+    RegisterPage.id: (context) => const RegisterPage(),
+    RegisterAnonymousPage.id: (context) => const RegisterAnonymousPage(),
+    // PAS-UX-09 follow-up: wrap Dashboard in BusinessNameGate so
+    // legacy merchants whose shopName was never set (when the field
+    // was optional) are forced through a one-field recovery before
+    // they can interact with the app. New signups already pass the
+    // gate because the register validator now requires the field.
+    Dashboard.id: (context) => const BusinessNameGate(child: Dashboard()),
+    AddContactPage.id: (context) => const AddContactPage(),
+    SecurityPage.id: (context) => const SecurityPage(),
+    ProfilePage.id: (context) => const ProfilePage(),
+    BusinessNamePage.id: (context) => const BusinessNamePage(),
+    BusinessTypePage.id: (context) => const BusinessTypePage(),
+    BusinessCategoryPage.id: (context) => const BusinessCategoryPage(),
+    BusinessReportPage.id: (context) => const BusinessReportPage(),
+    ChatPage.id: (context) => const ChatPage(),
+    AccountPage.id: (context) => const AccountPage(),
+    LanguagePage.id: (context) => const LanguagePage(),
+    UpdateNumberPage.id: (context) => const UpdateNumberPage(),
+    BackupPage.id: (context) => const BackupPage(),
+    HelpPage.id: (context) => const HelpPage(),
+    SharePage.id: (context) => const SharePage(),
+    DeleteAccountPage.id: (context) => const DeleteAccountPage(),
+    SalesPage.id: (context) => const SalesPage(),
+    WalletPage.id: (context) => const WalletPage(),
+    FindDefaulterPage.id: (context) => const FindDefaulterPage(),
+    PrivacyPage.id: (context) => const PrivacyPage(),
+    PromotionsPage.id: (context) => const PromotionsPage(),
+  };
+
+  static Set<String> get knownRoutes => _routes.keys.toSet();
 
   @override
   Widget build(BuildContext context) {
@@ -375,31 +456,20 @@ class MyApp extends StatelessWidget {
           initialRoute: LoginPage.id,
           navigatorKey: navigatorKey,
           navigatorObservers: [TelemetryService.instance.navigatorObserver],
-          routes: {
-            LoginPage.id: (context) => const LoginPage(),
-            RegisterPage.id: (context) => const RegisterPage(),
-            RegisterAnonymousPage.id: (context) =>
-                const RegisterAnonymousPage(),
-            Dashboard.id: (context) => const Dashboard(),
-            AddContactPage.id: (context) => const AddContactPage(),
-            SecurityPage.id: (context) => const SecurityPage(),
-            ProfilePage.id: (context) => const ProfilePage(),
-            BusinessTypePage.id: (context) => const BusinessTypePage(),
-            BusinessCategoryPage.id: (context) => const BusinessCategoryPage(),
-            BusinessReportPage.id: (context) => const BusinessReportPage(),
-            ChatPage.id: (context) => const ChatPage(),
-            AccountPage.id: (context) => const AccountPage(),
-            LanguagePage.id: (context) => const LanguagePage(),
-            UpdateNumberPage.id: (context) => const UpdateNumberPage(),
-            BackupPage.id: (context) => const BackupPage(),
-            HelpPage.id: (context) => const HelpPage(),
-            SharePage.id: (context) => const SharePage(),
-            DeleteAccountPage.id: (context) => const DeleteAccountPage(),
-            SalesPage.id: (context) => const SalesPage(),
-            WalletPage.id: (context) => const WalletPage(),
-            FindDefaulterPage.id: (context) => const FindDefaulterPage(),
-            PrivacyPage.id: (context) => const PrivacyPage(),
-            PromotionsPage.id: (context) => const PromotionsPage(),
+          routes: _routes,
+          // Defensive: any code path that pushes a route not present in
+          // `_routes` (e.g. stale FCM notification payloads from older app
+          // versions) lands here instead of triggering the framework's
+          // `onUnknownRoute!` null-check assertion. We log it and stay on
+          // the current screen rather than showing a broken page.
+          onUnknownRoute: (settings) {
+            CrashService.instance.recordNonFatal(
+              StateError('Unknown route requested: ${settings.name}'),
+              StackTrace.current,
+              reason: 'MaterialApp.onUnknownRoute fallback',
+              context: {'route': settings.name ?? ''},
+            );
+            return null;
           },
         ),
       ),

@@ -9,13 +9,17 @@ class PillMeta {
 enum OrderStatus {
   all,
   pending,
+  accepted,
   paid,
   cancelled,
+  rejected,
   /* fulfilled,
   cancelled,
   refunded, */
   uncollected,
   collected,
+  outForDelivery,
+  delivered,
   bnplPending,
   bnplOutstanding,
   bnplRejected,
@@ -25,13 +29,17 @@ extension OrderStatusLabel on OrderStatus {
   String get label => switch (this) {
         OrderStatus.all => 'All',
         OrderStatus.pending => 'Pending',
+        OrderStatus.accepted => 'Accepted',
         OrderStatus.paid => 'Paid',
         OrderStatus.cancelled => 'Cancelled',
+        OrderStatus.rejected => 'Rejected',
         /* OrderStatus.fulfilled => 'Fulfilled',
         OrderStatus.cancelled => 'Cancelled',
         OrderStatus.refunded => 'Refunded', */
         OrderStatus.uncollected => 'Uncollected',
         OrderStatus.collected => 'Collected',
+        OrderStatus.outForDelivery => 'Out for Delivery',
+        OrderStatus.delivered => 'Delivered',
         OrderStatus.bnplPending => 'BNPL Pending',
         OrderStatus.bnplOutstanding => 'BNPL Outstanding',
         OrderStatus.bnplRejected => 'BNPL Rejected',
@@ -41,13 +49,17 @@ extension OrderStatusLabel on OrderStatus {
 extension OrderStatusX on OrderStatus {
   Color color(BuildContext c) => switch (this) {
         OrderStatus.pending => Colors.amber,
+        OrderStatus.accepted => Colors.indigo,
         OrderStatus.paid => Colors.green,
         /* OrderStatus.fulfilled => Colors.blue,
         OrderStatus.cancelled => Colors.red,
         OrderStatus.refunded => Colors.purple, */
         OrderStatus.cancelled => Colors.red,
+        OrderStatus.rejected => Colors.red,
         OrderStatus.uncollected => Colors.orange,
         OrderStatus.collected => Colors.teal,
+        OrderStatus.outForDelivery => Colors.blue,
+        OrderStatus.delivered => Colors.teal,
         OrderStatus.bnplRejected => Colors.deepOrange,
         OrderStatus.bnplPending => Colors.amber,
         OrderStatus.bnplOutstanding => Colors.brown,
@@ -102,6 +114,9 @@ extension OrderStatusX on OrderStatus {
     if (x.contains('cancel') || ps == 'cancelled') {
       return OrderStatus.cancelled;
     }
+    if (x.contains('reject') || ps == 'rejected') {
+      return OrderStatus.rejected;
+    }
     if (x.contains('pending') || x.isEmpty || ps == 'pending') {
       return OrderStatus.pending;
     }
@@ -145,7 +160,19 @@ OrderStatus resolveOrderStatus({
     return OrderStatus.bnplPending;
   }
 
-  // 2) Payment/fulfillment/cancellation/refund
+  // 2) Delivery / collection terminal states win over generic "paid" so
+  //    the merchant always sees the freshest fulfillment truth on the
+  //    order header. A delivered/collected order is implicitly paid in
+  //    this V1 — payment status is surfaced separately on its own pill.
+  if (s == 'delivered' || s.contains('delivered')) {
+    return OrderStatus.delivered;
+  }
+  if (s == 'out_for_delivery' || s.contains('out_for_delivery')) {
+    return OrderStatus.outForDelivery;
+  }
+  if (isCollected || s.contains('collected')) return OrderStatus.collected;
+
+  // 3) Payment/fulfillment/cancellation/refund
   if (isPaid || s == 'paid' || s == 'fulfilled' || ps == 'paid') {
     return OrderStatus.paid;
   }
@@ -153,19 +180,21 @@ OrderStatus resolveOrderStatus({
   if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
   if (s.contains('fulfill') || ps == 'fulfilled') return OrderStatus.fulfilled; */
   if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
+  if (s.contains('reject') || ps == 'rejected') return OrderStatus.rejected;
 
-  // 3) Only now consider collection state
-  if (isCollected || s.contains('collected')) return OrderStatus.collected;
+  // 4) Accepted (merchant approved but not yet dispatched/paid)
+  if (s == 'accepted') return OrderStatus.accepted;
+
   if (s.contains('uncollected') || ps == 'uncollected') {
     return OrderStatus.uncollected;
   }
 
-  // 4) Pending / default
+  // 5) Pending / default
   if (s.contains('pending') || s.isEmpty || ps == 'pending') {
     return OrderStatus.pending;
   }
 
-  // 5) Fallback to parser
+  // 6) Fallback to parser
   return OrderStatusX.fromString(status,
       paymentMethod: paymentMethod, type: type, paymentStatus: paymentStatus);
 }
@@ -228,7 +257,34 @@ StatusMeta buildPaymentStatusMeta(
 
 PillMeta? buildCollectionPill({
   required bool isCollected,
+  bool isDelivery = false,
+  bool isOutForDelivery = false,
+  bool hasDriver = false,
+  bool isRejected = false,
+  bool isCancelled = false,
 }) {
+  // Terminal non-fulfillment states short-circuit so a rejected or
+  // cancelled order never reads as "awaiting" something that will
+  // never happen.
+  if (isRejected) return const PillMeta('Rejected', Colors.red);
+  if (isCancelled) return const PillMeta('Cancelled', Colors.red);
+
+  // Delivery orders speak the language of delivery, not collection.
+  // The "awaiting" label depends on whether a driver has been
+  // attached yet: without a driver we're waiting to *find* one;
+  // with a driver attached we're waiting to *dispatch* — and the
+  // merchant's next action is "Mark Out for Delivery", so we call
+  // it "Driver assigned" rather than the previous "Awaiting
+  // Dispatch" which incorrectly implied no further action was
+  // available.
+  if (isDelivery) {
+    if (isCollected) return const PillMeta('Delivered', Colors.teal);
+    if (isOutForDelivery) {
+      return const PillMeta('Out for Delivery', Colors.blue);
+    }
+    if (hasDriver) return const PillMeta('Driver assigned', Colors.blue);
+    return const PillMeta('Awaiting driver', Colors.orange);
+  }
   if (isCollected) {
     return const PillMeta('Collected', Colors.teal);
   } else {

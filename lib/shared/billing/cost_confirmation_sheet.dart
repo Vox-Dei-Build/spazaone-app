@@ -30,16 +30,28 @@ import 'package:provider/provider.dart';
 /// not yet migrated keep working unchanged. See
 /// `docs/openclaw/pas-ux-03-implementation-note.md` for the rationale on
 /// why the negative action must not read as "Cancel".
+///
+/// PAS-UX-12: Some flows have no underlying record to "save" if the
+/// merchant decides not to send (e.g. the standalone payment reminder
+/// from the contact kebab — there's no sale, no payment, no credit
+/// being recorded alongside the message; the reminder *is* the action).
+/// For those callers, set [showSkip] to `false` so the "Save without
+/// sending" secondary action is omitted entirely. Dismissal is then
+/// surfaced via an explicit close (X) icon in the header and the
+/// standard back/scrim gesture, both of which return
+/// [CostSheetOutcome.dismissed].
 class CostConfirmationSheet extends StatelessWidget {
   final CostBreakdown breakdown;
   final String confirmLabel;
   final String skipLabel;
+  final bool showSkip;
 
   const CostConfirmationSheet({
     Key? key,
     required this.breakdown,
     this.confirmLabel = 'Confirm',
     this.skipLabel = 'Save without sending',
+    this.showSkip = true,
   }) : super(key: key);
 
   /// Tri-state variant. Prefer this for any caller that needs to
@@ -50,6 +62,7 @@ class CostConfirmationSheet extends StatelessWidget {
     required CostBreakdown breakdown,
     String confirmLabel = 'Send',
     String skipLabel = 'Save without sending',
+    bool showSkip = true,
   }) async {
     final result = await showModalBottomSheet<CostSheetOutcome>(
       context: context,
@@ -61,6 +74,7 @@ class CostConfirmationSheet extends StatelessWidget {
         breakdown: breakdown,
         confirmLabel: confirmLabel,
         skipLabel: skipLabel,
+        showSkip: showSkip,
       ),
     );
     return result ?? CostSheetOutcome.dismissed;
@@ -77,12 +91,14 @@ class CostConfirmationSheet extends StatelessWidget {
     required CostBreakdown breakdown,
     String confirmLabel = 'Confirm',
     String skipLabel = 'Save without sending',
+    bool showSkip = true,
   }) async {
     final outcome = await showOutcome(
       context,
       breakdown: breakdown,
       confirmLabel: confirmLabel,
       skipLabel: skipLabel,
+      showSkip: showSkip,
     );
     return outcome.shouldSend;
   }
@@ -119,24 +135,53 @@ class CostConfirmationSheet extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Text(
-              breakdown.title,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.4,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            if (breakdown.subtitle != null) ...[
-              SizedBox(height: SizeConfig.heightMultiplier * 0.5),
-              Text(
-                breakdown.subtitle!,
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.6,
-                  color: Colors.black54,
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            // Header row: title on the left, close (X) on the right.
+            //
+            // PAS-UX-12: The close icon is an explicit dismissal affordance
+            // requested for flows where the secondary "Save without sending"
+            // button is suppressed (e.g. standalone reminder send). Without
+            // it the merchant would have no visible way out of the sheet
+            // other than the back gesture / tapping the scrim, which is
+            // not obvious on the bottom-sheet surface. Mapping it to
+            // [CostSheetOutcome.dismissed] keeps it semantically distinct
+            // from "skip" so callers that care can still tell the cases
+            // apart.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        breakdown.title,
+                        style: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 2.4,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (breakdown.subtitle != null) ...[
+                        SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                        Text(
+                          breakdown.subtitle!,
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 1.6,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(context)
+                      .pop(CostSheetOutcome.dismissed),
+                ),
+              ],
+            ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
 
             // Itemised lines. Non-primary lines (e.g. the fallback
@@ -274,11 +319,15 @@ class CostConfirmationSheet extends StatelessWidget {
             //
             // Three explicit outcomes (mapped to [CostSheetOutcome]):
             //   * Send                 -> CostSheetOutcome.send
-            //   * Don't send           -> CostSheetOutcome.skip
-            //   * Back / scrim dismiss -> CostSheetOutcome.dismissed (null pop)
+            //   * Don't send           -> CostSheetOutcome.skip (only when
+            //                             [showSkip] is true; PAS-UX-12)
+            //   * Back / scrim / X     -> CostSheetOutcome.dismissed (null pop)
             //
             // The secondary action is explicit so merchants can skip the
-            // outbound message without reading it as a destructive cancel.
+            // outbound message without reading it as a destructive cancel
+            // — except when there's nothing to save alongside the send,
+            // in which case it's suppressed entirely and the close (X)
+            // icon in the header is the only non-confirm exit.
             if (loading)
               const Center(child: CircularProgressIndicator())
             else if (canAfford)
@@ -296,19 +345,21 @@ class CostConfirmationSheet extends StatelessWidget {
                       ),
                     ),
                   ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 1),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context)
-                          .pop(CostSheetOutcome.skip),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                            vertical: SizeConfig.heightMultiplier * 1.2),
-                        child: Text(skipLabel),
+                  if (showSkip) ...[
+                    SizedBox(height: SizeConfig.heightMultiplier * 1),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context)
+                            .pop(CostSheetOutcome.skip),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                              vertical: SizeConfig.heightMultiplier * 1.2),
+                          child: Text(skipLabel),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               )
             else
@@ -328,19 +379,21 @@ class CostConfirmationSheet extends StatelessWidget {
                           .goToBilling(context);
                     },
                   ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 1),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context)
-                          .pop(CostSheetOutcome.skip),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                            vertical: SizeConfig.heightMultiplier * 1.2),
-                        child: Text(skipLabel),
+                  if (showSkip) ...[
+                    SizedBox(height: SizeConfig.heightMultiplier * 1),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context)
+                            .pop(CostSheetOutcome.skip),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                              vertical: SizeConfig.heightMultiplier * 1.2),
+                          child: Text(skipLabel),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
           ],

@@ -3,7 +3,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
+import 'package:pasella/pages/stock/widgets/whatsapp_listing_preview.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:provider/provider.dart';
 
 class ProductForm extends StatefulWidget {
@@ -19,7 +21,7 @@ class ProductForm extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _ProductFormState createState() => _ProductFormState();
+  State<ProductForm> createState() => _ProductFormState();
 }
 
 class _ProductFormState extends State<ProductForm> {
@@ -30,12 +32,30 @@ class _ProductFormState extends State<ProductForm> {
   double? _cost;
   double? _sellingPrice;
 
+  /// PAS-UX-XX: shop name is fetched once for the WhatsApp listing preview
+  /// "Reply to buy from {shop}" line. Null while loading and falls back to
+  /// a generic placeholder inside the preview widget.
+  String? _shopName;
+
   @override
   void initState() {
     super.initState();
     final viewModel = context.read<ProductViewModel>();
     _cost = double.tryParse(viewModel.costController.text);
     _sellingPrice = double.tryParse(viewModel.sellingPriceController.text);
+    _loadShopName();
+  }
+
+  Future<void> _loadShopName() async {
+    try {
+      final name = await fetchShopName();
+      if (!mounted) return;
+      setState(() {
+        _shopName = name;
+      });
+    } catch (_) {
+      // Non-fatal: preview falls back to a generic label.
+    }
   }
 
   @override
@@ -65,7 +85,8 @@ class _ProductFormState extends State<ProductForm> {
                         vertical: SizeConfig.heightMultiplier * 6,
                       ),
                       margin: EdgeInsets.only(
-                          top: SizeConfig.heightMultiplier * 10),
+                        top: SizeConfig.heightMultiplier * 10,
+                      ),
                       decoration: const BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.only(
@@ -113,8 +134,9 @@ class _ProductFormState extends State<ProductForm> {
                                     },
                                     onChanged: (value) {
                                       viewModel.markUnsavedChanges();
-                                      widget.product.cost =
-                                          double.tryParse(value);
+                                      widget.product.cost = double.tryParse(
+                                        value,
+                                      );
                                       setState(() {
                                         _cost = double.tryParse(value);
                                       });
@@ -123,7 +145,8 @@ class _ProductFormState extends State<ProductForm> {
                                   ),
                                 ),
                                 SizedBox(
-                                    width: SizeConfig.imageSizeMultiplier * 5),
+                                  width: SizeConfig.imageSizeMultiplier * 5,
+                                ),
                                 Expanded(
                                   child: CustomTextField(
                                     label: "Selling Price*",
@@ -145,8 +168,7 @@ class _ProductFormState extends State<ProductForm> {
                                       widget.product.sellingPrice =
                                           double.tryParse(value);
                                       setState(() {
-                                        _sellingPrice =
-                                            double.tryParse(value);
+                                        _sellingPrice = double.tryParse(value);
                                       });
                                     },
                                     textInputType: TextInputType.number,
@@ -162,22 +184,18 @@ class _ProductFormState extends State<ProductForm> {
                             if (_cost != null &&
                                 _sellingPrice != null &&
                                 _sellingPrice! < _cost!) ...[
-                              SizedBox(
-                                  height: SizeConfig.heightMultiplier * 1),
+                              SizedBox(height: SizeConfig.heightMultiplier * 1),
                               Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Icon(
                                     Icons.info_outline,
-                                    size:
-                                        SizeConfig.imageSizeMultiplier * 4,
+                                    size: SizeConfig.imageSizeMultiplier * 4,
                                     color: Colors.orange[700],
                                   ),
                                   SizedBox(
-                                      width:
-                                          SizeConfig.imageSizeMultiplier *
-                                              1.5),
+                                    width: SizeConfig.imageSizeMultiplier * 1.5,
+                                  ),
                                   Expanded(
                                     child: Text(
                                       'Heads up: selling price is below '
@@ -224,27 +242,85 @@ class _ProductFormState extends State<ProductForm> {
                               textInputType: TextInputType.number,
                             ),
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              secondary: const Icon(Icons.storefront_outlined),
+                              title: const Text('List in WhatsApp Store'),
+                              subtitle: const Text(
+                                'On: customers can see and order it. Off: internal-only, still usable for stock and sales.',
+                              ),
+                              value: widget.product.whatsappListed,
+                              onChanged: (value) {
+                                viewModel.markUnsavedChanges();
+                                setState(() {
+                                  widget.product.whatsappListed = value;
+                                });
+                              },
+                            ),
+                            // PAS-UX-XX: live preview of the listing as it
+                            // appears to customers in the WhatsApp Store.
+                            // Only rendered when the toggle is ON — the
+                            // toggle copy already explains the OFF state
+                            // ("internal-only") so the preview would just
+                            // add noise there. Bound to the live form
+                            // values so it updates as the merchant types.
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              transitionBuilder: (child, animation) =>
+                                  SizeTransition(
+                                sizeFactor: animation,
+                                axisAlignment: -1,
+                                child: FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                              ),
+                              child: widget.product.whatsappListed
+                                  ? Padding(
+                                      key: const ValueKey('wa-preview-on'),
+                                      padding: EdgeInsets.only(
+                                        top: SizeConfig.heightMultiplier * 0.5,
+                                      ),
+                                      child: WhatsappListingPreview(
+                                        name: viewModel.nameController.text,
+                                        sellingPrice: double.tryParse(
+                                          viewModel.sellingPriceController.text,
+                                        ),
+                                        company:
+                                            viewModel.companyController.text,
+                                        description: viewModel
+                                            .descriptionController.text,
+                                        imageUrl: viewModel.imageUrl,
+                                        shopName: _shopName,
+                                      ),
+                                    )
+                                  : const SizedBox(
+                                      key: ValueKey('wa-preview-off'),
+                                      width: double.infinity,
+                                    ),
+                            ),
+                            SizedBox(height: SizeConfig.heightMultiplier * 2),
                             // Progressive disclosure: keep optional fields out
                             // of the merchant's way during initial create. Auto
                             // expands when an existing product already has data
                             // in either field (edit surface) so values stay
                             // visible.
                             Theme(
-                              data: Theme.of(context).copyWith(
-                                dividerColor: Colors.transparent,
-                              ),
+                              data: Theme.of(
+                                context,
+                              ).copyWith(dividerColor: Colors.transparent),
                               child: ExpansionTile(
                                 tilePadding: EdgeInsets.zero,
                                 childrenPadding: EdgeInsets.zero,
                                 initiallyExpanded: (viewModel
-                                            .companyController.text.isNotEmpty) ||
+                                        .companyController.text.isNotEmpty) ||
                                     (viewModel
                                         .descriptionController.text.isNotEmpty),
                                 title: const Text(
                                   'More details (optional)',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.w500),
                                 ),
                                 children: [
                                   CustomTextField(
@@ -258,7 +334,8 @@ class _ProductFormState extends State<ProductForm> {
                                     },
                                   ),
                                   SizedBox(
-                                      height: SizeConfig.heightMultiplier * 2),
+                                    height: SizeConfig.heightMultiplier * 2,
+                                  ),
                                   CustomTextField(
                                     label: "Description",
                                     hintText: "Description",
@@ -280,10 +357,13 @@ class _ProductFormState extends State<ProductForm> {
                       alignment: Alignment.topCenter,
                       child: Padding(
                         padding: EdgeInsets.only(
-                            top: SizeConfig.heightMultiplier * 1.5),
+                          top: SizeConfig.heightMultiplier * 1.5,
+                        ),
                         child: GestureDetector(
                           onTap: () => viewModel.handleImagePick(
-                              context, widget.product),
+                            context,
+                            widget.product,
+                          ),
                           child: SizedBox(
                             height: SizeConfig.heightMultiplier * 12,
                             width: SizeConfig.heightMultiplier * 12,

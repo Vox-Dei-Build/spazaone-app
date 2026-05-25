@@ -42,9 +42,10 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
   @override
   void initState() {
     super.initState();
-    widget.viewModel
-        .loadPromotionIntoState(widget.promo)
-        .whenComplete(() => setState(() => _loading = false));
+    widget.viewModel.loadPromotionIntoState(widget.promo).whenComplete(() {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    });
   }
 
   Future<void> _sendNow(String promoId) async {
