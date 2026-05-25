@@ -11,7 +11,6 @@ import 'package:pasella/pages/ecommerce/orders/widgets/error_empty.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/header_card.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/products_section_enhanced.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/section.dart';
-import 'package:pasella/pages/ecommerce/orders/widgets/timeline_row.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/whatsapp_delivery_pill.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
@@ -167,6 +166,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         pickupLocation: _fulfillmentSummary(order),
         driverName: driverName,
         driverPhone: driverPhone,
+        rejectionReason: extraData['rejectionReason'] as String?,
       );
 
       if (!mounted) return false;
@@ -364,6 +364,98 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     }
   }
 
+  /// Collects a rejection reason before firing REJECT_ORDER so the
+  /// customer's WhatsApp message can tell them *why* — the Twilio
+  /// template's slot {{4}} is "Reason". Pre-filled chips cover the
+  /// common cases (out of stock, shop closed, can't deliver) and an
+  /// "Other" chip swaps in a free-text field for the long tail.
+  /// Returns null when the merchant backs out.
+  Future<String?> _promptRejectReason() async {
+    const presets = <String>[
+      'Out of stock',
+      'Shop closed',
+      "Can't deliver to that area",
+      'Pricing changed',
+    ];
+    String? selected;
+    final controller = TextEditingController();
+    bool other = false;
+
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Reject order'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pick a reason — the customer will see it on WhatsApp '
+                  'so they can adjust the order.',
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final p in presets)
+                      ChoiceChip(
+                        label: Text(p),
+                        selected: !other && selected == p,
+                        onSelected: (_) => setLocal(() {
+                          selected = p;
+                          other = false;
+                        }),
+                      ),
+                    ChoiceChip(
+                      label: const Text('Other…'),
+                      selected: other,
+                      onSelected: (_) => setLocal(() {
+                        other = true;
+                        selected = null;
+                      }),
+                    ),
+                  ],
+                ),
+                if (other) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 140,
+                    decoration: const InputDecoration(
+                      labelText: 'Tell the customer why',
+                      hintText: 'Short, kind reason',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Keep order'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final r = other ? controller.text.trim() : selected;
+                if (r == null || r.isEmpty) return;
+                Navigator.pop(ctx, r);
+              },
+              child: const Text('Reject'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    return reason;
+  }
+
   Future<void> _launchExternal(Uri uri, String fallbackLabel) async {
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -495,8 +587,6 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               paymentMethodTop.isNotEmpty ? paymentMethodTop : orderType;
 
           final createdAtDt = OrderRepository.parseTs(order['createdAt']);
-          final updatedAtDt = OrderRepository.parseTs(order['updatedAt']);
-          final paidAtRaw = OrderRepository.parseTs(order['paidAt']);
           final paymentMethod = (order['paymentMethod'] ?? '').toString();
           final paymentStatus = (order['paymentStatus'] ?? '').toString();
           final status = (order['status'] ?? '').toString().toLowerCase();
@@ -516,12 +606,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               status == 'paid' ||
               status == 'fulfilled';
 
-          final paidAtDt = isPaid ? (paidAtRaw ?? updatedAtDt) : null;
-
           final isCollected = order['collected'] == true;
-          final collectedAtDt = isCollected
-              ? OrderRepository.parseTs(order['collectedAt'])
-              : null;
 
           final isCancelled = status.contains('cancel');
           final isRejected = status.contains('reject') ||
@@ -674,45 +759,17 @@ class _OrderDetailPageState extends State<OrderDetailPage>
             isCollected: isCollected == true || isDelivered,
             isDelivery: isDelivery,
             isOutForDelivery: isOutForDelivery,
+            hasDriver: hasDriver,
+            isRejected: isRejected,
+            isCancelled: isCancelled,
           );
 
           // PAS-AI-02: WhatsApp delivery state read off the order doc.
+          // Surfaced via the WhatsAppDeliveryPill in the header card.
           final lastMessage = (order['lastMessage'] is Map)
               ? Map<String, dynamic>.from(order['lastMessage'] as Map)
               : <String, dynamic>{};
           final waState = WhatsAppDeliveryPill.fromMap(lastMessage);
-          DateTime? waAt;
-          String? waLabel;
-          if (lastMessage.isNotEmpty) {
-            final replied = OrderRepository.parseTs(lastMessage['repliedAt']);
-            final delivered = OrderRepository.parseTs(
-              lastMessage['deliveredAt'],
-            );
-            final failed = OrderRepository.parseTs(lastMessage['failedAt']);
-            final sent = OrderRepository.parseTs(lastMessage['sentAt']);
-            final queued = OrderRepository.parseTs(lastMessage['queuedAt']);
-            if (replied != null) {
-              waAt = replied;
-              waLabel = 'WhatsApp replied';
-            } else if (delivered != null) {
-              waAt = delivered;
-              waLabel = 'WhatsApp delivered';
-            } else if (failed != null) {
-              waAt = failed;
-              waLabel = 'WhatsApp failed';
-            } else if (sent != null) {
-              waAt = sent;
-              waLabel = 'WhatsApp sent';
-            } else if (queued != null) {
-              waAt = queued;
-              waLabel = 'WhatsApp queued';
-            } else {
-              waLabel = WhatsAppDeliveryPill.labelFor(
-                waState,
-              ).replaceFirst('WhatsApp · ', '');
-              waLabel = waLabel[0].toUpperCase() + waLabel.substring(1);
-            }
-          }
 
           return Scaffold(
             appBar: CustomAppBar(
@@ -729,26 +786,13 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 isRejected: isRejected,
                 onAcceptOrder: () => _callPayment('ACCEPT_ORDER', order),
                 onRejectOrder: () async {
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Reject order?'),
-                      content: const Text(
-                        'This will reject the WhatsApp order request.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Keep'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Reject'),
-                        ),
-                      ],
-                    ),
+                  final reason = await _promptRejectReason();
+                  if (reason == null) return;
+                  await _callPayment(
+                    'REJECT_ORDER',
+                    order,
+                    extraData: {'rejectionReason': reason},
                   );
-                  if (ok == true) _callPayment('REJECT_ORDER', order);
                 },
                 onAssignDriver: () => _assignDriver(order),
                 onReassignDriver: () => _assignDriver(order, reassign: true),
@@ -915,19 +959,6 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                             paymentStatusColor: payMeta.color,
                                             collectionPill: pill,
                                             whatsAppState: waState,
-                                          ),
-                                          SizedBox(
-                                            height:
-                                                SizeConfig.heightMultiplier * 2,
-                                          ),
-                                          TimelineRow(
-                                            createdAt: createdAtDt,
-                                            paidAt: isPaid ? paidAtDt : null,
-                                            collectedAt: isCollected
-                                                ? collectedAtDt
-                                                : null,
-                                            whatsAppAt: waAt,
-                                            whatsAppLabel: waLabel,
                                           ),
                                           SizedBox(
                                             height:
@@ -1293,8 +1324,8 @@ class _DriverCard extends StatelessWidget {
     }
     if (hasDriver) {
       return _Chip(
-        label: 'Awaiting dispatch',
-        color: Colors.orange,
+        label: 'Driver assigned',
+        color: Colors.blue,
         theme: theme,
       );
     }

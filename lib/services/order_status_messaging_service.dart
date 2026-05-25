@@ -59,7 +59,7 @@ class OrderStatusMessagingService {
     'ACCEPT_ORDER':
         'Order status update: your order {{1}} is now being prepared. Total due: {{2}}. {{3}}. Reply here if you need help.',
     'REJECT_ORDER':
-        'Order update: the shop could not accept your order. Reference: {{1}}. Reason: {{2}}. Reply here and the shop can help adjust it.',
+        'Hi {{1}}, {{2}} could not accept order {{3}}. Reason: {{4}}. Reply here and the shop can help adjust it.',
     'ASSIGN_DRIVER':
         'Delivery update: a driver has been assigned to your order. Reference: {{1}}. Driver: {{2}}. Phone: {{3}}. Please keep your phone nearby.',
     'MARK_OUT_FOR_DELIVERY':
@@ -357,9 +357,19 @@ class OrderStatusMessagingService {
       };
     }
     if (action == 'REJECT_ORDER') {
+      // Twilio template body:
+      //   Hi {{1}}, {{2}} could not accept order {{3}}.
+      //   Reason: {{4}}. Reply here and the shop can help adjust it.
+      // Positional slots: 1=customer, 2=shop, 3=order, 4=reason.
       return {
-        '1': orderId,
-        '2': rejectionReason ?? 'Unavailable right now',
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '3': orderId,
+        '4': (rejectionReason ?? '').trim().isNotEmpty
+            ? rejectionReason!.trim()
+            : 'Unavailable right now',
+        'customerName': customerName,
+        'orderId': orderId,
       };
     }
     if (action == 'ASSIGN_DRIVER') {
