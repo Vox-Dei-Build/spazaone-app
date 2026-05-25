@@ -14,6 +14,7 @@ class ActionsBlock extends StatelessWidget {
     required this.onMarkCash,
     required this.onSettleBnpl,
     required this.onMarkCollected,
+    this.onMarkCollectedAndCash,
     required this.onCancelOrder,
     this.onAcceptOrder,
     this.onRejectOrder,
@@ -48,6 +49,12 @@ class ActionsBlock extends StatelessWidget {
   final VoidCallback onMarkCash;
   final VoidCallback onSettleBnpl;
   final VoidCallback onMarkCollected;
+  /// Combined "Mark Collected & Cash Received" handler for pickup+cash
+  /// orders where the two facts (goods handed over, cash in hand) happen
+  /// at the same moment. When provided AND the order is in the
+  /// pickup+cash+unpaid+uncollected state, the two separate buttons are
+  /// replaced by one. All other flows (EFT, BNPL, delivery) are unchanged.
+  final VoidCallback? onMarkCollectedAndCash;
   final VoidCallback onCancelOrder;
   final VoidCallback? onAcceptOrder;
   final VoidCallback? onRejectOrder;
@@ -139,7 +146,28 @@ class ActionsBlock extends StatelessWidget {
         kind: _BtnKind.primary,
       ));
     }
-    if (showMarkCollected) {
+    // Pickup + cash + still owed + goods not yet handed over → collapse
+    // "Mark Collected" and "Mark Cash Received" into a single tap. They
+    // *always* happen at the same physical moment for cash-on-collection,
+    // so two taps was UX tax. The merchant retains separate actions for
+    // EFT/transfer (cash button stays gated on hasHandedOver) and BNPL
+    // (settle-later is a different button entirely).
+    final canCombineCollectedAndCash = showMarkCollected &&
+        !isDelivery &&
+        !isPaid &&
+        payMethod == 'cash' &&
+        onMarkCollectedAndCash != null;
+    if (canCombineCollectedAndCash) {
+      fulfillment.add(_ActionBtn(
+        label: 'Mark Collected & Cash Received',
+        icon: Icons.payments_outlined,
+        onTap: onMarkCollectedAndCash!,
+        busy: busy &&
+            (busyAction == 'MARK_COLLECTED' ||
+                busyAction == 'MARK_CASH_RECEIVED'),
+        kind: _BtnKind.primary,
+      ));
+    } else if (showMarkCollected) {
       fulfillment.add(_ActionBtn(
         label: isDelivery ? 'Mark Delivered' : 'Mark Collected',
         icon: isDelivery
@@ -179,7 +207,10 @@ class ActionsBlock extends StatelessWidget {
     }
     final canShowCash = (showMarkCash ?? true) &&
         !isPaid &&
-        (payMethod == 'cash' || payMethod == 'transfer' || payMethod == 'eft');
+        (payMethod == 'cash' || payMethod == 'transfer' || payMethod == 'eft') &&
+        // If we already rendered the combined button, don't also show
+        // the standalone "Mark Cash Received".
+        !canCombineCollectedAndCash;
     if (canShowCash) {
       payment.add(_ActionBtn(
         label: payMethod == 'cash'

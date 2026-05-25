@@ -65,7 +65,15 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     super.dispose();
   }
 
-  Future<void> _callPayment(
+  /// Dispatches a server-side order state transition and surfaces the
+  /// result (snackbar, telemetry, downstream messaging).
+  ///
+  /// Returns `true` when the server transition succeeded. Callers can
+  /// chain sequential actions on this — see the combined
+  /// "Mark Collected & Cash Received" handler — and short-circuit on
+  /// failure so we never settle money against goods that didn't move.
+  /// Existing fire-and-forget callers can keep ignoring the result.
+  Future<bool> _callPayment(
     String action,
     Map<String, dynamic> order, {
     Map<String, dynamic> extraData = const {},
@@ -84,7 +92,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       extraData: extraData,
     );
 
-    if (!mounted) return;
+    if (!mounted) return false;
 
     if (!result.isSuccess) {
       // The server rejected the transition (or we never tried).
@@ -99,7 +107,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         _actionLoading = false;
         _busyAction = null;
       });
-      return;
+      return false;
     }
 
     // 2) The order itself is now in its new state. Tell the merchant
@@ -161,7 +169,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         driverPhone: driverPhone,
       );
 
-      if (!mounted) return;
+      if (!mounted) return false;
       final finalSnack = _notificationSnackBar(result.stateLabel, notif);
       // Replace the "Notifying customer…" toast with the resolved
       // state. `clearSnackBars` keeps the most-recent-truth wins
@@ -172,12 +180,13 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         ..showSnackBar(finalSnack);
     }
 
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() {
       _updated = true;
       _actionLoading = false;
       _busyAction = null;
     });
+    return true;
   }
 
   String _fulfillmentSummary(Map<String, dynamic> order) {
@@ -775,6 +784,19 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 onMarkCash: () => _callPayment('MARK_CASH_RECEIVED', order),
                 onSettleBnpl: () => _callPayment('SETTLE_BNPL', order),
                 onMarkCollected: () => _callPayment('MARK_COLLECTED', order),
+                // Pickup + cash collapses both server actions into a
+                // single user gesture. We dispatch sequentially
+                // (collected first, then cash). Short-circuit on
+                // collection failure so we never silently mark money
+                // received against goods that didn't move — the
+                // server-side canMarkCash guard would reject it too,
+                // but stopping here keeps the snackbar UX coherent.
+                onMarkCollectedAndCash: () async {
+                  final collectedOk =
+                      await _callPayment('MARK_COLLECTED', order);
+                  if (!mounted || !collectedOk) return;
+                  await _callPayment('MARK_CASH_RECEIVED', order);
+                },
                 onCancelOrder: () async {
                   final ok = await showDialog<bool>(
                     context: context,
