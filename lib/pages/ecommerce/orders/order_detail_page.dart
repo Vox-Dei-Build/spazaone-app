@@ -17,6 +17,7 @@ import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 import 'package:pasella/services/order_status_messaging_service.dart';
 
@@ -706,7 +707,10 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           final List items = (order['items'] as List?) ?? const [];
           final reviewRows = <MapEntry<String, String>>[
             if ((order['fulfillmentType'] ?? '').toString().isNotEmpty)
-              MapEntry('Fulfillment', order['fulfillmentType'].toString()),
+              MapEntry(
+                'Fulfillment',
+                order['fulfillmentType'].toString().toTitleCase(),
+              ),
             if ((order['requestedFulfillmentTime'] ?? '').toString().isNotEmpty)
               MapEntry('Requested time',
                   order['requestedFulfillmentTime'].toString()),
@@ -1135,31 +1139,44 @@ class _ReviewDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final labelStyle = theme.textTheme.labelMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final valueStyle = theme.textTheme.bodyMedium;
+
     return Card(
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: rows
-              .map(
-                (row) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        row.key,
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(row.value),
-                    ],
-                  ),
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 110,
+                      child: Text(rows[i].key, style: labelStyle),
+                    ),
+                    Expanded(
+                      child: Text(rows[i].value, style: valueStyle),
+                    ),
+                  ],
                 ),
-              )
-              .toList(),
+              ),
+              if (i != rows.length - 1)
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  color: theme.dividerColor.withOpacity(0.4),
+                ),
+            ],
+          ],
         ),
       ),
     );
