@@ -104,6 +104,46 @@ export const getShopContextBotHttp = functions.https.onRequest(
       }
 
       const m = mSnap.data() || {};
+
+      // Banking details: optional subcollection on the merchant doc.
+      // Used by the bot to surface EFT/deposit details inline in the
+      // confirmation prompt for Transfer payments. Missing fields are
+      // tolerated downstream; an empty object simply skips the block.
+      let banking:
+        | {
+            bankName?: string;
+            accountHolderName?: string;
+            accountNumber?: string;
+            accountType?: string;
+            branchCode?: string;
+            reference?: string;
+          }
+        | null = null;
+      try {
+        const bSnap = await db
+          .collection("users")
+          .doc(mSnap.id)
+          .collection("bankingDetails")
+          .limit(1)
+          .get();
+        if (!bSnap.empty) {
+          const b = bSnap.docs[0].data() || {};
+          banking = {
+            bankName: b.bankName || undefined,
+            accountHolderName: b.accountHolderName || undefined,
+            accountNumber: b.accountNumber || undefined,
+            accountType: b.accountType || undefined,
+            branchCode: b.branchCode || undefined,
+            reference: b.reference || undefined,
+          };
+        }
+      } catch (bankErr) {
+        console.warn("Banking details lookup failed (non-fatal)", {
+          mid: mSnap.id,
+          err: (bankErr as Error)?.message,
+        });
+      }
+
       const merchant = {
         id: mSnap.id,
         name: m.name,
@@ -113,6 +153,7 @@ export const getShopContextBotHttp = functions.https.onRequest(
         whatsappEligibleOverride: !!m.whatsappEligibleOverride,
         forceEnableUntil: m.forceEnableUntil || null, // Firestore Timestamp or null
         minRequiredVersion: minVersion,
+        banking,
       };
       console.log("Merchant loaded", {
         mid: merchant.id,

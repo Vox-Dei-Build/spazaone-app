@@ -13,6 +13,7 @@ type CatalogProduct = {
   aliases?: string[];
   unit?: string;
   price?: number;
+  imageUrl?: string;
 };
 
 function cleanString(value: unknown): string | undefined {
@@ -79,9 +80,11 @@ export const getMerchantCatalogBotHttp = functions.https.onRequest(
           const price = cleanPrice(
             data.sellingPrice ?? data.price ?? data.productPrice,
           );
+          const imageUrl = cleanString(data.imageUrl ?? data.image);
           if (aliases) product.aliases = aliases;
           if (unit) product.unit = unit;
           if (price !== undefined) product.price = price;
+          if (imageUrl) product.imageUrl = imageUrl;
           return product;
         })
         .filter((product): product is CatalogProduct => Boolean(product));
