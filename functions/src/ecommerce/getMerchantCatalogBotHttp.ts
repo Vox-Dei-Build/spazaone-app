@@ -13,6 +13,7 @@ type CatalogProduct = {
   aliases?: string[];
   unit?: string;
   price?: number;
+  imageUrl?: string;
 };
 
 function cleanString(value: unknown): string | undefined {
@@ -30,6 +31,14 @@ function cleanAliases(value: unknown): string[] | undefined {
 function cleanPrice(value: unknown): number | undefined {
   const price = Number(value);
   return Number.isFinite(price) && price >= 0 ? price : undefined;
+}
+
+function isWhatsAppListed(data: Record<string, unknown>): boolean {
+  return (
+    data.whatsappListed === true ||
+    data.whatsappEnabled === true ||
+    data.availableOnWhatsApp === true
+  );
 }
 
 export const getMerchantCatalogBotHttp = functions.https.onRequest(
@@ -55,6 +64,7 @@ export const getMerchantCatalogBotHttp = functions.https.onRequest(
       const catalog: CatalogProduct[] = snap.docs
         .map((doc) => {
           const data = doc.data() || {};
+          if (!isWhatsAppListed(data)) return null;
           const name =
             cleanString(data.name) ||
             cleanString(data.productName) ||
@@ -70,9 +80,11 @@ export const getMerchantCatalogBotHttp = functions.https.onRequest(
           const price = cleanPrice(
             data.sellingPrice ?? data.price ?? data.productPrice,
           );
+          const imageUrl = cleanString(data.imageUrl ?? data.image);
           if (aliases) product.aliases = aliases;
           if (unit) product.unit = unit;
           if (price !== undefined) product.price = price;
+          if (imageUrl) product.imageUrl = imageUrl;
           return product;
         })
         .filter((product): product is CatalogProduct => Boolean(product));

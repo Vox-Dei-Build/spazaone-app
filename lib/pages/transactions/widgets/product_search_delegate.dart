@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
+import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
@@ -93,7 +94,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                     maxQuantity: newProduct.quantity ?? 0,
                     confirmLabel: 'Add to transaction',
                   );
-                  if (picked == null) return;
+                  if (picked == null || !context.mounted) return;
                   viewModel.addProduct(context, newProduct.id!, picked);
                   _showSelectionFeedback(
                     context,
@@ -129,7 +130,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
         return ListTile(
           leading: CircleAvatar(
             backgroundColor:
-                Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
             child: Icon(
               Icons.inventory_2_outlined,
               color: Theme.of(context).colorScheme.primary,
@@ -146,10 +147,22 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
             subtitleParts.join('  •  '),
             style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.45),
           ),
-          trailing: TextButton.icon(
-            onPressed: stock <= 0
-                ? null
-                : () async {
+          trailing: stock <= 0
+              ? OutlinedButton.icon(
+                  onPressed: result.id == null
+                      ? null
+                      : () async {
+                          await _recoverOutOfStockProduct(
+                            context,
+                            product: result,
+                            productName: productName,
+                          );
+                        },
+                  icon: const Icon(Icons.add_box_outlined),
+                  label: const Text('Add stock'),
+                )
+              : TextButton.icon(
+                  onPressed: () async {
                     final picked = await _promptQuantity(
                       context,
                       title: productName,
@@ -159,12 +172,13 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                           ? 'Update transaction'
                           : 'Add to transaction',
                     );
-                    if (picked == null) return;
-                    viewModel.updateProductQuantity(
+                    if (picked == null || !context.mounted) return;
+                    await viewModel.updateProductQuantity(
                       context,
                       result.id!,
                       picked,
                     );
+                    if (!context.mounted) return;
                     _showSelectionFeedback(
                       context,
                       selectedQty > 0
@@ -173,31 +187,37 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                     );
                     close(context, result);
                   },
-            icon: const Icon(Icons.add),
-            label: Text(selectedQty > 0 ? 'Update' : 'Add'),
-          ),
-          onTap: stock <= 0
-              ? null
-              : () async {
-                  final picked = await _promptQuantity(
-                    context,
-                    title: productName,
-                    initialQuantity: selectedQty > 0 ? selectedQty : 1,
-                    maxQuantity: stock,
-                    confirmLabel: selectedQty > 0
-                        ? 'Update transaction'
-                        : 'Add to transaction',
-                  );
-                  if (picked == null) return;
-                  viewModel.updateProductQuantity(context, result.id!, picked);
-                  _showSelectionFeedback(
-                    context,
-                    selectedQty > 0
-                        ? '$productName updated in this transaction · Qty $picked'
-                        : '$productName added to this transaction · Qty $picked',
-                  );
-                  close(context, result);
-                },
+                  icon: const Icon(Icons.add),
+                  label: Text(selectedQty > 0 ? 'Update' : 'Add'),
+                ),
+          onTap: () async {
+            if (stock <= 0) {
+              await _recoverOutOfStockProduct(
+                context,
+                product: result,
+                productName: productName,
+              );
+              return;
+            }
+            final picked = await _promptQuantity(
+              context,
+              title: productName,
+              initialQuantity: selectedQty > 0 ? selectedQty : 1,
+              maxQuantity: stock,
+              confirmLabel:
+                  selectedQty > 0 ? 'Update transaction' : 'Add to transaction',
+            );
+            if (picked == null || !context.mounted) return;
+            await viewModel.updateProductQuantity(context, result.id!, picked);
+            if (!context.mounted) return;
+            _showSelectionFeedback(
+              context,
+              selectedQty > 0
+                  ? '$productName updated in this transaction · Qty $picked'
+                  : '$productName added to this transaction · Qty $picked',
+            );
+            close(context, result);
+          },
         );
       },
     );
@@ -208,6 +228,57 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
 
   @override
   Widget buildSuggestions(BuildContext context) => _buildProductList(context);
+
+  Future<void> _recoverOutOfStockProduct(
+    BuildContext context, {
+    required Product product,
+    required String productName,
+  }) async {
+    final productId = product.id;
+    if (productId == null) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProductDetailsPage(docID: productId, product: product),
+      ),
+    );
+
+    await viewModel.loadProducts();
+    if (!context.mounted) return;
+    showResults(context);
+
+    final refreshed = viewModel.productById(productId);
+    final refreshedStock = refreshed.quantity ?? 0;
+    if (refreshedStock <= 0) {
+      _showSelectionFeedback(
+        context,
+        '$productName is still out of stock. Add stock, save, then try again.',
+        backgroundColor: Colors.orange,
+      );
+      return;
+    }
+
+    final selectedQty = viewModel.selectedProducts[productId] ?? 0;
+    final picked = await _promptQuantity(
+      context,
+      title: productName,
+      initialQuantity: selectedQty > 0 ? selectedQty : 1,
+      maxQuantity: refreshedStock,
+      confirmLabel:
+          selectedQty > 0 ? 'Update transaction' : 'Add to transaction',
+    );
+    if (picked == null || !context.mounted) return;
+
+    await viewModel.updateProductQuantity(context, productId, picked);
+    if (!context.mounted) return;
+    _showSelectionFeedback(
+      context,
+      selectedQty > 0
+          ? '$productName updated in this transaction · Qty $picked'
+          : '$productName added to this transaction · Qty $picked',
+    );
+    close(context, refreshed);
+  }
 
   Future<int?> _promptQuantity(
     BuildContext context, {
@@ -221,11 +292,12 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     );
     String? errorText;
 
-    return showDialog<int>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
+    try {
+      return await showDialog<int>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setState) {
             return AlertDialog(
               title: Text('Add product to transaction · $title'),
               content: Column(
@@ -243,6 +315,56 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                       errorText: errorText,
                       border: const OutlineInputBorder(),
                     ),
+                    onChanged: (_) {
+                      // Trigger rebuild so the over-stock hint
+                      // re-evaluates and the prior errorText (if any)
+                      // is cleared as the merchant edits.
+                      setState(() {
+                        errorText = null;
+                      });
+                    },
+                  ),
+                  // PAS-UX-XX: surface an *inline non-blocking* heads-up
+                  // when the typed quantity exceeds on-hand stock. The
+                  // merchant can still submit — the top-up confirmation
+                  // is handled centrally in
+                  // `TransactionViewModel.updateProductQuantity` so the
+                  // recovery flow stays in one place.
+                  Builder(
+                    builder: (_) {
+                      final parsed = int.tryParse(controller.text.trim());
+                      if (parsed != null &&
+                          parsed > 0 &&
+                          maxQuantity >= 0 &&
+                          parsed > maxQuantity) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: Colors.orange,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Exceeds stock by '
+                                  '${parsed - maxQuantity}. We\'ll ask to '
+                                  'top up your inventory before adding.',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
                   ),
                 ],
               ),
@@ -260,12 +382,11 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                       });
                       return;
                     }
-                    if (maxQuantity > 0 && parsed > maxQuantity) {
-                      setState(() {
-                        errorText = 'Only $maxQuantity item(s) available.';
-                      });
-                      return;
-                    }
+                    // PAS-UX-XX: removed the hard "Only N available"
+                    // block here. The merchant is allowed to enter any
+                    // positive integer; if it exceeds stock,
+                    // `updateProductQuantity` will prompt to top up
+                    // inventory before accepting the line.
                     Navigator.pop(dialogContext, parsed);
                   },
                   child: Text(confirmLabel),
@@ -275,10 +396,17 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
           },
         );
       },
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
-  void _showSelectionFeedback(BuildContext context, String message) {
+  void _showSelectionFeedback(
+    BuildContext context,
+    String message, {
+    Color backgroundColor = Colors.green,
+  }) {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;
       final messenger = ScaffoldMessenger.maybeOf(
@@ -289,7 +417,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
       messenger?.showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: Colors.green,
+          backgroundColor: backgroundColor,
         ),
       );
     });

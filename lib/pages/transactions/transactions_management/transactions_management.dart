@@ -2,13 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
-import 'package:pasella/pages/reports/customer_report/widgets/customer_report_panel.dart';
+import 'package:pasella/pages/transactions/widgets/customer_balance_hero.dart';
+import 'package:pasella/pages/transactions/widgets/pay_later_action_bar.dart';
 import 'package:pasella/pages/transactions/widgets/transactions_list_view.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
-import 'package:pasella/shared/widgets/balance_summary/balance_summary_card.dart';
 import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:provider/provider.dart';
 
+/// Pay Later (a.k.a. Transactions Management) screen.
+///
+/// Layout (top -> bottom):
+///   [report panel (collapsible)]
+///   [transactions list — Expanded, scrollable, chat-style]
+///   [compact balance hero]   <- always visible; states: Owing / In credit / Settled
+///   [sticky action bar]      <- bottomNavigationBar slot; safe-area aware
+///
+/// Previous design rendered a heavy white BalanceSummaryCard footer with
+/// the Credit/Payment CTAs injected into it via BalanceSummary.children
+/// (a List<Widget> field on the data model). The hero + sticky bar split
+/// removes that model leakage and gives the merchant a thumb-reachable
+/// CTA that doesn't move while they scroll the ledger.
 class TransactionsManagementPage extends StatefulWidget {
   final String customerName;
   final String customerId;
@@ -36,7 +49,6 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
     customerBalanceSummaryProvider.setCustomerDetails(
         widget.customerName, widget.customerId, widget.mobileNumber);
 
-    // Initialize the view model
     customerManagementViewModel = CustomerManagementViewModel(
         widget.customerId,
         widget.customerName,
@@ -62,6 +74,8 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
+    final horizontalPadding = SizeConfig.imageSizeMultiplier * 4;
+
     return ValueListenableBuilder<bool>(
       valueListenable: customerManagementViewModel.sendingReminderNotifier,
       builder: (context, isSending, child) {
@@ -79,11 +93,15 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
         );
       },
       child: Scaffold(
+        // Sticky CTAs — always reachable, safe-area aware.
+        bottomNavigationBar: PayLaterActionBar(
+          customerName: widget.customerName,
+          customerId: widget.customerId,
+          mobileNumber: widget.mobileNumber,
+        ),
         body: SafeArea(
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 5,
-            ),
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: Column(
               children: [
                 Expanded(
@@ -95,44 +113,42 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                         return const Center(child: CircularProgressIndicator());
                       } else if (snapshot.hasError) {
                         return Center(
-                            child: Text(
-                          'Error: ${snapshot.error}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: SizeConfig.textMultiplier * 2,
+                          child: Text(
+                            'Error: ${snapshot.error}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: SizeConfig.textMultiplier * 2,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
-                        ));
+                        );
                       } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        // PAS-AUTH-03: replace the bare "No transactions
-                        // available" label with the Stock-style empty
-                        // state. The primary recovery actions (Credit /
-                        // Payment) already live in
-                        // [AddCreditPaymentButtons] right above this
-                        // list, so we don't render a third CTA — just an
-                        // explanatory line and the walkthrough link.
+                        // PAS-AUTH-03: Stock-style empty state. The
+                        // recovery actions (Credit / Payment) live in
+                        // the sticky bottom action bar, so no third CTA
+                        // here — just an explanatory line and the
+                        // walkthrough link.
                         return EmptyStateOnboarding(
                           icon: Icons.receipt_long_outlined,
-                          headline: 'No transactions yet for ${widget.customerName}',
+                          headline:
+                              'No transactions yet for ${widget.customerName}',
                           subtitle:
                               'Tap Credit when this customer takes goods on '
                               'account, or Payment when they settle up. Each '
                               'entry sends a WhatsApp confirmation automatically.',
                           tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
-                          tutorialTitle: 'How to record a credit transaction',
+                          tutorialTitle:
+                              'How to record a credit transaction',
                         );
                       } else {
                         return Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-                            // PAS-UX-06A: per-customer report panel.
-                            // Collapsed by default so the existing
-                            // ledger-list experience is unchanged for
-                            // merchants who don't expand it. Derived
-                            // entirely from the same transactions list
-                            // rendered below it — zero extra reads.
-                            CustomerReportPanel(transactions: snapshot.data!),
+                            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                            // The Customer Report panel previously rendered
+                            // here is now reachable from the AppBar's
+                            // insights icon button (see ProfileAppBar). The
+                            // Pay Later tab is now: ledger -> hero -> CTAs.
                             Expanded(
                               child: TransactionsListView(
                                   customerManagementViewModel:
@@ -148,7 +164,9 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                     },
                   ),
                 ),
-                const BalanceSummaryCard(useCustomerProvider: true),
+                SizedBox(height: SizeConfig.heightMultiplier * 1.0),
+                const CustomerBalanceHero(),
+                SizedBox(height: SizeConfig.heightMultiplier * 0.8),
               ],
             ),
           ),

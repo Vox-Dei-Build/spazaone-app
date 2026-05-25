@@ -1,28 +1,43 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pasella/models/common/balance_summary_model.dart';
-import 'package:pasella/pages/transactions/widgets/action_buttons.dart';
 import 'package:pasella/utils/transaction_util.dart';
 
+/// Holds the running balance + stats for the currently-open customer profile.
+///
+/// Used by:
+///  - the Pay Later screen's `CustomerBalanceHero` (compact balance band)
+///  - the `ProfileAppBar`'s `PaymentStatusPill`
+///
+/// Previously this provider also injected an `AddCreditPaymentButtons` widget
+/// into a `children` slot on [BalanceSummary]; that coupled the data model to
+/// UI and forced the CTA to live wherever the summary card was rendered. The
+/// CTA is now rendered directly by the page (`PayLaterActionBar`) and this
+/// provider deals only in numbers + identity.
 class CustomerBalanceSummaryProvider with ChangeNotifier {
   String _customerName = '';
   String _customerId = '';
   String _mobileNumber = '';
   BalanceSummary _customerBalanceSummary = BalanceSummary(
-      netBalance: 0.0,
-      paymentCount: 0,
-      paymentAmount: 0.0,
-      creditCount: 0,
-      creditAmount: 0.0,
-      children: []);
+    netBalance: 0.0,
+    paymentCount: 0,
+    paymentAmount: 0.0,
+    creditCount: 0,
+    creditAmount: 0.0,
+  );
 
   BalanceSummary get customerBalanceSummary => _customerBalanceSummary;
+
+  String get customerName => _customerName;
+  String get customerId => _customerId;
+  String get mobileNumber => _mobileNumber;
 
   void setCustomerDetails(String name, String id, String? mobileNumber) {
     _customerName = name;
     _customerId = id;
-    _mobileNumber = mobileNumber != null ? mobileNumber : '';
+    _mobileNumber = mobileNumber ?? '';
 
-    // Update the balance summary with new customer details
+    // Preserve numbers across identity changes (existing behaviour); the
+    // stream subscription will refresh them on the next snapshot.
     _customerBalanceSummary = BalanceSummary(
       netBalance: _customerBalanceSummary.netBalance,
       paymentCount: _customerBalanceSummary.paymentCount,
@@ -31,14 +46,6 @@ class CustomerBalanceSummaryProvider with ChangeNotifier {
       creditAmount: _customerBalanceSummary.creditAmount,
       totalCustomers: _customerBalanceSummary.totalCustomers,
       owingNumberOfCustomers: _customerBalanceSummary.owingNumberOfCustomers,
-      children: [
-        SizedBox(height: 15.0),
-        AddCreditPaymentButtons(
-          customerName: _customerName,
-          customerId: _customerId,
-          mobileNumber: _mobileNumber,
-        ),
-      ],
     );
   }
 
@@ -51,34 +58,20 @@ class CustomerBalanceSummaryProvider with ChangeNotifier {
       creditAmount: 0.0,
     );
 
-    // Calculate and set the balance and stats here
     if (transactions.isNotEmpty) {
       netBalance = TransactionService.calculateBalance(transactions);
       stats =
           TransactionService.calculateCustomerTransactionStats(transactions);
     }
 
-    // Always include the AddCreditPaymentButtons
-    List<Widget> children = [
-      SizedBox(height: 15.0),
-      AddCreditPaymentButtons(
-        customerName: _customerName,
-        customerId: _customerId,
-        mobileNumber: _mobileNumber,
-      ),
-    ];
-
-    // Update the balance summary
     _customerBalanceSummary = BalanceSummary(
       netBalance: netBalance,
       paymentCount: stats.paymentCount,
       paymentAmount: stats.paymentAmount,
       creditCount: stats.creditCount,
       creditAmount: stats.creditAmount,
-      children: children,
     );
 
-    // Notify listeners about the change
     notifyListeners();
   }
 }

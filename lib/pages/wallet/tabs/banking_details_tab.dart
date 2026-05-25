@@ -29,56 +29,61 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
   }
 
   Future<void> _loadBankingDetails() async {
+    if (!mounted) return;
     setState(() => isLoading = true);
     await walletViewModel.initializeBankingDetails();
+    if (!mounted) return;
     setState(() => isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    if (walletViewModel.editingDocumentId == null) ...[
-                      Text(
-                        "You haven't added any banking details yet.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
+      body:
+          isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(height: SizeConfig.heightMultiplier * 2),
+                      if (walletViewModel.editingDocumentId == null) ...[
+                        Text(
+                          "Add banking details before store deposits or withdrawals need to be paid out.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
                             color: Colors.red,
-                            fontSize: SizeConfig.textMultiplier * 1.5),
-                      ),
-                    ] else ...[
-                      _bankingDetailsSummary(walletViewModel),
-                    ],
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    CustomButton(
-                      title: 'Add / Edit Banking Details',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AddBankingDetailsPage(
-                              walletViewModel: walletViewModel,
-                            ),
+                            fontSize: SizeConfig.textMultiplier * 1.5,
                           ),
-                        );
-                      },
-                      color: Colors.green,
-                      icon: Icons.add,
-                      fontSize: SizeConfig.textMultiplier * 2,
-                      width: SizeConfig.imageSizeMultiplier * 65,
-                    ),
-                  ],
+                        ),
+                      ] else ...[
+                        _bankingDetailsSummary(walletViewModel),
+                      ],
+                      SizedBox(height: SizeConfig.heightMultiplier * 2),
+                      CustomButton(
+                        title: 'Add / Edit Bank Account',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => AddBankingDetailsPage(
+                                    walletViewModel: walletViewModel,
+                                  ),
+                            ),
+                          );
+                        },
+                        color: Colors.green,
+                        icon: Icons.add,
+                        fontSize: SizeConfig.textMultiplier * 2,
+                        width: SizeConfig.imageSizeMultiplier * 65,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
     );
   }
 
@@ -108,8 +113,9 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
 
   Widget _infoRow(String label, String value) {
     return Padding(
-      padding:
-          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
+      padding: EdgeInsets.symmetric(
+        vertical: SizeConfig.heightMultiplier * 0.8,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

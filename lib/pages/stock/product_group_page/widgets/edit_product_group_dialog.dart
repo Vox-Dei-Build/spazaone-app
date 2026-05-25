@@ -3,106 +3,132 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
-import 'package:provider/provider.dart';
 
-class EditProductGroupDialog extends StatelessWidget {
-  final StockViewModel viewModel;
-  final String groupName;
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController _controller = TextEditingController();
-
-  EditProductGroupDialog({
+/// PAS-CRASH-_dependents: previously this dialog re-published the
+/// ancestor-owned `StockViewModel` via `ChangeNotifierProvider.value` so a
+/// local `Consumer<StockViewModel>` could rebuild on loading/error state.
+/// That created a short-lived InheritedElement whose teardown raced with
+/// `StockViewModel.editProductGroup` (which pops the dialog and then
+/// continues to mutate + notifyListeners + pushReplacement in the same
+/// frame), tripping the framework assertion
+/// `_dependents.isEmpty: is not true` at framework.dart:6179.
+///
+/// The fix: render against the passed-in notifier directly via
+/// `AnimatedBuilder`, with no InheritedWidget in the dialog subtree, and
+/// convert to a StatefulWidget so the TextEditingController is disposed
+/// properly.
+class EditProductGroupDialog extends StatefulWidget {
+  const EditProductGroupDialog({
     Key? key,
     required this.viewModel,
     required this.groupName,
-  }) : super(key: key) {
-    _controller.text = groupName; // Pre-fill the current group name
+  }) : super(key: key);
+
+  final StockViewModel viewModel;
+  final String groupName;
+
+  @override
+  State<EditProductGroupDialog> createState() => _EditProductGroupDialogState();
+}
+
+class _EditProductGroupDialogState extends State<EditProductGroupDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.groupName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
+    SizeConfig().init(context);
 
-    return ChangeNotifierProvider.value(
-      value: viewModel,
-      child: Consumer<StockViewModel>(
-        builder: (context, viewModel, child) {
-          return Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                  SizeConfig.imageSizeMultiplier *
-                      2), // Responsive border radius
-            ),
-            child: SingleChildScrollView(
-              child: Container(
-                padding: EdgeInsets.all(
-                    SizeConfig.imageSizeMultiplier * 5), // Responsive padding
-                constraints: BoxConstraints(
-                  maxHeight: SizeConfig.screenHeight * 0.8,
-                  maxWidth: SizeConfig.screenWidth * 0.8,
-                ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+    return AnimatedBuilder(
+      animation: widget.viewModel,
+      builder: (context, _) {
+        final vm = widget.viewModel;
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(
+                SizeConfig.imageSizeMultiplier * 2),
+          ),
+          child: SingleChildScrollView(
+            child: Container(
+              padding:
+                  EdgeInsets.all(SizeConfig.imageSizeMultiplier * 5),
+              constraints: BoxConstraints(
+                maxHeight: SizeConfig.screenHeight * 0.8,
+                maxWidth: SizeConfig.screenWidth * 0.8,
+              ),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Edit Product Group",
+                      style: TextStyle(
+                        fontSize: SizeConfig.textMultiplier * 2,
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    if (vm.errorMessage != null)
                       Text(
-                        "Edit Product Group",
+                        vm.errorMessage!,
                         style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 2,
+                          color: Colors.red,
+                          fontSize: SizeConfig.textMultiplier * 1.8,
                         ),
                       ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      if (viewModel.errorMessage != null)
-                        Text(
-                          viewModel.errorMessage!,
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontSize: SizeConfig.textMultiplier * 1.8,
-                          ),
-                        ),
-                      CustomTextField(
-                        hintText: 'Product Group Name',
-                        prefixIcon: Icons.category_outlined,
-                        label: 'Product Group Name*',
-                        textInputType: TextInputType.text,
-                        maxLength: 20,
-                        controller: _controller,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'This field is required';
-                          }
-                          return null;
-                        },
+                    CustomTextField(
+                      hintText: 'Product Group Name',
+                      prefixIcon: Icons.category_outlined,
+                      label: 'Product Group Name*',
+                      textInputType: TextInputType.text,
+                      maxLength: 20,
+                      controller: _controller,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'This field is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    CustomButton(
+                      onTap: vm.isLoading
+                          ? () {}
+                          : () async {
+                              if (_formKey.currentState?.validate() ??
+                                  false) {
+                                await vm.editProductGroup(
+                                  context,
+                                  widget.groupName,
+                                  _controller.text,
+                                );
+                              }
+                            },
+                      margin: EdgeInsets.symmetric(
+                        horizontal: SizeConfig.imageSizeMultiplier * 2.5,
+                        vertical: SizeConfig.heightMultiplier * 1,
                       ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      CustomButton(
-                        onTap: viewModel.isLoading
-                            ? () => null
-                            : () async {
-                                if (_formKey.currentState?.validate() ??
-                                    false) {
-                                  await viewModel.editProductGroup(
-                                    context,
-                                    groupName,
-                                    _controller.text,
-                                  );
-                                }
-                              },
-                        margin: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.imageSizeMultiplier * 2.5,
-                          vertical: SizeConfig.heightMultiplier * 1,
-                        ),
-                        title: viewModel.isLoading ? 'Loading...' : 'Done',
-                      ),
-                    ],
-                  ),
+                      title: vm.isLoading ? 'Loading...' : 'Done',
+                    ),
+                  ],
                 ),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

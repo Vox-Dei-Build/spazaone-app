@@ -61,7 +61,7 @@ class PageHeader extends StatelessWidget {
           Icon(
             Icons.shopping_cart_outlined,
             color: Colors.orangeAccent,
-            size: SizeConfig.imageSizeMultiplier * 5.5,
+            size: SizeConfig.imageSizeMultiplier * 8,
           ),
           SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
           Text(

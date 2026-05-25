@@ -44,28 +44,26 @@ class LedgerMainContent extends StatelessWidget {
           children: [
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             PageHeader(
-              actionWidget: Expanded(
-                child: IconButton(
-                  icon: Icon(
-                    Icons.help_outline,
-                    color: Colors.black,
-                    size: SizeConfig.imageSizeMultiplier * 5,
-                  ),
-                  onPressed: () {
-                    final url = TutorialConfig.getTutorialUrl(
-                      TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS,
-                    );
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder:
-                            (context) => LoomVideoPage(
-                              loomUrl: url,
-                              title: 'How to Add Customers',
-                            ),
-                      ),
-                    );
-                  },
+              actionWidget: IconButton(
+                icon: Icon(
+                  Icons.help_outline,
+                  color: Colors.black,
+                  size: SizeConfig.imageSizeMultiplier * 5,
                 ),
+                onPressed: () {
+                  final url = TutorialConfig.getTutorialUrl(
+                    TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS,
+                  );
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title: 'How to Add Customers',
+                          ),
+                    ),
+                  );
+                },
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),

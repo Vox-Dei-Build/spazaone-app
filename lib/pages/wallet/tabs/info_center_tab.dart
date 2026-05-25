@@ -10,7 +10,9 @@ enum InfoView { history, banking, info }
 
 class InfoCenterTab extends StatefulWidget {
   final WalletViewModel walletVM;
-  const InfoCenterTab({super.key, required this.walletVM});
+  final InfoView? initialView;
+
+  const InfoCenterTab({super.key, required this.walletVM, this.initialView});
 
   @override
   State<InfoCenterTab> createState() => _InfoCenterTabState();
@@ -22,13 +24,27 @@ class _InfoCenterTabState extends State<InfoCenterTab> {
   @override
   void initState() {
     super.initState();
-    _selected = _initialView();
+    _selected =
+        _isEnabled(widget.initialView) ? widget.initialView! : _initialView();
   }
 
   InfoView _initialView() {
     if (FeatureFlags.enableTransactionHistory) return InfoView.history;
     if (FeatureFlags.enableBankingDetails) return InfoView.banking;
     return InfoView.info;
+  }
+
+  bool _isEnabled(InfoView? view) {
+    switch (view) {
+      case InfoView.history:
+        return FeatureFlags.enableTransactionHistory;
+      case InfoView.banking:
+        return FeatureFlags.enableBankingDetails;
+      case InfoView.info:
+        return FeatureFlags.enablePricingInfo;
+      case null:
+        return false;
+    }
   }
 
   @override
@@ -98,13 +114,13 @@ class _InfoCenterTabState extends State<InfoCenterTab> {
           data: Theme.of(context).copyWith(
             segmentedButtonTheme: SegmentedButtonThemeData(
               style: ButtonStyle(
-                backgroundColor: MaterialStateProperty.resolveWith(
-                  (states) => states.contains(MaterialState.selected)
+                backgroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
                       ? Colors.green
                       : Colors.white,
                 ),
-                foregroundColor: MaterialStateProperty.resolveWith(
-                  (states) => states.contains(MaterialState.selected)
+                foregroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
                       ? Colors.white
                       : Colors.black87,
                 ),

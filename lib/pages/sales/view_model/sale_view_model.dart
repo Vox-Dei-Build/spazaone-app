@@ -9,6 +9,7 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
@@ -25,20 +26,32 @@ class SalesViewModel extends TransactionViewModel {
   bool isTransactionLoading = false;
 
   SalesViewModel() {
-    _salesController = StreamController<List<Sale>>.broadcast(
-      sync: true,
-      onListen: () {
-        if (_lastEmittedSales.isNotEmpty) {
-          _salesController.add(_lastEmittedSales);
-        }
-      },
-    );
+    // PAS-SALES-SHIMMER: single-subscription controller so the very
+    // first emission — which can fire before `SalesList`'s
+    // StreamBuilder subscribes — is buffered and delivered the
+    // moment the listener attaches. A broadcast controller drops
+    // pre-subscription events, which left the shimmer stuck on
+    // first render whenever the day had no sales (the empty-result
+    // case the previous `onListen` replay explicitly skipped).
+    // Originally introduced by 1677999; preserved here on the
+    // assumption that only `SalesList` subscribes to `.sales`. Any
+    // additional subscriber must use the `.listenable`/cached
+    // surfaces instead, or this needs to flip back to broadcast
+    // with a correct replay (cf. commit 1677999 follow-ups).
+    _salesController = StreamController<List<Sale>>(sync: true);
 
+    // Products feed the per-line cost/profit math used by
+    // `_calculateSalesStats`; load them once on construction so
+    // the page-driven `updateSelectedDate` call below sees a
+    // populated catalog. The per-date Firestore fetch itself is
+    // owned by the page (`_SalesPageState.initState` schedules a
+    // post-frame `updateSelectedDate`) so we deliberately do NOT
+    // also kick off `_getSalesByDate` here — doing so used to
+    // race the page-driven fetch and let one emission land on a
+    // controller with no listener.
     loadProducts().then((_) {
       productsLoaded = true;
-      _getSalesByDate(
-        DateTime.now(),
-      ); // Ensure only today's sales load initially
+      notifyListeners();
     });
   }
 
@@ -94,6 +107,14 @@ class SalesViewModel extends TransactionViewModel {
             if (['cancelled', 'rejected'].contains(status)) {
               return false;
             }
+            if ([
+              'awaiting_collection',
+              'pending_merchant_review',
+              'accepted',
+            ].contains(status) &&
+                paymentStatus != 'paid') {
+              return false;
+            }
             if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
               return false;
             }
@@ -115,8 +136,15 @@ class SalesViewModel extends TransactionViewModel {
       // _salesController.add(sales);
       _emitSales(sales);
       _calculateSalesStats(sales);
-    } catch (e) {
-      print("Error fetching sales for selected date: $e");
+    } catch (e, stack) {
+      // Surface to Crashlytics but always emit so the
+      // `StreamBuilder` leaves `ConnectionState.waiting` — otherwise
+      // a transient Firestore failure on first load pins the
+      // shimmer up forever.
+      CrashService.instance
+          .recordNonFatal(e, stack, reason: 'sales: fetchByDate');
+      _emitSales(const []);
+      _calculateSalesStats(const []);
     }
   }
 
@@ -152,6 +180,14 @@ class SalesViewModel extends TransactionViewModel {
             if (['cancelled', 'rejected'].contains(status)) {
               return false;
             }
+            if ([
+              'awaiting_collection',
+              'pending_merchant_review',
+              'accepted',
+            ].contains(status) &&
+                paymentStatus != 'paid') {
+              return false;
+            }
             if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
               return false;
             }
@@ -172,8 +208,11 @@ class SalesViewModel extends TransactionViewModel {
 
       _emitSales(sales);
       _calculateSalesStats(sales);
-    } catch (e) {
-      print("Error fetching sales by date range: $e");
+    } catch (e, stack) {
+      CrashService.instance
+          .recordNonFatal(e, stack, reason: 'sales: fetchByDateRange');
+      _emitSales(const []);
+      _calculateSalesStats(const []);
     }
   }
 
@@ -272,6 +311,17 @@ class SalesViewModel extends TransactionViewModel {
           isCredit: false,
           customerIsExisting: false,
         ),
+      );
+
+      // PAS-GROWTH: a completed cash sale is the strongest "the app just
+      // worked for me" moment in the ledger flow. Hand it to the review
+      // service which decides whether to actually surface the OS prompt
+      // (gated by a 3-trigger minimum, 2-day install age and 90-day
+      // cooldown -- see ReviewPromptService for full rules). Fire-and-
+      // forget so review logic can never block the navigator pop below.
+      // ignore: unawaited_futures
+      ReviewPromptService.instance.maybePrompt(
+        ReviewTrigger.saleCompletedCash,
       );
 
       if (context.mounted) {

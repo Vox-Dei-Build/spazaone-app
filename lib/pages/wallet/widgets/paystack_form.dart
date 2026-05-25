@@ -24,6 +24,13 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
   bool isLoading = false;
 
+  @override
+  void dispose() {
+    amountController.dispose();
+    emailController.dispose();
+    super.dispose();
+  }
+
   /// Start Paystack TOP-UP transaction (purpose = 'topup')
   Future<void> _startTransaction() async {
     final messenger = ScaffoldMessenger.of(context);
@@ -67,6 +74,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         email: emailController.text.trim(),
       );
 
+      if (!mounted) return;
       setState(() => isLoading = false);
 
       if (init == null) {
@@ -132,7 +140,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         ));
       }
     } catch (e, st) {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
       await CrashService.instance.recordNonFatal(
         e,
         st,

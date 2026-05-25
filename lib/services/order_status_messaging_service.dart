@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/whatsapp_messaging_service.dart';
@@ -55,12 +56,22 @@ class OrderStatusMessagingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const Map<String, String> _messageTemplates = {
+    'ACCEPT_ORDER':
+        'Order status update: your order {{1}} is now being prepared. Total due: {{2}}. {{3}}. Reply here if you need help.',
+    'REJECT_ORDER':
+        'Hi {{1}}, {{2}} could not accept order {{3}}. Reason: {{4}}. Reply here and the shop can help adjust it.',
+    'ASSIGN_DRIVER':
+        'Delivery update: a driver has been assigned to your order. Reference: {{1}}. Driver: {{2}}. Phone: {{3}}. Please keep your phone nearby.',
+    'MARK_OUT_FOR_DELIVERY':
+        'On the way 🚗 Your order {{1}} is out for delivery. Driver: {{2}}. Phone: {{3}}. Please keep your phone nearby.',
+    'MARK_DELIVERED':
+        'Delivered ✅\nHi {{customerName}}, order {{orderId}} has been delivered.\nThank you for shopping with us!',
     'ACCEPT_BNPL':
         'BNPL approved 🎉\nHi {{customerName}}, your Pay Later request for order {{orderId}} is approved.\nTotal: {{amount}} · Items: {{itemsCount}}\nCollect at: {{pickupLocation}}. We’ll remind you until it’s settled.\nNeed help? {{support}}',
     'REJECT_BNPL':
         'BNPL decision\nHi {{customerName}}, your Pay Later request for order {{orderId}} wasn’t approved.\nYou can still pay cash {{amount}} and collect.\nQuestions? {{support}}',
     'MARK_CASH_RECEIVED':
-        'Payment received ✅\nThanks {{customerName}}! We received {{amount}} for order {{orderId}} ({{itemsCount}} items).\nCollect at {{pickupLocation}}.\nKeep this for your records.',
+        'Payment received ✅\nThanks {{customerName}}! We received {{amount}} for order {{orderId}} ({{itemsCount}} items).\n{{pickupLocation}}\nKeep this for your records.',
     'MARK_COLLECTED':
         'Order collected 📦\nHi {{customerName}}, order {{orderId}} has been marked collected.\nThank you for shopping with us!\nWe appreciate you.',
     'SETTLE_BNPL':
@@ -80,6 +91,16 @@ class OrderStatusMessagingService {
     final pricing = await DynamicPricingService.initialize();
     return OrderStatusMessagingService._(
       {
+        'ACCEPT_ORDER': rc.getString('TWILIO_ACCEPT_ORDER_TID'),
+        'REJECT_ORDER': rc.getString('TWILIO_REJECT_ORDER_TID'),
+        'ASSIGN_DRIVER': rc.getString('TWILIO_ASSIGN_DRIVER_TID'),
+        // Delivery lifecycle messages must use templates approved for the
+        // exact lifecycle event. Falling back to assign-driver/collected
+        // templates produced customer-visible lies: "driver assigned" on
+        // dispatch and "marked collected" on delivery.
+        'MARK_OUT_FOR_DELIVERY':
+            rc.getString('TWILIO_MARK_OUT_FOR_DELIVERY_TID'),
+        'MARK_DELIVERED': rc.getString('TWILIO_MARK_DELIVERED_TID'),
         'ACCEPT_BNPL': rc.getString('TWILIO_ACCEPT_BNPL_TID'),
         'REJECT_BNPL': rc.getString('TWILIO_REJECT_BNPL_TID'),
         'MARK_CASH_RECEIVED': rc.getString('TWILIO_MARK_CASH_RECEIVED_TID'),
@@ -101,6 +122,9 @@ class OrderStatusMessagingService {
     String? amount,
     String? itemsCount,
     String? pickupLocation,
+    String? driverName,
+    String? driverPhone,
+    String? rejectionReason,
     String? support,
   }) async {
     final templateSid = _templateIds[action];
@@ -128,13 +152,19 @@ class OrderStatusMessagingService {
       );
     }
 
-    final variables = <String, dynamic>{
-      'customerName': customerName,
-      'orderId': orderId,
-    };
-    if (amount != null) variables['amount'] = amount;
-    if (itemsCount != null) variables['itemsCount'] = itemsCount;
-    if (pickupLocation != null) variables['pickupLocation'] = pickupLocation;
+    final merchantDisplayName = await _fetchMerchantDisplayName(merchantId);
+    final variables = variablesForActionForTest(
+      action: action,
+      customerName: customerName,
+      merchantDisplayName: merchantDisplayName,
+      orderId: orderId,
+      amount: amount,
+      itemsCount: itemsCount,
+      pickupLocation: pickupLocation,
+      driverName: driverName,
+      driverPhone: driverPhone,
+      rejectionReason: rejectionReason,
+    );
     if (support != null) {
       variables['support'] = support;
     } else if (_supportNumber.isNotEmpty) {
@@ -300,6 +330,106 @@ class OrderStatusMessagingService {
       message = message.replaceAll('{{$key}}', value?.toString() ?? '');
     });
     return message;
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic> variablesForActionForTest({
+    required String action,
+    required String customerName,
+    required String merchantDisplayName,
+    required String orderId,
+    String? amount,
+    String? itemsCount,
+    String? pickupLocation,
+    String? driverName,
+    String? driverPhone,
+    String? rejectionReason,
+  }) {
+    if (action == 'ACCEPT_ORDER') {
+      return {
+        '1': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '2': orderId,
+        '3': amount ?? 'the order total',
+        '4': pickupLocation ?? 'The shop will confirm collection or delivery.',
+        'customerName': customerName,
+        'orderId': orderId,
+        if (pickupLocation != null) 'pickupLocation': pickupLocation,
+      };
+    }
+    if (action == 'REJECT_ORDER') {
+      // Twilio template body:
+      //   Hi {{1}}, {{2}} could not accept order {{3}}.
+      //   Reason: {{4}}. Reply here and the shop can help adjust it.
+      // Positional slots: 1=customer, 2=shop, 3=order, 4=reason.
+      return {
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '3': orderId,
+        '4': (rejectionReason ?? '').trim().isNotEmpty
+            ? rejectionReason!.trim()
+            : 'Unavailable right now',
+        'customerName': customerName,
+        'orderId': orderId,
+      };
+    }
+    if (action == 'ASSIGN_DRIVER') {
+      return {
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': orderId,
+        '3': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '4': (driverName ?? '').isNotEmpty ? driverName : 'the shop driver',
+        '5': (driverPhone ?? '').isNotEmpty ? driverPhone : 'the shop',
+        'customerName': customerName,
+        'orderId': orderId,
+      };
+    }
+    if (action == 'MARK_OUT_FOR_DELIVERY') {
+      return {
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': orderId,
+        '3': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        '4': (driverName ?? '').isNotEmpty ? driverName : 'the shop driver',
+        '5': (driverPhone ?? '').isNotEmpty ? driverPhone : 'the shop',
+        'customerName': customerName,
+        'orderId': orderId,
+      };
+    }
+    if (action == 'MARK_DELIVERED') {
+      return {
+        '1': customerName.isNotEmpty ? customerName : 'customer',
+        '2': orderId,
+        '3': merchantDisplayName.isNotEmpty ? merchantDisplayName : 'the shop',
+        'customerName': customerName,
+        'orderId': orderId,
+      };
+    }
+    final variables = <String, dynamic>{
+      'customerName': customerName,
+      'orderId': orderId,
+    };
+    if (amount != null) variables['amount'] = amount;
+    if (itemsCount != null) variables['itemsCount'] = itemsCount;
+    if (pickupLocation != null) variables['pickupLocation'] = pickupLocation;
+    return variables;
+  }
+
+  Future<String> _fetchMerchantDisplayName(String merchantId) async {
+    try {
+      final snap = await _firestore.collection('users').doc(merchantId).get();
+      final data = snap.data() ?? const <String, dynamic>{};
+      for (final key in const [
+        'shopName',
+        'businessName',
+        'name',
+        'displayName'
+      ]) {
+        final value = (data[key] ?? '').toString().trim();
+        if (value.isNotEmpty) return value;
+      }
+    } catch (_) {
+      // Best-effort only; template variables still get a non-blank fallback.
+    }
+    return '';
   }
 
   Future<void> _storeNotification({

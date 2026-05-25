@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
+import 'package:pasella/shared/widgets/channel_capability_badge.dart';
 import 'package:pasella/shared/widgets/payment_status_pill.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -23,6 +24,7 @@ class TransactionTile extends StatelessWidget {
     this.number,
     this.profileImageUrl, // Add profileImageUrl
     required this.unreadCount,
+    this.hasWhatsApp,
   });
 
   final int color;
@@ -38,6 +40,11 @@ class TransactionTile extends StatelessWidget {
   final String? number;
   final String? profileImageUrl; // Add profileImageUrl
   final int? unreadCount;
+
+  /// PAS-WA-V1: tri-state channel capability used to render the
+  /// WhatsApp/SMS badge. `null` means "not known yet" — the badge
+  /// shows a neutral phone glyph rather than guessing.
+  final bool? hasWhatsApp;
 
   @override
   Widget build(BuildContext context) {
@@ -100,11 +107,11 @@ class TransactionTile extends StatelessWidget {
     var unreadMessageCount = unreadCount ?? 0;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 3.0),
+      padding: const EdgeInsets.only(bottom: 1.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Wrap the name + badge in Expanded so it doesn't overflow the balance
+          // Wrap the name + badges in Expanded so it doesn't overflow the balance
           Expanded(
             child: Row(
               children: [
@@ -137,6 +144,21 @@ class TransactionTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                // PAS-WA-V1: at-a-glance channel reachability. Rendered
+                // inline at the end of the name row so it tracks the name's
+                // baseline and stays compact (no extra vertical line, and
+                // no row-to-row drift like when it was in the subtitle).
+                // The name above is wrapped in Flexible so it ellipsizes
+                // to make room for the badge rather than pushing it off
+                // the row.
+                Padding(
+                  padding: EdgeInsets.only(
+                      left: SizeConfig.imageSizeMultiplier * 1.5),
+                  child: ChannelCapabilityBadge(
+                    hasNumber: number != null && number!.isNotEmpty,
+                    hasWhatsApp: hasWhatsApp,
+                  ),
+                ),
               ],
             ),
           ),
@@ -154,7 +176,7 @@ class TransactionTile extends StatelessWidget {
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.4),
+              SizedBox(height: SizeConfig.heightMultiplier * 0.2),
               PaymentStatusPill(balance: balance, dense: true),
             ],
           ),
@@ -164,6 +186,28 @@ class TransactionTile extends StatelessWidget {
   }
 
   Widget _buildSubtitle() {
+    // Detect the "no real transactions yet" state. New contacts are
+    // initialised with a synthetic placeholder transaction
+    // (`getDefaultTransaction` in add_contact_view_model.dart) whose
+    // `remarks` field is the literal string "No transactions yet" —
+    // and `entity_tab` falls back to the same string when there is no
+    // last transaction at all. Either way, that exact remarks value is
+    // our signal not to render the fake "R0,00 Payment added on ..."
+    // line.
+    final hasTransaction = remarks != 'No transactions yet';
+    if (!hasTransaction) {
+      return Text(
+        'No transactions yet',
+        style: TextStyle(
+          color: Colors.grey.shade600,
+          fontSize: SizeConfig.textMultiplier * 1.5,
+          fontWeight: FontWeight.w400,
+          fontStyle: FontStyle.italic,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
     return Row(
       children: [
         Expanded(
@@ -195,17 +239,21 @@ class TransactionTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        SizedBox(width: SizeConfig.heightMultiplier * 2),
-        Text(
-          remarks,
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: SizeConfig.textMultiplier * 1.4,
-            fontWeight: FontWeight.w500,
+        if (remarks.isNotEmpty) ...[
+          SizedBox(width: SizeConfig.heightMultiplier * 2),
+          Flexible(
+            child: Text(
+              remarks,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: SizeConfig.textMultiplier * 1.4,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        ],
       ],
     );
   }
