@@ -66,22 +66,23 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    return Material(
-      borderRadius: BorderRadius.circular(SizeConfig.imageSizeMultiplier * 3),
-      elevation: 5.0, // Optional: adds shadow for a lifted effect
-      color: _connectionStatus == ConnectivityResult.none
-          ? Colors.red
-          : Colors.green, // Background color
-      child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 0.5),
-        child: Container(
-          width: SizeConfig.imageSizeMultiplier * 1.5, // Adjust width as needed
-          height:
-              SizeConfig.imageSizeMultiplier * 1.5, // Adjust height as needed
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-          ),
-        ),
+    final bool isOffline = _connectionStatus == ConnectivityResult.none;
+    final IconData icon =
+        isOffline ? Icons.cloud_off_outlined : Icons.cloud_done_outlined;
+    final Color color = isOffline ? Colors.red : Colors.green;
+    final String tooltip = isOffline
+        ? 'Offline — changes are saved on this device and will sync when you reconnect.'
+        : 'Online — changes are syncing to the cloud.';
+
+    return Tooltip(
+      message: tooltip,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 3),
+      child: Icon(
+        icon,
+        color: color,
+        size: SizeConfig.imageSizeMultiplier * 5,
+        semanticLabel: isOffline ? 'Offline' : 'Online',
       ),
     );
   }
