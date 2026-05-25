@@ -187,7 +187,9 @@ class _EntityTabState extends State<EntityTab> {
             // 🔵 Chat unread per customer (existing)
             // V1 truth-surface: only count inbound customer messages toward
             // the unread badge — outbound bot mirrors share the same array
-            // but should not ring the bell.
+            // but should not ring the bell. Entries flagged `isRead: true`
+            // by `markMessagesAsRead` must also be excluded so the badge
+            // actually clears after the merchant opens the chat.
             final chatUnread =
                 unreadMessages
                     .where(
@@ -195,7 +197,8 @@ class _EntityTabState extends State<EntityTab> {
                           msg['customerNumber'] == customerData['number'] &&
                           (msg['direction'] == null ||
                               msg['direction'].toString().toLowerCase() ==
-                                  'inbound'),
+                                  'inbound') &&
+                          msg['isRead'] != true,
                     )
                     .length;
 
