@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../constants/constants.dart';
 import '../services/analytics_event.dart';
 import '../services/consent_service.dart';
 import '../services/crash_service.dart';
@@ -7,8 +8,8 @@ import '../services/telemetry_service.dart';
 
 /// First-run consent modal.
 ///
-/// Shown the first time we have a `BuildContext` after `main()` has finished
-/// initialising, IF [ConsentState.hasDecided] is false.
+/// Shown the first time we have an authenticated [BuildContext] (i.e. from
+/// the Dashboard, not before login) if [ConsentState.hasDecided] is false.
 ///
 /// POPIA stance:
 ///   * Crash reports default ON. Rationale: they contain technical metadata
@@ -18,11 +19,14 @@ import '../services/telemetry_service.dart';
 ///     opt in.
 ///   * The user cannot dismiss the modal without making a choice (no
 ///     barrier-tap to close, system back is intercepted by [PopScope]).
+///   * "Reject all" is exposed as a top-right text link with equal
+///     prominence to the save action — POPIA requires refusal to be at
+///     least as easy as acceptance.
 class ConsentModal extends StatefulWidget {
   const ConsentModal({super.key});
 
   /// Shows the modal and returns once the user has made a choice.
-  /// Safe to call multiple times -- subsequent calls return immediately if
+  /// Safe to call multiple times — subsequent calls return immediately if
   /// consent has already been decided.
   static Future<void> showIfNeeded(BuildContext context) async {
     if (ConsentService.instance.state.hasDecided) return;
@@ -80,89 +84,255 @@ class _ConsentModalState extends State<ConsentModal> {
     Navigator.of(context).pop();
   }
 
+  Future<void> _rejectAll() async {
+    setState(() {
+      _analytics = false;
+      _replay = false;
+      _crash = false;
+    });
+    await _save();
+  }
+
+  Future<void> _acceptAll() async {
+    setState(() {
+      _analytics = true;
+      _replay = true;
+      _crash = true;
+    });
+    await _save();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async => false,
-      child: AlertDialog(
-        title: const Text('Help us improve Pasella'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'We collect a small amount of data to keep the app stable and '
-                'understand which features merchants find useful. You stay in '
-                'control -- change these any time in Settings -> Privacy.',
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Crash reports'),
-                subtitle: const Text(
-                  'Send technical details when the app crashes so we can fix it.',
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Spacer(),
+                    // POPIA: "Reject all" is given a first-class text link
+                    // in the top-right so refusal is as easy as acceptance.
+                    TextButton(
+                      onPressed: _saving ? null : _rejectAll,
+                      style: TextButton.styleFrom(
+                        foregroundColor: kSecondaryAccent,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Reject all'),
+                    ),
+                  ],
                 ),
-                value: _crash,
-                onChanged: _saving ? null : (v) => setState(() => _crash = v),
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Product analytics'),
-                subtitle: const Text(
-                  'Anonymous usage events (no message contents, no contacts).',
+                const SizedBox(height: 4),
+                Center(
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.shield_outlined,
+                      color: kPrimaryColor,
+                      size: 28,
+                    ),
+                  ),
                 ),
-                value: _analytics,
-                onChanged:
-                    _saving ? null : (v) => setState(() => _analytics = v),
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Session replay'),
-                subtitle: const Text(
-                  'Masked recordings of your screens so we can debug rough edges. '
-                  'All text and images are blurred. Requires product analytics.',
+                const SizedBox(height: 14),
+                const Text(
+                  'Your privacy, your choice',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
                 ),
-                value: _replay && _analytics,
-                onChanged: (_saving || !_analytics)
-                    ? null
-                    : (v) => setState(() => _replay = v),
-              ),
-            ],
+                const SizedBox(height: 8),
+                const Text(
+                  'Pick what Pasella can collect. You can change this '
+                  'anytime in Settings → Privacy.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.4,
+                    color: kSecondaryAccent,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _ConsentOptionCard(
+                  icon: Icons.bug_report_outlined,
+                  title: 'Crash reports',
+                  description:
+                      'Help us fix bugs when something breaks. No personal '
+                      'data is sent.',
+                  value: _crash,
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() => _crash = v),
+                ),
+                const SizedBox(height: 10),
+                _ConsentOptionCard(
+                  icon: Icons.insights_outlined,
+                  title: 'Usage insights',
+                  description:
+                      'Anonymous stats about which features get used. No '
+                      'messages, no contacts.',
+                  value: _analytics,
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() {
+                            _analytics = v;
+                            if (!v) _replay = false;
+                          }),
+                ),
+                const SizedBox(height: 10),
+                _ConsentOptionCard(
+                  icon: Icons.smart_display_outlined,
+                  title: 'Screen replays',
+                  description:
+                      'Blurred recordings of your screens so we can debug '
+                      'rough edges. Needs usage insights on.',
+                  value: _replay && _analytics,
+                  onChanged: (_saving || !_analytics)
+                      ? null
+                      : (v) => setState(() => _replay = v),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kPrimaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Save choices',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: _saving ? null : _acceptAll,
+                  style: TextButton.styleFrom(
+                    foregroundColor: kPrimaryColor,
+                    minimumSize: const Size(0, 40),
+                  ),
+                  child: const Text(
+                    'Accept all',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: _saving
-                ? null
-                : () {
-                    setState(() {
-                      _analytics = false;
-                      _replay = false;
-                      _crash = false;
-                    });
-                    _save();
-                  },
-            child: const Text('Reject all'),
+      ),
+    );
+  }
+}
+
+class _ConsentOptionCard extends StatelessWidget {
+  const _ConsentOptionCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final bool value;
+
+  /// Null when the option is disabled (saving, or analytics-gating for
+  /// replay). The whole card visually dims when disabled.
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onChanged == null;
+    return Opacity(
+      opacity: disabled ? 0.55 : 1.0,
+      child: Material(
+        color: kHighLightColor,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: disabled ? null : () => onChanged!(!value),
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: kPrimaryColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          height: 1.35,
+                          color: kSecondaryAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Switch(
+                  value: value,
+                  onChanged: onChanged,
+                  activeColor: kPrimaryColor,
+                ),
+              ],
+            ),
           ),
-          TextButton(
-            onPressed: _saving
-                ? null
-                : () {
-                    setState(() {
-                      _analytics = true;
-                      _replay = true;
-                      _crash = true;
-                    });
-                    _save();
-                  },
-            child: const Text('Accept all'),
-          ),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: const Text('Save'),
-          ),
-        ],
+        ),
       ),
     );
   }

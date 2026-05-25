@@ -26,7 +26,6 @@ import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/show_toast.dart';
-import 'package:pasella/widgets/consent_modal.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -369,12 +368,10 @@ void main() async {
       }
     });
 
-    // Show the consent modal on first launch. Defer to the next frame so
-    // navigatorKey.currentContext is populated.
-    final ctx = navigatorKey.currentContext;
-    if (ctx != null) {
-      ConsentModal.showIfNeeded(ctx);
-    }
+    // PAS-UX-DESIGN: the first-run telemetry consent modal is now shown
+    // from the Dashboard's initState (the first authenticated screen)
+    // instead of here. Surfacing it pre-login was abrupt and gave the
+    // user no app context to anchor the decision.
   });
 }
 
