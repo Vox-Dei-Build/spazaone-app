@@ -12,6 +12,7 @@ enum OrderStatus {
   accepted,
   paid,
   cancelled,
+  rejected,
   /* fulfilled,
   cancelled,
   refunded, */
@@ -31,6 +32,7 @@ extension OrderStatusLabel on OrderStatus {
         OrderStatus.accepted => 'Accepted',
         OrderStatus.paid => 'Paid',
         OrderStatus.cancelled => 'Cancelled',
+        OrderStatus.rejected => 'Rejected',
         /* OrderStatus.fulfilled => 'Fulfilled',
         OrderStatus.cancelled => 'Cancelled',
         OrderStatus.refunded => 'Refunded', */
@@ -53,6 +55,7 @@ extension OrderStatusX on OrderStatus {
         OrderStatus.cancelled => Colors.red,
         OrderStatus.refunded => Colors.purple, */
         OrderStatus.cancelled => Colors.red,
+        OrderStatus.rejected => Colors.red,
         OrderStatus.uncollected => Colors.orange,
         OrderStatus.collected => Colors.teal,
         OrderStatus.outForDelivery => Colors.blue,
@@ -110,6 +113,9 @@ extension OrderStatusX on OrderStatus {
     } */
     if (x.contains('cancel') || ps == 'cancelled') {
       return OrderStatus.cancelled;
+    }
+    if (x.contains('reject') || ps == 'rejected') {
+      return OrderStatus.rejected;
     }
     if (x.contains('pending') || x.isEmpty || ps == 'pending') {
       return OrderStatus.pending;
@@ -174,6 +180,7 @@ OrderStatus resolveOrderStatus({
   if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
   if (s.contains('fulfill') || ps == 'fulfilled') return OrderStatus.fulfilled; */
   if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
+  if (s.contains('reject') || ps == 'rejected') return OrderStatus.rejected;
 
   // 4) Accepted (merchant approved but not yet dispatched/paid)
   if (s == 'accepted') return OrderStatus.accepted;
@@ -252,16 +259,31 @@ PillMeta? buildCollectionPill({
   required bool isCollected,
   bool isDelivery = false,
   bool isOutForDelivery = false,
+  bool hasDriver = false,
+  bool isRejected = false,
+  bool isCancelled = false,
 }) {
-  // Delivery orders speak the language of "delivered / out for delivery
-  // / awaiting dispatch", not collection. Pickup orders keep the
-  // existing "collected / uncollected" labels.
+  // Terminal non-fulfillment states short-circuit so a rejected or
+  // cancelled order never reads as "awaiting" something that will
+  // never happen.
+  if (isRejected) return const PillMeta('Rejected', Colors.red);
+  if (isCancelled) return const PillMeta('Cancelled', Colors.red);
+
+  // Delivery orders speak the language of delivery, not collection.
+  // The "awaiting" label depends on whether a driver has been
+  // attached yet: without a driver we're waiting to *find* one;
+  // with a driver attached we're waiting to *dispatch* — and the
+  // merchant's next action is "Mark Out for Delivery", so we call
+  // it "Driver assigned" rather than the previous "Awaiting
+  // Dispatch" which incorrectly implied no further action was
+  // available.
   if (isDelivery) {
     if (isCollected) return const PillMeta('Delivered', Colors.teal);
     if (isOutForDelivery) {
       return const PillMeta('Out for Delivery', Colors.blue);
     }
-    return const PillMeta('Awaiting Dispatch', Colors.orange);
+    if (hasDriver) return const PillMeta('Driver assigned', Colors.blue);
+    return const PillMeta('Awaiting driver', Colors.orange);
   }
   if (isCollected) {
     return const PillMeta('Collected', Colors.teal);

@@ -66,5 +66,48 @@ void main() {
       expect(vars['2'], 'PeFVtG5A39vRj3z8q0wz');
       expect(vars['3'], 'Koekie Food Security');
     });
+
+    test('reject order maps customer, shop, order and reason in slot order', () {
+      // Twilio template body:
+      //   Hi {{1}}, {{2}} could not accept order {{3}}. Reason: {{4}}...
+      final vars = OrderStatusMessagingService.variablesForActionForTest(
+        action: 'REJECT_ORDER',
+        customerName: 'Tsepo Number',
+        merchantDisplayName: 'Koekie Food Security',
+        orderId: 'ORD-143',
+        rejectionReason: 'Out of stock',
+      );
+
+      expect(vars['1'], 'Tsepo Number');
+      expect(vars['2'], 'Koekie Food Security');
+      expect(vars['3'], 'ORD-143');
+      expect(vars['4'], 'Out of stock');
+    });
+
+    test('reject order falls back to generic reason when none supplied', () {
+      final vars = OrderStatusMessagingService.variablesForActionForTest(
+        action: 'REJECT_ORDER',
+        customerName: 'Tsepo Number',
+        merchantDisplayName: 'Koekie Food Security',
+        orderId: 'ORD-143',
+      );
+
+      expect(vars['4'], 'Unavailable right now');
+    });
+
+    test('reject order uses defaults when customer or shop name missing', () {
+      final vars = OrderStatusMessagingService.variablesForActionForTest(
+        action: 'REJECT_ORDER',
+        customerName: '',
+        merchantDisplayName: '',
+        orderId: 'ORD-143',
+        rejectionReason: 'Closed today',
+      );
+
+      expect(vars['1'], 'customer');
+      expect(vars['2'], 'the shop');
+      expect(vars['3'], 'ORD-143');
+      expect(vars['4'], 'Closed today');
+    });
   });
 }
