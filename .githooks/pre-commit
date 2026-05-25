@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Pre-commit hook: block commits that contain secrets.
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+#
+# Requires gitleaks (https://github.com/gitleaks/gitleaks):
+#   macOS:  brew install gitleaks
+#   Linux:  see project releases page
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+[pre-commit] gitleaks is not installed; refusing to commit.
+Install it with `brew install gitleaks` (macOS) or from
+https://github.com/gitleaks/gitleaks/releases, then retry.
+To bypass in an emergency: `git commit --no-verify` (discouraged).
+EOF
+  exit 1
+fi
+
+# Scan only what's staged. --redact hides matched values in output.
+gitleaks protect \
+  --staged \
+  --redact \
+  --config .gitleaks.toml \
+  --verbose

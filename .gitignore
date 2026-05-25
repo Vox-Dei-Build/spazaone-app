@@ -3,8 +3,18 @@
 *.log
 *.pyc
 *.swp
-*.env
 .DS_Store
+
+# Secrets / env files — never commit these.
+# Match .env, .env.<anything>, and nested variants (e.g. functions/.env.local).
+# Only .env.example is allowed (see negation below).
+.env
+.env.*
+**/.env
+**/.env.*
+*.env
+!.env.example
+!**/.env.example
 .atom/
 .build/
 .buildlog/
@@ -13,9 +23,24 @@
 .swiftpm/
 migrate_working_dir/
 
-# Firebase
+# Firebase / GCP service-account keys — never commit these.
 pasella-ledger-430d249a5061.json
 pasella-ledger-firebase-adminsdk-av7ho-985ee21a3d.json
+**/*-adminsdk-*.json
+**/*serviceAccount*.json
+**/*service-account*.json
+**/*service_account*.json
+**/gcp-key*.json
+**/firebase-adminsdk*.json
+
+# Other common credential files
+**/secrets/
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/credentials.json
+**/.netrc
 
 # IntelliJ related
 *.iml
