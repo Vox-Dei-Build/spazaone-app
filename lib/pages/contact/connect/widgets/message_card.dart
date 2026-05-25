@@ -227,7 +227,7 @@ class MessageCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Text(
-                        DateFormat('HH:mm').format(dateSent),
+                        DateFormat('HH:mm').format(dateSent.toLocal()),
                         style: TextStyle(
                           fontSize: SizeConfig.textMultiplier * 1.5,
                           color: WaBrandColour.time,

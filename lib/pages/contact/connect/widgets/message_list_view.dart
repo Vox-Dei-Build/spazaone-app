@@ -73,7 +73,7 @@ class _MessagesListViewState extends State<MessagesListView> {
     String? currentDateKey;
 
     for (final message in widget.messages) {
-      final date = _asDate(message['dateSent']);
+      final date = _asDate(message['dateSent'])?.toLocal();
       if (date == null) continue;
 
       final dateKey = DateFormat('yyyy-MM-dd').format(date);

@@ -123,7 +123,9 @@ class ConnectManagementViewModel {
         for (final m in src) {
           final id = (m['sid'] ?? m['id'] ?? _compositeKey(m)).toString();
           final date = _asDate(m['dateSent']);
-          if (date == null || date.isBefore(cutOff)) continue;
+          if (date == null || date.isBefore(cutOff)) {
+            continue;
+          }
 
           final isWhatsApp = (m['isWhatsApp'] as bool?) ?? isWaDefault;
           final isSMS = (m['isSMS'] as bool?) ?? isSmsDefault;
@@ -220,12 +222,9 @@ class ConnectManagementViewModel {
   }
 
   void _applyReadHeuristics(List<Map<String, dynamic>> msgs) {
-    print('🟡 [_applyReadHeuristics] Start: ${msgs.length} messages');
-
     // --- Sort oldest → newest ---
     msgs.sort((a, b) =>
         (a['dateSent'] as DateTime).compareTo(b['dateSent'] as DateTime));
-    print('🔄 Sorted by date');
 
     // --- Index for O(1) lookups ---
     final byId = <String, Map<String, dynamic>>{
@@ -238,7 +237,6 @@ class ConnectManagementViewModel {
         m['isRead'] = true;
         m['readReason'] = 'incoming';
         m['readAt'] = m['dateSent'];
-        print('✅ incoming → read: id=${m['id']} at ${m['readAt']}');
       } else {
         m['isRead'] = m['isRead'] ?? false;
       }
@@ -254,8 +252,6 @@ class ConnectManagementViewModel {
             out['isRead'] = true;
             out['readReason'] = 'replyTo';
             out['readAt'] = m['dateSent'];
-            print(
-                '🔗 replyTo → read: outId=${out['id']} via inId=${m['id']} at ${out['readAt']}');
           }
         }
       }
@@ -286,7 +282,6 @@ class ConnectManagementViewModel {
         m['isRead'] = true;
         m['readReason'] = 'inferred';
         m['readAt'] = nextIn;
-        print('🤔 inferred → read: id=${m['id']} (next inbound $nextIn)');
       }
     }
 
@@ -301,10 +296,6 @@ class ConnectManagementViewModel {
       final status = (m['status'] ?? '').toString().toLowerCase();
       return isOutbound && isWA && status == 'read';
     }).toList();
-
-    if (anchors.isNotEmpty) {
-      print('📌 Found ${anchors.length} read anchors (Twilio WA "read")');
-    }
 
     for (final a in anchors) {
       final anchorTime = a['readAt'] is DateTime
@@ -323,15 +314,11 @@ class ConnectManagementViewModel {
           m['isRead'] = true;
           m['readReason'] = 'twilio-anchor';
           m['readAt'] = anchorTime;
-          print('📎 backfill via anchor → read: id=${m['id']} '
-              '(anchorId=${a['id']}, window: $windowStart → $windowEnd, anchorAt=$anchorTime)');
         }
       }
     }
 
-    // --- Summary ---
-    final readCount = msgs.where((m) => m['isRead'] == true).length;
-    print('📊 Heuristics done: $readCount/${msgs.length} marked read');
+    // (read-count summary intentionally not logged — heuristic is hot path)
   }
 
   void dispose() {
