@@ -1,5 +1,11 @@
-import 'package:flutter/material.dart';
-
+// Pure data model for the customer / global balance summary.
+//
+// Historical note: this class used to carry a `List<Widget>? children` slot
+// that the `CustomerBalanceSummaryProvider` filled with `AddCreditPaymentButtons`
+// so the summary card could render the CTAs underneath the numbers. That
+// coupled the domain model to Flutter widgets and made the Pay Later layout
+// impossible to evolve without touching the model. The CTAs are now rendered
+// directly by the page (`PayLaterActionBar`), and this model holds numbers only.
 class BalanceSummary {
   final double netBalance;
   final int paymentCount;
@@ -8,7 +14,6 @@ class BalanceSummary {
   final double creditAmount;
   final int? totalCustomers;
   final int? owingNumberOfCustomers;
-  final List<Widget>? children;
 
   BalanceSummary({
     required this.netBalance,
@@ -18,7 +23,6 @@ class BalanceSummary {
     required this.creditAmount,
     this.totalCustomers,
     this.owingNumberOfCustomers,
-    this.children,
   });
 
   bool equals(BalanceSummary other) {
