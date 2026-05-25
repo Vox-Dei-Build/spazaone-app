@@ -22,6 +22,14 @@ class EntityTab extends StatefulWidget {
   final ValueNotifier<String?> searchTextNotifier;
   final ValueNotifier<bool> hasCustomersNotifier;
 
+  /// PAS-UX: optional external scroll controller. When provided, the
+  /// inner `SingleChildScrollView` attaches to it so a parent (e.g.
+  /// `CustomerTab`) can listen for scroll direction and drive the
+  /// sticky-on-scroll behavior of the search bar above. Optional so
+  /// other categories that don't need this behavior keep their
+  /// implicit controller.
+  final ScrollController? scrollController;
+
   /// PAS-UX-09: optional inline CTA on the empty state. When supplied
   /// the empty surface paints a primary action button beneath the
   /// caption (mirrors the PAS-UX-04 stock empty-state recovery
@@ -44,6 +52,7 @@ class EntityTab extends StatefulWidget {
     required this.emptyAsset,
     required this.emptyText,
     required this.hasCustomersNotifier,
+    this.scrollController,
     this.emptyCtaLabel,
     this.onEmptyCtaTap,
     this.tutorialKey,
@@ -402,6 +411,7 @@ class _EntityTabState extends State<EntityTab> {
               animation: WhatsAppCapabilityCache.instance,
               builder: (context, _) {
                 return SingleChildScrollView(
+                  controller: widget.scrollController,
                   child: Column(
                     children:
                         filteredEntities.map((entityWithTransactions) {
