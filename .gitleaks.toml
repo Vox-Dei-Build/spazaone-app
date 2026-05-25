@@ -52,13 +52,23 @@ tags = ["key", "gcp"]
 
 # Allowlist — paths and patterns we trust not to contain real secrets.
 [allowlist]
-description = "Allow example/template files and lockfiles"
+description = "Allow example/template files, lockfiles, and Firebase client configs"
 paths = [
   '''(^|/)\.env\.example$''',
   '''(^|/)\.gitleaks\.toml$''',
   '''(^|/)package-lock\.json$''',
   '''(^|/)pubspec\.lock$''',
   '''(^|/)Podfile\.lock$''',
+  # Firebase client config files. The API keys inside (current_key,
+  # GOOGLE_API_KEY, GoogleService-Info.plist API_KEY) are PUBLIC by
+  # design — they identify the project, not the caller. Real protection
+  # comes from:
+  #   1. GCP API key application/API restrictions (Console > Credentials)
+  #   2. Firestore / RTDB / Storage Security Rules
+  #   3. Firebase App Check
+  # See https://firebase.google.com/docs/projects/api-keys
+  '''(^|/)google-services\.json$''',
+  '''(^|/)GoogleService-Info\.plist$''',
 ]
 # Allow placeholder values inside example files.
 regexes = [
