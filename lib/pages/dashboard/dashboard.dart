@@ -7,6 +7,7 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
 import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart';
+import 'package:pasella/widgets/consent_modal.dart';
 import 'package:provider/provider.dart';
 
 class Dashboard extends StatefulWidget {
@@ -20,6 +21,24 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   bool _introScheduled = false;
+  bool _consentPromptScheduled = false;
+
+  /// PAS-UX-DESIGN: the first-run telemetry consent modal used to be
+  /// triggered from `main.dart` post-frame, which surfaced it *before*
+  /// the user had any app context. Showing it here, on the first render
+  /// of the authenticated Dashboard, means the user has just landed on
+  /// a recognisable screen and the decision sits in context. The modal
+  /// itself short-circuits via [ConsentService.state.hasDecided], so
+  /// repeat builds are no-ops.
+  Future<void> _showConsentModalIfNeeded() async {
+    if (_consentPromptScheduled) return;
+    _consentPromptScheduled = true;
+    // One frame of breathing room so the Dashboard finishes painting
+    // before the dialog occludes it — feels less like an ambush.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    await ConsentModal.showIfNeeded(context);
+  }
 
   Future<void> _showOnboardingIntroIfNeeded(String userId) async {
     if (_introScheduled || userId.isEmpty) return;
@@ -104,6 +123,10 @@ class _DashboardState extends State<Dashboard> {
         return Consumer<AppModel>(
           builder: (context, value, child) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
+              // Consent first (POPIA), then merchant onboarding intro.
+              // Both are gated by their own "already seen" flags so they
+              // only fire once per install.
+              _showConsentModalIfNeeded();
               _showOnboardingIntroIfNeeded(userId);
             });
             // PAS-UI-01: the OnboardingChecklist that previously mounted
