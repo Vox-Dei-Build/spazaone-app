@@ -33,6 +33,10 @@ pasella-ledger-firebase-adminsdk-av7ho-985ee21a3d.json
 **/gcp-key*.json
 **/firebase-adminsdk*.json
 
+# Firebase Functions legacy runtime config (firebase functions:config:get
+# dumps secrets here; emulator reads them at startup). Never commit.
+**/.runtimeconfig.json
+
 # Other common credential files
 **/secrets/
 **/*.pem

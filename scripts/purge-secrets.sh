@@ -6,6 +6,7 @@
 # WHAT IT REMOVES (all paths, full history, every branch & tag):
 #   - functions/.env.local
 #   - functions/.env.default
+#   - functions/.runtimeconfig.json
 #   - pasella-ledger-firebase-adminsdk-av7ho-985ee21a3d.json
 #   - pasella-ledger-430d249a5061.json
 #   - any *-adminsdk-*.json
@@ -62,6 +63,7 @@ git filter-repo \
   --invert-paths \
   --path functions/.env.local \
   --path functions/.env.default \
+  --path functions/.runtimeconfig.json \
   --path pasella-ledger-firebase-adminsdk-av7ho-985ee21a3d.json \
   --path pasella-ledger-430d249a5061.json \
   --path-glob '*-adminsdk-*.json'
