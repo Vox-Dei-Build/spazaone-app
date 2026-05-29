@@ -29,33 +29,39 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     SizeConfig().init(context);
 
     // PAS-UX batch-add: the search sheet now stays open after each add so the
-    // merchant can build the whole basket in one session. The trailing actions
-    // therefore expose two affordances:
-    //   1. A "clear query" icon (only when there is something to clear).
-    //   2. A live "Done · N" button that returns to the transaction form and
-    //      reflects how many distinct lines are already in the basket.
+    // merchant can build the whole basket in one session. We expose two
+    // always-present actions to avoid SearchDelegate rebuild quirks with
+    // conditional/variable-length actions lists:
+    //   1. Clear-query icon (disabled when there's nothing to clear).
+    //   2. A live "Done · N" icon button that returns to the transaction form
+    //      and reflects how many distinct lines are already in the basket.
     final basketCount = viewModel.selectedProducts.length;
+    final hasQuery = query.isNotEmpty;
 
     return [
-      if (query.isNotEmpty)
-        IconButton(
-          tooltip: 'Clear search',
-          icon: Icon(Icons.clear, size: SizeConfig.imageSizeMultiplier * 6),
-          onPressed: () {
-            query = '';
-            showSuggestions(context);
-          },
-        ),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: TextButton.icon(
-          onPressed: () => close(context, null),
-          icon: const Icon(Icons.check_circle_outline),
-          label: Text(
-            basketCount > 0 ? 'Done · $basketCount' : 'Done',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+      IconButton(
+        tooltip: 'Clear search',
+        icon: Icon(Icons.clear, size: SizeConfig.imageSizeMultiplier * 6),
+        onPressed: hasQuery
+            ? () {
+                query = '';
+                showSuggestions(context);
+              }
+            : null,
+      ),
+      IconButton(
+        tooltip: basketCount > 0
+            ? 'Done — $basketCount in basket'
+            : 'Done',
+        icon: Badge(
+          isLabelVisible: basketCount > 0,
+          label: Text('$basketCount'),
+          child: Icon(
+            Icons.check_circle_outline,
+            size: SizeConfig.imageSizeMultiplier * 6,
           ),
         ),
+        onPressed: () => close(context, null),
       ),
     ];
   }
