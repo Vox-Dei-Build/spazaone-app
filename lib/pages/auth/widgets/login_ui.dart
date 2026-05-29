@@ -95,15 +95,51 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                     );
                   },
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                CustomButton(
-                  title: 'Register',
-                  onTap: () {
+                SizedBox(height: SizeConfig.heightMultiplier * 4),
+                // PAS-AUTH-02: Visually separate the returning-user path
+                // (primary Login button above) from the new-user path.
+                // Previously a second green "Register" CustomButton sat
+                // directly under "Login", which looked like a competing
+                // submit for the same phone field and caused wrong-CTA
+                // taps. A thin divider + "New to Pasella?" label + a
+                // text link demotes registration to a clearly secondary
+                // action while keeping it easy to find on a phone screen.
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey[300])),
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: SizeConfig.imageSizeMultiplier * 3,
+                      ),
+                      child: Text(
+                        'New to Pasella?',
+                        style: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 1.6,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey[300])),
+                  ],
+                ),
+                SizedBox(height: SizeConfig.heightMultiplier * 1),
+                TextButton.icon(
+                  onPressed: () {
                     Navigator.pushReplacementNamed(context, '/registerPage');
                   },
-                  color: Colors.green,
-                  icon: Icons.app_registration,
-                  fontSize: SizeConfig.textMultiplier * 2,
+                  icon: Icon(
+                    Icons.app_registration,
+                    color: Colors.green[800],
+                    size: SizeConfig.imageSizeMultiplier * 5,
+                  ),
+                  label: Text(
+                    'Create a new account',
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.9,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green[800],
+                    ),
+                  ),
                 ),
               ],
             ),
