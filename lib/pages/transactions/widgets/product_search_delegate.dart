@@ -316,120 +316,24 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     required int initialQuantity,
     required int maxQuantity,
     String confirmLabel = 'Add to transaction',
-  }) async {
-    final controller = TextEditingController(
-      text: initialQuantity <= 0 ? '1' : initialQuantity.toString(),
+  }) {
+    // PAS-UX batch-add: own the TextEditingController inside a dedicated
+    // StatefulWidget so its lifecycle is tied to the dialog's element tree.
+    // Previously the controller was created in this async function and
+    // disposed in a `finally` block; when the picker stays open (batch-add)
+    // and triggers an ancestor rebuild during dialog pop, Flutter would
+    // attempt one more rebuild of the dialog and hit the already-disposed
+    // controller — surfaced as "A TextEditingController was used after
+    // being disposed" followed by a cascade of GlobalKey/RenderFlex errors.
+    return showDialog<int>(
+      context: context,
+      builder: (dialogContext) => _QuantityPromptDialog(
+        title: title,
+        initialQuantity: initialQuantity,
+        maxQuantity: maxQuantity,
+        confirmLabel: confirmLabel,
+      ),
     );
-    String? errorText;
-
-    try {
-      return await showDialog<int>(
-        context: context,
-        builder: (dialogContext) {
-          return StatefulBuilder(
-            builder: (context, setState) {
-            return AlertDialog(
-              title: Text('Add product to transaction · $title'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Available stock: $maxQuantity'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: 'Quantity',
-                      errorText: errorText,
-                      border: const OutlineInputBorder(),
-                    ),
-                    onChanged: (_) {
-                      // Trigger rebuild so the over-stock hint
-                      // re-evaluates and the prior errorText (if any)
-                      // is cleared as the merchant edits.
-                      setState(() {
-                        errorText = null;
-                      });
-                    },
-                  ),
-                  // PAS-UX-XX: surface an *inline non-blocking* heads-up
-                  // when the typed quantity exceeds on-hand stock. The
-                  // merchant can still submit — the top-up confirmation
-                  // is handled centrally in
-                  // `TransactionViewModel.updateProductQuantity` so the
-                  // recovery flow stays in one place.
-                  Builder(
-                    builder: (_) {
-                      final parsed = int.tryParse(controller.text.trim());
-                      if (parsed != null &&
-                          parsed > 0 &&
-                          maxQuantity >= 0 &&
-                          parsed > maxQuantity) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(
-                                Icons.info_outline,
-                                size: 16,
-                                color: Colors.orange,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  'Exceeds stock by '
-                                  '${parsed - maxQuantity}. We\'ll ask to '
-                                  'top up your inventory before adding.',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final parsed = int.tryParse(controller.text.trim());
-                    if (parsed == null || parsed <= 0) {
-                      setState(() {
-                        errorText = 'Enter a valid quantity.';
-                      });
-                      return;
-                    }
-                    // PAS-UX-XX: removed the hard "Only N available"
-                    // block here. The merchant is allowed to enter any
-                    // positive integer; if it exceeds stock,
-                    // `updateProductQuantity` will prompt to top up
-                    // inventory before accepting the line.
-                    Navigator.pop(dialogContext, parsed);
-                  },
-                  child: Text(confirmLabel),
-                ),
-              ],
-            );
-          },
-        );
-      },
-      );
-    } finally {
-      controller.dispose();
-    }
   }
 
   /// PAS-UX batch-add: keep the search sheet open after a successful add so
@@ -461,5 +365,142 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
         ),
       );
     });
+  }
+}
+
+/// Dialog body for `_promptQuantity`. Owns its own [TextEditingController]
+/// so the controller's lifecycle is tied to this widget's State rather than
+/// the calling async function — preventing "used after dispose" assertions
+/// when ancestor rebuilds race the dialog pop in the batch-add flow.
+class _QuantityPromptDialog extends StatefulWidget {
+  const _QuantityPromptDialog({
+    required this.title,
+    required this.initialQuantity,
+    required this.maxQuantity,
+    required this.confirmLabel,
+  });
+
+  final String title;
+  final int initialQuantity;
+  final int maxQuantity;
+  final String confirmLabel;
+
+  @override
+  State<_QuantityPromptDialog> createState() => _QuantityPromptDialogState();
+}
+
+class _QuantityPromptDialogState extends State<_QuantityPromptDialog> {
+  late final TextEditingController _controller;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.initialQuantity <= 0
+          ? '1'
+          : widget.initialQuantity.toString(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final parsed = int.tryParse(_controller.text.trim());
+    if (parsed == null || parsed <= 0) {
+      setState(() {
+        _errorText = 'Enter a valid quantity.';
+      });
+      return;
+    }
+    // PAS-UX-XX: removed the hard "Only N available" block here. The
+    // merchant is allowed to enter any positive integer; if it exceeds
+    // stock, `updateProductQuantity` will prompt to top up inventory
+    // before accepting the line.
+    Navigator.pop(context, parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = int.tryParse(_controller.text.trim());
+    final exceedsStock = parsed != null &&
+        parsed > 0 &&
+        widget.maxQuantity >= 0 &&
+        parsed > widget.maxQuantity;
+
+    return AlertDialog(
+      title: Text('Add product to transaction · ${widget.title}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Available stock: ${widget.maxQuantity}'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Quantity',
+              errorText: _errorText,
+              border: const OutlineInputBorder(),
+            ),
+            onChanged: (_) {
+              // Rebuild so the over-stock hint re-evaluates and the prior
+              // errorText (if any) is cleared as the merchant edits.
+              setState(() {
+                _errorText = null;
+              });
+            },
+            onSubmitted: (_) => _submit(),
+          ),
+          // PAS-UX-XX: surface an *inline non-blocking* heads-up when the
+          // typed quantity exceeds on-hand stock. The merchant can still
+          // submit — the top-up confirmation is handled centrally in
+          // `TransactionViewModel.updateProductQuantity` so the recovery
+          // flow stays in one place.
+          if (exceedsStock)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Colors.orange,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Exceeds stock by '
+                      '${parsed - widget.maxQuantity}. We\'ll ask to '
+                      'top up your inventory before adding.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.confirmLabel),
+        ),
+      ],
+    );
   }
 }
