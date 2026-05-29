@@ -35,7 +35,14 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     //   1. Clear-query icon (disabled when there's nothing to clear).
     //   2. A live "Done · N" icon button that returns to the transaction form
     //      and reflects how many distinct lines are already in the basket.
-    final basketCount = viewModel.selectedProducts.length;
+    //
+    // SearchDelegate doesn't rebuild buildActions when an external Listenable
+    // (the view model) notifies, so the Done badge is wrapped in a
+    // ListenableBuilder bound to the view model. This way every successful
+    // add/remove/quantity update from anywhere in this flow refreshes the
+    // basket count immediately, including updates that happen *after* the
+    // quantity dialog is dismissed (which were previously stale until the
+    // next add or until the merchant left and re-opened the picker).
     final hasQuery = query.isNotEmpty;
 
     return [
@@ -49,19 +56,25 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
               }
             : null,
       ),
-      IconButton(
-        tooltip: basketCount > 0
-            ? 'Done — $basketCount in basket'
-            : 'Done',
-        icon: Badge(
-          isLabelVisible: basketCount > 0,
-          label: Text('$basketCount'),
-          child: Icon(
-            Icons.check_circle_outline,
-            size: SizeConfig.imageSizeMultiplier * 6,
-          ),
-        ),
-        onPressed: () => close(context, null),
+      ListenableBuilder(
+        listenable: viewModel,
+        builder: (context, _) {
+          final basketCount = viewModel.selectedProducts.length;
+          return IconButton(
+            tooltip: basketCount > 0
+                ? 'Done — $basketCount in basket'
+                : 'Done',
+            icon: Badge(
+              isLabelVisible: basketCount > 0,
+              label: Text('$basketCount'),
+              child: Icon(
+                Icons.check_circle_outline,
+                size: SizeConfig.imageSizeMultiplier * 6,
+              ),
+            ),
+            onPressed: () => close(context, null),
+          );
+        },
       ),
     ];
   }
