@@ -119,9 +119,9 @@ class _ProductFormState extends State<ProductForm> {
                               children: [
                                 Expanded(
                                   child: CustomTextField(
-                                    label: "Cost*",
-                                    hintText: "Cost",
-                                    prefixIcon: Icons.money,
+                                    label: "Cost (internal)*",
+                                    hintText: "Internal only",
+                                    prefixIcon: Icons.lock_outline,
                                     controller: viewModel.costController,
                                     validator: (value) {
                                       if (value == null || value.isEmpty) {
@@ -149,9 +149,9 @@ class _ProductFormState extends State<ProductForm> {
                                 ),
                                 Expanded(
                                   child: CustomTextField(
-                                    label: "Selling Price*",
-                                    hintText: "Selling Price",
-                                    prefixIcon: Icons.money,
+                                    label: "Selling Price (customer)*",
+                                    hintText: "Shown to customers",
+                                    prefixIcon: Icons.sell_outlined,
                                     controller:
                                         viewModel.sellingPriceController,
                                     validator: (value) {
@@ -175,6 +175,50 @@ class _ProductFormState extends State<ProductForm> {
                                   ),
                                 ),
                               ],
+                            ),
+                            // PAS-UX-XX: cost field clarity. Merchant
+                            // feedback (Gugu) flagged confusion over
+                            // whether "Cost" is visible to customers.
+                            // Make the visibility model explicit right
+                            // under the two price fields so the answer
+                            // is on-screen, not buried in help text.
+                            SizedBox(height: SizeConfig.heightMultiplier * 1),
+                            Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.symmetric(
+                                horizontal:
+                                    SizeConfig.imageSizeMultiplier * 2.5,
+                                vertical: SizeConfig.heightMultiplier * 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.visibility_outlined,
+                                    size: SizeConfig.imageSizeMultiplier * 4,
+                                    color: Colors.green[800],
+                                  ),
+                                  SizedBox(
+                                    width: SizeConfig.imageSizeMultiplier * 2,
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      'Cost is for your records only — '
+                                      'customers never see it. They only '
+                                      'see the Selling Price.',
+                                      style: TextStyle(
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        color: Colors.green[900],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                             // PAS-UX-05: non-blocking margin warning.
                             // Sub-cost pricing is sometimes intentional
