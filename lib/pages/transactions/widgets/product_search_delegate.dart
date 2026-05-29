@@ -28,13 +28,34 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
   List<Widget> buildActions(BuildContext context) {
     SizeConfig().init(context);
 
+    // PAS-UX batch-add: the search sheet now stays open after each add so the
+    // merchant can build the whole basket in one session. The trailing actions
+    // therefore expose two affordances:
+    //   1. A "clear query" icon (only when there is something to clear).
+    //   2. A live "Done · N" button that returns to the transaction form and
+    //      reflects how many distinct lines are already in the basket.
+    final basketCount = viewModel.selectedProducts.length;
+
     return [
-      IconButton(
-        icon: Icon(Icons.clear, size: SizeConfig.imageSizeMultiplier * 6),
-        onPressed: () {
-          query = '';
-          showSuggestions(context);
-        },
+      if (query.isNotEmpty)
+        IconButton(
+          tooltip: 'Clear search',
+          icon: Icon(Icons.clear, size: SizeConfig.imageSizeMultiplier * 6),
+          onPressed: () {
+            query = '';
+            showSuggestions(context);
+          },
+        ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: TextButton.icon(
+          onPressed: () => close(context, null),
+          icon: const Icon(Icons.check_circle_outline),
+          label: Text(
+            basketCount > 0 ? 'Done · $basketCount' : 'Done',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
     ];
   }
@@ -100,7 +121,10 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                     context,
                     '$productName added to this transaction · Qty $picked',
                   );
-                  close(context, newProduct);
+                  // PAS-UX batch-add: keep the search sheet open so the
+                  // merchant can immediately look for the next product
+                  // instead of being kicked back to the form after each add.
+                  _continueAdding(context);
                 },
               ),
             ),
@@ -185,7 +209,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                           ? '$productName updated in this transaction · Qty $picked'
                           : '$productName added to this transaction · Qty $picked',
                     );
-                    close(context, result);
+                    _continueAdding(context);
                   },
                   icon: const Icon(Icons.add),
                   label: Text(selectedQty > 0 ? 'Update' : 'Add'),
@@ -216,7 +240,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
                   ? '$productName updated in this transaction · Qty $picked'
                   : '$productName added to this transaction · Qty $picked',
             );
-            close(context, result);
+            _continueAdding(context);
           },
         );
       },
@@ -277,7 +301,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
           ? '$productName updated in this transaction · Qty $picked'
           : '$productName added to this transaction · Qty $picked',
     );
-    close(context, refreshed);
+    _continueAdding(context);
   }
 
   Future<int?> _promptQuantity(
@@ -400,6 +424,16 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
     } finally {
       controller.dispose();
     }
+  }
+
+  /// PAS-UX batch-add: keep the search sheet open after a successful add so
+  /// the merchant can build a multi-line basket in one flow. Clears the
+  /// current query and returns to the suggestions list (showing the basket
+  /// items first thanks to the existing sort in `_buildProductList`).
+  void _continueAdding(BuildContext context) {
+    if (!context.mounted) return;
+    query = '';
+    showSuggestions(context);
   }
 
   void _showSelectionFeedback(
