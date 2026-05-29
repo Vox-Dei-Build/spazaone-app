@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
@@ -303,7 +304,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     'Balance after',
                     canAfford
                         ? 'R${after.toStringAsFixed(2)}'
-                        : 'Insufficient',
+                        : 'Top up to send',
                     valueColor: canAfford
                         ? Colors.green.shade800
                         : Colors.orange.shade800,
@@ -375,8 +376,12 @@ class CostConfirmationSheet extends StatelessWidget {
                     ),
                     onPressed: () {
                       Navigator.of(context).pop(CostSheetOutcome.dismissed);
+                      // PAS-UX-WTC: jump straight to the Top-Up tab —
+                      // landing on Withdraw here is what made merchants
+                      // think the "Top Up" CTA didn't work.
                       Provider.of<AppModel>(context, listen: false)
-                          .goToBilling(context);
+                          .goToBilling(context,
+                              initialTab: WalletInitialTab.topUp);
                     },
                   ),
                   if (showSkip) ...[

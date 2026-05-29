@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -55,7 +56,10 @@ class WalletAffordabilityFooter extends StatelessWidget {
 
   void _defaultTopUp(BuildContext context) {
     Navigator.of(context).popUntil((r) => r.isFirst);
-    Provider.of<AppModel>(context, listen: false).goToBilling(context);
+    // PAS-UX-WTC: open WalletPage on the Top-Up tab so the CTA name
+    // and the destination match.
+    Provider.of<AppModel>(context, listen: false)
+        .goToBilling(context, initialTab: WalletInitialTab.topUp);
   }
 
   @override

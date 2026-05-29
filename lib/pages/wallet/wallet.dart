@@ -84,6 +84,15 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     }
   }
 
+  /// PAS-UX-WTC: index of the Top-Up tab in the current configuration,
+  /// or null when [FeatureFlags.enableTopUp] is off. Used by the App
+  /// Balance card's inline "Top up" action so it can jump to the tab
+  /// without needing a separate navigation surface.
+  int? _topUpTabIndex() {
+    if (!FeatureFlags.enableTopUp) return null;
+    return 1; // Withdraw (0) → Top Up (1).
+  }
+
   @override
   Widget build(BuildContext context) {
     // 🔥 Dynamically generate the tab views based on feature flags
@@ -97,7 +106,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     tabViews.add(const SalesBalanceTab());
 
     if (FeatureFlags.enableTopUp) {
-      tabLabels.add(const Tab(text: 'Top-Up'));
+      tabLabels.add(const Tab(text: 'Top Up'));
       tabViews.add(const TopUpTab());
     }
 
@@ -138,9 +147,27 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                         _balanceCard(
                           title: 'App Balance',
                           amount: walletState.balance,
-                          description: 'For in-app use only',
+                          description:
+                              'Pays for SMS & WhatsApp sends from this app',
                           color: Colors.green,
                           icon: Icons.account_balance_wallet,
+                          // PAS-UX-WTC: surface Top-Up directly on the
+                          // card the merchant is already looking at —
+                          // they shouldn't have to hunt for the tab.
+                          actionLabel: FeatureFlags.enableTopUp
+                              ? (walletState.balance <= 0
+                                  ? 'Top up to start sending'
+                                  : (walletState.balance < 5.0
+                                      ? 'Low — top up'
+                                      : 'Top up'))
+                              : null,
+                          actionIsUrgent: walletState.balance < 5.0,
+                          onAction: FeatureFlags.enableTopUp
+                              ? () {
+                                  final i = _topUpTabIndex();
+                                  if (i != null) _tabController.animateTo(i);
+                                }
+                              : null,
                         ),
                         _balanceCard(
                           title: 'Sales Balance',
@@ -202,7 +229,16 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     required String description,
     required Color color,
     required IconData icon,
+    String? actionLabel,
+    VoidCallback? onAction,
+    bool actionIsUrgent = false,
   }) {
+    // PAS-UX-WTC: when the card is low/empty and an action is wired up,
+    // tint the card with a warning hue so the merchant can see at a
+    // glance that this is the surface that needs attention.
+    final bool showUrgent = actionIsUrgent && onAction != null;
+    final Color effectiveColor = showUrgent ? Colors.orange : color;
+
     return Container(
       padding: EdgeInsets.symmetric(
         vertical: SizeConfig.heightMultiplier * 2,
@@ -210,65 +246,102 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       ),
       margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: effectiveColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.6), width: 1.5),
+        border: Border.all(color: effectiveColor.withOpacity(0.6), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.2),
+            color: effectiveColor.withOpacity(0.2),
             blurRadius: 8,
             spreadRadius: 1,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 🔹 Left Section: Icon + Text
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              CircleAvatar(
-                backgroundColor: color.withOpacity(0.2),
-                child: Icon(
-                  icon,
-                  size: SizeConfig.textMultiplier * 2.5,
-                  color: color,
+              // 🔹 Left Section: Icon + Text
+              Expanded(
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: effectiveColor.withOpacity(0.2),
+                      child: Icon(
+                        icon,
+                        size: SizeConfig.textMultiplier * 2.5,
+                        color: effectiveColor,
+                      ),
+                    ),
+                    SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 1.8,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          Text(
+                            description,
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 1.4,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.8,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.4,
-                      color: Colors.black54,
-                    ),
-                  ),
-                ],
+
+              // 🔹 Right Section: Balance Amount
+              Text(
+                CurrencyUtil.format(amount),
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 2,
+                  fontWeight: FontWeight.bold,
+                  color: effectiveColor,
+                ),
               ),
             ],
           ),
-
-          // 🔹 Right Section: Balance Amount
-          Text(
-            CurrencyUtil.format(amount),
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 2,
-              fontWeight: FontWeight.bold,
-              color: color,
+          if (actionLabel != null && onAction != null) ...[
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            Align(
+              alignment: Alignment.centerRight,
+              child: showUrgent
+                  ? ElevatedButton.icon(
+                      onPressed: onAction,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: Text(actionLabel),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: SizeConfig.imageSizeMultiplier * 4,
+                          vertical: SizeConfig.heightMultiplier * 0.8,
+                        ),
+                      ),
+                    )
+                  : TextButton.icon(
+                      onPressed: onAction,
+                      icon: Icon(Icons.add, size: 18, color: effectiveColor),
+                      label: Text(
+                        actionLabel,
+                        style: TextStyle(color: effectiveColor),
+                      ),
+                    ),
             ),
-          ),
+          ],
         ],
       ),
     );
