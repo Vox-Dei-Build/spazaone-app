@@ -21,6 +21,7 @@ class WalletBalancePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wallet = context.watch<WalletBalanceProvider>();
+    final bool isLow = wallet.virtualBalance < lowBalanceThreshold;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -28,14 +29,24 @@ class WalletBalancePill extends StatelessWidget {
         InkWell(
           borderRadius: BorderRadius.circular(24),
           onTap: () {
+            // PAS-UX-WTC: when balance is low, sending the merchant
+            // directly to the Top-Up tab matches the visible warning
+            // tint — otherwise we keep the original Withdraw default
+            // so existing flows are unchanged.
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const WalletPage()),
+              MaterialPageRoute(
+                builder: (_) => WalletPage(
+                  initialTab: isLow
+                      ? WalletInitialTab.topUp
+                      : WalletInitialTab.withdraw,
+                ),
+              ),
             );
           },
           child: _PillBody(
             isLoading: wallet.isLoading,
             balance: wallet.virtualBalance,
-            isLow: wallet.virtualBalance < lowBalanceThreshold,
+            isLow: isLow,
           ),
         ),
         if (wallet.salesVirtualBalance > 0)
@@ -104,13 +115,41 @@ class _PillBody extends StatelessWidget {
                   height: SizeConfig.textMultiplier * 1.6,
                   child: const _Shimmer(),
                 )
-              : Text(
-                  'R${balance.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.7,
-                    fontWeight: FontWeight.w600,
-                    color: fg,
-                  ),
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'R${balance.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: SizeConfig.textMultiplier * 1.7,
+                        fontWeight: FontWeight.w600,
+                        color: fg,
+                      ),
+                    ),
+                    // PAS-UX-WTC: inline "Top up" affordance so the
+                    // low-balance state isn't just a colour change.
+                    if (isLow) ...[
+                      SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: SizeConfig.imageSizeMultiplier * 1.5,
+                          vertical: SizeConfig.heightMultiplier * 0.2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: fg,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Top up',
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 1.2,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
         ],
       ),

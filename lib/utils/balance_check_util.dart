@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:provider/provider.dart';
 
 // snackbar_messages.dart
 const String insufficientBalanceMessage =
-    'Insufficient balance for sending message. Please top up.';
+    'App balance too low to send. Tap to top up.';
 
 class BalanceCheckUtil {
   static Future<bool> checkBalanceAndProceed(
@@ -58,27 +59,32 @@ class BalanceCheckUtil {
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: Text("Insufficient Balance",
+            title: Text("App balance too low",
                 style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             content: const Text(
-                "Your balance is too low to send messages. 📩 To keep your customers informed and engaged, please top up now and continue sending important updates seamlessly! 🔄💡"),
+                "You don't have enough app balance to send this message. "
+                "Top up to keep sending SMS and WhatsApp updates."),
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pop(false);
-                  Provider.of<AppModel>(context, listen: false)
-                      .goToBilling(context);
+                  Navigator.of(context)
+                      .pop(false); // Save record, no message sent.
                 },
-                child: Text("Top Up Now",
+                child: Text("Save only",
                     style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context)
-                      .pop(false); // ❌ Skip → record only, no message sent
-                },
-                child: Text("Skip message — record only",
+              ElevatedButton.icon(
+                icon: const Icon(Icons.account_balance_wallet, size: 18),
+                label: Text("Top up now",
                     style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
+                onPressed: () {
+                  Navigator.of(context).pop(false);
+                  // PAS-UX-WTC: land on Top-Up directly so the merchant
+                  // doesn't have to find the tab themselves.
+                  Provider.of<AppModel>(context, listen: false)
+                      .goToBilling(context,
+                          initialTab: WalletInitialTab.topUp);
+                },
               ),
             ],
           ),
@@ -91,14 +97,24 @@ class SnackbarComponents {
   static void showInsufficientBalance(BuildContext context) {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
+        SnackBar(
+          content: const Text(
             insufficientBalanceMessage,
             style: TextStyle(color: Colors.white),
           ),
-          backgroundColor: Colors.amber,
+          backgroundColor: Colors.amber.shade800,
           behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Top up',
+            textColor: Colors.white,
+            onPressed: () {
+              Provider.of<AppModel>(context, listen: false).goToBilling(
+                context,
+                initialTab: WalletInitialTab.topUp,
+              );
+            },
+          ),
         ),
       );
     });

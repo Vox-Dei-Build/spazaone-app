@@ -24,9 +24,23 @@ class AppModel with ChangeNotifier {
     updateCurrentIndex(index);
   }
 
-  /// public helper to go to billing without worrying about the index
-  void goToBilling(BuildContext ctx) {
-    Navigator.pushNamed(ctx, WalletPage.id);
+  /// public helper to go to billing without worrying about the index.
+  ///
+  /// When [initialTab] is provided the WalletPage opens directly on that
+  /// tab — used by low-balance / top-up CTAs so merchants land on Top-Up
+  /// instead of Withdraw (which was the previous default and a common
+  /// source of confusion when triggered from an "insufficient balance"
+  /// prompt).
+  void goToBilling(BuildContext ctx, {WalletInitialTab? initialTab}) {
+    if (initialTab == null) {
+      Navigator.pushNamed(ctx, WalletPage.id);
+      return;
+    }
+    Navigator.of(ctx).push(
+      MaterialPageRoute(
+        builder: (_) => WalletPage(initialTab: initialTab),
+      ),
+    );
   }
 
   List<Widget> get navigationOptions => _navigationOptions;
