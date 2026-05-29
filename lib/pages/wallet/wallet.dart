@@ -151,23 +151,17 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                               'Pays for SMS & WhatsApp sends from this app',
                           color: Colors.green,
                           icon: Icons.account_balance_wallet,
-                          // PAS-UX-WTC: surface Top-Up directly on the
-                          // card the merchant is already looking at —
-                          // they shouldn't have to hunt for the tab.
-                          actionLabel: FeatureFlags.enableTopUp
-                              ? (walletState.balance <= 0
-                                  ? 'Top up to start sending'
-                                  : (walletState.balance < 5.0
-                                      ? 'Low — top up'
-                                      : 'Top up'))
-                              : null,
-                          actionIsUrgent: walletState.balance < 5.0,
+                          // PAS-UX-WTC: the whole card becomes a shortcut
+                          // to the Top-Up tab. Urgent tint kicks in when
+                          // balance is low so it's obvious which surface
+                          // needs attention — no extra chrome on the card.
                           onAction: FeatureFlags.enableTopUp
                               ? () {
                                   final i = _topUpTabIndex();
                                   if (i != null) _tabController.animateTo(i);
                                 }
                               : null,
+                          actionIsUrgent: walletState.balance < 5.0,
                         ),
                         _balanceCard(
                           title: 'Sales Balance',
@@ -223,23 +217,25 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }
 
   /// 🔥 Optimized & Compact Balance Card UI
+  ///
+  /// PAS-UX-WTC: kept as a single clean row to stay visually uniform
+  /// with the other balance cards. When [onAction] is supplied the
+  /// whole card becomes tappable (shortcut to the Top-Up tab), and an
+  /// [actionIsUrgent] state tints the card orange so the surface that
+  /// needs attention is obvious without adding extra chrome.
   Widget _balanceCard({
     required String title,
     required double amount,
     required String description,
     required Color color,
     required IconData icon,
-    String? actionLabel,
     VoidCallback? onAction,
     bool actionIsUrgent = false,
   }) {
-    // PAS-UX-WTC: when the card is low/empty and an action is wired up,
-    // tint the card with a warning hue so the merchant can see at a
-    // glance that this is the surface that needs attention.
     final bool showUrgent = actionIsUrgent && onAction != null;
     final Color effectiveColor = showUrgent ? Colors.orange : color;
 
-    return Container(
+    final card = Container(
       padding: EdgeInsets.symmetric(
         vertical: SizeConfig.heightMultiplier * 2,
         horizontal: SizeConfig.imageSizeMultiplier * 4,
@@ -258,52 +254,52 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // 🔹 Left Section: Icon + Text
-              Expanded(
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: effectiveColor.withOpacity(0.2),
-                      child: Icon(
-                        icon,
-                        size: SizeConfig.textMultiplier * 2.5,
-                        color: effectiveColor,
-                      ),
-                    ),
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.8,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          Text(
-                            description,
-                            style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.4,
-                              color: Colors.black54,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+          // 🔹 Left Section: Icon + Text
+          Expanded(
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: effectiveColor.withOpacity(0.2),
+                  child: Icon(
+                    icon,
+                    size: SizeConfig.textMultiplier * 2.5,
+                    color: effectiveColor,
+                  ),
                 ),
-              ),
+                SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 1.8,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 1.4,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-              // 🔹 Right Section: Balance Amount
+          // 🔹 Right Section: Balance Amount (+ chevron when tappable)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
                 CurrencyUtil.format(amount),
                 style: TextStyle(
@@ -312,38 +308,25 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   color: effectiveColor,
                 ),
               ),
+              if (onAction != null) ...[
+                SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
+                Icon(
+                  Icons.chevron_right,
+                  size: SizeConfig.textMultiplier * 2.2,
+                  color: effectiveColor,
+                ),
+              ],
             ],
           ),
-          if (actionLabel != null && onAction != null) ...[
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
-            Align(
-              alignment: Alignment.centerRight,
-              child: showUrgent
-                  ? ElevatedButton.icon(
-                      onPressed: onAction,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: Text(actionLabel),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.imageSizeMultiplier * 4,
-                          vertical: SizeConfig.heightMultiplier * 0.8,
-                        ),
-                      ),
-                    )
-                  : TextButton.icon(
-                      onPressed: onAction,
-                      icon: Icon(Icons.add, size: 18, color: effectiveColor),
-                      label: Text(
-                        actionLabel,
-                        style: TextStyle(color: effectiveColor),
-                      ),
-                    ),
-            ),
-          ],
         ],
       ),
+    );
+
+    if (onAction == null) return card;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onAction,
+      child: card,
     );
   }
 
