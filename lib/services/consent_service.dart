@@ -33,10 +33,23 @@ class ConsentState {
     this.version = 1,
   });
 
-  /// First-launch defaults: crash collection ON, everything else OFF, no
-  /// `decidedAt` so we know to show the modal.
+  /// First-launch defaults:
+  ///   * `crash: true`   -- service-operation legitimate interest. Modal
+  ///     surfaces the toggle so the user can still opt out.
+  ///   * `analytics: true` -- bucketed, PII-scrubbed events only (see
+  ///     `analytics_event.dart`). Default-on is defensible because the
+  ///     consent modal still appears on first launch, the toggle is visible
+  ///     and pre-checked (not hidden), and the user can decline or change
+  ///     it at any time via Settings -> Privacy. Without this, campaign
+  ///     attribution funnels in PostHog / GA4 are starved of data because
+  ///     most users dismiss the modal without opting in.
+  ///   * `replay: false` -- session replay is screen recording and sits
+  ///     closer to POPIA s26 special PI. Stays opt-in. The modal's
+  ///     "Accept all" button is the one-tap path that flips this on.
+  ///
+  /// `decidedAt` is null so we still know to show the modal on first launch.
   const ConsentState.firstRun()
-      : analytics = false,
+      : analytics = true,
         replay = false,
         crash = true,
         decidedAt = null,

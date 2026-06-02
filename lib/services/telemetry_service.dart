@@ -1,3 +1,4 @@
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
@@ -141,8 +142,10 @@ class TelemetryService {
     }
   }
 
-  /// Stitches the PostHog anonymous id to the merchant's Firebase UID.
-  /// Call once after a successful sign-in.
+  /// Stitches the PostHog anonymous id to the merchant's Firebase UID, and
+  /// mirrors the same id into Firebase Analytics so GA4 / Google Ads can
+  /// attribute downstream conversions (and retention cohorts) to the same
+  /// merchant across sessions.
   Future<void> identify({
     required String merchantId,
     String? businessType,
@@ -160,10 +163,29 @@ class TelemetryService {
     } catch (_) {
       // ignored
     }
+    // Firebase Analytics user stamping. Wrapped separately so a PostHog
+    // failure doesn't skip FA and vice versa.
+    try {
+      await FirebaseAnalytics.instance.setUserId(id: merchantId);
+      if (businessType != null) {
+        await FirebaseAnalytics.instance.setUserProperty(
+          name: 'business_type',
+          value: businessType,
+        );
+      }
+      if (businessCategory != null) {
+        await FirebaseAnalytics.instance.setUserProperty(
+          name: 'business_category',
+          value: businessCategory,
+        );
+      }
+    } catch (_) {
+      // ignored
+    }
   }
 
   /// Clears the identified user (call on sign-out) and starts a new
-  /// anonymous session.
+  /// anonymous session in both PostHog and Firebase Analytics.
   Future<void> reset() async {
     if (!_setupCalled) return;
     try {
@@ -171,11 +193,31 @@ class TelemetryService {
     } catch (_) {
       // ignored
     }
+    try {
+      await FirebaseAnalytics.instance.setUserId(id: null);
+      await FirebaseAnalytics.instance.resetAnalyticsData();
+    } catch (_) {
+      // ignored
+    }
   }
 
   /// Captures a typed [AnalyticsEvent]. No-op if analytics is disabled.
+  ///
+  /// PostHog is the primary sink for the full taxonomy. A small allow-list
+  /// of activation events is additionally mirrored to Firebase Analytics so
+  /// Google Ads / GA4 can attribute campaigns to real activation
+  /// (signup -> first sale -> first payout) rather than just install volume.
+  /// See [_mirrorToFirebase] for the mapping.
   Future<void> capture(AnalyticsEvent event) async {
-    if (!_enabled) return;
+    if (!_enabled) {
+      // TEMP DEBUG (PAS-GROWTH-03 verification): remove once GA4 receipt
+      // is confirmed.
+      if (kDebugMode) {
+        debugPrint('[telemetry] capture(${event.name}) SKIPPED -- '
+            '_enabled=false (analytics consent not granted)');
+      }
+      return;
+    }
     try {
       final scrubbed = _scrub(event.properties);
       await Posthog().capture(
@@ -184,6 +226,123 @@ class TelemetryService {
       );
     } catch (_) {
       // ignored -- telemetry never breaks the caller
+    }
+    // Mirror happens after PostHog so a PostHog failure doesn't drop the
+    // Google Ads conversion signal.
+    await _mirrorToFirebase(event);
+  }
+
+  /// Forwards a narrow allow-list of activation events to Firebase Analytics
+  /// using GA4 standard event names where possible so they light up in
+  /// Google Ads conversion / audience tooling without extra config:
+  ///
+  ///   * [SignupCompleted]   -> `sign_up`        (standard)
+  ///   * [SigninCompleted]   -> `login`          (standard, retention signal)
+  ///   * [CustomerCreated]   -> `generate_lead`  (standard, onboarding hop)
+  ///   * [SaleCompleted]     -> `purchase`       (standard, conversion + value)
+  ///   * [PayoutRequested]   -> `payout_requested` (custom)
+  ///
+  /// `purchase.value` is the midpoint of the existing `amountBucketZAR`
+  /// band, NOT the raw transaction amount. Keeping the bucket midpoint here
+  /// honours the same PII contract used elsewhere (no raw transaction sizes
+  /// leave the device) while still giving Google Ads a usable ROAS signal.
+  /// Update [_bucketMidpointZAR] in lock-step with `amountBucketZAR` in
+  /// `analytics_event.dart` if the bands change.
+  Future<void> _mirrorToFirebase(AnalyticsEvent event) async {
+    try {
+      final fa = FirebaseAnalytics.instance;
+      // TEMP DEBUG (PAS-GROWTH-03 verification): remove once GA4 receipt
+      // is confirmed. Prints every event reaching the mirror, even ones
+      // that fall through the default branch -- so you can tell the
+      // difference between "consent off" and "event not mapped".
+      if (kDebugMode) {
+        debugPrint('[fa-mirror] received ${event.runtimeType} '
+            '(enabled=$_enabled)');
+      }
+      switch (event) {
+        case SignupCompleted(:final method, :final businessType, :final businessCategory):
+          await fa.logEvent(
+            name: 'sign_up',
+            parameters: {
+              'method': method,
+              if (businessType != null) 'business_type': businessType,
+              if (businessCategory != null) 'business_category': businessCategory,
+            },
+          );
+        case SigninCompleted(:final method):
+          await fa.logEvent(
+            name: 'login',
+            parameters: {'method': method},
+          );
+        case CustomerCreated(:final hasImage):
+          // GA4 standard `generate_lead` event. We deliberately omit the
+          // optional `value` / `currency` params -- a freshly added contact
+          // has no monetary value attached yet; revenue shows up on the
+          // subsequent `purchase` event when the merchant transacts with
+          // that customer. Marking `generate_lead` as a conversion in GA4
+          // lights up the "signup -> first customer" hop in Google Ads.
+          await fa.logEvent(
+            name: 'generate_lead',
+            parameters: {
+              'has_image': hasImage ? 1 : 0,
+            },
+          );
+        case SaleCompleted(
+            :final amountBucket,
+            :final isCredit,
+            :final customerIsExisting,
+          ):
+          await fa.logEvent(
+            name: 'purchase',
+            parameters: {
+              'currency': 'ZAR',
+              'value': _bucketMidpointZAR(amountBucket),
+              'amount_bucket': amountBucket,
+              'is_credit': isCredit ? 1 : 0,
+              'customer_is_existing': customerIsExisting ? 1 : 0,
+            },
+          );
+        case PayoutRequested(:final amountBucket):
+          await fa.logEvent(
+            name: 'payout_requested',
+            parameters: {
+              'amount_bucket': amountBucket,
+              'value': _bucketMidpointZAR(amountBucket),
+              'currency': 'ZAR',
+            },
+          );
+        default:
+          // Every other event stays PostHog-only by design. Adding a new
+          // FA mirror is a deliberate edit here, not a default behaviour,
+          // so the GA4 / Google Ads event surface stays curated.
+          return;
+      }
+    } catch (_) {
+      // ignored -- telemetry never breaks the caller
+    }
+  }
+
+  /// Midpoint (in ZAR) of each `amountBucketZAR` band. Kept here -- and not
+  /// in `analytics_event.dart` -- because it is only ever used by the FA
+  /// mirror; PostHog dashboards group by the bucket label, not the midpoint.
+  num _bucketMidpointZAR(String bucket) {
+    switch (bucket) {
+      case '0-50':
+        return 25;
+      case '50-200':
+        return 125;
+      case '200-500':
+        return 350;
+      case '500-1000':
+        return 750;
+      case '1000-5000':
+        return 3000;
+      case '5000-20000':
+        return 12500;
+      case '20000+':
+        return 25000;
+      default:
+        return 0;
     }
   }
 

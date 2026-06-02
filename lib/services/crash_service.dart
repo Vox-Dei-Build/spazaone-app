@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
@@ -37,12 +40,19 @@ class CrashService {
       if (kDebugMode) {
         FlutterError.dumpErrorToConsole(details);
       }
+      // Framework explicitly marked this as silent (e.g. an error already
+      // surfaced to the user via a snapshot). Don't double-report.
+      if (details.silent) {
+        return;
+      }
       // Classify recoverable network / backend errors (e.g. Cloud Functions
-      // transient failures, App Check token churn) as NON-fatal. These flow
-      // into FlutterError.onError via FutureBuilder when an async future
-      // rejects, but they are not real crashes and inflate the fatal crash
-      // rate. UI surfaces them via snapshot.hasError already.
-      if (_isRecoverableBackendError(details.exception)) {
+      // transient failures, App Check token churn, image fetch failures)
+      // as NON-fatal. These flow into FlutterError.onError via FutureBuilder
+      // when an async future rejects, but they are not real crashes and
+      // inflate the fatal crash rate. UI surfaces them via snapshot.hasError
+      // already.
+      if (_isRecoverableBackendError(details.exception) ||
+          _isImageLibraryError(details)) {
         FirebaseCrashlytics.instance.recordFlutterError(details);
         return;
       }
@@ -67,6 +77,19 @@ class CrashService {
       // non-fatal because a misbehaving Cloud Function is not an app crash.
       return true;
     }
+    // Network-layer failures from dart:io. These bubble up from image
+    // providers (NetworkImage / CachedNetworkImageProvider), http calls,
+    // and any direct Firebase Storage download. Not an app crash.
+    if (error is HttpException ||
+        error is SocketException ||
+        error is HandshakeException ||
+        error is TlsException) {
+      return true;
+    }
+    // Generic async timeouts (e.g. await with .timeout()).
+    if (error is TimeoutException) {
+      return true;
+    }
     // The Functions plugin sometimes wraps transient errors in a generic
     // FlutterError whose message contains the Java `ExecutionException`
     // text. Match on that as a backstop.
@@ -76,6 +99,14 @@ class CrashService {
       return true;
     }
     return false;
+  }
+
+  /// Errors reported by Flutter's image pipeline (NetworkImage, decode
+  /// failures, etc.) are not app crashes. The framework surfaces them via
+  /// `errorBuilder` on Image widgets; promoting them to fatal Crashlytics
+  /// events drowns real crashes in deleted-avatar / expired-token noise.
+  bool _isImageLibraryError(FlutterErrorDetails details) {
+    return details.library == 'image resource service';
   }
 
   /// Reflects the current [ConsentState.crash] value in Crashlytics' native

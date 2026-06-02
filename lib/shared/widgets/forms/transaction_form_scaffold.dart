@@ -153,39 +153,42 @@ class TransactionFormScaffold extends StatelessWidget {
                           },
                   ),
           ),
+          // PAS-UX-17: sticky CTA lives in the bottomNavigationBar slot
+          // (same pattern as PayLaterActionBar) so it is laid out as a
+          // single rigid surface measured independently of the body. The
+          // previous Column(Expanded, _StickyActionBar) body-anchored
+          // layout caused the button to visibly float/jump as the
+          // keyboard opened and closed (and on every outside-tap
+          // unfocus), because the body shrank/grew on each resize and
+          // dragged the CTA with it. The bottomNavigationBar slot still
+          // rises above the keyboard but moves as one anchored bar.
           body: SafeArea(
+            bottom: false,
             child: Padding(
               padding: LayoutConstants.padding10Horizontal,
               child: Form(
                 key: formKey,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.only(
-                          bottom: LayoutConstants.spaceLg,
-                        ),
-                        child: body,
-                      ),
-                    ),
-                    _StickyActionBar(
-                      totalLabel: totalLabel,
-                      primaryActionLabel: primaryActionLabel,
-                      primaryActionIcon: primaryActionIcon,
-                      primaryActionColor:
-                          primaryActionColor ?? kPrimaryColor,
-                      isLoading: isLoading,
-                      onPrimaryAction: () {
-                        if (isLoading) return;
-                        if (formKey.currentState?.validate() ?? false) {
-                          onPrimaryAction();
-                        }
-                      },
-                    ),
-                  ],
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(
+                    bottom: LayoutConstants.spaceLg,
+                  ),
+                  child: body,
                 ),
               ),
             ),
+          ),
+          bottomNavigationBar: _StickyActionBar(
+            totalLabel: totalLabel,
+            primaryActionLabel: primaryActionLabel,
+            primaryActionIcon: primaryActionIcon,
+            primaryActionColor: primaryActionColor ?? kPrimaryColor,
+            isLoading: isLoading,
+            onPrimaryAction: () {
+              if (isLoading) return;
+              if (formKey.currentState?.validate() ?? false) {
+                onPrimaryAction();
+              }
+            },
           ),
         ),
       ),
@@ -215,55 +218,68 @@ class _StickyActionBar extends StatelessWidget {
     final disabled = isLoading;
     final color = disabled ? Colors.grey.shade400 : primaryActionColor;
 
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: LayoutConstants.spaceSm,
-        bottom: LayoutConstants.spaceSm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (totalLabel != null) ...[
-            Center(child: totalLabel!),
-            const SizedBox(height: LayoutConstants.spaceSm),
-          ],
-          Semantics(
-            button: true,
-            enabled: !disabled,
-            label: primaryActionLabel,
-            child: SizedBox(
-              height: LayoutConstants.minTouchTarget + 4,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: color,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: disabled ? null : onPrimaryAction,
-                icon: isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : Icon(primaryActionIcon ?? Icons.check),
-                label: Text(
-                  primaryActionLabel,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+    // Rendered into Scaffold.bottomNavigationBar — own the Material
+    // surface + safe-area inset so it visually anchors like
+    // PayLaterActionBar and respects the device gesture bar.
+    return Material(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            LayoutConstants.spaceMd,
+            LayoutConstants.spaceSm,
+            LayoutConstants.spaceMd,
+            LayoutConstants.spaceSm,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (totalLabel != null) ...[
+                Center(child: totalLabel!),
+                const SizedBox(height: LayoutConstants.spaceSm),
+              ],
+              Semantics(
+                button: true,
+                enabled: !disabled,
+                label: primaryActionLabel,
+                child: SizedBox(
+                  height: LayoutConstants.minTouchTarget + 4,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: color,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: disabled ? null : onPrimaryAction,
+                    icon: isLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(primaryActionIcon ?? Icons.check),
+                    label: Text(
+                      primaryActionLabel,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

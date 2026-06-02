@@ -263,6 +263,66 @@ delivery infrastructure healthy.
 
 ---
 
+---
+
+## Firebase Analytics mirror (Google Ads campaign attribution)
+
+PostHog is the primary analytics sink for the full taxonomy above. A small
+allow-list of activation events is **also** forwarded to Firebase Analytics
+by `TelemetryService._mirrorToFirebase` so that Google Ads (and GA4
+audiences / retention reports) can attribute campaigns to real merchant
+activation, not just installs.
+
+| App event           | FA event name      | Notes                                                                 |
+| ------------------- | ------------------ | --------------------------------------------------------------------- |
+| `SignupCompleted`   | `sign_up`          | GA4 standard event. Params: `method`, optional `business_type`, etc. |
+| `SigninCompleted`   | `login`            | GA4 standard event. Drives retention cohorts in GA4.                  |
+| `CustomerCreated`   | `generate_lead`    | GA4 standard event. Onboarding hop between signup and first sale. Params: `has_image`. No `value`/`currency` -- contact has no revenue yet. |
+| `SaleCompleted`     | `purchase`         | GA4 standard. Params: `currency='ZAR'`, `value`=bucket midpoint, `amount_bucket`, `is_credit`, `customer_is_existing`. |
+| `PayoutRequested`   | `payout_requested` | Custom. Params: `amount_bucket`, `value`=bucket midpoint, `currency='ZAR'`. |
+
+### Rules
+
+- The `value` parameter is the **midpoint** of `amountBucketZAR`, never the
+  raw transaction amount. The mapping lives in
+  `TelemetryService._bucketMidpointZAR` and must be updated in lock-step
+  with `amountBucketZAR` in `lib/services/analytics_event.dart`.
+- `setUserId` is the merchant's Firebase UID, set in
+  `TelemetryService.identify` and cleared in `TelemetryService.reset`. This
+  is what stitches FA sessions into per-merchant retention cohorts.
+- Every other event in the taxonomy stays PostHog-only. Adding a new FA
+  mirror is a deliberate edit to `_mirrorToFirebase`, never a default. This
+  keeps the GA4 / Google Ads event surface curated and predictable for
+  conversion configuration.
+- The FA mirror respects the same `analytics` consent flag as PostHog
+  (`TelemetryService._enabled`). It does **not** alter Firebase's
+  auto-collected events (`first_open`, `session_start`, `app_remove`, etc.),
+  which are governed by the SDK's native collection switch — see the
+  follow-up below.
+
+### Google Ads / GA4 setup
+
+1. In GA4, mark `sign_up`, `generate_lead`, `purchase`, and
+   `payout_requested` as conversions (Admin -> Events -> toggle "Mark as
+   conversion").
+2. In Google Ads, import those conversions from the linked GA4 property and
+   set the optimization target on the campaign accordingly (typically
+   `purchase` for ROAS, `sign_up` or `generate_lead` for early funnel scale).
+3. Verify in GA4 DebugView using a debug install: signup, add a customer,
+   complete a sale, request a payout, confirm all four events arrive with
+   the expected params.
+
+### Follow-up (not in this release)
+
+Firebase Analytics auto-collection currently runs irrespective of the
+consent modal. Gating auto-collection on `ConsentState.analytics` (via
+`FirebaseAnalytics.setAnalyticsCollectionEnabled` plus the
+`FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED` / `firebase_analytics_collection_enabled`
+native flags) is a separate slice. Do **not** flip this during a live
+campaign -- it will reset Google Ads `first_open` attribution.
+
+---
+
 ## Cross-cutting -- consent telemetry (do **not** pin to a public dashboard)
 
 Useful for debugging consent flows but not for stakeholder review. Keep

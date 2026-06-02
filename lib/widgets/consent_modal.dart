@@ -8,15 +8,23 @@ import '../services/telemetry_service.dart';
 
 /// First-run consent modal.
 ///
-/// Shown the first time we have an authenticated [BuildContext] (i.e. from
-/// the Dashboard, not before login) if [ConsentState.hasDecided] is false.
+/// Shown from [LoginPage.initState] on first launch (pre-login) so the
+/// consent decision is recorded before any anonymous Firebase auth /
+/// screen-view events can fire to PostHog or Firebase Analytics. The modal
+/// short-circuits via [ConsentState.hasDecided] so repeat launches are
+/// no-ops.
 ///
 /// POPIA stance:
 ///   * Crash reports default ON. Rationale: they contain technical metadata
 ///     only (no message bodies, no contact data), and the modal explicitly
 ///     surfaces the toggle so the user can opt out before dismissing.
-///   * Product analytics and session replay default OFF. The user has to
-///     opt in.
+///   * Product analytics defaults ON. Events are bucketed and PII-scrubbed
+///     (see `analytics_event.dart`). The toggle is visible and pre-checked
+///     -- the user can untick it before saving, or change it later via
+///     Settings -> Privacy.
+///   * Session replay defaults OFF. Replay is screen recording and sits
+///     closer to POPIA s26 special PI; it stays opt-in. "Accept all" is the
+///     one-tap path to enable it.
 ///   * The user cannot dismiss the modal without making a choice (no
 ///     barrier-tap to close, system back is intercepted by [PopScope]).
 ///   * "Reject all" is exposed as a top-right text link with equal
@@ -52,8 +60,8 @@ class _ConsentModalState extends State<ConsentModal> {
   void initState() {
     super.initState();
     final initial = ConsentService.instance.state;
-    _analytics = initial.analytics; // false on first run
-    _replay = initial.replay;       // false on first run
+    _analytics = initial.analytics; // true  on first run (default-on)
+    _replay = initial.replay;       // false on first run (opt-in only)
     _crash = initial.crash;         // true  on first run
   }
 
