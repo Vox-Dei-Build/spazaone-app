@@ -41,9 +41,6 @@ class _DashboardState extends State<Dashboard> {
     final seen = box.get(seenKey, defaultValue: false) as bool;
     if (seen) return;
 
-    await box.put(seenKey, true);
-    if (!mounted) return;
-
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -51,25 +48,30 @@ class _DashboardState extends State<Dashboard> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder:
-          (_) => MerchantOnboardingIntro(
-            onOpenProducts: () {
-              if (!mounted) return;
-              // PAS-UX-19: pre-select the Products tab so popping
-              // NewProductPage lands the merchant on their catalogue,
-              // then push the add-product form directly. The previous
-              // behaviour only switched tabs, which dropped a fresh
-              // merchant on the empty-state screen and required an
-              // extra tap to reach the form the CTA had just promised.
-              context.read<AppModel>().updateCurrentIndex(1);
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const NewProductPage(),
-                ),
-              );
-            },
-          ),
+      builder: (_) => MerchantOnboardingIntro(
+        onOpenProducts: () {
+          if (!mounted) return;
+          // PAS-UX-19: pre-select the Products tab so popping
+          // NewProductPage lands the merchant on their catalogue,
+          // then push the add-product form directly. The previous
+          // behaviour only switched tabs, which dropped a fresh
+          // merchant on the empty-state screen and required an
+          // extra tap to reach the form the CTA had just promised.
+          context.read<AppModel>().updateCurrentIndex(1);
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const NewProductPage(),
+            ),
+          );
+        },
+      ),
     );
+
+    // Persist only after the sheet was actually presented and dismissed.
+    // Writing this before showModalBottomSheet allowed a short-lived
+    // Dashboard during registration to consume onboarding invisibly behind
+    // FinishProfilePage.
+    await box.put(seenKey, true);
   }
 
   @override
@@ -103,14 +105,10 @@ class _DashboardState extends State<Dashboard> {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
 
         if (data == null) {
-          return Scaffold(
-            body: Center(
-              child: Text(
-                "Wallet data not found.",
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5),
-              ),
-            ),
-          );
+          // A new account's auth state can arrive a fraction before its
+          // initial wallet document. Treat that as setup-in-progress instead
+          // of exposing an internal data-state message to the merchant.
+          return const _AccountSetupProgress();
         }
 
         final isSuspended = data['accountSuspended'] ?? false;
@@ -146,8 +144,8 @@ class _DashboardState extends State<Dashboard> {
                 ),
                 child: NavigationBar(
                   selectedIndex: value.currentIndex,
-                  onDestinationSelected:
-                      (index) => value.handleNavigation(context, index),
+                  onDestinationSelected: (index) =>
+                      value.handleNavigation(context, index),
                   destinations: [
                     NavigationDestination(
                       icon: Icon(
@@ -189,6 +187,66 @@ class _DashboardState extends State<Dashboard> {
           },
         );
       },
+    );
+  }
+}
+
+class _AccountSetupProgress extends StatelessWidget {
+  const _AccountSetupProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Icon(
+                    Icons.account_balance_wallet_outlined,
+                    size: 36,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Setting up your account',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'We’re preparing your wallet and business workspace. '
+                  'This usually takes a moment.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey.shade700,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 28),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: const LinearProgressIndicator(minHeight: 6),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

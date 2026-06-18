@@ -47,6 +47,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _phoneController = TextEditingController();
   bool _consentPromptScheduled = false;
+  bool _authFlowInProgress = false;
   String? _referrerUserId;
 
   @override
@@ -85,11 +86,18 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
 
   Future<void> _onContinue() async {
     if (!_formKey.currentState!.validate()) return;
-    await _authViewModel.lookupAndRoute(
-      context,
-      _phoneController.text,
-      referrerUserId: _referrerUserId,
-    );
+    setState(() => _authFlowInProgress = true);
+    try {
+      await _authViewModel.lookupAndRoute(
+        context,
+        _phoneController.text,
+        referrerUserId: _referrerUserId,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _authFlowInProgress = false);
+      }
+    }
   }
 
   @override
@@ -104,6 +112,16 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         }
         final user = snapshot.data;
         if (user != null) {
+          // Firebase emits the signed-in user before the number-first view
+          // model has finished routing. Do not mount a transient Dashboard
+          // here: a registration must reach FinishProfilePage first, and a
+          // temporary Dashboard can trigger one-time post-login effects such
+          // as the merchant onboarding intro behind that route.
+          if (_authFlowInProgress) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
           // Already signed in (e.g. session restore, post-logout race).
           // Defer to the dashboard's own gates (`BusinessNameGate` etc.)
           // to decide whether the merchant needs to finish profile.

@@ -26,6 +26,7 @@ class SearchProductList extends StatelessWidget {
       itemCount: products.length,
       itemBuilder: (BuildContext context, int index) {
         return ProductCard(
+          key: ValueKey<String>(products[index].id!),
           product: products[index],
           docID: products[index].id!,
         );

@@ -84,8 +84,8 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
       title: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          profilePicture(context, customerName, viewModel.profileImageUrl,
-              mobileNumber, isNPA,
+          profilePicture(context, customerName,
+              viewModel.profileImageDisplayUrl, mobileNumber, isNPA,
               displayIcons: true,
               profileImage: viewModel.profileImage,
               balance: netBalance,

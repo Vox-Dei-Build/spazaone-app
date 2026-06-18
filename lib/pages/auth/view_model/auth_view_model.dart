@@ -17,6 +17,26 @@ import 'package:pasella/widgets/private_region.dart';
 
 enum VerificationPurpose { login, registration, linkAnonymous }
 
+/// Converts Firebase Phone Auth failures into bounded, merchant-safe copy.
+///
+/// Firebase exception messages can contain package names, signing details,
+/// Play Integrity diagnostics, and other backend configuration information.
+/// Those details belong in crash reporting, never in the user-facing snackbar.
+String phoneVerificationErrorMessage(FirebaseAuthException error) {
+  switch (error.code) {
+    case 'invalid-phone-number':
+      return 'Enter a valid South African mobile number and try again.';
+    case 'network-request-failed':
+      return "You're offline. Please check your connection and try again.";
+    case 'too-many-requests':
+      return 'Too many verification attempts. Please wait and try again.';
+    case 'quota-exceeded':
+      return 'Verification is temporarily unavailable. Please try again later.';
+    default:
+      return "We couldn't send the verification code. Please try again.";
+  }
+}
+
 class AuthViewModel with ChangeNotifier {
   final FirebaseAuth auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -608,7 +628,15 @@ class AuthViewModel with ChangeNotifier {
         if (!completer.isCompleted) {
           completer.completeError(e);
         }
-        showErrorSnackBar(context, "Verification failed: ${e.message}");
+        unawaited(
+          CrashService.instance.recordNonFatal(
+            e,
+            StackTrace.current,
+            reason: 'phone verification failed',
+            context: {'code': e.code},
+          ),
+        );
+        showErrorSnackBar(context, phoneVerificationErrorMessage(e));
       },
       codeSent: (String verificationId, int? resendToken) {
         if (!completer.isCompleted) {
@@ -943,7 +971,15 @@ class AuthViewModel with ChangeNotifier {
       },
       verificationFailed: (FirebaseAuthException e) {
         if (!completer.isCompleted) completer.complete(null);
-        showErrorSnackBar(context, "Verification failed: ${e.message}");
+        unawaited(
+          CrashService.instance.recordNonFatal(
+            e,
+            StackTrace.current,
+            reason: 'number-first phone verification failed',
+            context: {'code': e.code},
+          ),
+        );
+        showErrorSnackBar(context, phoneVerificationErrorMessage(e));
       },
       codeSent: (String verificationId, int? resendToken) {
         if (!completer.isCompleted) completer.complete(verificationId);

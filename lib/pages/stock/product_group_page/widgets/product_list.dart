@@ -174,6 +174,7 @@ class ProductList extends StatelessWidget {
                   int index,
                 ) {
                   return ProductCard(
+                    key: ValueKey<String>(products[index].id!),
                     product: products[index],
                     docID: products[index].id!,
                   );

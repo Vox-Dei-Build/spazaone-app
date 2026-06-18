@@ -31,6 +31,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> transactions = [];
   File? _profileImage;
   String? _profileImageUrl;
+  int _profileImageRevision = 0;
   late final DynamicPricingService pricingService;
   final ValueNotifier<bool> sendingReminderNotifier =
       ValueNotifier<bool>(false);
@@ -38,6 +39,13 @@ class CustomerManagementViewModel extends ChangeNotifier {
   File? get profileImage => _profileImage; // Getter for profile image
   String? get profileImageUrl =>
       _profileImageUrl; // Getter for profile image URL
+  String? get profileImageDisplayUrl {
+    final url = _profileImageUrl;
+    if (url == null || url.isEmpty || _profileImageRevision == 0) return url;
+    final separator = url.contains('?') ? '&' : '?';
+    return '$url${separator}v=$_profileImageRevision';
+  }
+
   final PhotoUploadUtil _photoUploadUtil = PhotoUploadUtil();
   late final MessagingNotificationService notificationService;
   bool hasWhatsApp = false;
@@ -217,6 +225,12 @@ class CustomerManagementViewModel extends ChangeNotifier {
             await _evictProfileImageCache(profileImageUrl);
           }
           _profileImageUrl = profileImageUrl;
+          // Firebase Storage keeps the same download URL when the customer
+          // image is overwritten at the same path. Give the active profile
+          // surface a new request identity so its existing image stream
+          // cannot continue displaying the previous bytes after navigation
+          // returns from Edit Customer.
+          _profileImageRevision = DateTime.now().microsecondsSinceEpoch;
           _profileImage = null;
         }
       }

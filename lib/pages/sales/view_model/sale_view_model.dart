@@ -17,6 +17,12 @@ import 'package:pasella/utils/show_toast.dart';
 class SalesViewModel extends TransactionViewModel {
   late final StreamController<List<Sale>> _salesController;
   List<Sale> _lastEmittedSales = const [];
+  // Tracks whether at least one [_emitSales] has occurred so that
+  // [onListen] only replays after we actually have data. Without this,
+  // the very first cold-start subscriber would receive the default
+  // empty list and the shimmer would flicker into an empty-state
+  // before the first Firestore fetch resolved.
+  bool _hasEmitted = false;
   double totalSales = 0.0;
   double totalCost = 0.0;
   double totalProfit = 0.0;
@@ -26,19 +32,34 @@ class SalesViewModel extends TransactionViewModel {
   bool isTransactionLoading = false;
 
   SalesViewModel() {
-    // PAS-SALES-SHIMMER: single-subscription controller so the very
-    // first emission — which can fire before `SalesList`'s
-    // StreamBuilder subscribes — is buffered and delivered the
-    // moment the listener attaches. A broadcast controller drops
-    // pre-subscription events, which left the shimmer stuck on
-    // first render whenever the day had no sales (the empty-result
-    // case the previous `onListen` replay explicitly skipped).
-    // Originally introduced by 1677999; preserved here on the
-    // assumption that only `SalesList` subscribes to `.sales`. Any
-    // additional subscriber must use the `.listenable`/cached
-    // surfaces instead, or this needs to flip back to broadcast
-    // with a correct replay (cf. commit 1677999 follow-ups).
-    _salesController = StreamController<List<Sale>>(sync: true);
+    // PAS-SALES-SHIMMER: broadcast controller so the StreamBuilder in
+    // SalesList can be unmounted (toggling the Cash/Online segmented
+    // button on SalesPage) and re-subscribed without throwing
+    // "Bad state: Stream has already been listened to.". A
+    // single-subscription controller crashes the second listener.
+    //
+    // We preserve "deliver the latest snapshot the moment the listener
+    // attaches" — the reason this used to be single-subscription — by:
+    //   1. caching every emission in [_lastEmittedSales] (also used as
+    //      `initialData:` on the StreamBuilder so remounts never sit
+    //      in `ConnectionState.waiting`), and
+    //   2. replaying that cache from [onListen] when a subscriber
+    //      attaches AND we already have data ([_hasEmitted] guard).
+    //      The guard is what prevents cold-start subscribers from
+    //      flashing an empty list before the first Firestore fetch
+    //      resolves.
+    //
+    // The controller is async (no `sync: true`) so the [onListen]
+    // replay is delivered on a microtask after `listen()` returns.
+    // A sync controller would deliver mid-`initState` and trigger a
+    // forbidden `setState` during build.
+    _salesController = StreamController<List<Sale>>.broadcast(
+      onListen: () {
+        if (_hasEmitted && !_salesController.isClosed) {
+          _salesController.add(_lastEmittedSales);
+        }
+      },
+    );
 
     // Products feed the per-line cost/profit math used by
     // `_calculateSalesStats`; load them once on construction so
@@ -60,6 +81,7 @@ class SalesViewModel extends TransactionViewModel {
 
   void _emitSales(List<Sale> sales) {
     _lastEmittedSales = sales;
+    _hasEmitted = true;
     if (!_salesController.isClosed) {
       _salesController.add(sales);
     }
@@ -623,11 +645,12 @@ class SalesViewModel extends TransactionViewModel {
           )
           .toList();
 
-      _salesController.add(sales);
-
-      // Ensure products are loaded before calculating stats
+      // Always emit through [_emitSales] so [_lastEmittedSales] and
+      // [_hasEmitted] stay in sync with what subscribers see. Stats
+      // still wait on [productsLoaded] because cost/profit math needs
+      // the product catalog; the list itself can render without it.
+      _emitSales(sales);
       if (productsLoaded) {
-        _emitSales(sales);
         _calculateSalesStats(sales);
       } else {
         print("Products not loaded yet.");

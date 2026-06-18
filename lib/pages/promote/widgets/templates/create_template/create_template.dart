@@ -227,27 +227,24 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       widget.viewModel.loadTemplatesData();
 
       if (mounted) {
-        // Replace the wizard with a "what happens next" success screen,
-        // then propagate the merchant's terminal choice back to the
-        // launcher so it can route correctly.
+        // Replace the wizard with a "what happens next" success screen.
+        // The success page's button defaults pop with distinct
+        // [TemplateSubmitResult] values (doneCreating vs viewPending)
+        // using its OWN live BuildContext, so the launcher can still
+        // tell "I'm done, take me back" apart from "show me the pending
+        // templates" — we deliberately do NOT pass onDone/onViewPending.
         //
-        // The two callbacks pop different [TemplateSubmitResult] values
-        // so callers can tell "I'm done, take me back" apart from
-        // "show me the pending templates" — the previous flow popped
-        // `true` for both, which collapsed the two intents into the
-        // same callsite behaviour.
+        // PAS crash: passing closures that captured this State's
+        // [context] threw "Null check operator used on a null value" from
+        // [State.context] when the merchant tapped a button after this
+        // wizard had been replaced from the navigator (i.e. unmounted).
+        final displayName = _templateNameController.text.trim().isEmpty
+            ? (_sanitizedName.isEmpty ? 'your template' : _sanitizedName)
+            : _templateNameController.text.trim();
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) => TemplateSubmittedSuccessPage(
-              displayName: _templateNameController.text.trim().isEmpty
-                  ? (_sanitizedName.isEmpty
-                      ? 'your template'
-                      : _sanitizedName)
-                  : _templateNameController.text.trim(),
-              onDone: () => Navigator.of(context)
-                  .pop(TemplateSubmitResult.doneCreating),
-              onViewPending: () => Navigator.of(context)
-                  .pop(TemplateSubmitResult.viewPending),
+              displayName: displayName,
             ),
           ),
         );

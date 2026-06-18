@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
-import 'package:pasella/pages/auth/widgets/logo_display.dart';
 import 'package:pasella/services/crash_service.dart';
-import 'package:pasella/shared/widgets/custom_text_button.dart';
-import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:pasella/widgets/private_region.dart';
 
@@ -86,109 +82,236 @@ class _FinishProfilePageState extends State<FinishProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
+    final theme = Theme.of(context);
 
-    // PopScope blocks Android system back + iOS swipe-back. The AppBar
-    // has `automaticallyImplyLeading: false` to suppress the visual
-    // back arrow. The merchant must complete the form to proceed.
+    // PopScope blocks Android system back + iOS swipe-back. This is the
+    // final required registration step, so there is deliberately no back
+    // affordance or skip action.
     return PopScope(
       canPop: false,
       child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: const Text('Tell us about your business'),
-        ),
         body: SafeArea(
           child: SingleChildScrollView(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 6,
-                vertical: SizeConfig.heightMultiplier * 2,
-              ),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    const LogoDisplay(),
-                    SizedBox(height: SizeConfig.heightMultiplier * 3),
-                    Text(
-                      "Customers see your business name on every receipt, "
-                      "SMS and WhatsApp message we send for you.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.6,
-                        color: Colors.grey[700],
-                        height: 1.3,
-                      ),
-                    ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 3),
-                    PrivateRegion(
-                      child: CustomTextField(
-                        label: 'Full Name',
-                        hintText: 'Enter Full Name',
-                        prefixIcon: Icons.person,
-                        controller: _nameController,
-                        textCapitalization: TextCapitalization.words,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Full Name is required';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    PrivateRegion(
-                      child: CustomTextField(
-                        label: 'Business Name',
-                        hintText: 'e.g. The Corner Shop',
-                        prefixIcon: Icons.store,
-                        controller: _shopController,
-                        textCapitalization: TextCapitalization.words,
-                        maxLength: 40,
-                        // Validator copy mirrors register.dart so the
-                        // experience is identical to the legacy form
-                        // for merchants who happen to see both during
-                        // the rollout window.
-                        validator: (value) {
-                          final v = (value ?? '').trim();
-                          if (v.isEmpty) {
-                            return 'Business Name is required';
-                          }
-                          if (v.length < 2) {
-                            return 'Business name is too short';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1),
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CustomButton(
-                          title: _saving ? 'Saving…' : 'Continue',
-                          onTap: _saving ? () {} : _onContinue,
-                          isDisabled: _saving,
-                          color: Colors.green,
-                          icon: Icons.arrow_forward,
-                          fontSize: SizeConfig.textMultiplier * 2,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        if (_saving)
-                          const CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
+                        child: Icon(
+                          Icons.storefront_outlined,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'FINAL STEP',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.7,
                           ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    'Set up your profile',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Tell us what to call you and what customers should see '
+                    'on receipts and WhatsApp messages.',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: Colors.grey.shade700,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey.shade200),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
                       ],
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1),
-                  ],
-                ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        PrivateRegion(
+                          child: TextFormField(
+                            controller: _nameController,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.name],
+                            decoration: _fieldDecoration(
+                              label: 'Full name',
+                              hint: 'e.g. Thandi Mokoena',
+                              icon: Icons.person_outline,
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Enter your full name';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        PrivateRegion(
+                          child: TextFormField(
+                            controller: _shopController,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.done,
+                            maxLength: 40,
+                            onFieldSubmitted: (_) => _onContinue(),
+                            decoration: _fieldDecoration(
+                              label: 'Business name',
+                              hint: 'e.g. The Corner Shop',
+                              icon: Icons.storefront_outlined,
+                            ).copyWith(counterText: ''),
+                            validator: (value) {
+                              final v = (value ?? '').trim();
+                              if (v.isEmpty) {
+                                return 'Enter your business name';
+                              }
+                              if (v.length < 2) {
+                                return 'Business name is too short';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.visibility_outlined,
+                              size: 18,
+                              color: Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Customers will see the business name, not '
+                                'your full name.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey.shade600,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    height: 56,
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _onContinue,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.green.shade600,
+                        disabledBackgroundColor: Colors.green.shade200,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.arrow_forward),
+                      label:
+                          Text(_saving ? 'Saving your profile…' : 'Continue'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'You can update these details later in Settings.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon),
+      filled: true,
+      fillColor: Colors.grey.shade50,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.green.shade600, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.red.shade400),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.red.shade400, width: 2),
       ),
     );
   }
