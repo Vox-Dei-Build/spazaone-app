@@ -336,6 +336,42 @@ class _ProductFormState extends State<ProductForm> {
                                       width: double.infinity,
                                     ),
                             ),
+                            // PAS-WA-03: inline cue for the hard validation
+                            // gate in ProductViewModel.saveProduct. Surfaces
+                            // the requirement at the moment the merchant
+                            // flips the toggle, so the save-time block is
+                            // never a surprise. Hidden as soon as an image
+                            // is attached or the toggle is turned back off.
+                            if (widget.product.whatsappListed &&
+                                (viewModel.imageUrl == null ||
+                                    viewModel.imageUrl!.isEmpty)) ...[
+                              SizedBox(height: SizeConfig.heightMultiplier * 1),
+                              Row(
+                                key: const ValueKey('wa-image-required-cue'),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: SizeConfig.imageSizeMultiplier * 4,
+                                    color: Colors.orange[700],
+                                  ),
+                                  SizedBox(
+                                    width: SizeConfig.imageSizeMultiplier * 1.5,
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      'Add a product image before listing '
+                                      'this for WhatsApp orders.',
+                                      style: TextStyle(
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        color: Colors.orange[800],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
                             // Progressive disclosure: keep optional fields out
                             // of the merchant's way during initial create. Auto

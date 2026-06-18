@@ -98,6 +98,21 @@ class ProductViewModel extends ChangeNotifier {
     String? docID, {
     bool showSuccessSnackbar = true,
   }) async {
+    // PAS-WA-03: image is mandatory for WhatsApp-listed/orderable products.
+    // The image picker is a GestureDetector outside the Form so the inline
+    // field validators on the create/edit page can't catch this — gate it
+    // here, before any Firestore write, so customers never see a listed
+    // product with no photo.
+    if (product.whatsappListed && (imageUrl == null || imageUrl!.isEmpty)) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        showErrorSnackBar(
+          context,
+          'Add a product image before listing this for WhatsApp orders.',
+        );
+      });
+      return null;
+    }
+
     if (!_validateInputs(context)) return null;
 
     try {
