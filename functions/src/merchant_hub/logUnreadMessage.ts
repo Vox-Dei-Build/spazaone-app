@@ -94,7 +94,81 @@ function buildCustomerMessageNotificationData(
  * Idempotency: when `externalId` is provided we skip persistence if any
  * existing entry in the array already has the same `externalId`. This makes
  * the bot's "send then mirror" flow safe to retry.
+ *
+ * Push throttling: an inbound message that arrives within
+ * `INBOUND_PUSH_THROTTLE_MS` of the previous inbound from the same customer
+ * still appends to the array and increments `unreadCount`, but suppresses
+ * the FCM push. Bypasses (always push, regardless of throttle):
+ *   - Bot handoff records (message text begins with "Bot handoff:").
+ *   - Image and document inbounds (payment proofs).
+ *   - The first inbound in a brand-new conversation.
  */
+
+const INBOUND_PUSH_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
+
+const digitsOnly = (raw: unknown) => String(raw ?? "").replace(/\D/g, "");
+
+/**
+ * Customer-number match used by `markMessagesAsRead` and now reused here:
+ * compare the trailing 9 digits of both numbers (or the shorter common
+ * length) so leading dial codes / formatting don't cause false negatives.
+ */
+const matchesCustomer = (stored: unknown, next: unknown): boolean => {
+  const a = digitsOnly(stored);
+  const b = digitsOnly(next);
+  if (!a || !b) return false;
+  const len = Math.min(9, a.length, b.length);
+  return a.slice(-len) === b.slice(-len);
+};
+
+const isInboundEntry = (entry: Record<string, unknown>): boolean => {
+  const direction = (entry as { direction?: unknown }).direction;
+  if (direction == null) return true; // legacy entries default to inbound
+  return String(direction).toLowerCase() === "inbound";
+};
+
+const parseTimestampMs = (raw: unknown): number | null => {
+  if (typeof raw !== "string" || !raw) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+/**
+ * Decide whether to suppress the FCM push for an inbound message. We
+ * suppress when the most recent prior inbound from the same customer (in
+ * `unreadMessages[]`) is within the throttle window.
+ *
+ * Bypasses below take precedence over the throttle: handoff records and
+ * payment proofs always push.
+ */
+const shouldThrottlePush = (args: {
+  unreadMessages: Array<Record<string, unknown>>;
+  customerNumber: string;
+  newTimestampMs: number;
+}): boolean => {
+  const { unreadMessages, customerNumber, newTimestampMs } = args;
+  // Walk newest to oldest so the first match is the most recent prior inbound.
+  for (let i = unreadMessages.length - 1; i >= 0; i--) {
+    const entry = unreadMessages[i];
+    if (!entry) continue;
+    if (!isInboundEntry(entry)) continue;
+    if (
+      !matchesCustomer(
+        (entry as { customerNumber?: unknown }).customerNumber,
+        customerNumber,
+      )
+    ) {
+      continue;
+    }
+    const priorMs = parseTimestampMs(
+      (entry as { timestamp?: unknown }).timestamp,
+    );
+    if (priorMs == null) return false; // no usable prior timestamp → push
+    return newTimestampMs - priorMs < INBOUND_PUSH_THROTTLE_MS;
+  }
+  return false; // no prior inbound from this customer → push
+};
+
 export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
   try {
     const {
@@ -155,6 +229,25 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
       return;
     }
 
+    // Decide push throttling BEFORE we mutate the array, so the throttle
+    // compares against the previous state, not against the message we are
+    // about to add.
+    const messageText = typeof message === "string" ? message : "";
+    const isHandoff = /^bot\s+handoff[:\s]/i.test(messageText.trim());
+    const kindBypassesThrottle =
+      resolvedKind === "image" || resolvedKind === "document";
+    const newTimestampMs = parseTimestampMs(resolvedTimestamp) ?? Date.now();
+
+    const throttlePush =
+      resolvedDirection === "inbound" &&
+      !isHandoff &&
+      !kindBypassesThrottle &&
+      shouldThrottlePush({
+        unreadMessages,
+        customerNumber: String(customerNumber),
+        newTimestampMs,
+      });
+
     // Append the new entry. We keep `customerNumber`, `message`, `timestamp`
     // for backwards compatibility with the existing app stream and add the
     // structured fields for the Connect tab's truth-surface renderer.
@@ -188,6 +281,20 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
       res.status(200).json({
         message: "Outbound reply mirrored to truth surface.",
         direction: resolvedDirection,
+      });
+      return;
+    }
+
+    if (throttlePush) {
+      console.log(
+        `[logUnreadMessage] suppressing FCM push for ${merchantId}/${customerNumber} ` +
+          "(within throttle window)",
+      );
+      res.status(200).json({
+        message:
+          "Unread message logged; FCM push suppressed by throttle window.",
+        pushed: false,
+        throttled: true,
       });
       return;
     }
