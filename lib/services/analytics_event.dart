@@ -87,6 +87,60 @@ class SignoutCompleted extends AnalyticsEvent {
 }
 
 // ---------------------------------------------------------------------------
+// PAS-UX-22: number-first onboarding lookup
+// ---------------------------------------------------------------------------
+//
+// Pre-auth events emitted by the single number-first entry screen
+// (`PhoneEntryPage`). They size the new vs returning split and surface
+// failures of the duplicate-account-prevention guard.
+//
+// PII rules: never carry the phone number itself. `isRegistered` is a
+// single bit; `reason` is a backend/error-code-style enum, not free text.
+
+/// Fired once per Continue tap on PhoneEntryPage where the
+/// `_isUserRegistered` lookup returned a definitive answer.
+///
+/// `isRegistered` records which branch the user was routed to:
+///   * true  -> existing account, OTP-as-login path
+///   * false -> new account, OTP-as-registration path
+class PhoneLookupSucceeded extends AnalyticsEvent {
+  final bool isRegistered;
+
+  const PhoneLookupSucceeded({required this.isRegistered});
+
+  @override
+  String get name => 'phone_lookup_succeeded';
+
+  @override
+  Map<String, Object?> get properties => {
+        'is_registered': isRegistered,
+      };
+}
+
+/// Fired when the registered-user lookup itself failed (offline mid-read,
+/// Firestore unavailable, permission denied, etc.) and the user was NOT
+/// advanced into either branch.
+///
+/// `reason` is one of:
+///   * 'offline'        -> connectivity guard short-circuited
+///   * 'unavailable'    -> Firestore returned `[cloud_firestore/unavailable]`
+///   * 'permission'     -> rules denied the read
+///   * 'unknown'        -> everything else
+class PhoneLookupFailed extends AnalyticsEvent {
+  final String reason;
+
+  const PhoneLookupFailed({required this.reason});
+
+  @override
+  String get name => 'phone_lookup_failed';
+
+  @override
+  Map<String, Object?> get properties => {
+        'reason': reason,
+      };
+}
+
+// ---------------------------------------------------------------------------
 // Sales / ledger funnel
 // ---------------------------------------------------------------------------
 

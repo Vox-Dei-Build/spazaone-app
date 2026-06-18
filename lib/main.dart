@@ -386,6 +386,12 @@ class MyApp extends StatelessWidget {
     LoginPage.id: (context) => const LoginPage(),
     RegisterPage.id: (context) => const RegisterPage(),
     RegisterAnonymousPage.id: (context) => const RegisterAnonymousPage(),
+    // PAS-UX-22: number-first onboarding surfaces. `/phoneEntryPage` becomes
+    // the initial route when `FeatureFlags.enableNumberFirstOnboarding` is
+    // true; the legacy `/loginPage` and `/registerPage` stay registered as
+    // compat shims for deep links, post-logout navigation, and rollback.
+    PhoneEntryPage.id: (context) => const PhoneEntryPage(),
+    FinishProfilePage.id: (context) => const FinishProfilePage(),
     // PAS-UX-09 follow-up: wrap Dashboard in BusinessNameGate so
     // legacy merchants whose shopName was never set (when the field
     // was optional) are forced through a one-field recovery before
@@ -453,7 +459,13 @@ class MyApp extends StatelessWidget {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: kCustomThemeData,
-          initialRoute: LoginPage.id,
+          // PAS-UX-22: when the number-first flag is on, launch into the
+          // single-field entry screen. Default (flag off) keeps the legacy
+          // `/loginPage` as the initial route so a missing / failed Remote
+          // Config fetch leaves merchants on the known-good flow.
+          initialRoute: FeatureFlags.enableNumberFirstOnboarding
+              ? PhoneEntryPage.id
+              : LoginPage.id,
           navigatorKey: navigatorKey,
           navigatorObservers: [TelemetryService.instance.navigatorObserver],
           routes: _routes,

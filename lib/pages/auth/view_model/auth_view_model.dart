@@ -793,6 +793,345 @@ class AuthViewModel with ChangeNotifier {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // PAS-UX-22: number-first onboarding entry points.
+  //
+  // These methods are used by `PhoneEntryPage` and `FinishProfilePage`. They
+  // intentionally do NOT touch `mobileNoController`, `registrationMobileNo-
+  // Controller`, `nameController` or `shopNameController` — the number-first
+  // surface owns its own form state and passes plain strings in. This keeps
+  // the legacy `handleLogin` / `registerUser` paths working bit-for-bit while
+  // the feature flag rolls out, and avoids any controller-aliasing surprises
+  // if both surfaces are ever exercised in the same session (e.g. via the
+  // legacy compat redirect).
+  // ---------------------------------------------------------------------------
+
+  /// Number-first entry point. Validates connectivity, looks up the phone
+  /// against `users`, then routes to OTP-as-login or OTP-as-registration.
+  ///
+  /// On registration-OTP success the user is pushed to `/finishProfilePage`
+  /// (NOT `/dashboard`) so they can supply Business Name + Full Name. On
+  /// login-OTP success the user goes straight to `/dashboard` exactly like
+  /// the legacy login flow.
+  ///
+  /// Lookup failures (offline mid-read, Firestore unavailable, permission)
+  /// surface a retry-style error and DO NOT advance into either branch —
+  /// this is load-bearing for duplicate-account prevention (N1 in the spec).
+  Future<void> lookupAndRoute(
+    BuildContext context,
+    String rawPhone, {
+    String? referrerUserId,
+  }) async {
+    if (isLoading.value) return;
+    startLoading();
+    try {
+      if (!await _hasNetwork()) {
+        showErrorSnackBar(
+          context,
+          "You're offline. Please connect to the internet and try again.",
+          isWarning: true,
+        );
+        await TelemetryService.instance.capture(
+          const PhoneLookupFailed(reason: 'offline'),
+        );
+        return;
+      }
+
+      final String formatted = formatPhoneNumber(rawPhone);
+      final String normalized = normalizePhoneNumber(formatted);
+      if (formatted.isEmpty || normalized.isEmpty) {
+        // Defensive: the form validator should have caught this. If we
+        // somehow got here with a non-SA number, refuse rather than try
+        // to look it up against Firestore with an empty string.
+        showErrorSnackBar(context, kSAOnlyPhoneMessage, isWarning: true);
+        return;
+      }
+
+      bool isRegistered;
+      try {
+        isRegistered = await _isUserRegistered(normalized);
+      } catch (e, st) {
+        await CrashService.instance.recordNonFatal(
+          e,
+          st,
+          reason: 'number-first phone lookup failed',
+        );
+        await TelemetryService.instance.capture(
+          PhoneLookupFailed(reason: _classifyLookupFailure(e)),
+        );
+        showErrorSnackBar(
+          context,
+          "Couldn't check your number. Tap Continue to try again.",
+          isWarning: true,
+        );
+        return;
+      }
+
+      await TelemetryService.instance.capture(
+        PhoneLookupSucceeded(isRegistered: isRegistered),
+      );
+
+      if (isRegistered) {
+        await _initiateOtpAndRoute(
+          context,
+          formatted,
+          VerificationPurpose.login,
+          referrerUserId: referrerUserId,
+        );
+      } else {
+        await _initiateOtpAndRoute(
+          context,
+          formatted,
+          VerificationPurpose.registration,
+          referrerUserId: referrerUserId,
+        );
+      }
+    } finally {
+      stopLoading();
+    }
+  }
+
+  /// Triggers `verifyPhoneNumber` then prompts for the SMS code, using the
+  /// existing OTP dialog. On success it dispatches to one of:
+  ///
+  ///   * login:        sign in, identify, fire SigninCompleted, go to dashboard.
+  ///   * registration: sign in, write the auth-keyed minimum to users/{uid},
+  ///                   identify, fire SignupCompleted, navigate to
+  ///                   `/finishProfilePage` for name + shopName collection.
+  ///
+  /// Reuses [initiatePhoneNumberVerification] but bypasses its baked-in
+  /// `_storeUserDetails(...)` call on auto-verification — the auto path
+  /// relies on the registration form controllers being populated, which
+  /// they are not on the number-first surface. To work around that without
+  /// touching the legacy code path, we look at `auth.currentUser` after the
+  /// fact and write the minimum doc ourselves if needed.
+  Future<void> _initiateOtpAndRoute(
+    BuildContext context,
+    String formattedPhone,
+    VerificationPurpose purpose, {
+    String? referrerUserId,
+  }) async {
+    // We can't reuse [initiatePhoneNumberVerification] verbatim — its
+    // verificationCompleted branch fires `_storeUserDetails` which reads
+    // from the legacy form controllers (empty here). Re-implement the
+    // narrow slice we need for the number-first surface.
+    final Completer<String?> completer = Completer<String?>();
+    bool autoCompleted = false;
+
+    await auth.verifyPhoneNumber(
+      phoneNumber: formattedPhone,
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        autoCompleted = true;
+        try {
+          await auth.signInWithCredential(credential);
+          await _onNumberFirstAuthSuccess(
+            context,
+            purpose,
+            formattedPhone: formattedPhone,
+            referrerUserId: referrerUserId,
+          );
+        } catch (e, st) {
+          await CrashService.instance.recordNonFatal(
+            e,
+            st,
+            reason: 'number-first auto sign-in failed',
+          );
+          showErrorSnackBar(context, "Auto sign-in failed: $e");
+        } finally {
+          if (!completer.isCompleted) completer.complete(null);
+        }
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        if (!completer.isCompleted) completer.complete(null);
+        showErrorSnackBar(context, "Verification failed: ${e.message}");
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        if (!completer.isCompleted) completer.complete(verificationId);
+      },
+      codeAutoRetrievalTimeout: (String _) {},
+    );
+
+    final String? verificationId = await completer.future;
+    if (autoCompleted || verificationId == null) return;
+
+    await _promptForVerificationCode(
+      context,
+      verificationId,
+      (smsCode) async {
+        try {
+          final credential = PhoneAuthProvider.credential(
+            verificationId: verificationId,
+            smsCode: smsCode,
+          );
+          await auth.signInWithCredential(credential);
+          await _onNumberFirstAuthSuccess(
+            context,
+            purpose,
+            formattedPhone: formattedPhone,
+            referrerUserId: referrerUserId,
+          );
+        } catch (e, st) {
+          await CrashService.instance.recordNonFatal(
+            e,
+            st,
+            reason: 'number-first manual sign-in failed',
+          );
+          showErrorSnackBar(context, "Failed to sign in: $e");
+        }
+      },
+      phoneNumber: formattedPhone,
+    );
+  }
+
+  /// Post-OTP success handler for the number-first flow.
+  ///
+  /// Login branch: identify + SigninCompleted + go to dashboard. Identical
+  /// behaviour to the legacy login path, including identify-on-first-session.
+  ///
+  /// Registration branch: writes the auth-keyed minimum (mobileNumber,
+  /// mobileNumberNormalized, referralCount, optional referrerUserId) and
+  /// creates the initial wallet so any downstream code that assumes a wallet
+  /// exists for an authenticated user keeps working. Then identifies, fires
+  /// SignupCompleted(method:'phone'), and navigates to `/finishProfilePage`.
+  /// Name and shopName are deferred to that screen.
+  Future<void> _onNumberFirstAuthSuccess(
+    BuildContext context,
+    VerificationPurpose purpose, {
+    required String formattedPhone,
+    String? referrerUserId,
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) {
+      showErrorSnackBar(
+        context,
+        "User not found after verification. Please try again.",
+      );
+      return;
+    }
+
+    if (purpose == VerificationPurpose.registration) {
+      await _writeAuthKeyedUserDoc(
+        user,
+        formattedPhone: formattedPhone,
+        referrerUserId: referrerUserId,
+      );
+      await TelemetryService.instance.identify(merchantId: user.uid);
+      await TelemetryService.instance.capture(
+        const SignupCompleted(method: 'phone'),
+      );
+      _routeToFinishProfile(context);
+    } else {
+      await TelemetryService.instance.identify(merchantId: user.uid);
+      await TelemetryService.instance.capture(
+        const SigninCompleted(method: 'phone'),
+      );
+      handleSuccessfulLogin(context);
+    }
+  }
+
+  /// Persists the bare-minimum `users/{uid}` doc that the number-first
+  /// registration branch creates immediately after OTP success.
+  ///
+  /// Intentionally omits `name` and `shopName` — those are collected on
+  /// `/finishProfilePage` and added with `merge: true`. The post-auth
+  /// [BusinessNameGate] continues to guard the dashboard against any user
+  /// that somehow reaches it without a `shopName` (e.g. abandons before
+  /// submitting the finish-profile form), so the soft-gate stays as
+  /// defense in depth.
+  Future<void> _writeAuthKeyedUserDoc(
+    User user, {
+    required String formattedPhone,
+    String? referrerUserId,
+  }) async {
+    try {
+      // Store the formatted E.164 string under `mobileNumber` so it's
+      // consistent with how the registration flow writes it once name/
+      // shopName arrive. The lookup helpers query both
+      // `mobileNumberNormalized` and the legacy `mobileNumber` field so
+      // either form is recoverable.
+      final String normalized = normalizePhoneNumber(formattedPhone);
+      final Map<String, dynamic> data = {
+        'mobileNumber': formattedPhone,
+        'mobileNumberNormalized': normalized,
+        'referralCount': 0,
+      };
+      if (referrerUserId != null && referrerUserId.isNotEmpty) {
+        data['referrerUserId'] = referrerUserId;
+      }
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(data, SetOptions(merge: true));
+
+      // Wallet creation is keyed to authenticated user existence, not
+      // profile completeness. Downstream code (BNPL, wallet balance
+      // streams) reads `users/{uid}/wallet/current` for any signed-in
+      // user, so we seed it here at the same time the user doc is
+      // created — exactly like the legacy `_storeUserDetails` does.
+      await _createInitialWallet(user.uid);
+    } catch (e, st) {
+      await CrashService.instance.recordNonFatal(
+        e,
+        st,
+        reason: 'number-first user doc write failed',
+      );
+      // Don't surface the raw error to the merchant here. They've already
+      // signed in successfully; FinishProfilePage will retry the write on
+      // submit and surface any persistent issue there.
+    }
+  }
+
+  void _routeToFinishProfile(BuildContext context) {
+    if (context.mounted) {
+      Navigator.of(context).pushReplacementNamed('/finishProfilePage');
+      return;
+    }
+    final navState = navigatorKey.currentState;
+    if (navState != null) {
+      navState.pushReplacementNamed('/finishProfilePage');
+    }
+  }
+
+  /// Called by `FinishProfilePage` once the user has supplied Business
+  /// Name and Full Name. Merges them into the existing `users/{uid}` doc
+  /// (created by [_writeAuthKeyedUserDoc] above), then navigates to the
+  /// dashboard. Throws on Firestore failure so the caller can surface a
+  /// retry on the form.
+  Future<void> completeProfileForNumberFirst(
+    BuildContext context, {
+    required String name,
+    required String shopName,
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) {
+      throw StateError('completeProfileForNumberFirst called with no auth user');
+    }
+    final String trimmedName = name.trim();
+    final String trimmedShop = shopName.trim();
+    await _firestore.collection('users').doc(user.uid).set(
+      {
+        'name': trimmedName,
+        if (trimmedShop.isNotEmpty) 'shopName': trimmedShop,
+      },
+      SetOptions(merge: true),
+    );
+    handleSuccessfulLogin(context);
+  }
+
+  /// Coarse classifier for [_isUserRegistered] failures so we can attach a
+  /// stable enum-ish reason to [PhoneLookupFailed] rather than the raw
+  /// exception message (which can contain PII or change wording across
+  /// SDK versions).
+  String _classifyLookupFailure(Object error) {
+    if (error is FirebaseException) {
+      if (error.code == 'unavailable') return 'unavailable';
+      if (error.code == 'permission-denied') return 'permission';
+    }
+    if (error is SocketException) return 'offline';
+    if (error.toString().contains('SocketException')) return 'offline';
+    return 'unknown';
+  }
+
   @override
   void dispose() {
     mobileNoController.dispose();

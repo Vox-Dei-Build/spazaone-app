@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/auth/phone_entry/phone_entry_page.dart';
 import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
 import 'package:pasella/pages/auth/widgets/logo_display.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -28,6 +29,16 @@ class _RegisterPageState extends State<RegisterPage> {
     super.initState();
     authViewModel = AuthViewModel();
     loadInitialData();
+    // PAS-UX-22: compat-shim redirect. When number-first onboarding is on,
+    // `/registerPage` (reached via the legacy "Create a new account" link
+    // on `/loginPage` or any external deep link) bounces to
+    // `/phoneEntryPage`. Same rationale as the LoginPage shim.
+    if (FeatureFlags.enableNumberFirstOnboarding) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed(PhoneEntryPage.id);
+      });
+    }
   }
 
   void loadInitialData() async {

@@ -3,6 +3,8 @@ export 'models/common/app_model.dart';
 export 'pages/dashboard/dashboard.dart';
 export 'pages/auth/login/login.dart';
 export 'pages/auth/register/register.dart';
+export 'pages/auth/phone_entry/phone_entry_page.dart';
+export 'pages/auth/finish_profile/finish_profile_page.dart';
 export 'pages/settings/help/help.dart';
 export 'pages/settings/share/share.dart';
 export 'pages/settings/backup/backup.dart';

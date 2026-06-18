@@ -13,6 +13,16 @@ class FeatureFlags {
   static bool enableTopUpPaystack = true;
   static bool enableMoveFunds = false;
 
+  /// PAS-UX-22: number-first onboarding flow.
+  ///
+  /// When true, the app launches into `/phoneEntryPage` and routes new vs
+  /// returning users server-side from a single phone field. The legacy
+  /// `/loginPage` and `/registerPage` are kept registered for deep-link
+  /// compatibility and redirect to `/phoneEntryPage` when this flag is on.
+  /// Default false; flip via Remote Config key
+  /// `FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED`.
+  static bool enableNumberFirstOnboarding = false;
+
   static Future<void> loadFlags() async {
     final rc = await RemoteConfigService.getInstance();
 
@@ -35,5 +45,12 @@ class FeatureFlags {
         rc.getBool('FEATURE_TOP_UP_PAYSTACK_ENABLED', defaultValue: true);
     enableMoveFunds =
         rc.getBool('FEATURE_MOVE_FUNDS_ENABLED', defaultValue: false);
+
+    // PAS-UX-22: default false so a missing / failed Remote Config fetch
+    // leaves us on the legacy two-screen flow.
+    enableNumberFirstOnboarding = rc.getBool(
+      'FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED',
+      defaultValue: false,
+    );
   }
 }
