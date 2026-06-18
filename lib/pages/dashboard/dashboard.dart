@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
 import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart';
@@ -54,7 +55,18 @@ class _DashboardState extends State<Dashboard> {
           (_) => MerchantOnboardingIntro(
             onOpenProducts: () {
               if (!mounted) return;
+              // PAS-UX-19: pre-select the Products tab so popping
+              // NewProductPage lands the merchant on their catalogue,
+              // then push the add-product form directly. The previous
+              // behaviour only switched tabs, which dropped a fresh
+              // merchant on the empty-state screen and required an
+              // extra tap to reach the form the CTA had just promised.
               context.read<AppModel>().updateCurrentIndex(1);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NewProductPage(),
+                ),
+              );
             },
           ),
     );
