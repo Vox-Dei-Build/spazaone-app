@@ -16,7 +16,7 @@ enum WalletInitialTab { withdraw, topUp, account }
 class WalletPage extends StatefulWidget {
   const WalletPage({
     super.key,
-    this.initialTab = WalletInitialTab.withdraw,
+    this.initialTab = WalletInitialTab.account,
     this.initialAccountView,
   });
 
@@ -54,9 +54,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }
 
   int _getTabCount() {
-    // Always show the Sales tab. Top-up is optional and
-    // additional features are grouped under a single Info tab
-    int count = 1; // Sales
+    // Always show the Withdraw tab. Top-up is optional and account
+    // features are grouped under a single Account tab.
+    int count = 1; // Withdraw
     if (FeatureFlags.enableTopUp) count++;
     if (FeatureFlags.enableCashAdvance ||
         FeatureFlags.enableTransactionHistory ||
@@ -75,13 +75,20 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
   int _getInitialTabIndex() {
     switch (widget.initialTab) {
-      case WalletInitialTab.withdraw:
+      case WalletInitialTab.account:
         return 0;
       case WalletInitialTab.topUp:
-        return FeatureFlags.enableTopUp ? 1 : 0;
-      case WalletInitialTab.account:
-        return _hasInfoTab ? _getTabCount() - 1 : 0;
+        return _topUpTabIndex() ?? 0;
+      case WalletInitialTab.withdraw:
+        return _withdrawTabIndex();
     }
+  }
+
+  int _withdrawTabIndex() {
+    var index = 0;
+    if (_hasInfoTab) index++;
+    if (FeatureFlags.enableTopUp) index++;
+    return index;
   }
 
   /// PAS-UX-WTC: index of the Top-Up tab in the current configuration,
@@ -90,7 +97,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   /// without needing a separate navigation surface.
   int? _topUpTabIndex() {
     if (!FeatureFlags.enableTopUp) return null;
-    return 1; // Withdraw (0) → Top Up (1).
+    return _hasInfoTab ? 1 : 0;
   }
 
   @override
@@ -101,15 +108,6 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
     final bool hasInfoTab = _hasInfoTab;
 
-    // Sales tab always enabled
-    tabLabels.add(const Tab(text: 'Withdraw'));
-    tabViews.add(const SalesBalanceTab());
-
-    if (FeatureFlags.enableTopUp) {
-      tabLabels.add(const Tab(text: 'Top Up'));
-      tabViews.add(const TopUpTab());
-    }
-
     if (hasInfoTab) {
       tabLabels.add(const Tab(text: 'Account'));
       tabViews.add(
@@ -119,6 +117,15 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
         ),
       );
     }
+
+    if (FeatureFlags.enableTopUp) {
+      tabLabels.add(const Tab(text: 'Top Up'));
+      tabViews.add(const TopUpTab());
+    }
+
+    // Withdraw tab always enabled.
+    tabLabels.add(const Tab(text: 'Withdraw'));
+    tabViews.add(const SalesBalanceTab());
 
     return DefaultTabController(
       length: tabLabels.length,

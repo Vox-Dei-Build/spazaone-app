@@ -5,15 +5,14 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/main.dart' show navigatorKey;
-import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/auth/widgets/otp_code_dialog.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
+import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
-import 'package:pasella/widgets/private_region.dart';
 
 enum VerificationPurpose { login, registration, linkAnonymous }
 
@@ -100,9 +99,22 @@ class AuthViewModel with ChangeNotifier {
         VerificationPurpose.login,
       );
       if (verificationId != null) {
-        await _promptForVerificationCode(context, verificationId, (smsCode) {
-          signInWithVerificationCode(smsCode, verificationId, context);
-        }, phoneNumber: formattedPhoneNumber);
+        final verified = await _promptForVerificationCode(
+          context,
+          verificationId,
+          (smsCode, activeVerificationId) {
+            return signInWithVerificationCode(
+              smsCode,
+              activeVerificationId,
+              context,
+              navigateOnSuccess: false,
+            );
+          },
+          phoneNumber: formattedPhoneNumber,
+        );
+        if (verified) {
+          handleSuccessfulLogin(context);
+        }
       } else {
         stopLoading();
       }
@@ -154,38 +166,46 @@ class AuthViewModel with ChangeNotifier {
         referrerUserId: referrerUserId,
       );
       if (verificationId != null) {
-        await _promptForVerificationCode(context, verificationId, (
-          smsCode,
-        ) async {
-          await signInWithVerificationCode(
-            smsCode,
-            verificationId,
-            context,
-            onSuccess: () async {
-              User? user = auth.currentUser;
-              if (user != null) {
-                await _storeUserDetails(
-                  context,
-                  user,
-                  referrerUserId: referrerUserId,
-                );
-                // Phone-OTP signup completed (manual code entry path).
-                // We identify the merchant immediately so subsequent events
-                // attach to a person profile rather than the anonymous id.
-                await TelemetryService.instance.identify(merchantId: user.uid);
-                await TelemetryService.instance.capture(
-                  const SignupCompleted(method: 'phone'),
-                );
-                handleSuccessfulLogin(context);
-              } else {
-                showErrorSnackBar(
-                  context,
-                  "User not found after verification. Please try again.",
-                );
-              }
-            },
-          );
-        }, phoneNumber: formattedPhoneNumber);
+        final verified = await _promptForVerificationCode(
+          context,
+          verificationId,
+          (smsCode, activeVerificationId) async {
+            return signInWithVerificationCode(
+              smsCode,
+              activeVerificationId,
+              context,
+              navigateOnSuccess: false,
+              onSuccess: () async {
+                User? user = auth.currentUser;
+                if (user != null) {
+                  await _storeUserDetails(
+                    context,
+                    user,
+                    referrerUserId: referrerUserId,
+                  );
+                  // Phone-OTP signup completed (manual code entry path).
+                  // We identify the merchant immediately so subsequent events
+                  // attach to a person profile rather than the anonymous id.
+                  await TelemetryService.instance.identify(
+                    merchantId: user.uid,
+                  );
+                  await TelemetryService.instance.capture(
+                    const SignupCompleted(method: 'phone'),
+                  );
+                } else {
+                  showErrorSnackBar(
+                    context,
+                    "User not found after verification. Please try again.",
+                  );
+                }
+              },
+            );
+          },
+          phoneNumber: formattedPhoneNumber,
+        );
+        if (verified) {
+          handleSuccessfulLogin(context);
+        }
       } else {
         showErrorSnackBar(
           context,
@@ -240,10 +260,11 @@ class AuthViewModel with ChangeNotifier {
       // Manual code input required
       await _promptForVerificationCode(context, verificationId, (
         smsCode,
+        activeVerificationId,
       ) async {
         try {
           AuthCredential credential = PhoneAuthProvider.credential(
-            verificationId: verificationId,
+            verificationId: activeVerificationId,
             smsCode: smsCode,
           );
           await linkPhoneNumberWithAnonymousAccount(
@@ -251,8 +272,10 @@ class AuthViewModel with ChangeNotifier {
             context,
             referrerUserId,
           );
+          return true;
         } catch (e) {
           showErrorSnackBar(context, "Failed to link anonymous account: $e");
+          return false;
         } finally {
           stopLoading();
         }
@@ -264,35 +287,43 @@ class AuthViewModel with ChangeNotifier {
     }
   }
 
-  Future<void> signInWithVerificationCode(
+  Future<bool> signInWithVerificationCode(
     String smsCode,
     String verificationId,
     BuildContext context, {
-    Function? onSuccess,
+    FutureOr<void> Function()? onSuccess,
+    bool navigateOnSuccess = true,
   }) async {
     try {
       final AuthCredential credential = PhoneAuthProvider.credential(
         verificationId: verificationId,
         smsCode: smsCode,
       );
-      await signInWithCredential(credential, context, onSuccess: onSuccess);
+      return signInWithCredential(
+        credential,
+        context,
+        onSuccess: onSuccess,
+        navigateOnSuccess: navigateOnSuccess,
+      );
     } catch (e) {
       showErrorSnackBar(context, "Failed to sign in: $e");
       stopLoading();
+      return false;
     }
   }
 
-  Future<void> signInWithCredential(
+  Future<bool> signInWithCredential(
     AuthCredential credential,
     BuildContext context, {
-    Function? onSuccess,
+    FutureOr<void> Function()? onSuccess,
+    bool navigateOnSuccess = true,
   }) async {
     startLoading();
     try {
       await auth.signInWithCredential(credential);
       if (onSuccess != null) {
         // Caller (registration) takes over -- they fire the signup event.
-        onSuccess();
+        await onSuccess();
       } else {
         // No onSuccess callback means this is a login flow (manual OTP entry).
         // Identify the merchant and fire the signin event.
@@ -304,7 +335,10 @@ class AuthViewModel with ChangeNotifier {
           );
         }
       }
-      handleSuccessfulLogin(context);
+      if (navigateOnSuccess) {
+        handleSuccessfulLogin(context);
+      }
+      return true;
     } catch (e, st) {
       await CrashService.instance.recordNonFatal(
         e,
@@ -312,6 +346,7 @@ class AuthViewModel with ChangeNotifier {
         reason: 'signInWithCredential failed',
       );
       showErrorSnackBar(context, "Failed to authenticate: $e");
+      return false;
     } finally {
       stopLoading();
     }
@@ -350,109 +385,58 @@ class AuthViewModel with ChangeNotifier {
     }
   }
 
-  Future<void> _promptForVerificationCode(
+  Future<bool> _promptForVerificationCode(
     BuildContext context,
     String verificationId,
-    Function(String smsCode) onVerifyPressed, {
+    Future<bool> Function(String smsCode, String verificationId)
+    onVerifyPressed, {
     String? phoneNumber,
+    VerificationPurpose? purpose,
+    DateTime? codeSentAt,
+    Future<String?> Function()? onResend,
   }) async {
-    Completer<void> completer = Completer<void>();
-
-    // PAS-AUTH-01: Show the user *which* number we just texted so the OTP
-    // step feels like a continuation of "enter your mobile number" rather
-    // than an out-of-nowhere code prompt. Obfuscate the middle digits so
-    // we don't leak the full PII if the dialog is screenshot/recorded.
+    String activeVerificationId = verificationId;
+    DateTime activeCodeSentAt = codeSentAt ?? DateTime.now();
     final String? maskedNumber = _maskPhoneNumber(phoneNumber);
+    final purposeName =
+        purpose == null ? null : _analyticsPurposeForOtp(purpose);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        String smsCode = "";
-
-        return AlertDialog(
-          title: Text(
-            'Enter your 6-digit code',
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2.5),
+    return showOtpCodeDialog(
+      context,
+      maskedNumber: maskedNumber,
+      enableAutosubmit: FeatureFlags.enableOtpAutosubmit,
+      enableResend: FeatureFlags.enableOtpResendInDialog && onResend != null,
+      onCancel: () async {
+        if (purposeName == null) return;
+        await TelemetryService.instance.capture(
+          OtpCancelled(
+            purpose: purposeName,
+            elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
           ),
-          content: SingleChildScrollView(
-            child: Container(
-              padding:
-                  LayoutConstants.padding10Horizontal, // Add padding if needed
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    maskedNumber != null
-                        ? "We just sent an SMS to $maskedNumber. "
-                            "Enter the code to continue."
-                        : "We just sent you an SMS. "
-                            "Enter the 6-digit code to continue.",
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.7,
-                      color: Colors.grey[800],
-                      height: 1.3,
-                    ),
-                  ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-                  PrivateRegion(
-                    // PAS-UX-09: opt into the OS-level SMS autofill
-                    // affordance. On iOS this surfaces the
-                    // "From Messages" suggestion above the keyboard
-                    // as soon as the verification SMS arrives; on
-                    // Android it enables the SMS Retriever / autofill
-                    // bridge. Pure friction reduction — one line, no
-                    // backend change.
-                    child: TextField(
-                      onChanged: (value) => smsCode = value,
-                      decoration: const InputDecoration(
-                        hintText: "6-digit SMS code",
-                        helperText:
-                            "Code didn't arrive? Wait 30 seconds, then "
-                            "tap Cancel and try again.",
-                        helperMaxLines: 2,
-                      ),
-                      keyboardType: TextInputType.number,
-                      autofocus: true, // Automatically focus on the TextField
-                      autofillHints: const [AutofillHints.oneTimeCode],
-                      textInputAction: TextInputAction.done,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: Text(
-                'Cancel',
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-              ),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                completer.complete();
-              },
-            ),
-            TextButton(
-              child: Text(
-                'Verify',
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-              ),
-              onPressed: () {
-                onVerifyPressed(smsCode);
-                if (Navigator.of(dialogContext).canPop()) {
-                  Navigator.of(dialogContext).pop(); // Dismiss the dialog
-                }
-                completer.complete();
-              },
-            ),
-          ],
         );
       },
+      onResend:
+          onResend == null
+              ? null
+              : () async {
+                if (purposeName != null) {
+                  await TelemetryService.instance.capture(
+                    OtpResendRequested(
+                      purpose: purposeName,
+                      elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
+                    ),
+                  );
+                }
+                final nextVerificationId = await onResend();
+                if (nextVerificationId != null) {
+                  activeVerificationId = nextVerificationId;
+                  activeCodeSentAt = DateTime.now();
+                }
+              },
+      onVerify: (smsCode) async {
+        return onVerifyPressed(smsCode, activeVerificationId);
+      },
     );
-
-    return completer.future;
   }
 
   /// PAS-AUTH-01: Mask a phone number for display in the OTP dialog.
@@ -784,25 +768,25 @@ class AuthViewModel with ChangeNotifier {
         .collection('wallet')
         .doc('current')
         .set({
-      'virtualBalance': 15.0,
-      'cashAdvanceBalance': 0.0,
-      'salesVirtualBalance': 0.0,
-      'cashAdvanceWithdrawn': 0.0,
-      'cashAdvanceDueDate': null,
-      'penaltyFee': 0.0,
-      'accountSuspended': false,
-      'totalCashAdvanceGiven': 0.0,
-      'totalCashAdvanceRepaid': 0.0,
-      'repaymentHistory': [
-        {
-          'date': DateTime.now().toIso8601String(),
-          'amount': 0.0,
-          'method': "N/A",
-          'status': "N/A",
-          'reference': "N/A",
-        },
-      ],
-    });
+          'virtualBalance': 15.0,
+          'cashAdvanceBalance': 0.0,
+          'salesVirtualBalance': 0.0,
+          'cashAdvanceWithdrawn': 0.0,
+          'cashAdvanceDueDate': null,
+          'penaltyFee': 0.0,
+          'accountSuspended': false,
+          'totalCashAdvanceGiven': 0.0,
+          'totalCashAdvanceRepaid': 0.0,
+          'repaymentHistory': [
+            {
+              'date': DateTime.now().toIso8601String(),
+              'amount': 0.0,
+              'method': "N/A",
+              'status': "N/A",
+              'reference': "N/A",
+            },
+          ],
+        });
   }
 
   Future<void> clearDeepLinkData() async {
@@ -939,84 +923,147 @@ class AuthViewModel with ChangeNotifier {
     VerificationPurpose purpose, {
     String? referrerUserId,
   }) async {
-    // We can't reuse [initiatePhoneNumberVerification] verbatim — its
-    // verificationCompleted branch fires `_storeUserDetails` which reads
-    // from the legacy form controllers (empty here). Re-implement the
-    // narrow slice we need for the number-first surface.
-    final Completer<String?> completer = Completer<String?>();
-    bool autoCompleted = false;
+    final purposeName = _analyticsPurposeForOtp(purpose);
+    DateTime activeCodeSentAt = DateTime.now();
+    bool routed = false;
+    bool promptVisible = false;
 
-    await auth.verifyPhoneNumber(
-      phoneNumber: formattedPhone,
-      verificationCompleted: (PhoneAuthCredential credential) async {
-        autoCompleted = true;
-        try {
-          await auth.signInWithCredential(credential);
-          await _onNumberFirstAuthSuccess(
-            context,
-            purpose,
-            formattedPhone: formattedPhone,
-            referrerUserId: referrerUserId,
-          );
-        } catch (e, st) {
-          await CrashService.instance.recordNonFatal(
-            e,
-            st,
-            reason: 'number-first auto sign-in failed',
-          );
-          showErrorSnackBar(context, "Auto sign-in failed: $e");
-        } finally {
+    Future<String?> requestOtpCode() async {
+      final requestStartedAt = DateTime.now();
+      final completer = Completer<String?>();
+
+      await auth.verifyPhoneNumber(
+        phoneNumber: formattedPhone,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          if (routed) return;
+          routed = true;
+          if (promptVisible && context.mounted) {
+            unawaited(
+              Navigator.of(context, rootNavigator: true).maybePop(true),
+            );
+          }
+          try {
+            await auth.signInWithCredential(credential);
+            await TelemetryService.instance.capture(
+              OtpAutoVerified(
+                purpose: purposeName,
+                elapsedBucket: _elapsedBucketSince(requestStartedAt),
+              ),
+            );
+            await _onNumberFirstAuthSuccess(
+              context,
+              purpose,
+              formattedPhone: formattedPhone,
+              referrerUserId: referrerUserId,
+            );
+          } catch (e, st) {
+            await CrashService.instance.recordNonFatal(
+              e,
+              st,
+              reason: 'number-first auto sign-in failed',
+            );
+            await TelemetryService.instance.capture(
+              OtpVerificationFailed(
+                purpose: purposeName,
+                failureCode: _otpFailureCode(e),
+                elapsedBucket: _elapsedBucketSince(requestStartedAt),
+              ),
+            );
+            showErrorSnackBar(context, "Auto sign-in failed: $e");
+          } finally {
+            if (!completer.isCompleted) completer.complete(null);
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
           if (!completer.isCompleted) completer.complete(null);
-        }
-      },
-      verificationFailed: (FirebaseAuthException e) {
-        if (!completer.isCompleted) completer.complete(null);
-        unawaited(
-          CrashService.instance.recordNonFatal(
-            e,
-            StackTrace.current,
-            reason: 'number-first phone verification failed',
-            context: {'code': e.code},
-          ),
-        );
-        showErrorSnackBar(context, phoneVerificationErrorMessage(e));
-      },
-      codeSent: (String verificationId, int? resendToken) {
-        if (!completer.isCompleted) completer.complete(verificationId);
-      },
-      codeAutoRetrievalTimeout: (String _) {},
-    );
+          unawaited(
+            CrashService.instance.recordNonFatal(
+              e,
+              StackTrace.current,
+              reason: 'number-first phone verification failed',
+              context: {'code': e.code},
+            ),
+          );
+          unawaited(
+            TelemetryService.instance.capture(
+              OtpVerificationFailed(
+                purpose: purposeName,
+                failureCode: e.code,
+                elapsedBucket: _elapsedBucketSince(requestStartedAt),
+              ),
+            ),
+          );
+          showErrorSnackBar(context, phoneVerificationErrorMessage(e));
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          activeCodeSentAt = DateTime.now();
+          unawaited(
+            TelemetryService.instance.capture(
+              OtpCodeSent(purpose: purposeName),
+            ),
+          );
+          if (!completer.isCompleted) completer.complete(verificationId);
+        },
+        codeAutoRetrievalTimeout: (String _) {},
+      );
 
-    final String? verificationId = await completer.future;
-    if (autoCompleted || verificationId == null) return;
+      return completer.future;
+    }
 
-    await _promptForVerificationCode(
+    final verificationId = await requestOtpCode();
+    if (routed || verificationId == null) return;
+
+    promptVisible = true;
+    final verified = await _promptForVerificationCode(
       context,
       verificationId,
-      (smsCode) async {
+      (smsCode, activeVerificationId) async {
         try {
           final credential = PhoneAuthProvider.credential(
-            verificationId: verificationId,
+            verificationId: activeVerificationId,
             smsCode: smsCode,
           );
           await auth.signInWithCredential(credential);
-          await _onNumberFirstAuthSuccess(
-            context,
-            purpose,
-            formattedPhone: formattedPhone,
-            referrerUserId: referrerUserId,
+          await TelemetryService.instance.capture(
+            OtpManualVerified(
+              purpose: purposeName,
+              elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
+            ),
           );
+          return true;
         } catch (e, st) {
           await CrashService.instance.recordNonFatal(
             e,
             st,
             reason: 'number-first manual sign-in failed',
           );
+          await TelemetryService.instance.capture(
+            OtpVerificationFailed(
+              purpose: purposeName,
+              failureCode: _otpFailureCode(e),
+              elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
+            ),
+          );
           showErrorSnackBar(context, "Failed to sign in: $e");
+          return false;
         }
       },
       phoneNumber: formattedPhone,
+      purpose: purpose,
+      codeSentAt: activeCodeSentAt,
+      onResend: requestOtpCode,
     );
+    promptVisible = false;
+
+    if (verified && !routed) {
+      routed = true;
+      await _onNumberFirstAuthSuccess(
+        context,
+        purpose,
+        formattedPhone: formattedPhone,
+        referrerUserId: referrerUserId,
+      );
+    }
   }
 
   /// Post-OTP success handler for the number-first flow.
@@ -1140,17 +1187,16 @@ class AuthViewModel with ChangeNotifier {
   }) async {
     final user = auth.currentUser;
     if (user == null) {
-      throw StateError('completeProfileForNumberFirst called with no auth user');
+      throw StateError(
+        'completeProfileForNumberFirst called with no auth user',
+      );
     }
     final String trimmedName = name.trim();
     final String trimmedShop = shopName.trim();
-    await _firestore.collection('users').doc(user.uid).set(
-      {
-        'name': trimmedName,
-        if (trimmedShop.isNotEmpty) 'shopName': trimmedShop,
-      },
-      SetOptions(merge: true),
-    );
+    await _firestore.collection('users').doc(user.uid).set({
+      'name': trimmedName,
+      if (trimmedShop.isNotEmpty) 'shopName': trimmedShop,
+    }, SetOptions(merge: true));
     handleSuccessfulLogin(context);
   }
 
@@ -1163,6 +1209,34 @@ class AuthViewModel with ChangeNotifier {
       if (error.code == 'unavailable') return 'unavailable';
       if (error.code == 'permission-denied') return 'permission';
     }
+    if (error is SocketException) return 'offline';
+    if (error.toString().contains('SocketException')) return 'offline';
+    return 'unknown';
+  }
+
+  String _analyticsPurposeForOtp(VerificationPurpose purpose) {
+    switch (purpose) {
+      case VerificationPurpose.login:
+        return 'login';
+      case VerificationPurpose.registration:
+        return 'registration';
+      case VerificationPurpose.linkAnonymous:
+        return 'link_anonymous';
+    }
+  }
+
+  String _elapsedBucketSince(DateTime startedAt) {
+    final seconds = DateTime.now().difference(startedAt).inSeconds;
+    if (seconds < 10) return '0_10s';
+    if (seconds < 30) return '10_30s';
+    if (seconds < 60) return '30_60s';
+    if (seconds < 120) return '60_120s';
+    return '120s_plus';
+  }
+
+  String _otpFailureCode(Object error) {
+    if (error is FirebaseAuthException) return error.code;
+    if (error is FirebaseException) return error.code;
     if (error is SocketException) return 'offline';
     if (error.toString().contains('SocketException')) return 'offline';
     return 'unknown';

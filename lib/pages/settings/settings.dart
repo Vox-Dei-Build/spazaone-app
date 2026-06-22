@@ -44,8 +44,7 @@ class SettingsPage extends StatelessWidget {
                           ),
                           icon: Icons.store,
                           title: 'Business Name',
-                          subTitle:
-                              'Shown on receipts and customer messages',
+                          subTitle: 'Shown on receipts and customer messages',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(
@@ -61,9 +60,9 @@ class SettingsPage extends StatelessWidget {
                             context,
                             SharePage.id,
                           ),
-                          icon: Icons.share,
-                          title: 'Share',
-                          subTitle: 'Share with friends and others',
+                          icon: Icons.storefront_outlined,
+                          title: 'WhatsApp Ordering Link',
+                          subTitle: 'Share your shop code and ordering link',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

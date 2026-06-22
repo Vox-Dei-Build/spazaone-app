@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 
 class MerchantOnboardingIntro extends StatefulWidget {
-  const MerchantOnboardingIntro({super.key, required this.onOpenProducts});
+  const MerchantOnboardingIntro({
+    super.key,
+    required this.onOpenCustomers,
+    required this.onOpenProducts,
+  });
 
+  final VoidCallback onOpenCustomers;
   final VoidCallback onOpenProducts;
 
   @override
@@ -17,64 +22,42 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
 
   static const List<_IntroSlide> _slides = [
     _IntroSlide(
-      icon: Icons.storefront_outlined,
-      title: 'WhatsApp Store setup',
+      icon: Icons.person_add_alt_1_outlined,
+      title: 'Start with one customer',
       body:
-          'Your WhatsApp Store is the customer-facing ordering surface. Only products you list for WhatsApp ordering appear there; everything else stays internal.',
+          'Save one real customer so you can record Pay Later credit immediately.',
       bullets: [
-        'Start with products customers can actually order',
-        'Keep internal-only stock unlisted',
-        'Add a bank account before deposits or withdrawals',
+        'Pasella guides you from Customers',
+        'Pay Later opens after saving',
+      ],
+    ),
+    _IntroSlide(
+      icon: Icons.groups_2_outlined,
+      title: 'Build to 10 customers',
+      body:
+          'Ten customers gives you a useful audience for reminders and follow-ups.',
+      bullets: [
+        'Import contacts when it is faster',
+        'Pasella tracks progress on Customers',
       ],
     ),
     _IntroSlide(
       icon: Icons.inventory_2_outlined,
-      title: 'Products',
-      body:
-          'Products are your stock and catalogue. Use them for prices, quantities, product photos, profit detail, and deciding what belongs in WhatsApp ordering.',
+      title: 'Add your first product',
+      body: 'One product connects stock, sales, profit, and WhatsApp ordering.',
       bullets: [
-        'Turn on WhatsApp listing only for customer-facing items',
-        'Leave ingredients, supplies, or unavailable items internal',
+        'Start with an item customers buy often',
+        'List customer-facing items for WhatsApp',
       ],
     ),
     _IntroSlide(
-      icon: Icons.contacts_outlined,
-      title: 'Customers',
+      icon: Icons.link_outlined,
+      title: 'Link a product to credit',
       body:
-          'Customers are where pay-later balances, messages, and WhatsApp order history come together.',
+          'When a customer takes goods on account, attach the product on Add Credit.',
       bullets: [
-        'Save customers before running targeted promotions',
-        'Use customer history when following up on balances or orders',
-      ],
-    ),
-    _IntroSlide(
-      icon: Icons.point_of_sale,
-      title: 'Sales',
-      body:
-          'Sales is for cash revenue you want recorded. Many merchants add one total at day-end; itemize with products only when stock or profit detail matters.',
-      bullets: [
-        'Use one entry for daily revenue if that matches your workflow',
-        'Add products for stock deduction and margin reporting',
-      ],
-    ),
-    _IntroSlide(
-      icon: Icons.campaign_outlined,
-      title: 'Marketing',
-      body:
-          'Marketing is for approved WhatsApp or SMS promotions to saved customers. Templates need WhatsApp approval before they can be sent.',
-      bullets: [
-        'Create or approve a template first',
-        'Run promotions when products and recipients are ready',
-      ],
-    ),
-    _IntroSlide(
-      icon: Icons.account_balance_wallet_outlined,
-      title: 'Billing and Wallet',
-      body:
-          'Billing shows the app balance used for messaging costs. Wallet sales balance is for online order funds and withdrawals where supported.',
-      bullets: [
-        'Top up app balance before paid messaging',
-        'Add banking details for deposits and withdrawals',
+        'Stock and customer history update together',
+        'Reports show product-linked credits',
       ],
     ),
   ];
@@ -150,14 +133,14 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Later'),
-                ),
-                const Spacer(),
-                if (!isLast)
+            if (!isLast)
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Later'),
+                  ),
+                  const Spacer(),
                   ElevatedButton(
                     onPressed: () {
                       _controller.nextPage(
@@ -166,18 +149,41 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
                       );
                     },
                     child: const Text('Next'),
-                  )
-                else
+                  ),
+                ],
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      widget.onOpenProducts();
+                      widget.onOpenCustomers();
                     },
-                    icon: const Icon(Icons.inventory_2_outlined),
-                    label: const Text('Start with Products'),
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('Add Customer'),
                   ),
-              ],
-            ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Later'),
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          widget.onOpenProducts();
+                        },
+                        icon: const Icon(Icons.inventory_2_outlined),
+                        label: const Text('Products'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
           ],
         ),
       ),

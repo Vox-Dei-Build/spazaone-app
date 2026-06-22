@@ -262,8 +262,7 @@ class StockViewModel with ChangeNotifier {
           .where('group', isEqualTo: groupName)
           .snapshots()
           .map((snapshot) => snapshot.docs
-              .map((doc) =>
-                  Product.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+              .map((doc) => Product.fromMap(doc.data(), doc.id))
               .toList());
     } else {
       return _firestore
@@ -272,8 +271,7 @@ class StockViewModel with ChangeNotifier {
           .collection('products')
           .snapshots()
           .map((snapshot) => snapshot.docs
-              .map((doc) =>
-                  Product.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+              .map((doc) => Product.fromMap(doc.data(), doc.id))
               .toList());
     }
   }

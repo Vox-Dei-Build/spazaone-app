@@ -89,6 +89,12 @@
             android:name="firebase_crashlytics_collection_enabled"
             android:value="false" />
 
+        <!-- Firebase Analytics: start disabled. TelemetryService flips this at
+             runtime only after ConsentService has a saved analytics decision. -->
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

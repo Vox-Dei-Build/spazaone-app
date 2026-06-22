@@ -58,7 +58,6 @@ class SupportUtil {
       case WhatsAppMessageType.other:
         return "Hi Pasella 👋,\n\nI have a general question or request.";
       case WhatsAppMessageType.support:
-      default:
         return "Hi Pasella Support 👋,\n\nI need assistance with something on the app. Could you please help me out?\n\nThanks! 😊";
     }
   }

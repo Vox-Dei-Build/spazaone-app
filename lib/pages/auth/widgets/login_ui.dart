@@ -15,8 +15,9 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
       child: SingleChildScrollView(
         child: Container(
           padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 6,
-              vertical: SizeConfig.heightMultiplier * 3),
+            horizontal: SizeConfig.imageSizeMultiplier * 6,
+            vertical: SizeConfig.heightMultiplier * 3,
+          ),
           child: Form(
             key: authViewModel.formKey,
             child: Column(
@@ -55,6 +56,13 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                     prefixIcon: Icons.phone,
                     controller: authViewModel.mobileNoController,
                     textInputType: TextInputType.phone,
+                    autofillHints: const [AutofillHints.telephoneNumber],
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) {
+                      if (authViewModel.formKey.currentState!.validate()) {
+                        authViewModel.handleLogin(context);
+                      }
+                    },
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'This field is required';
@@ -75,22 +83,25 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                       children: [
                         CustomButton(
                           title: 'Login',
-                          onTap: isLoading
-                              ? () {}
-                              : () {
-                                  if (authViewModel.formKey.currentState!
-                                      .validate()) {
-                                    authViewModel.handleLogin(context);
-                                  }
-                                },
+                          onTap:
+                              isLoading
+                                  ? () {}
+                                  : () {
+                                    if (authViewModel.formKey.currentState!
+                                        .validate()) {
+                                      authViewModel.handleLogin(context);
+                                    }
+                                  },
                           color: Colors.green,
                           icon: Icons.login,
                           fontSize: SizeConfig.textMultiplier * 2,
                         ),
                         if (isLoading)
                           const CircularProgressIndicator(
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white)),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
                       ],
                     );
                   },

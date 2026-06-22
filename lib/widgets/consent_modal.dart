@@ -6,13 +6,12 @@ import '../services/consent_service.dart';
 import '../services/crash_service.dart';
 import '../services/telemetry_service.dart';
 
-/// First-run consent modal.
+/// First-run consent modal and post-auth consent sheet.
 ///
-/// Shown from [LoginPage.initState] on first launch (pre-login) so the
-/// consent decision is recorded before any anonymous Firebase auth /
-/// screen-view events can fire to PostHog or Firebase Analytics. The modal
-/// short-circuits via [ConsentState.hasDecided] so repeat launches are
-/// no-ops.
+/// The full modal is still available for pre-auth fallback flows and the
+/// post-auth "Customize" path. When deferred consent is enabled, Dashboard
+/// shows the compact sheet after phone auth while all telemetry sinks remain
+/// disabled until [ConsentState.hasDecided] is true.
 ///
 /// POPIA stance:
 ///   * Crash reports default ON. Rationale: they contain technical metadata
@@ -31,9 +30,11 @@ import '../services/telemetry_service.dart';
 ///     prominence to the save action — POPIA requires refusal to be at
 ///     least as easy as acceptance.
 class ConsentModal extends StatefulWidget {
-  const ConsentModal({super.key});
+  const ConsentModal({super.key, this.surface = 'first_run_modal'});
 
-  /// Shows the modal and returns once the user has made a choice.
+  final String surface;
+
+  /// Shows the full modal and returns once the user has made a choice.
   /// Safe to call multiple times — subsequent calls return immediately if
   /// consent has already been decided.
   static Future<void> showIfNeeded(BuildContext context) async {
@@ -46,8 +47,58 @@ class ConsentModal extends StatefulWidget {
     );
   }
 
+  static Future<void> showPostAuthIfNeeded(BuildContext context) async {
+    if (ConsentService.instance.state.hasDecided) return;
+    if (!context.mounted) return;
+    final action = await showModalBottomSheet<_PostAuthConsentAction>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => const _PostAuthConsentSheet(),
+    );
+    if (!context.mounted || ConsentService.instance.state.hasDecided) return;
+    if (action == _PostAuthConsentAction.customize) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const ConsentModal(surface: 'post_auth_customize'),
+      );
+    }
+  }
+
   @override
   State<ConsentModal> createState() => _ConsentModalState();
+}
+
+enum _PostAuthConsentAction { customize }
+
+Future<void> _recordConsentDecision({
+  required bool analytics,
+  required bool replay,
+  required bool crash,
+  required String surface,
+}) async {
+  await ConsentService.instance.recordDecision(
+    analytics: analytics,
+    replay: replay,
+    crash: crash,
+  );
+  await CrashService.instance.applyConsent(ConsentService.instance.state);
+  await TelemetryService.instance.applyConsent(ConsentService.instance.state);
+
+  await TelemetryService.instance.capture(
+    ConsentDecided(
+      analytics: analytics,
+      replay: replay,
+      crash: crash,
+      surface: surface,
+    ),
+  );
 }
 
 class _ConsentModalState extends State<ConsentModal> {
@@ -61,31 +112,19 @@ class _ConsentModalState extends State<ConsentModal> {
     super.initState();
     final initial = ConsentService.instance.state;
     _analytics = initial.analytics; // true  on first run (default-on)
-    _replay = initial.replay;       // false on first run (opt-in only)
-    _crash = initial.crash;         // true  on first run
+    _replay = initial.replay; // false on first run (opt-in only)
+    _crash = initial.crash; // true  on first run
   }
 
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
 
-    await ConsentService.instance.recordDecision(
+    await _recordConsentDecision(
       analytics: _analytics,
       replay: _replay,
       crash: _crash,
-    );
-    await CrashService.instance.applyConsent(ConsentService.instance.state);
-    await TelemetryService.instance.applyConsent(ConsentService.instance.state);
-
-    // The very first event after consent records the decision itself, so we
-    // can audit consent rates in the dashboard.
-    await TelemetryService.instance.capture(
-      ConsentDecided(
-        analytics: _analytics,
-        replay: _replay,
-        crash: _crash,
-        surface: 'first_run_modal',
-      ),
+      surface: widget.surface,
     );
 
     if (!mounted) return;
@@ -116,9 +155,7 @@ class _ConsentModalState extends State<ConsentModal> {
       canPop: false,
       child: Dialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
@@ -190,9 +227,7 @@ class _ConsentModalState extends State<ConsentModal> {
                       'Help us fix bugs when something breaks. No personal '
                       'data is sent.',
                   value: _crash,
-                  onChanged: _saving
-                      ? null
-                      : (v) => setState(() => _crash = v),
+                  onChanged: _saving ? null : (v) => setState(() => _crash = v),
                 ),
                 const SizedBox(height: 10),
                 _ConsentOptionCard(
@@ -202,9 +237,10 @@ class _ConsentModalState extends State<ConsentModal> {
                       'Anonymous stats about which features get used. No '
                       'messages, no contacts.',
                   value: _analytics,
-                  onChanged: _saving
-                      ? null
-                      : (v) => setState(() {
+                  onChanged:
+                      _saving
+                          ? null
+                          : (v) => setState(() {
                             _analytics = v;
                             if (!v) _replay = false;
                           }),
@@ -217,9 +253,10 @@ class _ConsentModalState extends State<ConsentModal> {
                       'Blurred recordings of your screens so we can debug '
                       'rough edges. Needs usage insights on.',
                   value: _replay && _analytics,
-                  onChanged: (_saving || !_analytics)
-                      ? null
-                      : (v) => setState(() => _replay = v),
+                  onChanged:
+                      (_saving || !_analytics)
+                          ? null
+                          : (v) => setState(() => _replay = v),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -237,7 +274,9 @@ class _ConsentModalState extends State<ConsentModal> {
                     child: const Text(
                       'Save choices',
                       style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -256,6 +295,136 @@ class _ConsentModalState extends State<ConsentModal> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PostAuthConsentSheet extends StatefulWidget {
+  const _PostAuthConsentSheet();
+
+  @override
+  State<_PostAuthConsentSheet> createState() => _PostAuthConsentSheetState();
+}
+
+class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
+  bool _saving = false;
+
+  Future<void> _save({
+    required bool analytics,
+    required bool replay,
+    required bool crash,
+  }) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    await _recordConsentDecision(
+      analytics: analytics,
+      replay: replay,
+      crash: crash,
+      surface: 'post_auth_sheet',
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, 20 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.shield_outlined,
+                    color: kPrimaryColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Privacy choices',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Choose what Pasella can collect. You can change this anytime '
+              'in Settings → Privacy.',
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.4,
+                color: kSecondaryAccent,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton(
+              onPressed:
+                  _saving
+                      ? null
+                      : () =>
+                          _save(analytics: true, replay: false, crash: true),
+              style: FilledButton.styleFrom(
+                backgroundColor: kPrimaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Allow usage insights',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed:
+                  _saving
+                      ? null
+                      : () =>
+                          _save(analytics: false, replay: false, crash: true),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kSecondaryAccent,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Essential only',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            TextButton(
+              onPressed:
+                  _saving
+                      ? null
+                      : () => Navigator.of(
+                        context,
+                      ).pop(_PostAuthConsentAction.customize),
+              child: const Text('Customize'),
+            ),
+          ],
         ),
       ),
     );
@@ -292,8 +461,7 @@ class _ConsentOptionCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           onTap: disabled ? null : () => onChanged!(!value),
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [

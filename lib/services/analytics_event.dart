@@ -112,9 +112,7 @@ class PhoneLookupSucceeded extends AnalyticsEvent {
   String get name => 'phone_lookup_succeeded';
 
   @override
-  Map<String, Object?> get properties => {
-        'is_registered': isRegistered,
-      };
+  Map<String, Object?> get properties => {'is_registered': isRegistered};
 }
 
 /// Fired when the registered-user lookup itself failed (offline mid-read,
@@ -135,8 +133,114 @@ class PhoneLookupFailed extends AnalyticsEvent {
   String get name => 'phone_lookup_failed';
 
   @override
+  Map<String, Object?> get properties => {'reason': reason};
+}
+
+// ---------------------------------------------------------------------------
+// OTP funnel
+// ---------------------------------------------------------------------------
+//
+// PII rules: OTP events never include the phone number, SMS code,
+// verification id, resend token, or raw Firebase exception text.
+
+class OtpCodeSent extends AnalyticsEvent {
+  final String purpose; // 'login' | 'registration' | 'link_anonymous'
+
+  const OtpCodeSent({required this.purpose});
+
+  @override
+  String get name => 'otp_code_sent';
+
+  @override
+  Map<String, Object?> get properties => {'purpose': purpose};
+}
+
+class OtpAutoVerified extends AnalyticsEvent {
+  final String purpose;
+  final String elapsedBucket;
+
+  const OtpAutoVerified({required this.purpose, required this.elapsedBucket});
+
+  @override
+  String get name => 'otp_auto_verified';
+
+  @override
   Map<String, Object?> get properties => {
-        'reason': reason,
+        'purpose': purpose,
+        'elapsed_bucket': elapsedBucket,
+      };
+}
+
+class OtpManualVerified extends AnalyticsEvent {
+  final String purpose;
+  final String elapsedBucket;
+
+  const OtpManualVerified({required this.purpose, required this.elapsedBucket});
+
+  @override
+  String get name => 'otp_manual_verified';
+
+  @override
+  Map<String, Object?> get properties => {
+        'purpose': purpose,
+        'elapsed_bucket': elapsedBucket,
+      };
+}
+
+class OtpVerificationFailed extends AnalyticsEvent {
+  final String purpose;
+  final String failureCode;
+  final String elapsedBucket;
+
+  const OtpVerificationFailed({
+    required this.purpose,
+    required this.failureCode,
+    required this.elapsedBucket,
+  });
+
+  @override
+  String get name => 'otp_verification_failed';
+
+  @override
+  Map<String, Object?> get properties => {
+        'purpose': purpose,
+        'failure_code': failureCode,
+        'elapsed_bucket': elapsedBucket,
+      };
+}
+
+class OtpResendRequested extends AnalyticsEvent {
+  final String purpose;
+  final String elapsedBucket;
+
+  const OtpResendRequested({
+    required this.purpose,
+    required this.elapsedBucket,
+  });
+
+  @override
+  String get name => 'otp_resend_requested';
+
+  @override
+  Map<String, Object?> get properties => {
+        'purpose': purpose,
+        'elapsed_bucket': elapsedBucket,
+      };
+}
+
+class OtpCancelled extends AnalyticsEvent {
+  final String purpose;
+  final String elapsedBucket;
+
+  const OtpCancelled({required this.purpose, required this.elapsedBucket});
+
+  @override
+  String get name => 'otp_cancelled';
+
+  @override
+  Map<String, Object?> get properties => {
+        'purpose': purpose,
+        'elapsed_bucket': elapsedBucket,
       };
 }
 
@@ -167,11 +271,15 @@ class SaleCompleted extends AnalyticsEvent {
   final String amountBucket;
   final bool isCredit; // true => BNPL, false => cash/instant
   final bool customerIsExisting;
+  final bool hasProducts;
+  final String productCountBucket;
 
   const SaleCompleted({
     required this.amountBucket,
     required this.isCredit,
     required this.customerIsExisting,
+    required this.hasProducts,
+    required this.productCountBucket,
   });
 
   @override
@@ -182,6 +290,8 @@ class SaleCompleted extends AnalyticsEvent {
         'amount_bucket': amountBucket,
         'is_credit': isCredit,
         'customer_is_existing': customerIsExisting,
+        'has_products': hasProducts,
+        'product_count_bucket': productCountBucket,
       };
 }
 
@@ -220,10 +330,7 @@ class BnplOfferAccepted extends AnalyticsEvent {
   final String amountBucket;
   final int termDays;
 
-  const BnplOfferAccepted({
-    required this.amountBucket,
-    required this.termDays,
-  });
+  const BnplOfferAccepted({required this.amountBucket, required this.termDays});
 
   @override
   String get name => 'bnpl_offer_accepted';
@@ -290,10 +397,7 @@ class PayoutFailed extends AnalyticsEvent {
   final String amountBucket;
   final String failureCode; // backend-defined enum, never raw exception text
 
-  const PayoutFailed({
-    required this.amountBucket,
-    required this.failureCode,
-  });
+  const PayoutFailed({required this.amountBucket, required this.failureCode});
 
   @override
   String get name => 'payout_failed';
@@ -313,10 +417,7 @@ class WalletTopupStarted extends AnalyticsEvent {
   final String amountBucket;
   final String method; // 'paystack_card' | 'eft' | ...
 
-  const WalletTopupStarted({
-    required this.amountBucket,
-    required this.method,
-  });
+  const WalletTopupStarted({required this.amountBucket, required this.method});
 
   @override
   String get name => 'wallet_topup_started';
@@ -395,6 +496,60 @@ class CommsSent extends AnalyticsEvent {
       };
 }
 
+class ActivationNudgeOpened extends AnalyticsEvent {
+  final String nudgeType;
+  final String action;
+  final String channel;
+
+  const ActivationNudgeOpened({
+    required this.nudgeType,
+    required this.action,
+    required this.channel,
+  });
+
+  @override
+  String get name => 'activation_nudge_opened';
+
+  @override
+  Map<String, Object?> get properties => {
+        'nudge_type': nudgeType,
+        'action': action,
+        'channel': channel,
+      };
+}
+
+class OrderingLinkCreated extends AnalyticsEvent {
+  final String source; // 'settings' | 'stock_readiness' | 'activation_nudge'
+  final bool regenerated;
+
+  const OrderingLinkCreated({
+    required this.source,
+    required this.regenerated,
+  });
+
+  @override
+  String get name => 'ordering_link_created';
+
+  @override
+  Map<String, Object?> get properties => {
+        'source': source,
+        'regenerated': regenerated,
+      };
+}
+
+class OrderingLinkShared extends AnalyticsEvent {
+  final String
+      channel; // 'native_share' | 'whatsapp' | 'copy_link' | 'copy_code'
+
+  const OrderingLinkShared({required this.channel});
+
+  @override
+  String get name => 'ordering_link_shared';
+
+  @override
+  Map<String, Object?> get properties => {'channel': channel};
+}
+
 // ---------------------------------------------------------------------------
 // Consent (meta-events about telemetry itself)
 // ---------------------------------------------------------------------------
@@ -403,7 +558,7 @@ class ConsentDecided extends AnalyticsEvent {
   final bool analytics;
   final bool replay;
   final bool crash;
-  final String surface; // 'first_run_modal' | 'settings_privacy'
+  final String surface; // 'first_run_modal' | 'post_auth_sheet' | settings
 
   const ConsentDecided({
     required this.analytics,
@@ -499,9 +654,7 @@ class ProductDeleted extends AnalyticsEvent {
   String get name => 'product_deleted';
 
   @override
-  Map<String, Object?> get properties => {
-        'group': group,
-      };
+  Map<String, Object?> get properties => {'group': group};
 }
 
 // ---------------------------------------------------------------------------
@@ -515,8 +668,12 @@ class ProductDeleted extends AnalyticsEvent {
 
 class CustomerCreated extends AnalyticsEvent {
   final bool hasImage;
+  final String customerCountBucket;
 
-  const CustomerCreated({required this.hasImage});
+  const CustomerCreated({
+    required this.hasImage,
+    required this.customerCountBucket,
+  });
 
   @override
   String get name => 'customer_created';
@@ -524,6 +681,7 @@ class CustomerCreated extends AnalyticsEvent {
   @override
   Map<String, Object?> get properties => {
         'has_image': hasImage,
+        'customer_count_bucket': customerCountBucket,
       };
 }
 
@@ -536,9 +694,7 @@ class CustomerCreateBlocked extends AnalyticsEvent {
   String get name => 'customer_create_blocked';
 
   @override
-  Map<String, Object?> get properties => {
-        'reason': reason,
-      };
+  Map<String, Object?> get properties => {'reason': reason};
 }
 
 class CustomerUpdated extends AnalyticsEvent {
@@ -550,9 +706,7 @@ class CustomerUpdated extends AnalyticsEvent {
   String get name => 'customer_updated';
 
   @override
-  Map<String, Object?> get properties => {
-        'has_image': hasImage,
-      };
+  Map<String, Object?> get properties => {'has_image': hasImage};
 }
 
 class CustomerDeleted extends AnalyticsEvent {
@@ -583,9 +737,7 @@ class ReviewNudgeShown extends AnalyticsEvent {
   String get name => 'review_nudge_shown';
 
   @override
-  Map<String, Object?> get properties => {
-        'trigger': triggerName,
-      };
+  Map<String, Object?> get properties => {'trigger': triggerName};
 }
 
 // ---------------------------------------------------------------------------
@@ -602,4 +754,20 @@ String amountBucketZAR(num amount) {
   if (amount < 5000) return '1000-5000';
   if (amount < 20000) return '5000-20000';
   return '20000+';
+}
+
+String productCountBucket(int count) {
+  if (count <= 0) return '0';
+  if (count == 1) return '1';
+  if (count <= 3) return '2-3';
+  if (count <= 5) return '4-5';
+  return '6+';
+}
+
+String customerCountBucket(int count) {
+  if (count <= 0) return '0';
+  if (count == 1) return '1';
+  if (count <= 4) return '2-4';
+  if (count <= 9) return '5-9';
+  return '10+';
 }

@@ -4,6 +4,7 @@ import { normalizePhoneNumber } from "..";
 
 interface MerchantCandidate {
   merchantId: string;
+  customerId: string;
   merchantName: string;
   shopName: string;
   merchantNumber: string;
@@ -66,6 +67,7 @@ export const fetchMerchantCandidates = functions.https.onRequest(
 
           pushCandidate({
             merchantId: userId,
+            customerId: customerDoc.id,
             merchantName: u?.name || "Unknown Merchant",
             shopName: u?.shopName || "Unknown Shop",
             merchantNumber: u?.mobileNumber || "",

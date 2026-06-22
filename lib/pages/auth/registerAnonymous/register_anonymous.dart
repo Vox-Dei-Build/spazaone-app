@@ -44,7 +44,8 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 6),
+            horizontal: SizeConfig.imageSizeMultiplier * 6,
+          ),
           child: Form(
             key: authViewModel.registrationFormKey,
             child: Column(
@@ -87,6 +88,8 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                     prefixIcon: Icons.phone,
                     controller: authViewModel.registrationMobileNoController,
                     textInputType: TextInputType.phone,
+                    autofillHints: const [AutofillHints.telephoneNumber],
+                    textInputAction: TextInputAction.done,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Mobile Number is required';
@@ -107,24 +110,29 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                       children: [
                         CustomButton(
                           title: 'Create Account',
-                          onTap: isLoading
-                              ? () {}
-                              : () {
-                                  if (authViewModel
-                                      .registrationFormKey.currentState!
-                                      .validate()) {
-                                    authViewModel.registerAnonymousAccount(
+                          onTap:
+                              isLoading
+                                  ? () {}
+                                  : () {
+                                    if (authViewModel
+                                        .registrationFormKey
+                                        .currentState!
+                                        .validate()) {
+                                      authViewModel.registerAnonymousAccount(
                                         context,
-                                        referrerUserId: referrerUserId);
-                                  }
-                                },
+                                        referrerUserId: referrerUserId,
+                                      );
+                                    }
+                                  },
                           color: Colors.blue,
                           icon: Icons.person_add,
                         ),
                         if (isLoading)
                           const CircularProgressIndicator(
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white)),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
                       ],
                     );
                   },
@@ -133,12 +141,15 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                 CustomButton(
                   title: 'How To Video',
                   onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (context) => const VimeoVideoPage(
-                        videoId: '935735574',
-                        title: '',
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder:
+                            (context) => const VimeoVideoPage(
+                              videoId: '935735574',
+                              title: '',
+                            ),
                       ),
-                    ));
+                    );
                   },
                   color: Colors.lightBlue,
                   icon: Icons.video_library,
@@ -147,17 +158,20 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
                 OverflowBar(
                   alignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    Text('Already have an account?',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: SizeConfig.textMultiplier * 2,
-                        )),
+                    Text(
+                      'Already have an account?',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: SizeConfig.textMultiplier * 2,
+                      ),
+                    ),
                     TextButton(
                       child: Text(
                         'LOGIN',
                         style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 2,
-                            fontWeight: FontWeight.bold),
+                          fontSize: SizeConfig.textMultiplier * 2,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       onPressed: () {
                         logout(context);

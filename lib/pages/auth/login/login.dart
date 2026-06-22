@@ -59,6 +59,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _showConsentModalIfNeeded() async {
     if (_consentPromptScheduled) return;
     _consentPromptScheduled = true;
+    if (FeatureFlags.enableDeferAuthConsent) return;
     if (!mounted) return;
     await ConsentModal.showIfNeeded(context);
   }

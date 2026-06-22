@@ -23,33 +23,74 @@ class FeatureFlags {
   /// `FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED`.
   static bool enableNumberFirstOnboarding = false;
 
+  /// Defers the first-run telemetry consent prompt until after a merchant has
+  /// completed phone authentication. Telemetry remains effectively disabled
+  /// while consent is undecided.
+  static bool enableDeferAuthConsent = false;
+
+  /// Enables automatic OTP verification when the OS autofills or the user
+  /// pastes/types a complete 6-digit code.
+  static bool enableOtpAutosubmit = false;
+
+  /// Keeps the user in the OTP dialog and exposes resend there instead of
+  /// forcing "Cancel and try again".
+  static bool enableOtpResendInDialog = false;
+
   static Future<void> loadFlags() async {
     final rc = await RemoteConfigService.getInstance();
 
     enableTopUp = rc.getBool('FEATURE_TOP_UP_ENABLED', defaultValue: true);
-    enableTransactionHistory =
-        rc.getBool('FEATURE_TRANSACTION_HISTORY_ENABLED', defaultValue: true);
-    enablePricingInfo =
-        rc.getBool('FEATURE_PRICING_INFO_ENABLED', defaultValue: true);
+    enableTransactionHistory = rc.getBool(
+      'FEATURE_TRANSACTION_HISTORY_ENABLED',
+      defaultValue: true,
+    );
+    enablePricingInfo = rc.getBool(
+      'FEATURE_PRICING_INFO_ENABLED',
+      defaultValue: true,
+    );
 
-    enableBalancePayout =
-        rc.getBool('FEATURE_BALANCE_PAYOUT_ENABLED', defaultValue: true);
-    enableCashAdvance =
-        rc.getBool('FEATURE_CASH_ADVANCE_ENABLED', defaultValue: false);
-    enableBankingDetails =
-        rc.getBool('FEATURE_BANKING_DETAILS_ENABLED', defaultValue: true);
+    enableBalancePayout = rc.getBool(
+      'FEATURE_BALANCE_PAYOUT_ENABLED',
+      defaultValue: true,
+    );
+    enableCashAdvance = rc.getBool(
+      'FEATURE_CASH_ADVANCE_ENABLED',
+      defaultValue: false,
+    );
+    enableBankingDetails = rc.getBool(
+      'FEATURE_BANKING_DETAILS_ENABLED',
+      defaultValue: true,
+    );
 
-    enableAnonymousGate =
-        rc.getBool('FEATURE_ANONYMOUS_GATE_ENABLED', defaultValue: false);
-    enableTopUpPaystack =
-        rc.getBool('FEATURE_TOP_UP_PAYSTACK_ENABLED', defaultValue: true);
-    enableMoveFunds =
-        rc.getBool('FEATURE_MOVE_FUNDS_ENABLED', defaultValue: false);
+    enableAnonymousGate = rc.getBool(
+      'FEATURE_ANONYMOUS_GATE_ENABLED',
+      defaultValue: false,
+    );
+    enableTopUpPaystack = rc.getBool(
+      'FEATURE_TOP_UP_PAYSTACK_ENABLED',
+      defaultValue: true,
+    );
+    enableMoveFunds = rc.getBool(
+      'FEATURE_MOVE_FUNDS_ENABLED',
+      defaultValue: false,
+    );
 
     // PAS-UX-22: default false so a missing / failed Remote Config fetch
     // leaves us on the legacy two-screen flow.
     enableNumberFirstOnboarding = rc.getBool(
       'FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED',
+      defaultValue: false,
+    );
+    enableDeferAuthConsent = rc.getBool(
+      'FEATURE_DEFER_AUTH_CONSENT_ENABLED',
+      defaultValue: false,
+    );
+    enableOtpAutosubmit = rc.getBool(
+      'FEATURE_OTP_AUTOSUBMIT_ENABLED',
+      defaultValue: false,
+    );
+    enableOtpResendInDialog = rc.getBool(
+      'FEATURE_OTP_RESEND_IN_DIALOG_ENABLED',
       defaultValue: false,
     );
   }

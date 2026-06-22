@@ -310,6 +310,8 @@ class AddCreditViewModel extends TransactionViewModel {
           amountBucket: amountBucketZAR(amountEntered),
           isCredit: true,
           customerIsExisting: true,
+          hasProducts: selectedProducts.isNotEmpty,
+          productCountBucket: productCountBucket(selectedProducts.length),
         ),
       );
 

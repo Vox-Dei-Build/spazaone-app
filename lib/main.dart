@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -19,6 +21,8 @@ import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
+import 'package:pasella/services/activation_nudge_intent_bus.dart';
+import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/review_prompt_service.dart';
@@ -43,6 +47,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('Handling a background message: ${message.messageId}');
 }
@@ -59,7 +64,22 @@ Future<void> setupFlutterNotifications() async {
   await flutterLocalNotificationsPlugin.initialize(
     initializationSettings,
     onDidReceiveNotificationResponse: (response) {
-      // handle notification tapped logic here
+      final payload = response.payload;
+      if (payload == null || payload.isEmpty) return;
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is! Map) return;
+        final data = decoded.map<String, dynamic>(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+        _handleNotificationRouteData(data['route']?.toString(), data);
+      } catch (error, stack) {
+        CrashService.instance.recordNonFatal(
+          error,
+          stack,
+          reason: 'local notification payload route failed',
+        );
+      }
     },
   );
 }
@@ -109,6 +129,7 @@ void showLocalNotification(RemoteMessage message) async {
     message.notification?.title,
     message.notification?.body,
     notificationDetails,
+    payload: jsonEncode(message.data),
   );
 }
 
@@ -121,6 +142,10 @@ Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
   if (message != null) _handleNotificationRoute(message);
 }
 
+void _handleNotificationRoute(RemoteMessage message) {
+  _handleNotificationRouteData(message.data['route']?.toString(), message.data);
+}
+
 /// Routes a notification tap to the correct screen.
 ///
 /// Recognises the `route` data field. For the `/promotionsPage` family of
@@ -128,8 +153,7 @@ Future<void> _firebaseMessagingGetInitialMessage(RemoteMessage? message) async {
 /// [PromoteIntentBus] so the destination page can react after first build —
 /// this avoids needing a full deep-link router for what is currently a small
 /// number of routes.
-void _handleNotificationRoute(RemoteMessage message) {
-  final route = message.data['route'] as String?;
+void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
   if (route == null || route.isEmpty) return;
 
   final uri = Uri.tryParse(route);
@@ -137,6 +161,25 @@ void _handleNotificationRoute(RemoteMessage message) {
 
   if (uri.path == '/promotionsPage') {
     PromoteIntentBus.instance.set(PromoteIntent.fromUri(uri));
+  }
+
+  if (uri.path == Dashboard.id) {
+    final activationIntent = ActivationNudgeIntent.fromUri(
+      uri,
+      data: data,
+    );
+    if (activationIntent != null) {
+      ActivationNudgeIntentBus.instance.set(activationIntent);
+      final nudgeType =
+          activationIntent.nudgeType ?? data['nudgeType'] ?? 'unknown';
+      TelemetryService.instance.capture(
+        ActivationNudgeOpened(
+          nudgeType: nudgeType.toString(),
+          action: activationIntent.action.name,
+          channel: 'fcm',
+        ),
+      );
+    }
   }
 
   // Strip query params before pushing — the routes table only knows about
@@ -368,10 +411,9 @@ void main() async {
       }
     });
 
-    // PAS-UX-DESIGN: the first-run telemetry consent modal is now shown
-    // from the Dashboard's initState (the first authenticated screen)
-    // instead of here. Surfacing it pre-login was abrupt and gave the
-    // user no app context to anchor the decision.
+    // First-run consent is owned by the auth/dashboard surfaces. When
+    // deferred consent is enabled, Dashboard shows it after phone auth while
+    // telemetry remains disabled until a choice is saved.
   });
 }
 

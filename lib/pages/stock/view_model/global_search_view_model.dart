@@ -43,8 +43,7 @@ class GlobalSearchViewModel extends ChangeNotifier {
         .listen((snapshot) {
       if (_disposed) return;
       searchResults = snapshot.docs
-          .map((doc) =>
-              Product.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .map((doc) => Product.fromMap(doc.data(), doc.id))
           .where((product) =>
               (product.name?.toLowerCase().contains(searchQuery) ?? false))
           .toList();

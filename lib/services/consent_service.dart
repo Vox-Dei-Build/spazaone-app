@@ -33,29 +33,31 @@ class ConsentState {
     this.version = 1,
   });
 
-  /// First-launch defaults:
-  ///   * `crash: true`   -- service-operation legitimate interest. Modal
-  ///     surfaces the toggle so the user can still opt out.
-  ///   * `analytics: true` -- bucketed, PII-scrubbed events only (see
-  ///     `analytics_event.dart`). Default-on is defensible because the
-  ///     consent modal still appears on first launch, the toggle is visible
-  ///     and pre-checked (not hidden), and the user can decline or change
-  ///     it at any time via Settings -> Privacy. Without this, campaign
-  ///     attribution funnels in PostHog / GA4 are starved of data because
-  ///     most users dismiss the modal without opting in.
-  ///   * `replay: false` -- session replay is screen recording and sits
-  ///     closer to POPIA s26 special PI. Stays opt-in. The modal's
-  ///     "Accept all" button is the one-tap path that flips this on.
+  /// First-launch UI defaults:
+  ///   * `crash: true`   -- preselects crash reports in the consent UI.
+  ///   * `analytics: true` -- preselects usage insights in the consent UI.
+  ///   * `replay: false` -- session replay is screen recording and remains
+  ///     opt-in only.
+  ///
+  /// These are presentation defaults only. The `effective*` getters below
+  /// return false while `decidedAt` is null, so no telemetry sink is enabled
+  /// before the merchant has made a choice.
   ///
   /// `decidedAt` is null so we still know to show the modal on first launch.
   const ConsentState.firstRun()
-      : analytics = true,
-        replay = false,
-        crash = true,
-        decidedAt = null,
-        version = 1;
+    : analytics = true,
+      replay = false,
+      crash = true,
+      decidedAt = null,
+      version = 1;
 
   bool get hasDecided => decidedAt != null;
+
+  bool get effectiveAnalytics => hasDecided && analytics;
+
+  bool get effectiveReplay => hasDecided && analytics && replay;
+
+  bool get effectiveCrash => hasDecided && crash;
 
   ConsentState copyWith({
     bool? analytics,
@@ -73,21 +75,22 @@ class ConsentState {
   }
 
   Map<String, dynamic> toJson() => {
-        'analytics': analytics,
-        'replay': replay,
-        'crash': crash,
-        'decidedAt': decidedAt?.toIso8601String(),
-        'version': version,
-      };
+    'analytics': analytics,
+    'replay': replay,
+    'crash': crash,
+    'decidedAt': decidedAt?.toIso8601String(),
+    'version': version,
+  };
 
   factory ConsentState.fromJson(Map<String, dynamic> json) {
     return ConsentState(
       analytics: json['analytics'] as bool? ?? false,
       replay: json['replay'] as bool? ?? false,
       crash: json['crash'] as bool? ?? true,
-      decidedAt: (json['decidedAt'] as String?) != null
-          ? DateTime.tryParse(json['decidedAt'] as String)
-          : null,
+      decidedAt:
+          (json['decidedAt'] as String?) != null
+              ? DateTime.tryParse(json['decidedAt'] as String)
+              : null,
       version: json['version'] as int? ?? 1,
     );
   }
@@ -133,9 +136,7 @@ class ConsentService {
     ConsentState loaded;
     if (raw is String && raw.isNotEmpty) {
       try {
-        loaded = ConsentState.fromJson(
-          jsonDecode(raw) as Map<String, dynamic>,
-        );
+        loaded = ConsentState.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       } catch (_) {
         // Corrupt or schema-mismatched payload: fall back to first-run defaults
         // and re-prompt the user. We deliberately do NOT throw here -- consent

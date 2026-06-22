@@ -69,10 +69,13 @@ exports.sendPromoToActiveCustomers = functions.https.onRequest(
                 // Normalize the phone number
                 const normalizedNumber = normalizePhoneNumber(phoneNumber);
                 const whatsappNumber = `whatsapp:+27${normalizedNumber.slice(1)}`; // Format for WhatsApp
+                const merchantOrderingUrl =
+                  userData.whatsappOrdering?.orderingUrl || "";
 
                 const templateParams = {
                   merchant_name: userData.name, // Merchant name from user data
                   shop_name: userData.shopName, // Shop name from user data
+                  ordering_url: merchantOrderingUrl,
                 };
 
                 // Logging details for debugging

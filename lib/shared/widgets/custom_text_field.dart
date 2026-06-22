@@ -22,6 +22,9 @@ class CustomTextField extends StatelessWidget {
     this.focusNode,
     this.margin,
     this.validator,
+    this.autofillHints,
+    this.textInputAction,
+    this.onFieldSubmitted,
     this.readOnly = false,
   });
 
@@ -39,6 +42,9 @@ class CustomTextField extends StatelessWidget {
   final FocusNode? focusNode;
   final EdgeInsetsGeometry? margin;
   final String? Function(String?)? validator;
+  final Iterable<String>? autofillHints;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onFieldSubmitted;
   final bool readOnly;
 
   @override
@@ -63,7 +69,8 @@ class CustomTextField extends StatelessWidget {
                 Text(
                   label!,
                   style: kLabelStyle.copyWith(
-                      fontSize: SizeConfig.textMultiplier * 1.8),
+                    fontSize: SizeConfig.textMultiplier * 1.8,
+                  ),
                 ),
               SizedBox(height: SizeConfig.heightMultiplier * 0.5),
               TextFormField(
@@ -78,8 +85,12 @@ class CustomTextField extends StatelessWidget {
                     textCapitalization ?? TextCapitalization.none,
                 inputFormatters: inputFormat,
                 keyboardType: textInputType,
+                autofillHints: autofillHints,
+                textInputAction: textInputAction,
+                onFieldSubmitted: onFieldSubmitted,
                 style: kTextFieldStyle.copyWith(
-                    fontSize: SizeConfig.textMultiplier * 1.8),
+                  fontSize: SizeConfig.textMultiplier * 1.8,
+                ),
                 readOnly: readOnly,
                 decoration: InputDecoration(
                   counterText: '',
@@ -91,13 +102,14 @@ class CustomTextField extends StatelessWidget {
                     minWidth: SizeConfig.imageSizeMultiplier * 10,
                     minHeight: 0,
                   ),
-                  contentPadding:
-                      EdgeInsets.all(SizeConfig.imageSizeMultiplier * 1.5),
+                  contentPadding: EdgeInsets.all(
+                    SizeConfig.imageSizeMultiplier * 1.5,
+                  ),
                   fillColor: kPrimaryColor,
                   floatingLabelBehavior: FloatingLabelBehavior.always,
                   hintText: hintText,
                   hintStyle: TextStyle(
-                    color: Color(0xff757784),
+                    color: const Color(0xff757784),
                     fontSize: SizeConfig.textMultiplier * 1.8,
                   ),
                   prefixIcon: Icon(
