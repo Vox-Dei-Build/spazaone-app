@@ -113,8 +113,9 @@ class CrashService {
   /// collection flag. Safe to call repeatedly.
   Future<void> applyConsent(ConsentState consent) async {
     try {
-      await FirebaseCrashlytics.instance
-          .setCrashlyticsCollectionEnabled(consent.crash);
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+        consent.effectiveCrash,
+      );
     } catch (_) {
       // Swallow: a Crashlytics config call must never break the app.
     }
@@ -133,8 +134,10 @@ class CrashService {
       // Crashlytics console.
       final scrubbed = _scrub(context);
       for (final entry in scrubbed.entries) {
-        await FirebaseCrashlytics.instance
-            .setCustomKey(entry.key, entry.value.toString());
+        await FirebaseCrashlytics.instance.setCustomKey(
+          entry.key,
+          entry.value.toString(),
+        );
       }
       await FirebaseCrashlytics.instance.recordError(
         error,
@@ -149,12 +152,16 @@ class CrashService {
 
   /// Adds a string breadcrumb to the next crash report. Cheap and PII-safe
   /// because we scrub before forwarding.
-  Future<void> log(String message, {Map<String, Object> context = const {}}) async {
+  Future<void> log(
+    String message, {
+    Map<String, Object> context = const {},
+  }) async {
     try {
       final scrubbed = _scrub(context);
-      final suffix = scrubbed.isEmpty
-          ? ''
-          : ' ${scrubbed.entries.map((e) => '${e.key}=${e.value}').join(' ')}';
+      final suffix =
+          scrubbed.isEmpty
+              ? ''
+              : ' ${scrubbed.entries.map((e) => '${e.key}=${e.value}').join(' ')}';
       await FirebaseCrashlytics.instance.log('$message$suffix');
     } catch (_) {
       // ignored

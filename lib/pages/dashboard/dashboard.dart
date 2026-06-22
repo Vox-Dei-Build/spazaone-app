@@ -4,10 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/contact/add_contact/add_contact.dart';
+import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
+import 'package:pasella/pages/settings/share/share.dart';
+import 'package:pasella/services/activation_nudge_intent_bus.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
 import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart';
+import 'package:pasella/widgets/consent_modal.dart';
 import 'package:provider/provider.dart';
 
 class Dashboard extends StatefulWidget {
@@ -21,13 +27,27 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   bool _introScheduled = false;
+  bool _firstRunSurfacesScheduled = false;
+  bool _activationIntentProcessing = false;
 
-  /// PAS-GROWTH-03: the first-run telemetry consent modal is now triggered
-  /// from `LoginPage.initState` (pre-login) instead of here. POPIA compliance
-  /// requires us to capture the consent decision before any anonymous-auth
-  /// or session events can fire to PostHog / Firebase Analytics. The
-  /// previous "show on first Dashboard render" placement was friendlier UX
-  /// but left a window where pre-consent events could leak.
+  /// First-run surfaces are sequenced here once deferred auth consent is on:
+  /// consent sheet first, onboarding intro second. Telemetry stays disabled
+  /// while consent is undecided, so this can happen after phone auth without
+  /// leaking pre-consent analytics.
+
+  Future<void> _showFirstRunSurfacesIfNeeded(String userId) async {
+    if (_firstRunSurfacesScheduled || userId.isEmpty) return;
+    _firstRunSurfacesScheduled = true;
+
+    if (FeatureFlags.enableDeferAuthConsent) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      await ConsentModal.showPostAuthIfNeeded(context);
+      if (!mounted) return;
+    }
+
+    await _showOnboardingIntroIfNeeded(userId);
+  }
 
   Future<void> _showOnboardingIntroIfNeeded(String userId) async {
     if (_introScheduled || userId.isEmpty) return;
@@ -49,6 +69,11 @@ class _DashboardState extends State<Dashboard> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       builder: (_) => MerchantOnboardingIntro(
+        onOpenCustomers: () {
+          if (!mounted) return;
+          context.read<AppModel>().updateCurrentIndex(0);
+          Navigator.of(context).pushNamed(AddContactPage.id);
+        },
         onOpenProducts: () {
           if (!mounted) return;
           // PAS-UX-19: pre-select the Products tab so popping
@@ -58,11 +83,9 @@ class _DashboardState extends State<Dashboard> {
           // merchant on the empty-state screen and required an
           // extra tap to reach the form the CTA had just promised.
           context.read<AppModel>().updateCurrentIndex(1);
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const NewProductPage(),
-            ),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
         },
       ),
     );
@@ -72,6 +95,89 @@ class _DashboardState extends State<Dashboard> {
     // Dashboard during registration to consume onboarding invisibly behind
     // FinishProfilePage.
     await box.put(seenKey, true);
+  }
+
+  Future<void> _processActivationIntentIfNeeded(String userId) async {
+    if (_activationIntentProcessing || userId.isEmpty) return;
+
+    final intent = ActivationNudgeIntentBus.instance.take();
+    if (intent == null) return;
+
+    _activationIntentProcessing = true;
+    try {
+      switch (intent.action) {
+        case ActivationNudgeAction.addCustomer:
+        case ActivationNudgeAction.addTenCustomers:
+          if (!mounted) return;
+          context.read<AppModel>().updateCurrentIndex(0);
+          Navigator.of(context).pushNamed(AddContactPage.id);
+        case ActivationNudgeAction.addProduct:
+          if (!mounted) return;
+          context.read<AppModel>().updateCurrentIndex(1);
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
+        case ActivationNudgeAction.shareOrderingLink:
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const SharePage(source: 'activation_nudge'),
+            ),
+          );
+        case ActivationNudgeAction.linkProductTransaction:
+        case ActivationNudgeAction.recordFirstTransaction:
+          await _openCreditFromActivationIntent(userId, intent);
+      }
+    } finally {
+      _activationIntentProcessing = false;
+    }
+  }
+
+  Future<void> _openCreditFromActivationIntent(
+    String userId,
+    ActivationNudgeIntent intent,
+  ) async {
+    final customerId = intent.customerId;
+    if (customerId == null || customerId.isEmpty) {
+      if (!mounted) return;
+      context.read<AppModel>().updateCurrentIndex(0);
+      return;
+    }
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('customers')
+        .doc(customerId)
+        .get();
+
+    if (!mounted) return;
+
+    if (!doc.exists) {
+      context.read<AppModel>().updateCurrentIndex(0);
+      return;
+    }
+
+    final data = doc.data() ?? const <String, dynamic>{};
+    final customerName = (data['name'] as String?)?.trim();
+    if (customerName == null || customerName.isEmpty) {
+      context.read<AppModel>().updateCurrentIndex(0);
+      return;
+    }
+
+    final mobileNumber = (data['number'] as String?)?.trim();
+    context.read<AppModel>().updateCurrentIndex(0);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddCreditScreen(
+          customerName: customerName,
+          customerId: customerId,
+          mobileNumber: mobileNumber == null || mobileNumber.isEmpty
+              ? null
+              : mobileNumber,
+        ),
+      ),
+    );
   }
 
   @override
@@ -121,10 +227,8 @@ class _DashboardState extends State<Dashboard> {
         return Consumer<AppModel>(
           builder: (context, value, child) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              // Consent is handled pre-login in LoginPage (PAS-GROWTH-03).
-              // Only the merchant onboarding intro is scheduled here, gated
-              // by its own "already seen" flag so it fires once per install.
-              _showOnboardingIntroIfNeeded(userId);
+              _showFirstRunSurfacesIfNeeded(userId);
+              _processActivationIntentIfNeeded(userId);
             });
             // PAS-UI-01: the OnboardingChecklist that previously mounted
             // here (per PAS-UX-09) has been removed from the visible

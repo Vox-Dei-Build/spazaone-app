@@ -31,14 +31,12 @@ class WalletBalancePill extends StatelessWidget {
           onTap: () {
             // PAS-UX-WTC: when balance is low, sending the merchant
             // directly to the Top-Up tab matches the visible warning
-            // tint — otherwise we keep the original Withdraw default
-            // so existing flows are unchanged.
+            // tint; otherwise open the Account tab first for billing setup.
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => WalletPage(
-                  initialTab: isLow
-                      ? WalletInitialTab.topUp
-                      : WalletInitialTab.withdraw,
+                  initialTab:
+                      isLow ? WalletInitialTab.topUp : WalletInitialTab.account,
                 ),
               ),
             );
@@ -184,8 +182,7 @@ class _ShimmerState extends State<_Shimmer>
       builder: (context, _) {
         return Container(
           decoration: BoxDecoration(
-            color: Colors.black
-                .withOpacity(0.08 + (_ctrl.value * 0.08)),
+            color: Colors.black.withOpacity(0.08 + (_ctrl.value * 0.08)),
             borderRadius: BorderRadius.circular(4),
           ),
         );

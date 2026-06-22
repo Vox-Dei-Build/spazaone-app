@@ -2,8 +2,10 @@
  * @function getShopContextBotHttp
  * @description HTTP endpoint for Botpress to gate WhatsApp shopping. Prefers merchantId from bot.
  */
+import * as admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
+import { normalizePhoneNumber } from "../utils/phoneUtils";
 
 function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   const pa = a.split(".").map(Number);
@@ -17,6 +19,93 @@ function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   return false;
 }
 
+function cleanRefCode(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+async function findMerchantCustomerId(
+  merchantId: string,
+  customerPhone: unknown,
+): Promise<string | undefined> {
+  const normalized = normalizePhoneNumber(
+    String(customerPhone || "").replace("whatsapp:", ""),
+  );
+  if (!normalized) return undefined;
+
+  const snap = await db
+    .collection("users")
+    .doc(merchantId)
+    .collection("customers")
+    .where("number", "==", normalized)
+    .limit(1)
+    .get();
+  return snap.empty ? undefined : snap.docs[0].id;
+}
+
+async function findOrCreateMerchantCustomerId(args: {
+  merchantId: string;
+  customerPhone: unknown;
+  customerName?: unknown;
+  sourceRefCode?: string;
+}): Promise<string | undefined> {
+  const normalized = normalizePhoneNumber(
+    String(args.customerPhone || "").replace("whatsapp:", ""),
+  );
+  if (!normalized) return undefined;
+
+  const customersRef = db
+    .collection("users")
+    .doc(args.merchantId)
+    .collection("customers");
+  const existing = await customersRef
+    .where("number", "==", normalized)
+    .limit(1)
+    .get();
+  if (!existing.empty) return existing.docs[0].id;
+
+  const customerRef = customersRef.doc();
+  const displayName =
+    String(args.customerName || "").trim() ||
+    `WhatsApp ${normalized.slice(-4)}`;
+  await customerRef.set({
+    category: "Customer",
+    name: displayName,
+    number: normalized,
+    lastTransaction: {
+      amount: 0,
+      remarks: "No transactions yet",
+      status: "PAID",
+      type: "Payment",
+      date: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    balance: 0,
+    isNPA: false,
+    source: "whatsapp_ordering_link",
+    sourceRefCode: args.sourceRefCode || null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return customerRef.id;
+}
+
+async function markRefCodeUsed(refCode: string | undefined): Promise<void> {
+  if (!refCode) return;
+  await db
+    .collection("merchant_referrals")
+    .doc(refCode)
+    .set(
+      {
+        useCount: admin.firestore.FieldValue.increment(1),
+        lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+}
+
 export const getShopContextBotHttp = functions.https.onRequest(
   async (req, res) => {
     if (req.method !== "POST") {
@@ -25,7 +114,14 @@ export const getShopContextBotHttp = functions.https.onRequest(
       return;
     }
 
-    const { customerPhone, merchantId, refCode } = req.body || {};
+    const {
+      customerPhone,
+      merchantId,
+      refCode: rawRefCode,
+      autoCreateCustomer = false,
+      customerName,
+    } = req.body || {};
+    const refCode = cleanRefCode(rawRefCode);
     console.log("Incoming gate check", { customerPhone, merchantId, refCode });
 
     try {
@@ -43,7 +139,8 @@ export const getShopContextBotHttp = functions.https.onRequest(
           .collection("merchant_referrals")
           .doc(refCode)
           .get();
-        if (ref.exists) mid = ref.get("merchantId");
+        const status = String(ref.get("status") || "active");
+        if (ref.exists && status === "active") mid = ref.get("merchantId");
         console.log("Resolved merchantId from refCode", { refCode, mid });
       }
 
@@ -91,6 +188,14 @@ export const getShopContextBotHttp = functions.https.onRequest(
         return;
       }
 
+      const existingMerchantCustomerId = await findMerchantCustomerId(
+        mid,
+        customerPhone,
+      );
+      if (existingMerchantCustomerId) {
+        customerId = existingMerchantCustomerId;
+      }
+
       // ---------- Load merchant + gate ----------
       const mSnap = await db.collection("users").doc(mid).get();
       if (!mSnap.exists) {
@@ -109,16 +214,14 @@ export const getShopContextBotHttp = functions.https.onRequest(
       // Used by the bot to surface EFT/deposit details inline in the
       // confirmation prompt for Transfer payments. Missing fields are
       // tolerated downstream; an empty object simply skips the block.
-      let banking:
-        | {
-            bankName?: string;
-            accountHolderName?: string;
-            accountNumber?: string;
-            accountType?: string;
-            branchCode?: string;
-            reference?: string;
-          }
-        | null = null;
+      let banking: {
+        bankName?: string;
+        accountHolderName?: string;
+        accountNumber?: string;
+        accountType?: string;
+        branchCode?: string;
+        reference?: string;
+      } | null = null;
       try {
         const bSnap = await db
           .collection("users")
@@ -203,10 +306,20 @@ export const getShopContextBotHttp = functions.https.onRequest(
           ? (merchant as any).forceEnableUntil.toMillis()
           : 0;
       if (merchant.whatsappEligibleOverride || forceUntilMs >= nowMs) {
+        const resolvedCustomerId =
+          refCode && autoCreateCustomer
+            ? await findOrCreateMerchantCustomerId({
+                merchantId: merchant.id,
+                customerPhone,
+                customerName,
+                sourceRefCode: refCode,
+              })
+            : customerId;
+        if (resolvedCustomerId) await markRefCodeUsed(refCode);
         console.log("Merchant override or force window active → OK", { mid });
         res.json({
           state: "OK",
-          customerId: customerId || "ghost",
+          customerId: resolvedCustomerId || customerId || "ghost",
           merchant: { ...merchant, eligible: true },
         });
         return;
@@ -237,9 +350,19 @@ export const getShopContextBotHttp = functions.https.onRequest(
       }
 
       console.log("Merchant passed all checks → OK", { mid });
+      const resolvedCustomerId =
+        refCode && autoCreateCustomer
+          ? await findOrCreateMerchantCustomerId({
+              merchantId: merchant.id,
+              customerPhone,
+              customerName,
+              sourceRefCode: refCode,
+            })
+          : customerId;
+      if (resolvedCustomerId) await markRefCodeUsed(refCode);
       res.json({
         state: "OK",
-        customerId: customerId || "ghost",
+        customerId: resolvedCustomerId || customerId || "ghost",
         merchant: { ...merchant, eligible: true },
       });
       return;

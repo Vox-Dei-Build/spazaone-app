@@ -14,6 +14,7 @@ class WhatsAppStoreReadinessCard extends StatelessWidget {
     required this.onOpenCustomers,
     required this.onOpenPromotions,
     required this.onOpenBanking,
+    required this.onOpenOrderingLink,
   });
 
   final String userId;
@@ -23,6 +24,7 @@ class WhatsAppStoreReadinessCard extends StatelessWidget {
   final VoidCallback onOpenCustomers;
   final VoidCallback onOpenPromotions;
   final VoidCallback onOpenBanking;
+  final VoidCallback onOpenOrderingLink;
 
   @override
   Widget build(BuildContext context) {
@@ -31,42 +33,59 @@ class WhatsAppStoreReadinessCard extends StatelessWidget {
     final firestore = FirebaseFirestore.instance;
     final userScope = firestore.collection('users').doc(userId);
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: userScope.collection('customers').limit(1).snapshots(),
-      builder: (context, customerSnap) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: userScope.snapshots(),
+      builder: (context, userSnap) {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: userScope.collection('bankingDetails').limit(1).snapshots(),
-          builder: (context, bankSnap) {
+          stream: userScope.collection('customers').limit(1).snapshots(),
+          builder: (context, customerSnap) {
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: firestore
-                  .collection('messagingTemplates')
-                  .where('userId', isEqualTo: userId)
-                  .limit(10)
-                  .snapshots(),
-              builder: (context, templateSnap) {
-                final hasCustomers =
-                    (customerSnap.data?.docs.isNotEmpty ?? false);
-                final hasBank = bankSnap.data?.docs.isNotEmpty ?? false;
-                final hasApprovedTemplate = templateSnap.data?.docs.any((doc) {
-                      return templateStatusOf(doc.data()) ==
-                          TemplateStatus.approved;
-                    }) ??
-                    false;
+              stream:
+                  userScope.collection('bankingDetails').limit(1).snapshots(),
+              builder: (context, bankSnap) {
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: firestore
+                      .collection('messagingTemplates')
+                      .where('userId', isEqualTo: userId)
+                      .limit(10)
+                      .snapshots(),
+                  builder: (context, templateSnap) {
+                    final hasCustomers =
+                        (customerSnap.data?.docs.isNotEmpty ?? false);
+                    final hasBank = bankSnap.data?.docs.isNotEmpty ?? false;
+                    final userData = userSnap.data?.data();
+                    final ordering = userData?['whatsappOrdering'];
+                    final hasOrderingLink = ordering is Map &&
+                        ordering['status'] == 'active' &&
+                        (ordering['code'] as String?)?.isNotEmpty == true;
+                    final hasApprovedTemplate =
+                        templateSnap.data?.docs.any((doc) {
+                              return templateStatusOf(doc.data()) ==
+                                  TemplateStatus.approved;
+                            }) ??
+                            false;
 
-                return _ReadinessBody(
-                  products: products,
-                  hasCustomers: hasCustomers,
-                  hasApprovedTemplate: hasApprovedTemplate,
-                  hasBank: hasBank,
-                  loading: customerSnap.connectionState ==
-                          ConnectionState.waiting ||
-                      bankSnap.connectionState == ConnectionState.waiting ||
-                      templateSnap.connectionState == ConnectionState.waiting,
-                  onAddProduct: onAddProduct,
-                  onChooseWhatsAppProduct: onChooseWhatsAppProduct,
-                  onOpenCustomers: onOpenCustomers,
-                  onOpenPromotions: onOpenPromotions,
-                  onOpenBanking: onOpenBanking,
+                    return _ReadinessBody(
+                      products: products,
+                      hasCustomers: hasCustomers,
+                      hasApprovedTemplate: hasApprovedTemplate,
+                      hasBank: hasBank,
+                      hasOrderingLink: hasOrderingLink,
+                      loading: userSnap.connectionState ==
+                              ConnectionState.waiting ||
+                          customerSnap.connectionState ==
+                              ConnectionState.waiting ||
+                          bankSnap.connectionState == ConnectionState.waiting ||
+                          templateSnap.connectionState ==
+                              ConnectionState.waiting,
+                      onAddProduct: onAddProduct,
+                      onChooseWhatsAppProduct: onChooseWhatsAppProduct,
+                      onOpenCustomers: onOpenCustomers,
+                      onOpenPromotions: onOpenPromotions,
+                      onOpenBanking: onOpenBanking,
+                      onOpenOrderingLink: onOpenOrderingLink,
+                    );
+                  },
                 );
               },
             );
@@ -83,24 +102,28 @@ class _ReadinessBody extends StatelessWidget {
     required this.hasCustomers,
     required this.hasApprovedTemplate,
     required this.hasBank,
+    required this.hasOrderingLink,
     required this.loading,
     required this.onAddProduct,
     required this.onChooseWhatsAppProduct,
     required this.onOpenCustomers,
     required this.onOpenPromotions,
     required this.onOpenBanking,
+    required this.onOpenOrderingLink,
   });
 
   final List<Product> products;
   final bool hasCustomers;
   final bool hasApprovedTemplate;
   final bool hasBank;
+  final bool hasOrderingLink;
   final bool loading;
   final VoidCallback onAddProduct;
   final VoidCallback onChooseWhatsAppProduct;
   final VoidCallback onOpenCustomers;
   final VoidCallback onOpenPromotions;
   final VoidCallback onOpenBanking;
+  final VoidCallback onOpenOrderingLink;
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +147,17 @@ class _ReadinessBody extends StatelessWidget {
         done: listedCount > 0,
         actionLabel: products.isEmpty ? null : 'Choose products',
         action: products.isEmpty ? null : onChooseWhatsAppProduct,
+      ),
+      _ReadinessStep(
+        title: 'Ordering link ready',
+        body:
+            'Share your unique WhatsApp link from this product setup flow so customers can start ordering.',
+        done: hasOrderingLink,
+        actionLabel: hasOrderingLink ? 'View link' : 'Get link',
+        action: onOpenOrderingLink,
+        featured: true,
+        showActionWhenDone: true,
+        icon: Icons.link_outlined,
       ),
       _ReadinessStep(
         title: 'Customers ready',
@@ -216,7 +250,7 @@ class _ReadinessBody extends StatelessWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Use this before taking WhatsApp orders: list customer-facing products, keep internal stock unlisted, add customers, promotions, and banking details.',
+                'Use this before taking WhatsApp orders: list customer-facing products, share the ordering link, then add customers, promotions, and banking details.',
                 style: TextStyle(
                   fontSize: SizeConfig.textMultiplier * 1.45,
                   color: Colors.grey.shade800,
@@ -241,17 +275,27 @@ class _ReadinessStepTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final color = step.done ? Colors.green.shade700 : Colors.grey.shade700;
+    final color = step.done || step.featured
+        ? Colors.green.shade700
+        : Colors.grey.shade700;
+    final icon = step.done
+        ? Icons.check_circle
+        : (step.icon ?? Icons.radio_button_unchecked);
+    final showAction = step.action != null &&
+        step.actionLabel != null &&
+        (!step.done || step.showActionWhenDone);
 
-    return Padding(
+    final content = Padding(
       padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 0.7,
+        vertical: step.featured
+            ? SizeConfig.heightMultiplier * 0.9
+            : SizeConfig.heightMultiplier * 0.7,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            step.done ? Icons.check_circle : Icons.radio_button_unchecked,
+            icon,
             color: color,
             size: SizeConfig.imageSizeMultiplier * 5,
           ),
@@ -280,10 +324,27 @@ class _ReadinessStepTile extends StatelessWidget {
               ],
             ),
           ),
-          if (!step.done && step.action != null && step.actionLabel != null)
+          if (showAction)
             TextButton(onPressed: step.action, child: Text(step.actionLabel!)),
         ],
       ),
+    );
+
+    if (!step.featured) return content;
+
+    return Container(
+      margin: EdgeInsets.symmetric(
+        vertical: SizeConfig.heightMultiplier * 0.6,
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.imageSizeMultiplier * 2.5,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.green.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.withValues(alpha: 0.24)),
+      ),
+      child: content,
     );
   }
 }
@@ -295,6 +356,9 @@ class _ReadinessStep {
     required this.done,
     this.actionLabel,
     this.action,
+    this.featured = false,
+    this.showActionWhenDone = false,
+    this.icon,
   });
 
   final String title;
@@ -302,4 +366,7 @@ class _ReadinessStep {
   final bool done;
   final String? actionLabel;
   final VoidCallback? action;
+  final bool featured;
+  final bool showActionWhenDone;
+  final IconData? icon;
 }

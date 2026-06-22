@@ -30,6 +30,7 @@ class TelemetryService {
   static const _envKey = 'POSTHOG_KEY';
 
   bool _setupCalled = false;
+  bool _posthogReady = false;
   bool _enabled = false;
 
   /// Convenience: PostHog's navigator observer to wire screen-view events.
@@ -61,6 +62,7 @@ class TelemetryService {
           '[telemetry] $_envKey missing from .env -- PostHog disabled.',
         );
       }
+      await applyConsent(ConsentService.instance.state);
       return;
     }
 
@@ -68,6 +70,7 @@ class TelemetryService {
 
     try {
       await Posthog().setup(config);
+      _posthogReady = true;
     } catch (e, st) {
       // Never let telemetry init crash the host app.
       await CrashService.instance.recordNonFatal(
@@ -113,9 +116,14 @@ class TelemetryService {
   ///   * Settings -> Privacy when the user toggles a switch.
   ///   * The first-run consent modal when the user submits their choices.
   Future<void> applyConsent(ConsentState consent) async {
-    if (!_setupCalled) return;
+    final analyticsEnabled = consent.effectiveAnalytics;
+    await _applyFirebaseAnalyticsConsent(analyticsEnabled);
+    if (!_setupCalled || !_posthogReady) {
+      _enabled = analyticsEnabled;
+      return;
+    }
     try {
-      if (consent.analytics) {
+      if (analyticsEnabled) {
         await Posthog().enable();
         _enabled = true;
       } else {
@@ -139,6 +147,17 @@ class TelemetryService {
         st,
         reason: 'PostHog applyConsent failed',
       );
+    }
+  }
+
+  Future<void> _applyFirebaseAnalyticsConsent(bool enabled) async {
+    try {
+      await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(enabled);
+      if (!enabled) {
+        await FirebaseAnalytics.instance.setUserId(id: null);
+      }
+    } catch (_) {
+      // ignored -- analytics consent changes must never break app flow
     }
   }
 
@@ -213,17 +232,16 @@ class TelemetryService {
       // TEMP DEBUG (PAS-GROWTH-03 verification): remove once GA4 receipt
       // is confirmed.
       if (kDebugMode) {
-        debugPrint('[telemetry] capture(${event.name}) SKIPPED -- '
-            '_enabled=false (analytics consent not granted)');
+        debugPrint(
+          '[telemetry] capture(${event.name}) SKIPPED -- '
+          '_enabled=false (analytics consent not granted)',
+        );
       }
       return;
     }
     try {
       final scrubbed = _scrub(event.properties);
-      await Posthog().capture(
-        eventName: event.name,
-        properties: scrubbed,
-      );
+      await Posthog().capture(eventName: event.name, properties: scrubbed);
     } catch (_) {
       // ignored -- telemetry never breaks the caller
     }
@@ -240,6 +258,8 @@ class TelemetryService {
   ///   * [SigninCompleted]   -> `login`          (standard, retention signal)
   ///   * [CustomerCreated]   -> `generate_lead`  (standard, onboarding hop)
   ///   * [SaleCompleted]     -> `purchase`       (standard, conversion + value)
+  ///   * [OrderingLinkCreated] -> `ordering_link_created` (custom)
+  ///   * [OrderingLinkShared] -> `share`          (standard)
   ///   * [PayoutRequested]   -> `payout_requested` (custom)
   ///
   /// `purchase.value` is the midpoint of the existing `amountBucketZAR`
@@ -256,25 +276,29 @@ class TelemetryService {
       // that fall through the default branch -- so you can tell the
       // difference between "consent off" and "event not mapped".
       if (kDebugMode) {
-        debugPrint('[fa-mirror] received ${event.runtimeType} '
-            '(enabled=$_enabled)');
+        debugPrint(
+          '[fa-mirror] received ${event.runtimeType} '
+          '(enabled=$_enabled)',
+        );
       }
       switch (event) {
-        case SignupCompleted(:final method, :final businessType, :final businessCategory):
+        case SignupCompleted(
+            :final method,
+            :final businessType,
+            :final businessCategory,
+          ):
           await fa.logEvent(
             name: 'sign_up',
             parameters: {
               'method': method,
               if (businessType != null) 'business_type': businessType,
-              if (businessCategory != null) 'business_category': businessCategory,
+              if (businessCategory != null)
+                'business_category': businessCategory,
             },
           );
         case SigninCompleted(:final method):
-          await fa.logEvent(
-            name: 'login',
-            parameters: {'method': method},
-          );
-        case CustomerCreated(:final hasImage):
+          await fa.logEvent(name: 'login', parameters: {'method': method});
+        case CustomerCreated(:final hasImage, :final customerCountBucket):
           // GA4 standard `generate_lead` event. We deliberately omit the
           // optional `value` / `currency` params -- a freshly added contact
           // has no monetary value attached yet; revenue shows up on the
@@ -285,12 +309,15 @@ class TelemetryService {
             name: 'generate_lead',
             parameters: {
               'has_image': hasImage ? 1 : 0,
+              'customer_count_bucket': customerCountBucket,
             },
           );
         case SaleCompleted(
             :final amountBucket,
             :final isCredit,
             :final customerIsExisting,
+            :final hasProducts,
+            :final productCountBucket,
           ):
           await fa.logEvent(
             name: 'purchase',
@@ -300,7 +327,23 @@ class TelemetryService {
               'amount_bucket': amountBucket,
               'is_credit': isCredit ? 1 : 0,
               'customer_is_existing': customerIsExisting ? 1 : 0,
+              'has_products': hasProducts ? 1 : 0,
+              'product_count_bucket': productCountBucket,
             },
+          );
+        case OrderingLinkCreated(:final source, :final regenerated):
+          await fa.logEvent(
+            name: 'ordering_link_created',
+            parameters: {
+              'source': source,
+              'regenerated': regenerated ? 1 : 0,
+            },
+          );
+        case OrderingLinkShared(:final channel):
+          await fa.logShare(
+            contentType: 'whatsapp_ordering_link',
+            itemId: 'merchant_ordering_link',
+            method: channel,
           );
         case PayoutRequested(:final amountBucket):
           await fa.logEvent(

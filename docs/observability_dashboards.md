@@ -61,6 +61,27 @@ merchants. There is no end-customer-level analytics by design (POPIA).
 > between 1 and 2 is an onboarding problem; drop-off between 2 and 3 is a
 > wallet/banking problem.
 
+### 1.2a Auth-friction funnel
+- Steps:
+  1. `phone_lookup_succeeded`
+  2. `otp_code_sent`
+  3. `otp_manual_verified` OR `otp_auto_verified`
+  4. `signup_completed` OR `signin_completed`
+- Conversion window: 15 minutes
+- Math: `Unique users`
+- Breakdown: `purpose` from OTP steps (`login`, `registration`,
+  `link_anonymous`)
+- Chart: `Funnel`
+- Pinned to: Dashboard 1
+
+### 1.2b OTP failure and resend watch
+- Event A: `otp_verification_failed`, math `Total count`, breakdown
+  `failure_code`
+- Event B: `otp_resend_requested`, math `Total count`, breakdown
+  `elapsed_bucket`
+- Chart: `Bar`, daily bucket, `Last 7 days`
+- Pinned to: Dashboard 1
+
 ### 1.3 Time-to-first-sale (median)
 - Event: `sale_completed`
 - Math: `Median time since first event` -> first event = `signup_completed`
@@ -74,6 +95,36 @@ merchants. There is no end-customer-level analytics by design (POPIA).
 - Returning event: `sale_completed`
 - Period: weekly, 8 weeks
 - Chart: `Retention`
+- Pinned to: Dashboard 1
+
+### 1.5 Product-linked customer transaction activation
+- Event: `sale_completed`
+- Filter: `is_credit = true`, `customer_is_existing = true`,
+  `has_products = true`
+- Math: `Unique users`
+- Breakdown: `product_count_bucket`
+- Chart: `Number` with weekly trend Sparkline
+- Pinned to: Dashboard 1
+
+### 1.6 Customer list depth
+- Event: `customer_created`
+- Math: `Unique users`
+- Breakdown: `customer_count_bucket` (`1`, `2-4`, `5-9`, `10+`)
+- Chart: `Funnel` or `Bar`, weekly cohort
+- Pinned to: Dashboard 1
+
+### 1.7 Activation nudge open -> completion
+- Step 1: `activation_nudge_opened`
+- Step 2:
+  - `customer_created` for `add_first_customer` / `add_ten_customers`
+  - `product_created` for `add_first_product`
+  - `ordering_link_created` or `ordering_link_shared` for
+    `share_ordering_link`
+  - `sale_completed` where `is_credit=true`, `has_products=true` for
+    `link_product_transaction`
+- Conversion window: 72 hours
+- Breakdown: `nudge_type`
+- Chart: `Funnel`
 - Pinned to: Dashboard 1
 
 ---
@@ -116,6 +167,14 @@ merchants. There is no end-customer-level analytics by design (POPIA).
 - Math: `Total count`
 - Breakdown: `customer_is_existing` (true/false)
 - Chart: `Pie`
+- Pinned to: Dashboard 2
+
+### 2.4b Product-linked sales mix
+- Event: `sale_completed`
+- Math: `Total count`
+- Breakdown: `has_products` (true/false)
+- Secondary breakdown: `is_credit`
+- Chart: `Stacked bar`, weekly bucket
 - Pinned to: Dashboard 2
 
 ### 2.5 Sale abandonment hot spots
@@ -277,8 +336,8 @@ activation, not just installs.
 | ------------------- | ------------------ | --------------------------------------------------------------------- |
 | `SignupCompleted`   | `sign_up`          | GA4 standard event. Params: `method`, optional `business_type`, etc. |
 | `SigninCompleted`   | `login`            | GA4 standard event. Drives retention cohorts in GA4.                  |
-| `CustomerCreated`   | `generate_lead`    | GA4 standard event. Onboarding hop between signup and first sale. Params: `has_image`. No `value`/`currency` -- contact has no revenue yet. |
-| `SaleCompleted`     | `purchase`         | GA4 standard. Params: `currency='ZAR'`, `value`=bucket midpoint, `amount_bucket`, `is_credit`, `customer_is_existing`. |
+| `CustomerCreated`   | `generate_lead`    | GA4 standard event. Onboarding hop between signup and first sale. Params: `has_image`, `customer_count_bucket`. No `value`/`currency` -- contact has no revenue yet. |
+| `SaleCompleted`     | `purchase`         | GA4 standard. Params: `currency='ZAR'`, `value`=bucket midpoint, `amount_bucket`, `is_credit`, `customer_is_existing`, `has_products`, `product_count_bucket`. |
 | `PayoutRequested`   | `payout_requested` | Custom. Params: `amount_bucket`, `value`=bucket midpoint, `currency='ZAR'`. |
 
 ### Rules
@@ -312,14 +371,13 @@ activation, not just installs.
    complete a sale, request a payout, confirm all four events arrive with
    the expected params.
 
-### Follow-up (not in this release)
+### Consent-gated collection
 
-Firebase Analytics auto-collection currently runs irrespective of the
-consent modal. Gating auto-collection on `ConsentState.analytics` (via
-`FirebaseAnalytics.setAnalyticsCollectionEnabled` plus the
-`FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED` / `firebase_analytics_collection_enabled`
-native flags) is a separate slice. Do **not** flip this during a live
-campaign -- it will reset Google Ads `first_open` attribution.
+Firebase Analytics starts disabled via native config and follows the same
+effective analytics consent gate as PostHog through
+`FirebaseAnalytics.setAnalyticsCollectionEnabled`. First-run but undecided
+consent does not enable collection; collection starts only after a saved
+analytics choice exists.
 
 ---
 
@@ -330,7 +388,8 @@ in a private "Engineering" dashboard or saved-insights folder.
 
 - Event: `consent_decided`
 - Math: `Total count`
-- Breakdown: `surface` (`first_run_modal` / `settings_privacy`),
+- Breakdown: `surface` (`first_run_modal` / `post_auth_sheet` /
+  `post_auth_customize` / `settings_privacy`),
   secondary breakdown `analytics`, `replay`, `crash`
 - Chart: `Bar`
 

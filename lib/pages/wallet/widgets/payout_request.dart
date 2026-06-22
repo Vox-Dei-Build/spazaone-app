@@ -103,25 +103,4 @@ class _PayoutPageState extends State<PayoutPage> {
       ),
     );
   }
-
-  void _showError(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Something went wrong'),
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.red),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
 }

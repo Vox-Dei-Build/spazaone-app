@@ -130,10 +130,10 @@ class SalesViewModel extends TransactionViewModel {
               return false;
             }
             if ([
-              'awaiting_collection',
-              'pending_merchant_review',
-              'accepted',
-            ].contains(status) &&
+                  'awaiting_collection',
+                  'pending_merchant_review',
+                  'accepted',
+                ].contains(status) &&
                 paymentStatus != 'paid') {
               return false;
             }
@@ -203,10 +203,10 @@ class SalesViewModel extends TransactionViewModel {
               return false;
             }
             if ([
-              'awaiting_collection',
-              'pending_merchant_review',
-              'accepted',
-            ].contains(status) &&
+                  'awaiting_collection',
+                  'pending_merchant_review',
+                  'accepted',
+                ].contains(status) &&
                 paymentStatus != 'paid') {
               return false;
             }
@@ -332,6 +332,8 @@ class SalesViewModel extends TransactionViewModel {
           amountBucket: amountBucketZAR(amountEntered),
           isCredit: false,
           customerIsExisting: false,
+          hasProducts: selectedProducts.isNotEmpty,
+          productCountBucket: productCountBucket(selectedProducts.length),
         ),
       );
 

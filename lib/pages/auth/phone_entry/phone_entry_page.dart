@@ -7,6 +7,7 @@ import 'package:pasella/pages/auth/widgets/logo_display.dart';
 import 'package:pasella/pages/dashboard/dashboard.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
+import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/widgets/consent_modal.dart';
 import 'package:pasella/widgets/private_region.dart';
@@ -26,10 +27,10 @@ import 'package:pasella/widgets/private_region.dart';
 ///     in user is bounced straight to the dashboard — matches what
 ///     `LoginPage` did, so the post-logout redirect to `/loginPage` (which
 ///     itself redirects here while the flag is on) still resolves correctly.
-///   * Schedules the POPIA consent modal in `initState` exactly like
-///     `LoginPage` does. Moving the trigger here (instead of leaving it on
-///     `LoginPage`) closes the consent-leak window once the flag flips on
-///     and `/phoneEntryPage` becomes the initial route.
+///   * When deferred auth consent is off, schedules the POPIA consent modal
+///     in `initState` exactly like `LoginPage` does. When deferred consent is
+///     on, Dashboard owns the prompt after auth and telemetry remains disabled
+///     until the merchant chooses.
 ///   * Reads `referrerUserId` from the existing `deepLinkBox` Hive box and
 ///     threads it through `lookupAndRoute` so referral-sourced installs are
 ///     still credited on the registration write.
@@ -63,7 +64,8 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
   void _loadReferrer() {
     try {
       final box = Hive.box('deepLinkBox');
-      _referrerUserId = box.get('referrerUserId', defaultValue: null) as String?;
+      _referrerUserId =
+          box.get('referrerUserId', defaultValue: null) as String?;
     } catch (_) {
       // deepLinkBox not open — non-fatal, just means no referral credit.
       _referrerUserId = null;
@@ -73,6 +75,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
   Future<void> _showConsentModalIfNeeded() async {
     if (_consentPromptScheduled) return;
     _consentPromptScheduled = true;
+    if (FeatureFlags.enableDeferAuthConsent) return;
     if (!mounted) return;
     await ConsentModal.showIfNeeded(context);
   }
@@ -180,6 +183,9 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
                       prefixIcon: Icons.phone,
                       controller: _phoneController,
                       textInputType: TextInputType.phone,
+                      autofillHints: const [AutofillHints.telephoneNumber],
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _onContinue(),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'This field is required';

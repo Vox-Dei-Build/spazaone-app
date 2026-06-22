@@ -82,6 +82,14 @@ class RemoteConfigService {
                 'due. Please make your payment to avoid any late fees. From '
                 '{shopName}',
         'SMS_TEMPLATE_KEYWORDS': '[]',
+        'FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED':
+            dotenv.env['FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED'] == 'true',
+        'FEATURE_DEFER_AUTH_CONSENT_ENABLED':
+            dotenv.env['FEATURE_DEFER_AUTH_CONSENT_ENABLED'] == 'true',
+        'FEATURE_OTP_AUTOSUBMIT_ENABLED':
+            dotenv.env['FEATURE_OTP_AUTOSUBMIT_ENABLED'] == 'true',
+        'FEATURE_OTP_RESEND_IN_DIALOG_ENABLED':
+            dotenv.env['FEATURE_OTP_RESEND_IN_DIALOG_ENABLED'] == 'true',
       });
 
       _instance = RemoteConfigService._(remoteConfig);
@@ -116,6 +124,10 @@ class RemoteConfigService {
   }
 
   bool getBool(String key, {bool defaultValue = false}) {
-    return _remoteConfig.getBool(key);
+    final value = _remoteConfig.getValue(key);
+    if (value.source == ValueSource.valueStatic) {
+      return defaultValue;
+    }
+    return value.asBool();
   }
 }

@@ -19,6 +19,7 @@ export * from "./contact/addPayment";
 export * from "./contact/fetchUserBalance";
 export * from "./notifications/retention_notifications";
 export * from "./notifications/non_payment_notifications";
+export * from "./notifications/activation_nudges";
 export * from "./stock/scheduledTasks/scheduledLowStockCheck";
 export * from "./payments/paystack/createPaystackTransaction";
 export * from "./payments/paystack/verifyPaystackTransaction";
@@ -77,6 +78,7 @@ export * from "./ecommerce/cancelOrder";
 export * from "./ecommerce/finalizeOnlinePaid";
 export * from "./ecommerce/getOnlineSalesFromLedger";
 export * from "./ecommerce/getShopContextBotHttp";
+export * from "./ecommerce/getMerchantOrderingLink";
 export * from "./ecommerce/getMerchantCatalogBotHttp";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
 /* import { fixProductsContentType } from './utils/fix-content-type'

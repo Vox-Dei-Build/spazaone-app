@@ -134,11 +134,10 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                               'No transactions yet for ${widget.customerName}',
                           subtitle:
                               'Tap Credit when this customer takes goods on '
-                              'account, or Payment when they settle up. Each '
-                              'entry sends a WhatsApp confirmation automatically.',
+                              'account, attach a product when stock matters, '
+                              'or tap Payment when they settle up.',
                           tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
-                          tutorialTitle:
-                              'How to record a credit transaction',
+                          tutorialTitle: 'How to record a credit transaction',
                         );
                       } else {
                         return Column(

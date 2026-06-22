@@ -5,6 +5,7 @@ import 'package:pasella/pages/transactions/widgets/product_selection.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/forms/date_row.dart';
 import 'package:pasella/shared/widgets/forms/transaction_form_scaffold.dart';
+import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
@@ -84,7 +85,18 @@ class AddCreditScreen extends StatelessWidget {
                   onPick: viewModel.setRepaymentDate,
                 ),
                 const SizedBox(height: LayoutConstants.spaceMd),
-                ProductSelectionWidget<AddCreditViewModel>(viewModel: viewModel),
+                ActivationCoachmark(
+                  userId: viewModel.userId,
+                  coachmarkKey: 'link_product_to_credit',
+                  title: 'Attach the product',
+                  message:
+                      'This connects the credit to stock, customer history, and product reports.',
+                  icon: Icons.link_outlined,
+                  accentColor: Colors.red.shade700,
+                  child: ProductSelectionWidget<AddCreditViewModel>(
+                    viewModel: viewModel,
+                  ),
+                ),
                 const SizedBox(height: LayoutConstants.spaceLg),
                 TextFormField(
                   controller: viewModel.remarksController,

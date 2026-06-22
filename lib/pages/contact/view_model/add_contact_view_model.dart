@@ -130,14 +130,13 @@ class AddContactViewModel extends ChangeNotifier {
     // placeholders ("Walk-in 1", "Walk-in 2") and should not collide.
     final normalizedNumber = newCustomer['number'] as String;
     if (normalizedNumber.isNotEmpty) {
-      final existing =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(currentUserId)
-              .collection('customers')
-              .where('number', isEqualTo: normalizedNumber)
-              .limit(1)
-              .get();
+      final existing = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .collection('customers')
+          .where('number', isEqualTo: normalizedNumber)
+          .limit(1)
+          .get();
 
       if (existing.docs.isNotEmpty) {
         _setLoading(false);
@@ -169,12 +168,11 @@ class AddContactViewModel extends ChangeNotifier {
           // came from, not back on the abandoned add form.
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder:
-                  (_) => CustomerManagementPage(
-                    customerName: existingName,
-                    customerId: existingDoc.id,
-                    mobileNumber: normalizedNumber,
-                  ),
+              builder: (_) => CustomerManagementPage(
+                customerName: existingName,
+                customerId: existingDoc.id,
+                mobileNumber: normalizedNumber,
+              ),
             ),
           );
         }
@@ -213,20 +211,17 @@ class AddContactViewModel extends ChangeNotifier {
       //
       // For non-first customers we keep the historical Dashboard
       // destination to respect habituated flow.
-      final priorCustomersSnap =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(currentUserId)
-              .collection('customers')
-              .limit(1)
-              .get();
-      final isFirstCustomer = priorCustomersSnap.docs.isEmpty;
-
-      final docRef = await FirebaseFirestore.instance
+      final customerCollection = FirebaseFirestore.instance
           .collection('users')
           .doc(currentUserId)
-          .collection('customers')
-          .add(newCustomer);
+          .collection('customers');
+      final priorCustomersSnap = await customerCollection.limit(10).get();
+      final isFirstCustomer = priorCustomersSnap.docs.isEmpty;
+      final customerCountAfterSave = priorCustomersSnap.docs.length >= 10
+          ? 10
+          : priorCustomersSnap.docs.length + 1;
+
+      final docRef = await customerCollection.add(newCustomer);
 
       if (_profileImage != null) {
         final url = await _photoUploadUtil.uploadImage(
@@ -250,8 +245,8 @@ class AddContactViewModel extends ChangeNotifier {
         // delivery succeeds.
         final expectedChannel =
             await MessagingNotificationService.resolveExpectedChannel(
-              mobileNumber,
-            );
+          mobileNumber,
+        );
 
         // Pre-flight cost confirmation. Tri-state outcome — explicit
         // skip is now a labelled action ("Skip & record only"), so the
@@ -273,8 +268,7 @@ class AddContactViewModel extends ChangeNotifier {
         // Safety net for race conditions on the wallet balance. Use the
         // breakdown's quoted total (the primary channel cost) as the
         // affordability gate — matches what the user just confirmed.
-        final canProceed =
-            outcome.shouldSend &&
+        final canProceed = outcome.shouldSend &&
             await BalanceCheckUtil.checkBalanceAndProceed(
               context,
               currentUserId,
@@ -305,7 +299,10 @@ class AddContactViewModel extends ChangeNotifier {
       final createdWithImage = _profileImage != null;
       // ignore: unawaited_futures
       TelemetryService.instance.capture(
-        CustomerCreated(hasImage: createdWithImage),
+        CustomerCreated(
+          hasImage: createdWithImage,
+          customerCountBucket: customerCountBucket(customerCountAfterSave),
+        ),
       );
 
       nameController.clear();
@@ -314,10 +311,9 @@ class AddContactViewModel extends ChangeNotifier {
       _contactConsentAccepted = false;
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        final messenger =
-            mobileNumber.isEmpty
-                ? 'Customer added. You can add a number later via "Edit Customer".'
-                : 'Customer added.';
+        final messenger = mobileNumber.isEmpty
+            ? 'Customer added. You can add a number later via "Edit Customer".'
+            : 'Customer added.';
         showSnackbar(context, messenger, Colors.green);
         if (isFirstCustomer) {
           // PAS-UX-09: first-customer fast-path. Replace the AddContact
@@ -327,12 +323,11 @@ class AddContactViewModel extends ChangeNotifier {
           // resolves to Dashboard via the route stack underneath.
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder:
-                  (_) => CustomerManagementPage(
-                    customerName: customerName,
-                    customerId: docRef.id,
-                    mobileNumber: normalizePhoneNumber(mobileNumber),
-                  ),
+              builder: (_) => CustomerManagementPage(
+                customerName: customerName,
+                customerId: docRef.id,
+                mobileNumber: normalizePhoneNumber(mobileNumber),
+              ),
             ),
           );
         } else {

@@ -135,6 +135,8 @@ class _RegisterPageState extends State<RegisterPage> {
                     prefixIcon: Icons.phone,
                     controller: authViewModel.registrationMobileNoController,
                     textInputType: TextInputType.phone,
+                    autofillHints: const [AutofillHints.telephoneNumber],
+                    textInputAction: TextInputAction.done,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Mobile Number is required';

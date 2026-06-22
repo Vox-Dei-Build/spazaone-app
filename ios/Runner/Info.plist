@@ -12,6 +12,9 @@
 	<!-- Firebase Crashlytics: defer collection until consent confirmed at runtime. -->
 	<key>FirebaseCrashlyticsCollectionEnabled</key>
 	<false/>
+	<!-- Firebase Analytics: start disabled; TelemetryService enables it only after consent. -->
+	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
+	<false/>
 	<key>CFBundleDisplayName</key>
 	<string>Pasella</string>
 	<key>CFBundleExecutable</key>

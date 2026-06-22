@@ -3,9 +3,11 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/promotions_page.dart';
+import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
+import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/widgets/onboarding/whatsapp_store_readiness_card.dart';
@@ -67,7 +69,7 @@ class ProductList extends StatelessWidget {
                   Icon(
                     Icons.inventory_2_outlined,
                     size: SizeConfig.imageSizeMultiplier * 18,
-                    color: Colors.grey.withOpacity(0.5),
+                    color: Colors.grey.withValues(alpha: 0.5),
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Text(
@@ -94,14 +96,22 @@ class ProductList extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: SizeConfig.heightMultiplier * 3),
-                    ElevatedButton.icon(
-                      onPressed: onAddProduct,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add your first product'),
-                      style: ElevatedButton.styleFrom(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.imageSizeMultiplier * 6,
-                          vertical: SizeConfig.heightMultiplier * 1.5,
+                    ActivationCoachmark(
+                      userId: viewModel.userId,
+                      coachmarkKey: 'add_first_product',
+                      title: 'Add one product next',
+                      message:
+                          'Choose an item customers buy often so sales, stock, and WhatsApp ordering connect.',
+                      icon: Icons.inventory_2_outlined,
+                      child: ElevatedButton.icon(
+                        onPressed: onAddProduct,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add your first product'),
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: SizeConfig.imageSizeMultiplier * 6,
+                            vertical: SizeConfig.heightMultiplier * 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -133,11 +143,10 @@ class ProductList extends StatelessWidget {
                     final firstProduct = products.first;
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder:
-                            (_) => ProductDetailsPage(
-                              docID: firstProduct.id!,
-                              product: firstProduct,
-                            ),
+                        builder: (_) => ProductDetailsPage(
+                          docID: firstProduct.id!,
+                          product: firstProduct,
+                        ),
                       ),
                     );
                   },
@@ -150,11 +159,18 @@ class ProductList extends StatelessWidget {
                   onOpenBanking: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder:
-                            (_) => const WalletPage(
-                              initialTab: WalletInitialTab.account,
-                              initialAccountView: InfoView.banking,
-                            ),
+                        builder: (_) => const WalletPage(
+                          initialTab: WalletInitialTab.account,
+                          initialAccountView: InfoView.banking,
+                        ),
+                      ),
+                    );
+                  },
+                  onOpenOrderingLink: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const SharePage(source: 'stock_readiness'),
                       ),
                     );
                   },

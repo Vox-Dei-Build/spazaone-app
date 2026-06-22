@@ -9,6 +9,8 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/transactions/transaction_model.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/services/whatsapp_capability_cache.dart';
+import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
+import 'package:pasella/shared/widgets/onboarding/customer_growth_nudge.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
@@ -172,73 +174,69 @@ class _EntityTabState extends State<EntityTab> {
         .doc(currentUserId)
         .snapshots()
         .map((snapshot) {
-          if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
-            return <Map<String, dynamic>>[];
-          }
-          return (snapshot.data()?['unreadMessages'] as List<dynamic>)
-              .map((msg) => msg as Map<String, dynamic>)
-              .toList();
-        });
+      if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
+        return <Map<String, dynamic>>[];
+      }
+      return (snapshot.data()?['unreadMessages'] as List<dynamic>)
+          .map((msg) => msg as Map<String, dynamic>)
+          .toList();
+    });
 
-    return Rx.combineLatest2<
-      QuerySnapshot,
-      List<Map<String, dynamic>>,
-      List<CustomerWithTransactions>
-    >(
+    return Rx.combineLatest2<QuerySnapshot, List<Map<String, dynamic>>,
+        List<CustomerWithTransactions>>(
       customersStream,
       unreadMessagesStream,
       (customerSnapshot, unreadMessages) =>
           customerSnapshot.docs.map((customerDoc) {
-            final customerData = customerDoc.data() as Map<String, dynamic>;
-            final double balance =
-                (customerData['balance'] as num?)?.toDouble() ?? 0.0;
+        final customerData = customerDoc.data() as Map<String, dynamic>;
+        final double balance =
+            (customerData['balance'] as num?)?.toDouble() ?? 0.0;
 
-            // 🔵 Chat unread per customer (existing)
-            // V1 truth-surface: only count inbound customer messages toward
-            // the unread badge — outbound bot mirrors share the same array
-            // but should not ring the bell. Entries flagged `isRead: true`
-            // by `markMessagesAsRead` must also be excluded so the badge
-            // actually clears after the merchant opens the chat.
-            final chatUnread =
-                unreadMessages
-                    .where(
-                      (msg) =>
-                          msg['customerNumber'] == customerData['number'] &&
-                          (msg['direction'] == null ||
-                              msg['direction'].toString().toLowerCase() ==
-                                  'inbound') &&
-                          msg['isRead'] != true,
-                    )
-                    .length;
+        // 🔵 Chat unread per customer (existing)
+        // V1 truth-surface: only count inbound customer messages toward
+        // the unread badge — outbound bot mirrors share the same array
+        // but should not ring the bell. Entries flagged `isRead: true`
+        // by `markMessagesAsRead` must also be excluded so the badge
+        // actually clears after the merchant opens the chat.
+        final chatUnread = unreadMessages
+            .where(
+              (msg) =>
+                  msg['customerNumber'] == customerData['number'] &&
+                  (msg['direction'] == null ||
+                      msg['direction'].toString().toLowerCase() == 'inbound') &&
+                  msg['isRead'] != true,
+            )
+            .length;
 
-            // 🟠 Orders unread per customer (NEW)
-            final int ordersUnread =
-                (customerData['ordersUnreadCount'] as int?) ?? 0;
+        // 🟠 Orders unread per customer (NEW)
+        final int ordersUnread =
+            (customerData['ordersUnreadCount'] as int?) ?? 0;
 
-            // ✅ Single badge shows combined unread (messages + orders)
-            final int combinedUnread = chatUnread + ordersUnread;
+        // ✅ Single badge shows combined unread (messages + orders)
+        final int combinedUnread = chatUnread + ordersUnread;
 
-            return CustomerWithTransactions(
-              customer: Customer.fromMap({
-                'id': customerDoc.id,
-                'name': formatStringToCamelCase(customerData['name']),
-                'number': customerData['number'],
-                'category': customerData['category'],
-                'lastTransaction': customerData['lastTransaction'],
-                'balance': balance,
-                'isNPA': balance < 0,
-                'profileImageUrl': customerData['profileImageUrl'],
-              }),
-              transactions: [],
-              unreadCount: combinedUnread, // 👈 now includes orders
-            );
-          }).toList(),
+        return CustomerWithTransactions(
+          customer: Customer.fromMap({
+            'id': customerDoc.id,
+            'name': formatStringToCamelCase(customerData['name']),
+            'number': customerData['number'],
+            'category': customerData['category'],
+            'lastTransaction': customerData['lastTransaction'],
+            'balance': balance,
+            'isNPA': balance < 0,
+            'profileImageUrl': customerData['profileImageUrl'],
+          }),
+          transactions: [],
+          unreadCount: combinedUnread, // 👈 now includes orders
+        );
+      }).toList(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     final dataModel = context.watch<AppModel>();
     return Scaffold(
       body: Padding(
@@ -292,14 +290,23 @@ class _EntityTabState extends State<EntityTab> {
                       if (widget.emptyCtaLabel != null &&
                           widget.onEmptyCtaTap != null) ...[
                         SizedBox(height: SizeConfig.heightMultiplier * 3),
-                        ElevatedButton.icon(
-                          onPressed: widget.onEmptyCtaTap,
-                          icon: const Icon(Icons.person_add),
-                          label: Text(widget.emptyCtaLabel!),
-                          style: ElevatedButton.styleFrom(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: SizeConfig.imageSizeMultiplier * 6,
-                              vertical: SizeConfig.heightMultiplier * 1.5,
+                        ActivationCoachmark(
+                          userId: currentUserId,
+                          coachmarkKey: 'add_first_customer',
+                          title: 'Start with one customer',
+                          message:
+                              'Save one real customer. Pasella opens their Pay Later screen next.',
+                          icon: Icons.person_add_alt_1_outlined,
+                          enabled: widget.category == 'Customer',
+                          child: ElevatedButton.icon(
+                            onPressed: widget.onEmptyCtaTap,
+                            icon: const Icon(Icons.person_add),
+                            label: Text(widget.emptyCtaLabel!),
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: SizeConfig.imageSizeMultiplier * 6,
+                                vertical: SizeConfig.heightMultiplier * 1.5,
+                              ),
                             ),
                           ),
                         ),
@@ -316,8 +323,7 @@ class _EntityTabState extends State<EntityTab> {
                           if (url.isEmpty) return const SizedBox.shrink();
                           return Column(
                             children: [
-                              SizedBox(
-                                  height: SizeConfig.heightMultiplier * 1),
+                              SizedBox(height: SizeConfig.heightMultiplier * 1),
                               TextButton.icon(
                                 onPressed: () {
                                   Navigator.of(context).push(
@@ -330,8 +336,7 @@ class _EntityTabState extends State<EntityTab> {
                                   );
                                 },
                                 icon: const Icon(Icons.play_circle_outline),
-                                label: const Text(
-                                    'Watch a 2-min walkthrough'),
+                                label: const Text('Watch a 2-min walkthrough'),
                               ),
                             ],
                           );
@@ -368,17 +373,18 @@ class _EntityTabState extends State<EntityTab> {
               WhatsAppCapabilityCache.instance.primeFor(numbers);
             }
 
-            List<CustomerWithTransactions> filteredEntities = dataModel
-                .applyFilters(allEntities);
+            List<CustomerWithTransactions> filteredEntities =
+                dataModel.applyFilters(allEntities);
 
             String? searchTerm = widget.searchTextNotifier.value?.toLowerCase();
+            final hasSearchTerm =
+                searchTerm != null && searchTerm.trim().isNotEmpty;
             if (searchTerm != null && searchTerm.isNotEmpty) {
-              filteredEntities =
-                  filteredEntities.where((entity) {
-                    return entity.customer.name.toLowerCase().contains(
+              filteredEntities = filteredEntities.where((entity) {
+                return entity.customer.name.toLowerCase().contains(
                       searchTerm,
                     );
-                  }).toList();
+              }).toList();
             }
 
             if (filteredEntities.isEmpty) {
@@ -413,51 +419,54 @@ class _EntityTabState extends State<EntityTab> {
                 return SingleChildScrollView(
                   controller: widget.scrollController,
                   child: Column(
-                    children:
-                        filteredEntities.map((entityWithTransactions) {
-                          LedgerTransaction? lastTransaction;
-                          double balance =
-                              entityWithTransactions.customer.balance;
+                    children: [
+                      if (widget.category == 'Customer' && !hasSearchTerm)
+                        CustomerGrowthNudge(
+                          customerCount: allEntities.length,
+                          onAddCustomer: widget.onEmptyCtaTap,
+                        ),
+                      ...filteredEntities.map((entityWithTransactions) {
+                        LedgerTransaction? lastTransaction;
+                        double balance =
+                            entityWithTransactions.customer.balance;
 
-                          if (entityWithTransactions
-                                      .customer.lastTransaction !=
-                                  null &&
-                              entityWithTransactions
-                                  .customer
-                                  .lastTransaction!
-                                  .isNotEmpty) {
-                            lastTransaction = LedgerTransaction.fromMap(
-                              entityWithTransactions.customer.lastTransaction!,
-                            );
-                          }
-
-                          return TransactionTile(
-                            color: kTertiaryColor.value,
-                            name: entityWithTransactions.customer.name,
-                            profileImageUrl: entityWithTransactions
-                                .customer.profileImageUrl,
-                            balance: balance,
-                            amount: lastTransaction != null
-                                ? lastTransaction.amount.toDouble()
-                                : 0,
-                            remarks: lastTransaction?.remarks ??
-                                'No transactions yet',
-                            status: lastTransaction?.status ?? 'DUE',
-                            type: lastTransaction?.type ?? 'Credit',
-                            date: lastTransaction?.date != null
-                                ? DateFormat('y MMM d, h:mm a')
-                                    .format(lastTransaction!.date)
-                                : '',
-                            selectedCustomerId:
-                                entityWithTransactions.customer.id,
-                            isNPA: entityWithTransactions.customer.isNPA,
-                            number: entityWithTransactions.customer.number,
-                            unreadCount: entityWithTransactions.unreadCount,
-                            hasWhatsApp: WhatsAppCapabilityCache.instance
-                                .capabilityFor(
-                                    entityWithTransactions.customer.number),
+                        if (entityWithTransactions.customer.lastTransaction !=
+                                null &&
+                            entityWithTransactions
+                                .customer.lastTransaction!.isNotEmpty) {
+                          lastTransaction = LedgerTransaction.fromMap(
+                            entityWithTransactions.customer.lastTransaction!,
                           );
-                        }).toList(),
+                        }
+
+                        return TransactionTile(
+                          color: kTertiaryColor.value,
+                          name: entityWithTransactions.customer.name,
+                          profileImageUrl:
+                              entityWithTransactions.customer.profileImageUrl,
+                          balance: balance,
+                          amount: lastTransaction != null
+                              ? lastTransaction.amount.toDouble()
+                              : 0,
+                          remarks:
+                              lastTransaction?.remarks ?? 'No transactions yet',
+                          status: lastTransaction?.status ?? 'DUE',
+                          type: lastTransaction?.type ?? 'Credit',
+                          date: lastTransaction?.date != null
+                              ? DateFormat('y MMM d, h:mm a')
+                                  .format(lastTransaction!.date)
+                              : '',
+                          selectedCustomerId:
+                              entityWithTransactions.customer.id,
+                          isNPA: entityWithTransactions.customer.isNPA,
+                          number: entityWithTransactions.customer.number,
+                          unreadCount: entityWithTransactions.unreadCount,
+                          hasWhatsApp: WhatsAppCapabilityCache.instance
+                              .capabilityFor(
+                                  entityWithTransactions.customer.number),
+                        );
+                      }),
+                    ],
                   ),
                 );
               },
