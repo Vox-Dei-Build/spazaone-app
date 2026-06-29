@@ -65,14 +65,11 @@ class _LedgerPageState extends State<LedgerPage> {
         body: SafeArea(
           child: Padding(
             padding: LayoutConstants.padding10Horizontal,
-            // PAS-UX-09: the OnboardingChecklist used to mount here as
-            // `belowHeaderCard`. It has moved up to the Dashboard
-            // scaffold (lib/pages/dashboard/dashboard.dart) so it's
-            // visible across Customers / Products / Sales, matching
-            // the industry pattern (Shopify, Stripe, Linear,
-            // Intercom) where activation checklists are anchored to
-            // the home/dashboard chrome rather than a single feature
-            // tab.
+            // The customer setup checklist now mounts inside
+            // CustomerTab. Keeping it inside the Customers surface
+            // makes the first action ("add a customer") match the
+            // page context instead of competing with Products or
+            // Sales.
             child: LedgerMainContent(
               ledgerViewModel: ledgerViewModel,
               tabIndexNotifier: _tabIndexNotifier,

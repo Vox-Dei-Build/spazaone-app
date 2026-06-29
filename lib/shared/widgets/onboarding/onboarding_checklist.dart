@@ -11,9 +11,9 @@ import 'package:pasella/pages/promote/utils/template_status.dart';
 /// scaffolded path through the four actions that produce the first
 /// believable "aha" moment:
 ///
-///   1. Add a product to your stock list.
-///   2. Add a customer.
-///   3. Record your first sale.
+///   1. Add a customer.
+///   2. Record your first sale.
+///   3. Add a product to your stock list when stock detail is needed.
 ///   4. Get a WhatsApp template approved (so you can run a promotion).
 ///
 /// Until each step is done, the merchant has no concrete reason to
@@ -155,45 +155,56 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
       debugPrint('[OnboardingChecklist] $key signal failed: $error');
     }
 
-    _productsSub = userScope.collection('products').limit(1).snapshots().listen(
-      (snap) {
-        if (!mounted) return;
-        final exists = snap.docs.isNotEmpty;
-        if (exists != _autoAddProduct) {
-          setState(() => _autoAddProduct = exists);
-        }
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        handleSignalError('products', error, stackTrace);
-      },
-    );
+    _productsSub = userScope
+        .collection('products')
+        .limit(1)
+        .snapshots()
+        .listen(
+          (snap) {
+            if (!mounted) return;
+            final exists = snap.docs.isNotEmpty;
+            if (exists != _autoAddProduct) {
+              setState(() => _autoAddProduct = exists);
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            handleSignalError('products', error, stackTrace);
+          },
+        );
 
-    _customersSub =
-        userScope.collection('customers').limit(1).snapshots().listen(
-      (snap) {
-        if (!mounted) return;
-        final exists = snap.docs.isNotEmpty;
-        if (exists != _autoAddCustomer) {
-          setState(() => _autoAddCustomer = exists);
-        }
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        handleSignalError('customers', error, stackTrace);
-      },
-    );
+    _customersSub = userScope
+        .collection('customers')
+        .limit(1)
+        .snapshots()
+        .listen(
+          (snap) {
+            if (!mounted) return;
+            final exists = snap.docs.isNotEmpty;
+            if (exists != _autoAddCustomer) {
+              setState(() => _autoAddCustomer = exists);
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            handleSignalError('customers', error, stackTrace);
+          },
+        );
 
-    _salesSub = userScope.collection('sales').limit(1).snapshots().listen(
-      (snap) {
-        if (!mounted) return;
-        final exists = snap.docs.isNotEmpty;
-        if (exists != _autoRecordSale) {
-          setState(() => _autoRecordSale = exists);
-        }
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        handleSignalError('sales', error, stackTrace);
-      },
-    );
+    _salesSub = userScope
+        .collection('sales')
+        .limit(1)
+        .snapshots()
+        .listen(
+          (snap) {
+            if (!mounted) return;
+            final exists = snap.docs.isNotEmpty;
+            if (exists != _autoRecordSale) {
+              setState(() => _autoRecordSale = exists);
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            handleSignalError('sales', error, stackTrace);
+          },
+        );
 
     // Templates live in a top-level `messagingTemplates` collection
     // scoped by `userId`. Approval status is a nested field that the
@@ -209,20 +220,20 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
         .limit(10)
         .snapshots()
         .listen(
-      (snap) {
-        if (!mounted) return;
-        final anyApproved = snap.docs.any((doc) {
-          final data = doc.data();
-          return templateStatusOf(data) == TemplateStatus.approved;
-        });
-        if (anyApproved != _autoApproveTemplate) {
-          setState(() => _autoApproveTemplate = anyApproved);
-        }
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        handleSignalError('messagingTemplates', error, stackTrace);
-      },
-    );
+          (snap) {
+            if (!mounted) return;
+            final anyApproved = snap.docs.any((doc) {
+              final data = doc.data();
+              return templateStatusOf(data) == TemplateStatus.approved;
+            });
+            if (anyApproved != _autoApproveTemplate) {
+              setState(() => _autoApproveTemplate = anyApproved);
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            handleSignalError('messagingTemplates', error, stackTrace);
+          },
+        );
   }
 
   void _loadState() {
@@ -281,11 +292,12 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
     return false;
   }
 
-  int get _completedCount => [
-        _itemAddProduct,
+  int get _completedCount =>
+      [
         _itemAddCustomer,
         _itemRecordSale,
-        _itemApproveTemplate
+        _itemAddProduct,
+        _itemApproveTemplate,
       ].where(_isDone).length;
 
   bool get _shouldHideChecklist => _completedCount >= 3;
@@ -297,9 +309,7 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -309,19 +319,26 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Get started with Pasella',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    'First steps in Pasella',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                 ),
-                Text(
-                  '$_completedCount / 4',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[700],
-                    fontWeight: FontWeight.w600,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$_completedCount / 4',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.green.shade800,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -337,28 +354,24 @@ class _OnboardingChecklistState extends State<OnboardingChecklist> {
               // permanently via WalletBalancePill in PageHeader chrome
               // (lib/shared/widgets/page_header.dart:97), so we don't
               // need to repeat it in this subtitle.
-              'Four quick steps so the rest of the app has data '
-              'to work with.',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[700],
-              ),
+              'Start with a customer so credit, sales, and messages have a real person to work with.',
+              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
             ),
             const SizedBox(height: 8),
             _buildItem(
-              key: _itemAddProduct,
-              label: 'Add your first product',
-              onTap: widget.onAddProduct,
-            ),
-            _buildItem(
               key: _itemAddCustomer,
-              label: 'Add a customer',
+              label: 'Add your first customer',
               onTap: widget.onAddCustomer,
             ),
             _buildItem(
               key: _itemRecordSale,
               label: 'Record your first sale',
               onTap: widget.onRecordSale,
+            ),
+            _buildItem(
+              key: _itemAddProduct,
+              label: 'Add a product when you need stock detail',
+              onTap: widget.onAddProduct,
             ),
             _buildItem(
               key: _itemApproveTemplate,

@@ -40,6 +40,11 @@ class EntityTab extends StatefulWidget {
   final String? emptyCtaLabel;
   final VoidCallback? onEmptyCtaTap;
 
+  /// Optional non-empty list header. CustomerTab uses this for the
+  /// customer setup checklist so the card scrolls with the customer
+  /// list instead of consuming fixed vertical space above it.
+  final Widget? listHeader;
+
   /// PAS-AUTH-03: optional walkthrough video key. When set and the
   /// matching Remote Config entry returns a non-empty URL, a "Watch a
   /// 2-min walkthrough" link is rendered below the primary CTA — same
@@ -57,6 +62,7 @@ class EntityTab extends StatefulWidget {
     this.scrollController,
     this.emptyCtaLabel,
     this.onEmptyCtaTap,
+    this.listHeader,
     this.tutorialKey,
     this.tutorialTitle = 'How to use Pasella',
     Key? key,
@@ -420,6 +426,8 @@ class _EntityTabState extends State<EntityTab> {
                   controller: widget.scrollController,
                   child: Column(
                     children: [
+                      if (!hasSearchTerm && widget.listHeader != null)
+                        widget.listHeader!,
                       if (widget.category == 'Customer' && !hasSearchTerm)
                         CustomerGrowthNudge(
                           customerCount: allEntities.length,

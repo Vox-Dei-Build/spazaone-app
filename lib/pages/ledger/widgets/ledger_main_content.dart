@@ -15,11 +15,8 @@ class LedgerMainContent extends StatelessWidget {
   final ValueNotifier<int> tabIndexNotifier;
 
   /// Optional in-flow card rendered between the page header / tab bar
-  /// and the tab content. Used by the LedgerPage to host the
-  /// onboarding checklist (PAS-UX-02) below the actual page rhythm
-  /// rather than as a top-of-page banner. Pre-release feedback flagged
-  /// the old top-of-page placement as visually disconnected from the
-  /// rest of the surface.
+  /// and the tab content. Kept as a generic slot for future ledger
+  /// surfaces that need page-level context above the tab body.
   final Widget? belowHeaderCard;
 
   /// PAS-UX-09: tap handler for the empty Customers-tab CTA. Passed
@@ -56,11 +53,10 @@ class LedgerMainContent extends StatelessWidget {
                   );
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder:
-                          (context) => LoomVideoPage(
-                            loomUrl: url,
-                            title: 'How to Add Customers',
-                          ),
+                      builder: (context) => LoomVideoPage(
+                        loomUrl: url,
+                        title: 'How to Add Customers',
+                      ),
                     ),
                   );
                 },

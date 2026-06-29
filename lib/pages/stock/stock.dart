@@ -164,10 +164,9 @@ class _StockPageState extends State<StockPage>
                               // PAS-UX-04: empty-state recovery — wire
                               // the same affordances the FAB + kebab
                               // expose so a first-time merchant on an
-                              // empty catalogue has an inline path to
-                              // either add their first product or watch
-                              // the walkthrough, instead of staring at
-                              // a dead "No products available" label.
+                              // empty catalogue has an inline setup
+                              // path instead of staring at a dead
+                              // "No products available" label.
                               onAddProduct: () => _openNewProduct(),
                               onWatchTutorial: () => _openTutorial(),
                             ),
@@ -207,9 +206,9 @@ class _StockPageState extends State<StockPage>
         : Container();
   }
 
-  /// PAS-UX-04: shared launcher used by both the FAB and the empty-state
-  /// "Add your first product" CTA so the two affordances can never
-  /// drift in behaviour.
+  /// PAS-UX-04: shared launcher used by the FAB and the product
+  /// empty-state secondary action so the affordances can never drift
+  /// in behaviour.
   void _openNewProduct() {
     Navigator.of(context)
         .push(

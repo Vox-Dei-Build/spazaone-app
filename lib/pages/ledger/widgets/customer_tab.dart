@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
+import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/pages/promote/promotions_page.dart';
+import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
 import 'package:pasella/pages/ledger/widgets/customer_search_box.dart';
+import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
+import 'package:pasella/shared/widgets/onboarding/customer_onboarding_checklist_card.dart';
+import 'package:provider/provider.dart';
 
 class CustomerTab extends StatefulWidget {
   final ValueNotifier<String?> searchTextNotifier;
@@ -151,6 +159,14 @@ class _CustomerTabState extends State<CustomerTab> {
             emptyCtaLabel:
                 widget.onAddCustomer == null ? null : 'Add your first customer',
             onEmptyCtaTap: widget.onAddCustomer,
+            listHeader: CustomerOnboardingChecklistCard(
+              userId: FirebaseAuth.instance.currentUser?.uid ?? '',
+              onAddCustomer: widget.onAddCustomer ?? () {},
+              onChooseWhatsAppProduct: () => _openProducts(context),
+              onOpenOrderingLink: () => _openOrderingLink(context),
+              onOpenPromotions: () => _openPromotions(context),
+              onOpenBanking: () => _openBanking(context),
+            ),
             // PAS-AUTH-03: bring Customers up to Stock-parity by
             // surfacing the existing TUTORIAL_CAPTURE_CUSTOMERS Loom
             // video on the empty state. The remote-config key already
@@ -161,6 +177,33 @@ class _CustomerTabState extends State<CustomerTab> {
           ),
         ),
       ],
+    );
+  }
+
+  void _openProducts(BuildContext context) {
+    context.read<AppModel>().updateCurrentIndex(1);
+  }
+
+  void _openOrderingLink(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SharePage(source: 'customer_onboarding'),
+      ),
+    );
+  }
+
+  void _openPromotions(BuildContext context) {
+    Navigator.of(context).pushNamed(PromotionsPage.id);
+  }
+
+  void _openBanking(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const WalletPage(
+          initialTab: WalletInitialTab.account,
+          initialAccountView: InfoView.banking,
+        ),
+      ),
     );
   }
 }
