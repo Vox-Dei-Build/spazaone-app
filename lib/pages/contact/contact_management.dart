@@ -12,12 +12,15 @@ class CustomerManagementPage extends StatefulWidget {
   final String customerName;
   final String customerId;
   final String? mobileNumber;
+  final int initialTabIndex;
 
-  const CustomerManagementPage(
-      {super.key,
-      required this.customerName,
-      required this.customerId,
-      this.mobileNumber});
+  const CustomerManagementPage({
+    super.key,
+    required this.customerName,
+    required this.customerId,
+    this.mobileNumber,
+    this.initialTabIndex = 0,
+  });
 
   @override
   _CustomerManagementPageState createState() => _CustomerManagementPageState();
@@ -28,7 +31,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
   late CustomerManagementViewModel customerManagementViewModel;
   late CustomerBalanceSummaryProvider customerBalanceSummaryProvider;
   late TabController _tabController;
-  final ValueNotifier<int> _tabIndexNotifier = ValueNotifier<int>(0);
+  late final ValueNotifier<int> _tabIndexNotifier;
 
   @override
   void initState() {
@@ -36,16 +39,30 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
     customerBalanceSummaryProvider =
         Provider.of<CustomerBalanceSummaryProvider>(context, listen: false);
     customerBalanceSummaryProvider.setCustomerDetails(
-        widget.customerName, widget.customerId, widget.mobileNumber);
+      widget.customerName,
+      widget.customerId,
+      widget.mobileNumber,
+    );
 
     // Initialize the view model
     customerManagementViewModel = CustomerManagementViewModel(
-        widget.customerId,
-        widget.customerName,
-        customerBalanceSummaryProvider,
-        widget.mobileNumber);
+      widget.customerId,
+      widget.customerName,
+      customerBalanceSummaryProvider,
+      widget.mobileNumber,
+    );
 
-    _tabController = TabController(length: 3, vsync: this);
+    final initialTabIndex = widget.initialTabIndex < 0
+        ? 0
+        : widget.initialTabIndex > 2
+            ? 2
+            : widget.initialTabIndex;
+    _tabIndexNotifier = ValueNotifier<int>(initialTabIndex);
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: initialTabIndex,
+    );
     _tabController.addListener(() {
       _tabIndexNotifier.value = _tabController.index;
 
@@ -81,110 +98,114 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 0),
-              child: Column(children: [
-                TabBar(
-                  controller: _tabController,
-                  labelStyle: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.8,
-                    fontWeight: FontWeight.normal,
-                  ),
-                  unselectedLabelStyle: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.8,
-                    fontWeight: FontWeight.normal,
-                  ),
-                  tabs: [
-                    const Tab(text: 'Pay Later'),
-                    Consumer<CustomerManagementViewModel>(
-                      builder: (context, model, child) {
-                        final count = model.ordersUnreadCount;
-                        return Tab(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Orders'),
-                              if (count > 0)
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                      left: SizeConfig.imageSizeMultiplier * 1),
-                                  child: CircleAvatar(
-                                    radius:
-                                        SizeConfig.imageSizeMultiplier * 2.3,
-                                    backgroundColor: Colors.red,
-                                    child: Text(
-                                      count.toString(),
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 1.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    Consumer<CustomerManagementViewModel>(
-                      // 🔥 Wrap this tab with Consumer
-                      builder: (context, model, child) {
-                        return Tab(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Messages'),
-                              if (model.unreadMessagesCount >
-                                  0) // 🔥 Show badge only if unread messages exist
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                      left: SizeConfig.imageSizeMultiplier * 1),
-                                  child: CircleAvatar(
-                                    radius:
-                                        SizeConfig.imageSizeMultiplier * 2.3,
-                                    backgroundColor: Colors.green,
-                                    child: Text(
-                                      model.unreadMessagesCount.toString(),
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 1.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                Expanded(
-                  child: TabBarView(
+              child: Column(
+                children: [
+                  TabBar(
                     controller: _tabController,
-                    children: [
-                      TransactionsManagementPage(
-                        customerName: widget.customerName,
-                        customerId: widget.customerId,
-                        mobileNumber: widget.mobileNumber,
+                    labelStyle: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    tabs: [
+                      const Tab(text: 'Pay Later'),
+                      Consumer<CustomerManagementViewModel>(
+                        builder: (context, model, child) {
+                          final count = model.ordersUnreadCount;
+                          return Tab(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Orders'),
+                                if (count > 0)
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      left: SizeConfig.imageSizeMultiplier * 1,
+                                    ),
+                                    child: CircleAvatar(
+                                      radius:
+                                          SizeConfig.imageSizeMultiplier * 2.3,
+                                      backgroundColor: Colors.red,
+                                      child: Text(
+                                        count.toString(),
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                      OrdersManagementPage(
-                        customerId: widget.customerId,
-                        customerName: widget.customerName,
-                      ),
-                      ConnectManagementPage(
-                        customerId: widget.customerId,
-                        profileImageUrl:
-                            customerManagementViewModel.profileImageUrl,
-                        customerName: widget.customerName,
-                        mobileNumber: widget.mobileNumber,
+                      Consumer<CustomerManagementViewModel>(
+                        // 🔥 Wrap this tab with Consumer
+                        builder: (context, model, child) {
+                          return Tab(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Messages'),
+                                if (model.unreadMessagesCount >
+                                    0) // 🔥 Show badge only if unread messages exist
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      left: SizeConfig.imageSizeMultiplier * 1,
+                                    ),
+                                    child: CircleAvatar(
+                                      radius:
+                                          SizeConfig.imageSizeMultiplier * 2.3,
+                                      backgroundColor: Colors.green,
+                                      child: Text(
+                                        model.unreadMessagesCount.toString(),
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
-                ),
-              ]),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        TransactionsManagementPage(
+                          customerName: widget.customerName,
+                          customerId: widget.customerId,
+                          mobileNumber: widget.mobileNumber,
+                        ),
+                        OrdersManagementPage(
+                          customerId: widget.customerId,
+                          customerName: widget.customerName,
+                        ),
+                        ConnectManagementPage(
+                          customerId: widget.customerId,
+                          profileImageUrl:
+                              customerManagementViewModel.profileImageUrl,
+                          customerName: widget.customerName,
+                          mobileNumber: widget.mobileNumber,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,6 +13,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
+import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/settings/chat/chat_page.dart';
@@ -29,6 +31,7 @@ import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:provider/provider.dart';
@@ -59,7 +62,9 @@ Future<void> setupFlutterNotifications() async {
       DarwinInitializationSettings();
 
   const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsIOS,
+  );
 
   await flutterLocalNotificationsPlugin.initialize(
     initializationSettings,
@@ -121,8 +126,10 @@ void showLocalNotification(RemoteMessage message) async {
 
   const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
 
-  const notificationDetails =
-      NotificationDetails(android: androidDetails, iOS: iosDetails);
+  const notificationDetails = NotificationDetails(
+    android: androidDetails,
+    iOS: iosDetails,
+  );
 
   await flutterLocalNotificationsPlugin.show(
     message.hashCode,
@@ -134,7 +141,8 @@ void showLocalNotification(RemoteMessage message) async {
 }
 
 Future<void> _firebaseMessagingOnMessageOpenedAppHandler(
-    RemoteMessage message) async {
+  RemoteMessage message,
+) async {
   _handleNotificationRoute(message);
 }
 
@@ -146,6 +154,170 @@ void _handleNotificationRoute(RemoteMessage message) {
   _handleNotificationRouteData(message.data['route']?.toString(), message.data);
 }
 
+String? _notificationString(Object? value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
+}
+
+String? _firstNotificationString(Iterable<Object?> values) {
+  for (final value in values) {
+    final text = _notificationString(value);
+    if (text != null) return text;
+  }
+  return null;
+}
+
+bool _isCustomerMessageNotification(Uri? uri, Map<String, dynamic> data) {
+  final notificationType = _notificationString(data['notificationType']);
+  final action = _notificationString(data['action']);
+  return uri?.path == '/customerAccount' ||
+      notificationType == 'customer_message' ||
+      action == 'open_customer_messages';
+}
+
+Future<User?> _notificationCurrentUser() async {
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser != null) return currentUser;
+
+  return FirebaseAuth.instance
+      .authStateChanges()
+      .firstWhere((user) => user != null)
+      .timeout(const Duration(seconds: 3), onTimeout: () => null);
+}
+
+void _pushCustomerAccountWhenReady({
+  required String customerId,
+  required String customerName,
+  String? mobileNumber,
+}) {
+  void push() {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => CustomerManagementPage(
+          customerName: customerName,
+          customerId: customerId,
+          mobileNumber: mobileNumber,
+          initialTabIndex: 2,
+        ),
+      ),
+    );
+  }
+
+  if (navigatorKey.currentState != null) {
+    push();
+    return;
+  }
+
+  WidgetsBinding.instance.addPostFrameCallback((_) => push());
+}
+
+Future<void> _openCustomerFromMessageNotification(
+  Uri? uri,
+  Map<String, dynamic> data,
+) async {
+  final query = uri?.queryParameters ?? const <String, String>{};
+  final customerId = _firstNotificationString([
+    data['customerId'],
+    query['customerId'],
+  ]);
+  final payloadCustomerName = _firstNotificationString([
+    data['customerName'],
+    query['customerName'],
+  ]);
+  final payloadCustomerNumber = _firstNotificationString([
+    data['customerNumber'],
+    query['customerNumber'],
+  ]);
+
+  try {
+    final user = await _notificationCurrentUser();
+    if (user == null) {
+      CrashService.instance.recordNonFatal(
+        StateError('Customer message notification opened without a user'),
+        StackTrace.current,
+        reason: 'customer message notification missing signed-in user',
+      );
+      return;
+    }
+
+    final customerCollection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('customers');
+
+    if (customerId != null) {
+      final customerDoc = await customerCollection.doc(customerId).get();
+      final customerData = customerDoc.data();
+      if (customerDoc.exists && customerData != null) {
+        _pushCustomerAccountWhenReady(
+          customerId: customerDoc.id,
+          customerName: _firstNotificationString([
+                customerData['name'],
+                payloadCustomerName,
+              ]) ??
+              'Customer',
+          mobileNumber: _firstNotificationString([
+            customerData['number'],
+            payloadCustomerNumber,
+          ]),
+        );
+        return;
+      }
+
+      if (payloadCustomerName != null) {
+        _pushCustomerAccountWhenReady(
+          customerId: customerId,
+          customerName: payloadCustomerName,
+          mobileNumber: payloadCustomerNumber,
+        );
+        return;
+      }
+    }
+
+    final normalizedNumber = normalizePhoneNumber(payloadCustomerNumber);
+    if (normalizedNumber.isNotEmpty) {
+      final snapshot = await customerCollection
+          .where('number', isEqualTo: normalizedNumber)
+          .limit(1)
+          .get();
+      if (snapshot.docs.isNotEmpty) {
+        final customerDoc = snapshot.docs.first;
+        final customerData = customerDoc.data();
+        _pushCustomerAccountWhenReady(
+          customerId: customerDoc.id,
+          customerName: _firstNotificationString([
+                customerData['name'],
+                payloadCustomerName,
+              ]) ??
+              'Customer',
+          mobileNumber: _firstNotificationString([
+            customerData['number'],
+            normalizedNumber,
+          ]),
+        );
+        return;
+      }
+    }
+
+    CrashService.instance.recordNonFatal(
+      StateError('Customer message notification could not resolve customer'),
+      StackTrace.current,
+      reason: 'customer message notification customer lookup failed',
+      context: {
+        'customerId': customerId ?? '',
+        'hasCustomerNumber': (payloadCustomerNumber != null).toString(),
+      },
+    );
+  } catch (error, stack) {
+    CrashService.instance.recordNonFatal(
+      error,
+      stack,
+      reason: 'customer message notification navigation failed',
+    );
+  }
+}
+
 /// Routes a notification tap to the correct screen.
 ///
 /// Recognises the `route` data field. For the `/promotionsPage` family of
@@ -154,9 +326,13 @@ void _handleNotificationRoute(RemoteMessage message) {
 /// this avoids needing a full deep-link router for what is currently a small
 /// number of routes.
 void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
-  if (route == null || route.isEmpty) return;
+  final uri = route == null || route.isEmpty ? null : Uri.tryParse(route);
 
-  final uri = Uri.tryParse(route);
+  if (_isCustomerMessageNotification(uri, data)) {
+    unawaited(_openCustomerFromMessageNotification(uri, data));
+    return;
+  }
+
   if (uri == null) return;
 
   if (uri.path == '/promotionsPage') {
@@ -164,10 +340,7 @@ void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
   }
 
   if (uri.path == Dashboard.id) {
-    final activationIntent = ActivationNudgeIntent.fromUri(
-      uri,
-      data: data,
-    );
+    final activationIntent = ActivationNudgeIntent.fromUri(uri, data: data);
     if (activationIntent != null) {
       ActivationNudgeIntentBus.instance.set(activationIntent);
       final nudgeType =
@@ -198,7 +371,7 @@ void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
       StateError('Unknown notification route: $path'),
       StackTrace.current,
       reason: 'notification route not registered',
-      context: {'route': route},
+      context: {'route': route ?? ''},
     );
     return;
   }
@@ -216,12 +389,8 @@ Future<void> _initializeRemoteConfigAndSmartlook() async {
 }
 
 void requestNotificationPermission() async {
-  NotificationSettings settings =
-      await FirebaseMessaging.instance.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
+  NotificationSettings settings = await FirebaseMessaging.instance
+      .requestPermission(alert: true, badge: true, sound: true);
 
   if (settings.authorizationStatus == AuthorizationStatus.authorized) {
     print('✅ User granted permission');
@@ -285,10 +454,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set UI overlay style
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.dark,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  );
 
   try {
     // Load environment variables
@@ -315,8 +486,9 @@ void main() async {
     //   Phase 2: enforce per service in Firebase Console.
     //   Phase 3: drop manual `X-Firebase-AppCheck` header plumbing.
 
-    FirebaseFirestore.instance.settings =
-        const Settings(persistenceEnabled: true);
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+    );
 
     // Initialize Remote Config
     if (kReleaseMode) {
@@ -377,8 +549,9 @@ void main() async {
     FirebaseMessaging.instance.getInitialMessage().then(_onInitialMessage);
 
     // Foreground message listener
-    FirebaseMessaging.onMessage
-        .listen(showLocalNotification); // ✅ listen and display
+    FirebaseMessaging.onMessage.listen(
+      showLocalNotification,
+    ); // ✅ listen and display
 
     // NOTE: onMessageOpenedApp is already wired above via
     // `_onMessageOpenedAppHandler`; do not subscribe twice or
@@ -479,10 +652,13 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => WalletBalanceProvider()),
         ChangeNotifierProvider(create: (context) => BalanceSummaryProvider()),
         ChangeNotifierProvider(
-            create: (context) => CustomerBalanceSummaryProvider()),
+          create: (context) => CustomerBalanceSummaryProvider(),
+        ),
         ChangeNotifierProvider<LedgerViewModel>(
-            create: (context) =>
-                LedgerViewModel(Provider.of<AppModel>(context, listen: false))),
+          create: (context) => LedgerViewModel(
+            Provider.of<AppModel>(context, listen: false),
+          ),
+        ),
         ChangeNotifierProvider<PromotionsViewModel>(
           create: (context) {
             final vm = PromotionsViewModel();

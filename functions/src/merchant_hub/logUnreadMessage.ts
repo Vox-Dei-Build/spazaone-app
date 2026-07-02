@@ -1,6 +1,76 @@
 import { functions, db } from "../config/main";
 import { AndroidConfig } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
+import { normalizePhoneNumber } from "../utils/phoneUtils";
+
+type NotificationCustomer = {
+  id: string;
+  name: string;
+  number: string;
+};
+
+async function findCustomerForMessageNotification(
+  merchantId: string,
+  customerNumber: string,
+): Promise<NotificationCustomer | null> {
+  const normalizedNumber = normalizePhoneNumber(customerNumber);
+  if (!normalizedNumber) return null;
+
+  const snapshot = await db
+    .collection("users")
+    .doc(merchantId)
+    .collection("customers")
+    .where("number", "==", normalizedNumber)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) return null;
+
+  const doc = snapshot.docs[0];
+  const data = doc.data();
+  const rawName = data?.name;
+  const rawNumber = data?.number;
+  const name =
+    typeof rawName === "string" && rawName.trim() !== ""
+      ? rawName.trim()
+      : "Customer";
+  const number =
+    typeof rawNumber === "string" && rawNumber.trim() !== ""
+      ? rawNumber.trim()
+      : normalizedNumber;
+
+  return { id: doc.id, name, number };
+}
+
+function buildCustomerMessageNotificationData(
+  unreadCount: number,
+  customer: NotificationCustomer | null,
+  customerNumber: string,
+): Record<string, string> {
+  const data: Record<string, string> = {
+    unreadCount: unreadCount.toString(),
+    notificationType: "customer_message",
+    action: "open_customer_messages",
+    route: "/customerAccount?tab=messages",
+  };
+
+  if (customer) {
+    data.customerId = customer.id;
+    data.customerName = customer.name;
+    data.customerNumber = customer.number;
+    data.route =
+      `/customerAccount?customerId=${encodeURIComponent(customer.id)}` +
+      "&tab=messages";
+    return data;
+  }
+
+  const normalizedNumber = normalizePhoneNumber(customerNumber);
+  if (normalizedNumber) {
+    data.customerNumber = normalizedNumber;
+  }
+
+  return data;
+}
 
 /**
  * Cloud Function: Append a message entry to the merchant truth surface and
@@ -64,7 +134,8 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
 
     if (merchantDoc.exists) {
       const data = merchantDoc.data();
-      unreadMessages = (data?.unreadMessages as Array<Record<string, unknown>>) ?? [];
+      unreadMessages =
+        (data?.unreadMessages as Array<Record<string, unknown>>) ?? [];
       unreadCount = (data?.unreadCount as number) ?? 0;
     }
 
@@ -74,8 +145,7 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
     if (
       externalId &&
       unreadMessages.some(
-        (entry) =>
-          (entry as { externalId?: string }).externalId === externalId,
+        (entry) => (entry as { externalId?: string }).externalId === externalId,
       )
     ) {
       res.status(200).json({
@@ -141,15 +211,22 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
       },
     };
 
+    const notificationCustomer = await findCustomerForMessageNotification(
+      merchantId,
+      customerNumber,
+    );
+
     const payload = {
       notification: {
         title: "New Customer Message 📩",
-        body: "You have a new message from a customer.",
+        body: "Tap to open the customer's account.",
       },
       android: androidConfig,
-      data: {
-        unreadCount: nextUnreadCount.toString(),
-      },
+      data: buildCustomerMessageNotificationData(
+        nextUnreadCount,
+        notificationCustomer,
+        customerNumber,
+      ),
       token: merchantFCMToken,
     };
 

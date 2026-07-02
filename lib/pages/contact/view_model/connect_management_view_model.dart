@@ -116,10 +116,11 @@ class ConnectManagementViewModel {
 
       // ---- Merge + Dedupe ----
       final cutOff = DateTime(2024, 1, 1);
-      final byId = <String, Map<String, dynamic>>{};
 
       Iterable<Map<String, dynamic>> normalize(List<Map<String, dynamic>> src,
-          {required bool isSmsDefault, required bool isWaDefault}) sync* {
+          {required bool isSmsDefault,
+          required bool isWaDefault,
+          required String source}) sync* {
         for (final m in src) {
           final id = (m['sid'] ?? m['id'] ?? _compositeKey(m)).toString();
           final date = _asDate(m['dateSent']);
@@ -127,28 +128,37 @@ class ConnectManagementViewModel {
             continue;
           }
 
+          final direction = _canonicalDirection(m['direction']) ??
+              _defaultDirectionForSource(source) ??
+              m['direction']?.toString().toLowerCase() ??
+              '';
           final isWhatsApp = (m['isWhatsApp'] as bool?) ?? isWaDefault;
           final isSMS = (m['isSMS'] as bool?) ?? isSmsDefault;
 
           // Default isAI: WhatsApp outbound likely bot; SMS outbound likely agent
-          final isAI = (m['isAI'] as bool?) ??
-              (isWhatsApp && (m['direction']?.toString() == 'outbound'));
+          final isAI =
+              (m['isAI'] as bool?) ?? (isWhatsApp && direction == 'outbound');
 
           yield {
             ...m,
             'id': id,
             'dateSent': date,
+            'direction': direction,
             'isWhatsApp': isWhatsApp,
             'isSMS': isSMS,
             'isAI': isAI,
+            'source': _messageSource(m, fallback: source),
           };
         }
       }
 
       final mergedIter = <Map<String, dynamic>>[
-        ...normalize(sentSms, isSmsDefault: true, isWaDefault: false),
-        ...normalize(receivedSms, isSmsDefault: true, isWaDefault: false),
-        ...normalize(wa, isSmsDefault: false, isWaDefault: true),
+        ...normalize(sentSms,
+            isSmsDefault: true, isWaDefault: false, source: 'twilio-outbound'),
+        ...normalize(receivedSms,
+            isSmsDefault: true, isWaDefault: false, source: 'twilio-inbound'),
+        ...normalize(wa,
+            isSmsDefault: false, isWaDefault: true, source: 'botpress'),
         // Pasella truth surface: bot replies + handoff/payment-proof entries
         // mirrored from the bot. These are the source of truth for "what the
         // bot replied" — they always render, even if Twilio/Botpress polling
@@ -156,14 +166,10 @@ class ConnectManagementViewModel {
         // `_truthSurfaceEntries` so the default heuristic in `normalize` is
         // bypassed.
         ...normalize(_truthSurfaceEntries,
-            isSmsDefault: false, isWaDefault: true),
+            isSmsDefault: false, isWaDefault: true, source: 'truth-surface'),
       ];
 
-      for (final m in mergedIter) {
-        byId[m['id'] as String] = m; // last write wins
-      }
-
-      final all = byId.values.toList()
+      final all = _dedupeMergedMessages(mergedIter)
         ..sort((a, b) =>
             (a['dateSent'] as DateTime).compareTo(b['dateSent'] as DateTime));
 
@@ -199,6 +205,160 @@ class ConnectManagementViewModel {
     final body = m['message']?.toString() ?? '';
     final dir = m['direction']?.toString() ?? '';
     return '$t::$dir::$body';
+  }
+
+  List<Map<String, dynamic>> _dedupeMergedMessages(
+      Iterable<Map<String, dynamic>> messages) {
+    final deduped = <Map<String, dynamic>>[];
+
+    for (final message in messages) {
+      final duplicateIndex = deduped.indexWhere((existing) =>
+          _isSameMessageId(existing, message) ||
+          _isRenderedDuplicate(existing, message));
+
+      if (duplicateIndex == -1) {
+        deduped.add(message);
+        continue;
+      }
+
+      deduped[duplicateIndex] =
+          _mergeDuplicateMessage(deduped[duplicateIndex], message);
+    }
+
+    return deduped;
+  }
+
+  bool _isSameMessageId(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final aId = a['id']?.toString();
+    final bId = b['id']?.toString();
+    return aId != null && aId.isNotEmpty && aId == bId;
+  }
+
+  bool _isRenderedDuplicate(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final aSource = _messageSource(a);
+    final bSource = _messageSource(b);
+    final sameSource = aSource == bSource;
+
+    final aDirection = _renderedDirection(a);
+    final bDirection = _renderedDirection(b);
+    if (aDirection != bDirection) {
+      return false;
+    }
+
+    final aChannel = _messageChannel(a);
+    final bChannel = _messageChannel(b);
+    if (aChannel.isEmpty || bChannel.isEmpty || aChannel != bChannel) {
+      return false;
+    }
+
+    final aDate = _asDate(a['dateSent']);
+    final bDate = _asDate(b['dateSent']);
+    if (aDate == null || bDate == null) return false;
+    final allowedWindow =
+        sameSource ? const Duration(minutes: 1) : const Duration(minutes: 2);
+    if (aDate.difference(bDate).abs() > allowedWindow) {
+      return false;
+    }
+
+    final aBody = _renderedMessageKey(a['message']);
+    final bBody = _renderedMessageKey(b['message']);
+    final aMedia = _renderedMessageKey(a['mediaUrl']);
+    final bMedia = _renderedMessageKey(b['mediaUrl']);
+
+    if (aBody.isEmpty && aMedia.isEmpty) return false;
+    return aBody == bBody && aMedia == bMedia;
+  }
+
+  String _renderedMessageKey(dynamic value) {
+    return value
+            ?.toString()
+            .trim()
+            .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .toLowerCase() ??
+        '';
+  }
+
+  String? _canonicalDirection(dynamic value) {
+    final direction = value?.toString().trim().toLowerCase();
+    switch (direction) {
+      case 'inbound':
+      case 'incoming':
+      case 'customer':
+      case 'user':
+        return 'inbound';
+      case 'outbound':
+      case 'outgoing':
+      case 'outbound-api':
+      case 'bot':
+      case 'assistant':
+        return 'outbound';
+    }
+    return null;
+  }
+
+  String? _defaultDirectionForSource(String source) {
+    if (source == 'twilio-outbound') return 'outbound';
+    if (source == 'twilio-inbound') return 'inbound';
+    return null;
+  }
+
+  String _messageChannel(Map<String, dynamic> message) {
+    if (message['isWhatsApp'] == true) return 'whatsapp';
+    if (message['isSMS'] == true) return 'sms';
+    return '';
+  }
+
+  String _renderedDirection(Map<String, dynamic> message) {
+    return _canonicalDirection(message['direction']) ??
+        (message['isAI'] == true ? 'outbound' : 'inbound');
+  }
+
+  String _messageSource(Map<String, dynamic> message, {String fallback = ''}) {
+    final source = message['source']?.toString().trim() ?? '';
+    return source.isEmpty ? fallback : source;
+  }
+
+  Map<String, dynamic> _mergeDuplicateMessage(
+      Map<String, dynamic> existing, Map<String, dynamic> next) {
+    final preferred = _messageSourceRank(next) > _messageSourceRank(existing)
+        ? next
+        : existing;
+    final secondary = identical(preferred, next) ? existing : next;
+
+    final merged = <String, dynamic>{
+      ...secondary,
+      ...preferred,
+    };
+
+    merged['isAI'] = existing['isAI'] == true || next['isAI'] == true;
+    merged['isRead'] = existing['isRead'] == true || next['isRead'] == true;
+    merged['isWhatsApp'] =
+        existing['isWhatsApp'] == true || next['isWhatsApp'] == true;
+    merged['isSMS'] = existing['isSMS'] == true || next['isSMS'] == true;
+    merged['mediaUrl'] = _notificationValue(preferred['mediaUrl']) ??
+        _notificationValue(secondary['mediaUrl']);
+    merged['payloadType'] = _notificationValue(preferred['payloadType']) ??
+        _notificationValue(secondary['payloadType']);
+    merged['payload'] = preferred['payload'] ?? secondary['payload'];
+    merged['replyTo'] = _notificationValue(preferred['replyTo']) ??
+        _notificationValue(secondary['replyTo']);
+    merged['readAt'] = preferred['readAt'] ?? secondary['readAt'];
+
+    return merged;
+  }
+
+  int _messageSourceRank(Map<String, dynamic> message) {
+    final source = message['source']?.toString() ?? '';
+    if (source.startsWith('twilio')) return 30;
+    if (source == 'botpress') return 20;
+    if (source == 'truth-surface') return 10;
+    return 0;
+  }
+
+  String? _notificationValue(dynamic value) {
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
   }
 
   /// Best-effort mark-as-read hook
