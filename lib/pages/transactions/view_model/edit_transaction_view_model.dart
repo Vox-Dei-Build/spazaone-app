@@ -25,6 +25,8 @@ class EditTransactionViewModel extends TransactionViewModel {
   DateTime repaymentDate = DateTime.now().add(const Duration(days: 30));
   bool _isProductsLoading = false;
   bool get isProductsLoading => _isProductsLoading;
+  String get transactionLabel =>
+      transactionType == 'Credit' ? 'Transaction' : transactionType;
   late final DynamicPricingService pricingService;
 
   EditTransactionViewModel({
@@ -229,7 +231,7 @@ class EditTransactionViewModel extends TransactionViewModel {
             await MessagingNotificationService.resolveExpectedChannel(
                 mobileNumber!);
         final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send updated $transactionType notification?',
+          title: 'Send updated $transactionLabel notification?',
           subtitle: 'Message to $customerName',
           whatsappCost: whatsappCost,
           smsCost: smsCost,
@@ -333,8 +335,7 @@ class EditTransactionViewModel extends TransactionViewModel {
       await transactionRef.delete();
 
       if (context.mounted) {
-        showSnackbar(
-            context, '$transactionType deleted.', Colors.green);
+        showSnackbar(context, '$transactionLabel deleted.', Colors.green);
         SchedulerBinding.instance.addPostFrameCallback((_) {
           // Pop twice: first close the edit screen, then pop the now-stale
           // transaction detail screen so the user lands back on the
@@ -344,7 +345,7 @@ class EditTransactionViewModel extends TransactionViewModel {
       }
     } catch (error) {
       if (context.mounted) {
-        showSnackbar(context, 'Error deleting $transactionType. Please retry.',
+        showSnackbar(context, 'Error deleting $transactionLabel. Please retry.',
             Colors.red);
       }
     } finally {

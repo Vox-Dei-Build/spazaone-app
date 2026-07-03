@@ -124,7 +124,7 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                         );
                       } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                         // PAS-AUTH-03: Stock-style empty state. The
-                        // recovery actions (Credit / Payment) live in
+                        // recovery actions (Transaction / Payment) live in
                         // the sticky bottom action bar, so no third CTA
                         // here — just an explanatory line and the
                         // walkthrough link.
@@ -133,11 +133,11 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                           headline:
                               'No transactions yet for ${widget.customerName}',
                           subtitle:
-                              'Tap Credit when this customer takes goods on '
+                              'Tap Transaction when this customer takes goods on '
                               'account, attach a product when stock matters, '
                               'or tap Payment when they settle up.',
                           tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
-                          tutorialTitle: 'How to record a credit transaction',
+                          tutorialTitle: 'How to record a transaction',
                         );
                       } else {
                         return Column(

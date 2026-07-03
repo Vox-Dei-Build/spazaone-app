@@ -37,6 +37,7 @@ class EditTransactionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final transactionType = transaction['type'] as String;
     final bool isCredit = transactionType == 'Credit';
+    final transactionLabel = isCredit ? 'Transaction' : transactionType;
 
     return ChangeNotifierProvider(
       create: (_) => EditTransactionViewModel(
@@ -50,12 +51,12 @@ class EditTransactionScreen extends StatelessWidget {
       child: Consumer<EditTransactionViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
-            title: 'Edit $transactionType for $customerName',
+            title: 'Edit $transactionLabel for $customerName',
             scaffoldKey: viewModel.scaffoldKey,
             formKey: viewModel.formKey,
             isLoading: viewModel.isLoading,
             isDirty: viewModel.isDirty,
-            primaryActionLabel: 'Update $transactionType',
+            primaryActionLabel: 'Update $transactionLabel',
             primaryActionIcon:
                 isCredit ? Icons.arrow_downward : Icons.arrow_upward,
             primaryActionColor: isCredit ? Colors.red : Colors.green,
@@ -71,9 +72,9 @@ class EditTransactionScreen extends StatelessWidget {
             onPrimaryAction: () async {
               final confirmed = await ConfirmDialog.show(
                 context,
-                title: 'Update $transactionType?',
+                title: 'Update $transactionLabel?',
                 message:
-                    'This will overwrite the existing $transactionType record for $customerName.',
+                    'This will overwrite the existing $transactionLabel record for $customerName.',
                 confirmLabel: 'Update',
               );
               if (!confirmed) return;
@@ -81,9 +82,9 @@ class EditTransactionScreen extends StatelessWidget {
               await viewModel.updateTransaction(context);
             },
             onDelete: () => viewModel.deleteTransaction(context),
-            deleteConfirmTitle: 'Delete $transactionType?',
+            deleteConfirmTitle: 'Delete $transactionLabel?',
             deleteConfirmMessage:
-                'This permanently removes the $transactionType for $customerName${isCredit ? ' and returns reserved stock to inventory' : ''}.',
+                'This permanently removes the $transactionLabel for $customerName${isCredit ? ' and returns reserved stock to inventory' : ''}.',
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -104,7 +105,7 @@ class EditTransactionScreen extends StatelessWidget {
                 ),
                 if (isCredit)
                   DateRow(
-                    label: 'Date of Credit',
+                    label: 'Transaction Date',
                     value: viewModel.selectedDate,
                     firstDate: DateTime(2000),
                     lastDate: DateTime.now(),

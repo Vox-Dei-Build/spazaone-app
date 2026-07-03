@@ -25,7 +25,7 @@ class AddCreditPaymentButtons extends StatelessWidget {
       children: [
         Expanded(
           child: CustomButton(
-            title: 'Credit',
+            title: 'Transaction',
             onTap: () {
               // PAS-UX-14: gate at screen edge so anonymous users
               // see the register prompt before the form is built.

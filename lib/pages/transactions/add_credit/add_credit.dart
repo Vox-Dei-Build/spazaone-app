@@ -9,7 +9,7 @@ import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
-/// Add Credit screen — migrated onto [TransactionFormScaffold] so it
+/// Add Transaction screen — migrated onto [TransactionFormScaffold] so it
 /// shares the form structural standards (sticky CTA, real disabled
 /// state, unsaved-changes guard, locale-aware date row) with the rest
 /// of the transaction/sale forms.
@@ -36,12 +36,12 @@ class AddCreditScreen extends StatelessWidget {
       child: Consumer<AddCreditViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
-            title: 'Add Credit for $customerName',
+            title: 'Add Transaction for $customerName',
             scaffoldKey: viewModel.scaffoldKey,
             formKey: viewModel.formKey,
             isLoading: viewModel.isLoading,
             isDirty: viewModel.isDirty,
-            primaryActionLabel: 'Add Credit',
+            primaryActionLabel: 'Add Transaction',
             primaryActionIcon: Icons.arrow_downward,
             primaryActionColor: Colors.red,
             totalLabel: Text(
@@ -71,7 +71,7 @@ class AddCreditScreen extends StatelessWidget {
                   },
                 ),
                 DateRow(
-                  label: 'Date of Credit',
+                  label: 'Transaction Date',
                   value: viewModel.selectedDate,
                   firstDate: DateTime(2000),
                   lastDate: DateTime.now(),
@@ -90,7 +90,7 @@ class AddCreditScreen extends StatelessWidget {
                   coachmarkKey: 'link_product_to_credit',
                   title: 'Attach the product',
                   message:
-                      'This connects the credit to stock, customer history, and product reports.',
+                      'This connects the transaction to stock, customer history, and product reports.',
                   icon: Icons.link_outlined,
                   accentColor: Colors.red.shade700,
                   child: ProductSelectionWidget<AddCreditViewModel>(

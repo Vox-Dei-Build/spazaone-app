@@ -17,7 +17,7 @@
 //
 // State-aware:
 //  - netBalance < 0  -> "Owing"     (red accent, down arrow)
-//  - netBalance > 0  -> "In credit" (green accent, up arrow)
+//  - netBalance > 0  -> "Ahead" (green accent, up arrow)
 //  - netBalance == 0 -> "Settled"   (slate accent, check)
 //
 // Watches [CustomerBalanceSummaryProvider] directly so it rebuilds every
@@ -165,7 +165,7 @@ class _StatsCluster extends StatelessWidget {
             Text('$creditCount', style: valueStyle),
           ],
         ),
-        Text('credits', style: labelStyle),
+        Text('transactions', style: labelStyle),
         SizedBox(height: SizeConfig.heightMultiplier * 0.4),
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -204,7 +204,7 @@ class _BalanceState {
     }
     if (balance > 0) {
       return const _BalanceState._(
-        eyebrow: 'IN CREDIT',
+        eyebrow: 'AHEAD',
         accent: Color(0xFF1B5E20), // green 900
         icon: Icons.arrow_upward_rounded,
       );

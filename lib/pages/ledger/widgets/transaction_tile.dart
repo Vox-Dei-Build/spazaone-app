@@ -195,6 +195,7 @@ class TransactionTile extends StatelessWidget {
     // our signal not to render the fake "R0,00 Payment added on ..."
     // line.
     final hasTransaction = remarks != 'No transactions yet';
+    final displayType = type == 'Credit' ? 'Transaction' : type;
     if (!hasTransaction) {
       return Text(
         'No transactions yet',
@@ -221,7 +222,8 @@ class TransactionTile extends StatelessWidget {
               children: [
                 TextSpan(text: CurrencyUtil.format(amount)),
                 TextSpan(
-                  text: type.isNotEmpty ? ' $type added on ' : ' ',
+                  text:
+                      displayType.isNotEmpty ? ' $displayType added on ' : ' ',
                   style: TextStyle(
                     color: Colors.grey.shade600,
                     fontWeight: FontWeight.w400,

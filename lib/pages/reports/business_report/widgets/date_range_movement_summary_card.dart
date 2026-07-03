@@ -41,7 +41,7 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
                     ),
                     SizedBox(height: SizeConfig.heightMultiplier * 1),
                     Text(
-                      'Shows payments minus credits inside the selected date range.',
+                      'Shows payments minus transactions inside the selected date range.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.black54,
@@ -55,7 +55,7 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
                         _MovementStat(
                           icon: Icons.credit_card,
                           iconColor: Colors.red,
-                          label: '${summary.creditCount} Credits',
+                          label: '${summary.creditCount} Transactions',
                           amount: summary.creditAmount,
                           amountColor: Colors.red,
                         ),

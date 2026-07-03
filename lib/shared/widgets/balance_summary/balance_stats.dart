@@ -43,7 +43,7 @@ class BalanceStats extends StatelessWidget {
             ),
             SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
             Text(
-              "$creditCount Credits",
+              "$creditCount Transactions",
               style: TextStyle(
                 color: Colors.black,
                 fontWeight: FontWeight.bold,

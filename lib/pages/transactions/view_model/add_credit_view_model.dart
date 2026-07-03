@@ -225,7 +225,7 @@ class AddCreditViewModel extends TransactionViewModel {
           mobileNumber!,
         );
         final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send credit confirmation?',
+          title: 'Send transaction confirmation?',
           subtitle: 'Message to $customerName',
           whatsappCost: whatsappCost,
           smsCost: smsCost,
@@ -274,7 +274,7 @@ class AddCreditViewModel extends TransactionViewModel {
             quotedTotal,
           );
 
-      String successMessage = 'Credit added successfully.';
+      String successMessage = 'Transaction added successfully.';
       Color successColor = Colors.green;
 
       if (canProceed) {
@@ -286,11 +286,11 @@ class AddCreditViewModel extends TransactionViewModel {
           "Credit",
           mobileNumber,
         );
-        successMessage = 'Credit added and confirmation sent.';
+        successMessage = 'Transaction added and confirmation sent.';
       } else if (mobileNumber != null && mobileNumber!.isNotEmpty) {
-        // Credit recorded, but the merchant chose not to send a message or the
+        // Transaction recorded, but the merchant chose not to send a message or the
         // balance gate blocked the send. Keep the confirmation explicit.
-        successMessage = 'Credit added. No message sent.';
+        successMessage = 'Transaction added. No message sent.';
         successColor = Colors.blueGrey;
       }
 
@@ -347,7 +347,7 @@ class AddCreditViewModel extends TransactionViewModel {
         reason: 'addCreditTransaction failed',
       );
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        showErrorSnackBar(context, "Error adding credit. Please retry. :(");
+        showErrorSnackBar(context, "Error adding transaction. Please retry.");
       });
     } finally {
       setLoading(false);

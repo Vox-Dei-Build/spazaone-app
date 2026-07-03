@@ -23,7 +23,7 @@ class FindDefaulterPage extends StatelessWidget {
               const Row(
                 children: [
                   DefaulterCard(
-                    title: 'Credit Due',
+                    title: 'Transactions Due',
                     subtitle: 'R28 000.00',
                   ),
                   DefaulterCard(

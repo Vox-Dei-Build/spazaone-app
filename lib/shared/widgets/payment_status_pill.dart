@@ -97,8 +97,8 @@ class PaymentStatusPill extends StatelessWidget {
     }
     if (balance > 0) {
       return const _Status(
-        label: 'In credit',
-        semanticsLabel: 'This client is in credit',
+        label: 'Ahead',
+        semanticsLabel: 'This client has paid ahead',
         foreground: kPrimaryColor,
         background: kHighLightColor,
         icon: Icons.savings_outlined,

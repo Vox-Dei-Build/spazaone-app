@@ -154,11 +154,11 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
               // reminder rate at the moment (see
               // messaging_notification_service.dart line 392/439/468);
               // only Payment SMS uses the dedicated payment rate at
-              // line 399. Onboarding and Credit are NOT shown as their
+              // line 399. Onboarding and transaction confirmations are NOT shown as their
               // own rows because doing so falsely implies they have
               // independent rates.
               _pricingRowWithUnit(
-                title: 'SMS — reminder, credit, onboarding',
+                title: 'SMS — reminder, transaction, onboarding',
                 rate: smsReminderRate,
                 unit: 'per segment',
               ),

@@ -49,6 +49,7 @@ class ActionsBlock extends StatelessWidget {
   final VoidCallback onMarkCash;
   final VoidCallback onSettleBnpl;
   final VoidCallback onMarkCollected;
+
   /// Combined "Mark Collected & Cash Received" handler for pickup+cash
   /// orders where the two facts (goods handed over, cash in hand) happen
   /// at the same moment. When provided AND the order is in the
@@ -207,7 +208,9 @@ class ActionsBlock extends StatelessWidget {
     }
     final canShowCash = (showMarkCash ?? true) &&
         !isPaid &&
-        (payMethod == 'cash' || payMethod == 'transfer' || payMethod == 'eft') &&
+        (payMethod == 'cash' ||
+            payMethod == 'transfer' ||
+            payMethod == 'eft') &&
         // If we already rendered the combined button, don't also show
         // the standalone "Mark Cash Received".
         !canCombineCollectedAndCash;
@@ -306,7 +309,7 @@ class ActionsBlock extends StatelessWidget {
     String? paymentHint;
     if (!isPaid && isBnpl && !isBnplApproved) {
       paymentHint =
-          'The customer asked to pay later. Approve to extend credit, or decline to ask them to pay now.';
+          'The customer asked to pay later. Approve the transaction, or decline to ask them to pay now.';
     } else if (!isPaid && isBnpl && isBnplApproved) {
       paymentHint =
           'Pay Later was approved. When the customer settles up, mark it paid here.';

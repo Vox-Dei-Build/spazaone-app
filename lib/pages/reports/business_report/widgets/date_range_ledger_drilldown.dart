@@ -90,65 +90,61 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
     if (uid == null || uid.isEmpty) return [];
 
     final firestore = FirebaseFirestore.instance;
-    final customersRef = firestore
-        .collection('users')
-        .doc(uid)
-        .collection('customers');
+    final customersRef =
+        firestore.collection('users').doc(uid).collection('customers');
     final customersSnap = await customersRef.get();
 
     // Mirror the backend: per-customer, filter the transactions
     // subcollection by date range. Running these in parallel keeps the
     // wall-clock close to a single round-trip.
-    final futures =
-        customersSnap.docs.map((doc) async {
-          final data = doc.data();
-          final name = (data['name'] as String?) ?? 'Customer';
-          final number = data['number'] as String?;
-          final profileImageUrl = data['profileImageUrl'] as String?;
+    final futures = customersSnap.docs.map((doc) async {
+      final data = doc.data();
+      final name = (data['name'] as String?) ?? 'Customer';
+      final number = data['number'] as String?;
+      final profileImageUrl = data['profileImageUrl'] as String?;
 
-          final txnSnap =
-              await customersRef
-                  .doc(doc.id)
-                  .collection('transactions')
-                  .where('date', isGreaterThanOrEqualTo: widget.startDate)
-                  .where('date', isLessThanOrEqualTo: widget.endDate)
-                  .orderBy('date', descending: true)
-                  .get();
+      final txnSnap = await customersRef
+          .doc(doc.id)
+          .collection('transactions')
+          .where('date', isGreaterThanOrEqualTo: widget.startDate)
+          .where('date', isLessThanOrEqualTo: widget.endDate)
+          .orderBy('date', descending: true)
+          .get();
 
-          if (txnSnap.docs.isEmpty) return null;
+      if (txnSnap.docs.isEmpty) return null;
 
-          final lines = <_TxnLine>[];
-          double net = 0.0;
-          double credits = 0.0;
-          double payments = 0.0;
-          for (final txDoc in txnSnap.docs) {
-            final tx = txDoc.data();
-            final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
-            final type = (tx['type'] as String?) ?? '';
-            final rawDate = tx['date'];
-            DateTime? when;
-            if (rawDate is Timestamp) when = rawDate.toDate();
-            if (rawDate is String) when = DateTime.tryParse(rawDate);
-            if (type == 'Payment') {
-              net += amount;
-              payments += amount;
-            } else if (type == 'Credit') {
-              net -= amount;
-              credits += amount;
-            }
-            lines.add(_TxnLine(when: when, type: type, amount: amount));
-          }
-          return _CustomerRangeRollup(
-            customerId: doc.id,
-            name: name,
-            number: number,
-            profileImageUrl: profileImageUrl,
-            netInRange: net,
-            creditsTotal: credits,
-            paymentsTotal: payments,
-            lines: lines,
-          );
-        }).toList();
+      final lines = <_TxnLine>[];
+      double net = 0.0;
+      double credits = 0.0;
+      double payments = 0.0;
+      for (final txDoc in txnSnap.docs) {
+        final tx = txDoc.data();
+        final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
+        final type = (tx['type'] as String?) ?? '';
+        final rawDate = tx['date'];
+        DateTime? when;
+        if (rawDate is Timestamp) when = rawDate.toDate();
+        if (rawDate is String) when = DateTime.tryParse(rawDate);
+        if (type == 'Payment') {
+          net += amount;
+          payments += amount;
+        } else if (type == 'Credit') {
+          net -= amount;
+          credits += amount;
+        }
+        lines.add(_TxnLine(when: when, type: type, amount: amount));
+      }
+      return _CustomerRangeRollup(
+        customerId: doc.id,
+        name: name,
+        number: number,
+        profileImageUrl: profileImageUrl,
+        netInRange: net,
+        creditsTotal: credits,
+        paymentsTotal: payments,
+        lines: lines,
+      );
+    }).toList();
 
     final results = await Future.wait(futures);
     final rollups = results.whereType<_CustomerRangeRollup>().toList();
@@ -343,7 +339,7 @@ class _CustomerRangeTile extends StatelessWidget {
                     ...rollup.lines.map((line) => _TxnLineRow(line: line)),
                     Divider(height: SizeConfig.heightMultiplier * 2),
                     _SubtotalRow(
-                      label: 'Credits',
+                      label: 'Transactions',
                       amount: rollup.creditsTotal,
                       amountColor: Colors.red,
                     ),
@@ -371,12 +367,11 @@ class _CustomerRangeTile extends StatelessWidget {
                           // customer list.
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder:
-                                  (_) => CustomerManagementPage(
-                                    customerName: rollup.name,
-                                    customerId: rollup.customerId,
-                                    mobileNumber: rollup.number,
-                                  ),
+                              builder: (_) => CustomerManagementPage(
+                                customerName: rollup.name,
+                                customerId: rollup.customerId,
+                                mobileNumber: rollup.number,
+                              ),
                             ),
                           );
                         },
@@ -404,6 +399,7 @@ class _TxnLineRow extends StatelessWidget {
     final isCredit = line.type == 'Credit';
     final color = isCredit ? Colors.red : kPrimaryColor;
     final sign = isCredit ? '-' : '+';
+    final displayType = isCredit ? 'Transaction' : line.type;
     return Padding(
       padding: EdgeInsets.symmetric(
         vertical: SizeConfig.heightMultiplier * 0.4,
@@ -428,7 +424,7 @@ class _TxnLineRow extends StatelessWidget {
             ),
           ),
           Text(
-            line.type,
+            displayType,
             style: TextStyle(
               fontSize: SizeConfig.textMultiplier * 1.3,
               color: Colors.black45,

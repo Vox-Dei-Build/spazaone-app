@@ -460,7 +460,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
       await notificationService.sendReminderMessage(
           userId, customerId, customerName, netBalance, mobileNumber);
     }).catchError((error) {
-      showSnackbar(context, 'Error adding credit. Please retry when online.',
+      showSnackbar(context, 'Error sending reminder. Please retry when online.',
           Colors.red);
     });
 

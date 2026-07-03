@@ -234,7 +234,7 @@ class _ChecklistBody extends StatelessWidget {
       _ChecklistStep(
         title: 'First customer saved',
         body: hasCustomers
-            ? 'Customer capture is ready for credit, orders, and follow-up.'
+            ? 'Customer capture is ready for transactions, orders, and follow-up.'
             : 'Save one real customer before setting up the rest.',
         done: hasCustomers,
         actionLabel: 'Add customer',
@@ -245,10 +245,10 @@ class _ChecklistBody extends StatelessWidget {
         title: 'First product added',
         body: hasProducts
             ? 'Products can now support item-level sales and orders.'
-            : 'This updates after a product exists in Products.',
+            : 'Add the product customers buy most often before setup moves to ordering or marketing.',
         done: hasProducts,
-        actionLabel: null,
-        action: null,
+        actionLabel: 'Add product',
+        action: onChooseWhatsAppProduct,
         icon: Icons.inventory_2_outlined,
       ),
       _ChecklistStep(
@@ -267,21 +267,17 @@ class _ChecklistBody extends StatelessWidget {
         title: 'Ordering link ready',
         body: hasOrderingLink
             ? 'Your customer ordering link is ready to share.'
-            : 'Generate the link customers use to place orders.',
+            : hasProducts
+                ? 'Generate the link customers use to place orders.'
+                : 'Available after a product exists.',
         done: hasOrderingLink,
-        actionLabel: hasOrderingLink ? 'View link' : 'Get link',
-        action: onOpenOrderingLink,
+        actionLabel: hasOrderingLink
+            ? 'View link'
+            : hasProducts
+                ? 'Get link'
+                : null,
+        action: hasProducts ? onOpenOrderingLink : null,
         icon: Icons.link_outlined,
-      ),
-      _ChecklistStep(
-        title: 'Promotion template approved',
-        body: hasApprovedTemplate
-            ? 'Marketing messages are ready when you need them.'
-            : 'Open Marketing to get a WhatsApp template approved.',
-        done: hasApprovedTemplate,
-        actionLabel: 'Open Marketing',
-        action: onOpenPromotions,
-        icon: Icons.campaign_outlined,
       ),
       _ChecklistStep(
         title: 'Payout details added',
@@ -292,6 +288,18 @@ class _ChecklistBody extends StatelessWidget {
         actionLabel: 'Add bank',
         action: onOpenBanking,
         icon: Icons.account_balance_outlined,
+      ),
+      _ChecklistStep(
+        title: 'Promotion template approved',
+        body: hasApprovedTemplate
+            ? 'Marketing messages are ready when you need them.'
+            : hasProducts
+                ? 'Open Marketing to get a WhatsApp template approved.'
+                : 'Available after a product exists.',
+        done: hasApprovedTemplate,
+        actionLabel: hasProducts ? 'Open Marketing' : null,
+        action: hasProducts ? onOpenPromotions : null,
+        icon: Icons.campaign_outlined,
       ),
     ];
 

@@ -48,7 +48,7 @@ class PayLaterActionBar extends StatelessWidget {
             children: [
               Expanded(
                 child: _ActionPill(
-                  label: 'Credit',
+                  label: 'Transaction',
                   icon: Icons.arrow_downward_rounded,
                   color: const Color(0xFFC62828),
                   onTap: () => _open(

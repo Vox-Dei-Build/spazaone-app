@@ -25,7 +25,7 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
       icon: Icons.person_add_alt_1_outlined,
       title: 'Start with one customer',
       body:
-          'Save one real customer so you can record Pay Later credit immediately.',
+          'Save one real customer so you can record Pay Later transactions immediately.',
       bullets: [
         'Pasella guides you from Customers',
         'Pay Later opens after saving',
@@ -52,12 +52,12 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
     ),
     _IntroSlide(
       icon: Icons.link_outlined,
-      title: 'Link a product to credit',
+      title: 'Link a product to a transaction',
       body:
-          'When a customer takes goods on account, attach the product on Add Credit.',
+          'When a customer takes goods on account, attach the product on Add Transaction.',
       bullets: [
         'Stock and customer history update together',
-        'Reports show product-linked credits',
+        'Reports show product-linked transactions',
       ],
     ),
   ];

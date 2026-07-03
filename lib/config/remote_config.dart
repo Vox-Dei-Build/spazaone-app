@@ -69,7 +69,7 @@ class RemoteConfigService {
         // silently or fail with a 400 depending on account config).
         // See `docs/openclaw/pas-sms-01-template-segment-audit.md` (QW-3).
         'SMS_CREDIT_CONFIRMATION_SHORT':
-            'Hi {customerName}, credit of -{amount} at {shopName} recorded. '
+            'Hi {customerName}, transaction of -{amount} at {shopName} recorded. '
                 'Balance: {balance}. Thanks for your trust. - {shopName}',
         'SMS_PAYMENT_CONFIRMATION_SHORT':
             'Hi {customerName}, payment of +{amount} at {shopName} recorded. '

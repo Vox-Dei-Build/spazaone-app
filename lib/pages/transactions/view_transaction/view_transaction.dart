@@ -127,6 +127,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   (transaction['remarks'] as String).isNotEmpty;
               final String remarks =
                   hasRemarks ? transaction['remarks'] as String : 'No remarks';
+              final rawType = (transaction['type'] ?? '—').toString();
+              final displayType = rawType == 'Credit' ? 'Transaction' : rawType;
 
               return ListView(
                 children: [
@@ -151,8 +153,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                                 tm),
                           buildListTile('Status',
                               (transaction['status'] ?? '—').toString(), tm),
-                          buildListTile('Type',
-                              (transaction['type'] ?? '—').toString(), tm),
+                          buildListTile('Type', displayType, tm),
                           buildListTile('Remarks', remarks, tm),
                           buildProductListTile(context, products, tm, hm, im),
                         ],

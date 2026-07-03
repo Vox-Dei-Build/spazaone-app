@@ -162,7 +162,7 @@ class _ReportBody extends StatelessWidget {
             // ── TOTALS ──
             const _SectionEyebrow(label: 'TOTALS'),
             _MetricRow(
-              label: 'Credited',
+              label: 'Transactions',
               valueLeading: '${stats.creditCount}×',
               value: CurrencyUtil.format(stats.creditAmount),
               valueColor: const Color(0xFFC62828),
@@ -259,7 +259,7 @@ class _SheetHeader extends StatelessWidget {
   }
 }
 
-/// The headline number. State-aware: red Owing / green In credit / slate
+/// The headline number. State-aware: red Owing / green Ahead / slate
 /// Settled. Big tabular-figure amount, eyebrow label, and a tiny direction
 /// chip ("They owe you" / "You owe them" / "All square").
 class _BalanceHeroBlock extends StatelessWidget {
@@ -430,7 +430,7 @@ class _BalanceTone {
     }
     if (balance > 0) {
       return const _BalanceTone._(
-        eyebrow: 'IN CREDIT',
+        eyebrow: 'AHEAD',
         directionLabel: 'You owe them',
         accent: Color(0xFF1B5E20),
         tint: Color(0xFFE8F5E9),
@@ -559,7 +559,7 @@ class _EmptyShell extends StatelessWidget {
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 0.5),
             Text(
-              'Record a credit or payment for $customerName to start '
+              'Record a transaction or payment for $customerName to start '
               'building their report.',
               textAlign: TextAlign.center,
               style: TextStyle(
