@@ -8,6 +8,7 @@ import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
+import 'package:pasella/pages/sales/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:provider/provider.dart';
@@ -53,14 +54,38 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _mainController = TabController(length: 2, vsync: this)
-      ..addListener(() {
+    final intent = SalesIntentBus.instance.consume();
+    final initialMainIndex =
+        intent?.section == SalesIntentSection.marketing ? 1 : 0;
+
+    if (intent?.section == SalesIntentSection.marketing) {
+      _selectedMarketingView =
+          intent?.marketingView == SalesIntentMarketingView.templates
+              ? MarketingViewType.templates
+              : MarketingViewType.promotions;
+    }
+
+    _mainController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: initialMainIndex,
+    )..addListener(() {
         if (mounted) setState(() {});
       });
 
     _salesVM = SalesViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Ensure cash list has fresh data immediately on first show
+      if (!mounted) return;
+      if (_mainController.index == 1) {
+        final promoVM = context.read<PromotionsViewModel>();
+        if (_selectedMarketingView == MarketingViewType.promotions) {
+          promoVM.fetchPromotionsReports();
+        } else {
+          promoVM.loadTemplatesData();
+        }
+        return;
+      }
+      // Ensure cash list has fresh data immediately on first show.
       _salesVM.updateSelectedDate(_selectedDay ?? DateTime.now());
     });
   }
@@ -103,294 +128,290 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       builder: (context, _) {
         return Scaffold(
           floatingActionButton: _buildFAB(salesVM, promoVM),
-            body: SafeArea(
-              child: Padding(
-                padding: LayoutConstants.padding10Horizontal,
-                child: Column(
-                  children: [
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    const SalesPageHeader(),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    TabBar(
-                      controller: _mainController,
-                      labelStyle: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.8,
-                      ),
-                      tabs: const [Tab(text: 'Sales'), Tab(text: 'Marketing')],
+          body: SafeArea(
+            child: Padding(
+              padding: LayoutConstants.padding10Horizontal,
+              child: Column(
+                children: [
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  const SalesPageHeader(),
+                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  TabBar(
+                    controller: _mainController,
+                    labelStyle: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
                     ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _mainController,
-                        children: [
-                          // --- SALES ---
-                          Column(
-                            children: [
-                              SizedBox(height: SizeConfig.heightMultiplier * 2),
-                              Theme(
-                                data: Theme.of(context).copyWith(
-                                  segmentedButtonTheme:
-                                      SegmentedButtonThemeData(
-                                    style: ButtonStyle(
-                                      backgroundColor: WidgetStateProperty
-                                          .resolveWith<Color?>(
-                                        (states) => states.contains(
-                                          WidgetState.selected,
-                                        )
-                                            ? Colors.green
-                                            : Colors.white,
-                                      ),
-                                      foregroundColor: WidgetStateProperty
-                                          .resolveWith<Color?>(
-                                        (states) => states.contains(
-                                          WidgetState.selected,
-                                        )
-                                            ? Colors.white
-                                            : Colors.black87,
-                                      ),
+                    tabs: const [Tab(text: 'Sales'), Tab(text: 'Marketing')],
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _mainController,
+                      children: [
+                        // --- SALES ---
+                        Column(
+                          children: [
+                            SizedBox(height: SizeConfig.heightMultiplier * 2),
+                            Theme(
+                              data: Theme.of(context).copyWith(
+                                segmentedButtonTheme: SegmentedButtonThemeData(
+                                  style: ButtonStyle(
+                                    backgroundColor:
+                                        WidgetStateProperty.resolveWith<Color?>(
+                                      (states) => states.contains(
+                                        WidgetState.selected,
+                                      )
+                                          ? Colors.green
+                                          : Colors.white,
+                                    ),
+                                    foregroundColor:
+                                        WidgetStateProperty.resolveWith<Color?>(
+                                      (states) => states.contains(
+                                        WidgetState.selected,
+                                      )
+                                          ? Colors.white
+                                          : Colors.black87,
                                     ),
                                   ),
                                 ),
-                                child: SegmentedButton<SalesViewType>(
-                                  segments: [
-                                    ButtonSegment(
-                                      value: SalesViewType.cash,
-                                      label: Text(
-                                        'Cash',
-                                        style: TextStyle(
-                                          fontSize:
-                                              SizeConfig.textMultiplier * 1.5,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      icon: Icon(
-                                        Icons.attach_money,
-                                        size: SizeConfig.textMultiplier * 1.5,
-                                      ),
-                                    ),
-                                    ButtonSegment(
-                                      value: SalesViewType.online,
-                                      label: Text(
-                                        'Online',
-                                        style: TextStyle(
-                                          fontSize:
-                                              SizeConfig.textMultiplier * 1.5,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      icon: Icon(
-                                        Icons.wifi,
-                                        size: SizeConfig.textMultiplier * 1.5,
-                                      ),
-                                    ),
-                                  ],
-                                  selected: {_selectedSalesView},
-                                  onSelectionChanged: (val) {
-                                    setState(() {
-                                      _selectedSalesView = val.first;
-                                    });
-                                    if (_selectedSalesView ==
-                                        SalesViewType.cash) {
-                                      // refresh using current date/range selection
-                                      if (_selectedDay != null) {
-                                        _salesVM.updateSelectedDate(
-                                          _selectedDay!,
-                                        );
-                                      } else if (_startDate != null &&
-                                          _endDate != null) {
-                                        _salesVM.updateSelectedDateRange(
-                                          _startDate!,
-                                          _endDate!,
-                                        );
-                                      } else {
-                                        _salesVM.updateSelectedDate(
-                                          DateTime.now(),
-                                        );
-                                      }
-                                    }
-                                  },
-                                ),
                               ),
-                              if (_selectedSalesView == SalesViewType.cash)
-                                const _SalesMeaningHint(),
+                              child: SegmentedButton<SalesViewType>(
+                                segments: [
+                                  ButtonSegment(
+                                    value: SalesViewType.cash,
+                                    label: Text(
+                                      'Cash',
+                                      style: TextStyle(
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    icon: Icon(
+                                      Icons.attach_money,
+                                      size: SizeConfig.textMultiplier * 1.5,
+                                    ),
+                                  ),
+                                  ButtonSegment(
+                                    value: SalesViewType.online,
+                                    label: Text(
+                                      'Online',
+                                      style: TextStyle(
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    icon: Icon(
+                                      Icons.wifi,
+                                      size: SizeConfig.textMultiplier * 1.5,
+                                    ),
+                                  ),
+                                ],
+                                selected: {_selectedSalesView},
+                                onSelectionChanged: (val) {
+                                  setState(() {
+                                    _selectedSalesView = val.first;
+                                  });
+                                  if (_selectedSalesView ==
+                                      SalesViewType.cash) {
+                                    // refresh using current date/range selection
+                                    if (_selectedDay != null) {
+                                      _salesVM.updateSelectedDate(
+                                        _selectedDay!,
+                                      );
+                                    } else if (_startDate != null &&
+                                        _endDate != null) {
+                                      _salesVM.updateSelectedDateRange(
+                                        _startDate!,
+                                        _endDate!,
+                                      );
+                                    } else {
+                                      _salesVM.updateSelectedDate(
+                                        DateTime.now(),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ),
+                            if (_selectedSalesView == SalesViewType.cash)
+                              const _SalesMeaningHint(),
 
-                              DateFilterBar(
+                            DateFilterBar(
+                              selectedDay: _selectedDay,
+                              startDate: _startDate,
+                              endDate: _endDate,
+                              onDaySelect: (d) {
+                                _onDateSelected(d);
+                                if (_selectedSalesView == SalesViewType.cash) {
+                                  salesVM.updateSelectedDate(d);
+                                }
+                              },
+                              onRangeSelect: (s, e) {
+                                _onDateRangeSelected(s, e);
+                                if (_selectedSalesView == SalesViewType.cash) {
+                                  salesVM.updateSelectedDateRange(s, e);
+                                }
+                              },
+                            ),
+
+                            // CASH-ONLY stats card: also loose flex
+                            if (_selectedSalesView == SalesViewType.cash) ...[
+                              SalesStatsCard(
+                                viewModel: salesVM,
                                 selectedDay: _selectedDay,
                                 startDate: _startDate,
                                 endDate: _endDate,
-                                onDaySelect: (d) {
-                                  _onDateSelected(d);
-                                  if (_selectedSalesView ==
-                                      SalesViewType.cash) {
-                                    salesVM.updateSelectedDate(d);
-                                  }
-                                },
-                                onRangeSelect: (s, e) {
-                                  _onDateRangeSelected(s, e);
-                                  if (_selectedSalesView ==
-                                      SalesViewType.cash) {
-                                    salesVM.updateSelectedDateRange(s, e);
-                                  }
-                                },
-                              ),
-
-                              // CASH-ONLY stats card: also loose flex
-                              if (_selectedSalesView == SalesViewType.cash) ...[
-                                SalesStatsCard(
-                                  viewModel: salesVM,
-                                  selectedDay: _selectedDay,
-                                  startDate: _startDate,
-                                  endDate: _endDate,
-                                ),
-                              ],
-
-                              SizedBox(
-                                height: SizeConfig.heightMultiplier * 1.0,
-                              ),
-
-                              Expanded(
-                                child: _selectedSalesView == SalesViewType.cash
-                                    ? SafeArea(
-                                        top: false,
-                                        left: false,
-                                        right: false,
-                                        bottom: true,
-                                        child: SalesList(
-                                          viewModel: salesVM,
-                                          // PAS-AUTH-03: wire the FAB
-                                          // action into the empty-state
-                                          // CTA so a new merchant lands
-                                          // on a one-tap path to their
-                                          // first sale.
-                                          onAddSale: () {
-                                            TelemetryService.instance.capture(
-                                              const SaleStarted(
-                                                entryPoint: 'empty_state',
-                                              ),
-                                            );
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (_) => AddSale(
-                                                  salesViewModel: salesVM,
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      )
-                                    : SafeArea(
-                                        top: false,
-                                        left: false,
-                                        right: false,
-                                        bottom: true,
-                                        child: OnlineSalesList(
-                                          key: ValueKey<String>(
-                                            '${_selectedDay?.toIso8601String() ?? ''}|'
-                                            '${_startDate?.toIso8601String() ?? ''}|'
-                                            '${_endDate?.toIso8601String() ?? ''}',
-                                          ),
-                                          selectedDay: _selectedDay,
-                                          startDate: _startDate,
-                                          endDate: _endDate,
-                                          // If Online list scrolls, add a similar bottom padding prop there too.
-                                        ),
-                                      ),
                               ),
                             ],
-                          ),
 
-                          // --- MARKETING ---
-                          Column(
-                            children: [
-                              const SizedBox(height: 16),
-                              Theme(
-                                data: Theme.of(context).copyWith(
-                                  segmentedButtonTheme:
-                                      SegmentedButtonThemeData(
-                                    style: ButtonStyle(
-                                      backgroundColor: WidgetStateProperty
-                                          .resolveWith<Color?>(
-                                        (states) => states.contains(
-                                          WidgetState.selected,
-                                        )
-                                            ? Colors.green
-                                            : Colors.white,
+                            SizedBox(
+                              height: SizeConfig.heightMultiplier * 1.0,
+                            ),
+
+                            Expanded(
+                              child: _selectedSalesView == SalesViewType.cash
+                                  ? SafeArea(
+                                      top: false,
+                                      left: false,
+                                      right: false,
+                                      bottom: true,
+                                      child: SalesList(
+                                        viewModel: salesVM,
+                                        // PAS-AUTH-03: wire the FAB
+                                        // action into the empty-state
+                                        // CTA so a new merchant lands
+                                        // on a one-tap path to their
+                                        // first sale.
+                                        onAddSale: () {
+                                          TelemetryService.instance.capture(
+                                            const SaleStarted(
+                                              entryPoint: 'empty_state',
+                                            ),
+                                          );
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => AddSale(
+                                                salesViewModel: salesVM,
+                                              ),
+                                            ),
+                                          );
+                                        },
                                       ),
-                                      foregroundColor: WidgetStateProperty
-                                          .resolveWith<Color?>(
-                                        (states) => states.contains(
-                                          WidgetState.selected,
-                                        )
-                                            ? Colors.white
-                                            : Colors.black87,
+                                    )
+                                  : SafeArea(
+                                      top: false,
+                                      left: false,
+                                      right: false,
+                                      bottom: true,
+                                      child: OnlineSalesList(
+                                        key: ValueKey<String>(
+                                          '${_selectedDay?.toIso8601String() ?? ''}|'
+                                          '${_startDate?.toIso8601String() ?? ''}|'
+                                          '${_endDate?.toIso8601String() ?? ''}',
+                                        ),
+                                        selectedDay: _selectedDay,
+                                        startDate: _startDate,
+                                        endDate: _endDate,
+                                        // If Online list scrolls, add a similar bottom padding prop there too.
                                       ),
+                                    ),
+                            ),
+                          ],
+                        ),
+
+                        // --- MARKETING ---
+                        Column(
+                          children: [
+                            const SizedBox(height: 16),
+                            Theme(
+                              data: Theme.of(context).copyWith(
+                                segmentedButtonTheme: SegmentedButtonThemeData(
+                                  style: ButtonStyle(
+                                    backgroundColor:
+                                        WidgetStateProperty.resolveWith<Color?>(
+                                      (states) => states.contains(
+                                        WidgetState.selected,
+                                      )
+                                          ? Colors.green
+                                          : Colors.white,
+                                    ),
+                                    foregroundColor:
+                                        WidgetStateProperty.resolveWith<Color?>(
+                                      (states) => states.contains(
+                                        WidgetState.selected,
+                                      )
+                                          ? Colors.white
+                                          : Colors.black87,
                                     ),
                                   ),
                                 ),
-                                child: SegmentedButton<MarketingViewType>(
-                                  segments: [
-                                    ButtonSegment(
-                                      value: MarketingViewType.promotions,
-                                      label: Text(
-                                        'Promotions',
-                                        style: TextStyle(
-                                          fontSize:
-                                              SizeConfig.textMultiplier * 1.5,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      icon: Icon(
-                                        Icons.campaign_outlined,
-                                        size: SizeConfig.textMultiplier * 1.5,
+                              ),
+                              child: SegmentedButton<MarketingViewType>(
+                                segments: [
+                                  ButtonSegment(
+                                    value: MarketingViewType.promotions,
+                                    label: Text(
+                                      'Promotions',
+                                      style: TextStyle(
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    ButtonSegment(
-                                      value: MarketingViewType.templates,
-                                      label: Text(
-                                        'Templates',
-                                        style: TextStyle(
-                                          fontSize:
-                                              SizeConfig.textMultiplier * 1.5,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      icon: Icon(
-                                        Icons.library_books_outlined,
-                                        size: SizeConfig.textMultiplier * 1.5,
+                                    icon: Icon(
+                                      Icons.campaign_outlined,
+                                      size: SizeConfig.textMultiplier * 1.5,
+                                    ),
+                                  ),
+                                  ButtonSegment(
+                                    value: MarketingViewType.templates,
+                                    label: Text(
+                                      'Templates',
+                                      style: TextStyle(
+                                        fontSize:
+                                            SizeConfig.textMultiplier * 1.5,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                  ],
-                                  selected: {_selectedMarketingView},
-                                  onSelectionChanged: (val) {
-                                    setState(() {
-                                      _selectedMarketingView = val.first;
-                                    });
-                                    if (_selectedMarketingView ==
-                                        MarketingViewType.promotions) {
-                                      promoVM.fetchPromotionsReports();
-                                    } else {
-                                      promoVM.loadTemplatesData();
-                                    }
-                                  },
-                                ),
+                                    icon: Icon(
+                                      Icons.library_books_outlined,
+                                      size: SizeConfig.textMultiplier * 1.5,
+                                    ),
+                                  ),
+                                ],
+                                selected: {_selectedMarketingView},
+                                onSelectionChanged: (val) {
+                                  setState(() {
+                                    _selectedMarketingView = val.first;
+                                  });
+                                  if (_selectedMarketingView ==
+                                      MarketingViewType.promotions) {
+                                    promoVM.fetchPromotionsReports();
+                                  } else {
+                                    promoVM.loadTemplatesData();
+                                  }
+                                },
                               ),
-                              const SizedBox(height: 16),
-                              Expanded(
-                                child: _selectedMarketingView ==
-                                        MarketingViewType.promotions
-                                    ? const PromotionsTab()
-                                    : const TemplatesTab(),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: _selectedMarketingView ==
+                                      MarketingViewType.promotions
+                                  ? const PromotionsTab()
+                                  : const TemplatesTab(),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          );
-        },
+          ),
+        );
+      },
     );
   }
 

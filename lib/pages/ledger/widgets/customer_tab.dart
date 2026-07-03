@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/models/common/app_model.dart';
-import 'package:pasella/pages/promote/promotions_page.dart';
+import 'package:pasella/pages/sales/sales_intent_bus.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
 import 'package:pasella/pages/ledger/widgets/customer_search_box.dart';
@@ -193,7 +193,13 @@ class _CustomerTabState extends State<CustomerTab> {
   }
 
   void _openPromotions(BuildContext context) {
-    Navigator.of(context).pushNamed(PromotionsPage.id);
+    SalesIntentBus.instance.set(
+      const SalesIntent(
+        section: SalesIntentSection.marketing,
+        marketingView: SalesIntentMarketingView.promotions,
+      ),
+    );
+    context.read<AppModel>().updateCurrentIndex(2);
   }
 
   void _openBanking(BuildContext context) {

@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
-import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
-import 'package:provider/provider.dart';
 
 class ProductList extends StatelessWidget {
   final StockViewModel viewModel;
@@ -42,11 +39,9 @@ class ProductList extends StatelessWidget {
         final products = snapshot.data ?? [];
         if (products.isEmpty) {
           // PAS-UX-04 started by turning the empty catalogue into a
-          // recovery surface. PAS-UX-rel keeps the page helpful but
-          // makes customer capture the first onboarding action: a new
-          // merchant can build a usable credit/sales workflow with
-          // one saved customer, then add products when they need stock
-          // or WhatsApp ordering detail.
+          // recovery surface. Keep Product empty state product-only:
+          // merchants opening Products should not be redirected back
+          // to Customers, even if this is still their first setup run.
           //
           // The widget is opt-in: nested callers (group drilldown)
           // don't pass handlers and keep the bare placeholder, since
@@ -62,14 +57,14 @@ class ProductList extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.person_add_alt_1_outlined,
+                    Icons.inventory_2_outlined,
                     size: SizeConfig.imageSizeMultiplier * 18,
                     color: Colors.grey.withValues(alpha: 0.5),
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Text(
                     showOnboarding
-                        ? 'Start with your first customer'
+                        ? 'Add your first product'
                         : 'No products in this group',
                     style: TextStyle(
                       fontSize: SizeConfig.textMultiplier * 2.2,
@@ -81,9 +76,7 @@ class ProductList extends StatelessWidget {
                   if (showOnboarding) ...[
                     SizedBox(height: SizeConfig.heightMultiplier * 1),
                     Text(
-                      'Save one customer first so Pay Later, sales history, '
-                      'and WhatsApp follow-ups have someone to work with. '
-                      'Products can come next.',
+                      'Start with the item you sell most often. Products power stock, sales detail, and WhatsApp ordering.',
                       style: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.6,
                         color: Colors.grey[700],
@@ -93,15 +86,15 @@ class ProductList extends StatelessWidget {
                     SizedBox(height: SizeConfig.heightMultiplier * 3),
                     ActivationCoachmark(
                       userId: viewModel.userId,
-                      coachmarkKey: 'add_first_customer_from_products',
-                      title: 'Add a customer first',
+                      coachmarkKey: 'add_first_product_from_products',
+                      title: 'Add a product',
                       message:
-                          'Start with the person buying from you, then add products when stock detail matters.',
-                      icon: Icons.person_add_alt_1_outlined,
+                          'Create the item once so it can be used in sales, stock, and ordering.',
+                      icon: Icons.inventory_2_outlined,
                       child: ElevatedButton.icon(
-                        onPressed: () => _openFirstCustomer(context),
-                        icon: const Icon(Icons.person_add_alt_1_outlined),
-                        label: const Text('Add your first customer'),
+                        onPressed: onAddProduct,
+                        icon: const Icon(Icons.inventory_2_outlined),
+                        label: const Text('Add your first product'),
                         style: ElevatedButton.styleFrom(
                           padding: EdgeInsets.symmetric(
                             horizontal: SizeConfig.imageSizeMultiplier * 6,
@@ -109,12 +102,6 @@ class ProductList extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1),
-                    TextButton.icon(
-                      onPressed: onAddProduct,
-                      icon: const Icon(Icons.inventory_2_outlined),
-                      label: const Text('Add a product instead'),
                     ),
                     if (onWatchTutorial != null) ...[
                       SizedBox(height: SizeConfig.heightMultiplier * 1),
@@ -157,10 +144,5 @@ class ProductList extends StatelessWidget {
         );
       },
     );
-  }
-
-  void _openFirstCustomer(BuildContext context) {
-    context.read<AppModel>().updateCurrentIndex(0);
-    Navigator.of(context).pushNamed(AddContactPage.id);
   }
 }
