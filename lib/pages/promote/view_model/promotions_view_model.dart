@@ -121,26 +121,40 @@ class PromotionsViewModel extends ChangeNotifier {
   }
 
   Future<bool> deleteTemplate(
-      String docID, Map<String, dynamic> template) async {
+    String docID,
+    Map<String, dynamic> template,
+  ) async {
     _isLoading = true;
     notifyListeners();
 
     try {
+      final templateRef = FirebaseFirestore.instance
+          .collection('messagingTemplates')
+          .doc(docID);
+      final templateSnap = await templateRef.get();
+      final templateData = templateSnap.data();
+      if (!templateSnap.exists ||
+          templateData == null ||
+          templateData['userId'] != userId) {
+        throw StateError('Template does not belong to the current merchant.');
+      }
+
       // Delete from Twilio via Cloud Function
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('deleteTwilioTemplate');
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'deleteTwilioTemplate',
+      );
       final twilioTemplateId =
-          template['channels']?['whatsapp']?['twilioTemplateId'];
+          templateData['channels']?['whatsapp']?['twilioTemplateId'];
 
       if (twilioTemplateId != null) {
-        await callable.call({'twilioTemplateId': twilioTemplateId});
+        await callable.call({
+          'templateId': docID,
+          'twilioTemplateId': twilioTemplateId,
+        });
       }
 
       // Delete from Firestore
-      await FirebaseFirestore.instance
-          .collection('messagingTemplates')
-          .doc(docID)
-          .delete();
+      await templateRef.delete();
 
       await loadTemplatesData();
 
@@ -159,17 +173,19 @@ class PromotionsViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final snapshot = await _firestore
-          .collection('messagingTemplates')
-          .where('userId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
-          .get();
+      final snapshot =
+          await _firestore
+              .collection('messagingTemplates')
+              .where('userId', isEqualTo: userId)
+              .orderBy('createdAt', descending: true)
+              .get();
 
-      _templates = snapshot.docs.map((doc) {
-        final data = doc.data();
-        data['id'] = doc.id; // 🔥 Include Firestore document ID
-        return data;
-      }).toList();
+      _templates =
+          snapshot.docs.map((doc) {
+            final data = doc.data();
+            data['id'] = doc.id; // 🔥 Include Firestore document ID
+            return data;
+          }).toList();
     } catch (e) {
       debugPrint('Failed to fetch templates: $e');
     } finally {
@@ -180,17 +196,19 @@ class PromotionsViewModel extends ChangeNotifier {
 
   Future<void> fetchCustomers() async {
     try {
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('customers')
-          .get();
+      final snapshot =
+          await _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('customers')
+              .get();
 
-      final all = snapshot.docs.map((doc) {
-        final data = doc.data();
-        data['id'] = doc.id;
-        return data;
-      }).toList();
+      final all =
+          snapshot.docs.map((doc) {
+            final data = doc.data();
+            data['id'] = doc.id;
+            return data;
+          }).toList();
 
       // Promotions can only be delivered to customers with a phone
       // number. Numberless customers used to appear in the recipient
@@ -264,10 +282,11 @@ class PromotionsViewModel extends ChangeNotifier {
           i,
           i + chunkSize > list.length ? list.length : i + chunkSize,
         );
-        final snap = await _firestore
-            .collection('successfulWhatsAppNumbers')
-            .where('phoneNumber', whereIn: chunk)
-            .get();
+        final snap =
+            await _firestore
+                .collection('successfulWhatsAppNumbers')
+                .where('phoneNumber', whereIn: chunk)
+                .get();
         for (final doc in snap.docs) {
           final data = doc.data();
           final phone = data['phoneNumber'] as String?;
@@ -309,7 +328,8 @@ class PromotionsViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> eligible,
     int hiddenNotWhatsApp,
     int unknownIncluded,
-  }) filterCustomersForChannels({
+  })
+  filterCustomersForChannels({
     required bool sendWhatsApp,
     required bool sendSMS,
   }) {
@@ -317,11 +337,7 @@ class PromotionsViewModel extends ChangeNotifier {
       // SMS-only or both → every numbered customer. (The "neither"
       // case shouldn't happen because step 1 validation requires
       // ≥1 channel, but degrade gracefully.)
-      return (
-        eligible: customers,
-        hiddenNotWhatsApp: 0,
-        unknownIncluded: 0,
-      );
+      return (eligible: customers, hiddenNotWhatsApp: 0, unknownIncluded: 0);
     }
     // WhatsApp only.
     final eligible = <Map<String, dynamic>>[];
@@ -372,8 +388,10 @@ class PromotionsViewModel extends ChangeNotifier {
     }
 
     for (final customerId in selectedCustomerIds) {
-      final customer =
-          customers.firstWhere((c) => c['id'] == customerId, orElse: () => {});
+      final customer = customers.firstWhere(
+        (c) => c['id'] == customerId,
+        orElse: () => {},
+      );
       final phone = customer['number'];
       if (phone == null) continue;
 
@@ -402,11 +420,12 @@ class PromotionsViewModel extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> fetchWhatsAppStatus(String phoneNumber) async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('successfulWhatsAppNumbers')
-        .where('phoneNumber', isEqualTo: phoneNumber)
-        .limit(1)
-        .get();
+    final querySnapshot =
+        await FirebaseFirestore.instance
+            .collection('successfulWhatsAppNumbers')
+            .where('phoneNumber', isEqualTo: phoneNumber)
+            .limit(1)
+            .get();
 
     if (querySnapshot.docs.isNotEmpty) {
       final data = querySnapshot.docs.first.data();
@@ -442,6 +461,22 @@ class PromotionsViewModel extends ChangeNotifier {
     _sendingPromotion = true;
     notifyListeners();
     try {
+      if (userId.isEmpty) {
+        throw StateError('No signed-in merchant for this promotion.');
+      }
+
+      final templateSnap =
+          await _firestore
+              .collection('messagingTemplates')
+              .doc(templateId)
+              .get();
+      final templateData = templateSnap.data();
+      if (!templateSnap.exists ||
+          templateData == null ||
+          templateData['userId'] != userId) {
+        throw StateError('Template does not belong to the current merchant.');
+      }
+
       final docRef = await _firestore.collection('promotions').add({
         'merchantId': userId,
         'templateId': templateId,
@@ -474,8 +509,9 @@ class PromotionsViewModel extends ChangeNotifier {
     // provider error preserved by the backend or the Pasella-side
     // fallback when the provider gave us nothing.
     try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('runMerchantPromotion');
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'runMerchantPromotion',
+      );
       final res = await callable.call({'promotionId': promoId});
       final data = (res.data as Map?) ?? const {};
       if (data['success'] == true) {
@@ -493,7 +529,8 @@ class PromotionsViewModel extends ChangeNotifier {
         final lastError = promo['lastErrorMessage'] as String?;
         if (status == 'failed') {
           return SendPromotionResult.failed(
-            message: lastError ??
+            message:
+                lastError ??
                 'No messages could be delivered. Provider gave no further detail — '
                     'treat as transient and retry, then contact support if it persists.',
             failedCount: failedCount,
@@ -502,7 +539,8 @@ class PromotionsViewModel extends ChangeNotifier {
         }
         if (status == 'partial') {
           return SendPromotionResult.partial(
-            message: lastError ??
+            message:
+                lastError ??
                 'Some messages could not be delivered. See the promotion details for the affected recipients.',
             failedCount: failedCount,
             succeededCount: succeededCount,
@@ -520,10 +558,11 @@ class PromotionsViewModel extends ChangeNotifier {
       // Preserve whatever the callable layer gave us, but always
       // provide a usable fallback so we never leave the merchant
       // staring at a silent failure.
-      final detail = (e.message != null && e.message!.trim().isNotEmpty)
-          ? e.message!
-          : 'Send failed (code: ${e.code}). No further detail returned — '
-              'retry, then contact support if it persists.';
+      final detail =
+          (e.message != null && e.message!.trim().isNotEmpty)
+              ? e.message!
+              : 'Send failed (code: ${e.code}). No further detail returned — '
+                  'retry, then contact support if it persists.';
       debugPrint('sendSavedPromotion callable failure: ${e.code} ${e.message}');
       return SendPromotionResult.failed(
         message: detail,
@@ -545,23 +584,34 @@ class PromotionsViewModel extends ChangeNotifier {
   Future<void> fetchPromotionsReports() async {
     loadingPromotions = true;
     notifyListeners();
-    final snap = await _firestore
-        .collection('promotions')
-        .where('merchantId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
-        .get();
-    promotionsReports = snap.docs.map((d) {
-      final m = d.data();
-      m['id'] = d.id;
-      return m;
-    }).toList();
+    final snap =
+        await _firestore
+            .collection('promotions')
+            .where('merchantId', isEqualTo: userId)
+            .orderBy('createdAt', descending: true)
+            .get();
+    promotionsReports =
+        snap.docs.map((d) {
+          final m = d.data();
+          m['id'] = d.id;
+          return m;
+        }).toList();
     loadingPromotions = false;
     notifyListeners();
   }
 
   Future<bool> deletePromotion(String promoId) async {
     try {
-      await _firestore.collection('promotions').doc(promoId).delete();
+      final promoRef = _firestore.collection('promotions').doc(promoId);
+      final promoSnap = await promoRef.get();
+      final promoData = promoSnap.data();
+      if (!promoSnap.exists ||
+          promoData == null ||
+          promoData['merchantId'] != userId) {
+        throw StateError('Promotion does not belong to the current merchant.');
+      }
+
+      await promoRef.delete();
       await fetchPromotionsReports();
       return true;
     } catch (e) {
@@ -659,25 +709,23 @@ class SendPromotionResult {
     required String message,
     required int succeededCount,
     required int failedCount,
-  }) =>
-      SendPromotionResult._(
-        outcome: SendPromotionOutcome.partial,
-        message: message,
-        succeededCount: succeededCount,
-        failedCount: failedCount,
-      );
+  }) => SendPromotionResult._(
+    outcome: SendPromotionOutcome.partial,
+    message: message,
+    succeededCount: succeededCount,
+    failedCount: failedCount,
+  );
 
   factory SendPromotionResult.failed({
     required String message,
     required int succeededCount,
     required int failedCount,
-  }) =>
-      SendPromotionResult._(
-        outcome: SendPromotionOutcome.failed,
-        message: message,
-        succeededCount: succeededCount,
-        failedCount: failedCount,
-      );
+  }) => SendPromotionResult._(
+    outcome: SendPromotionOutcome.failed,
+    message: message,
+    succeededCount: succeededCount,
+    failedCount: failedCount,
+  );
 
   bool get isOk => outcome == SendPromotionOutcome.ok;
   bool get hasFailures => failedCount > 0 || outcome != SendPromotionOutcome.ok;

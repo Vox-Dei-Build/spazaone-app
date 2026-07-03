@@ -30,6 +30,7 @@ dependencies:
   permission_handler: ^11.3.1
   intl: ^0.18.1
   async: ^2.11.0
+  http: ^0.13.6
   twilio_flutter: ^0.0.9
   flutter_dotenv: ^5.1.0
   cloud_functions: ^5.5.0

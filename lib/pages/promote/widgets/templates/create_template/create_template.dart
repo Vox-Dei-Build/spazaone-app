@@ -15,11 +15,7 @@ import 'package:pasella/shared/widgets/wizard_stepper.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 
-enum CreateTemplateStep {
-  basicInfo,
-  content,
-  review,
-}
+enum CreateTemplateStep { basicInfo, content, review }
 
 /// Bundle of fields used to prefill [CreateTemplatePage] when the user is
 /// fixing-and-resubmitting a rejected template, or retrying a failed
@@ -52,11 +48,7 @@ class CreateTemplatePage extends StatefulWidget {
   final PromotionsViewModel viewModel;
   final TemplatePrefill? prefill;
 
-  const CreateTemplatePage({
-    super.key,
-    required this.viewModel,
-    this.prefill,
-  });
+  const CreateTemplatePage({super.key, required this.viewModel, this.prefill});
 
   @override
   State<CreateTemplatePage> createState() => _CreateTemplatePageState();
@@ -178,11 +170,19 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     setState(() => saving = true);
 
     final userId = FirebaseAuth.instance.currentUser?.uid ?? "";
+    if (userId.isEmpty) {
+      debugPrint("Cannot save template without a signed-in merchant.");
+      if (mounted) setState(() => saving = false);
+      return;
+    }
+
     final now = Timestamp.now();
 
     // Apply boilerplate (Hi/From) before extracting variables so defaults are included
     final whatsappContent =
-        includeWhatsApp ? forceBoilerplate(_whatsappContentController.text) : '';
+        includeWhatsApp
+            ? forceBoilerplate(_whatsappContentController.text)
+            : '';
     final smsContent = _smsContentController.text;
 
     final variables = <String>{};
@@ -204,18 +204,16 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         if (includeWhatsApp)
           'whatsapp': {
             'templateContent': whatsappContent,
-            'mediaUrl': _mediaUrlController.text.trim().isEmpty
-                ? null
-                : _mediaUrlController.text.trim(),
+            'mediaUrl':
+                _mediaUrlController.text.trim().isEmpty
+                    ? null
+                    : _mediaUrlController.text.trim(),
             'buttons': [],
             'approved': false,
             'submittedAt': now,
           },
-        if (includeSMS)
-          'sms': {
-            'templateContent': smsContent,
-          },
-      }
+        if (includeSMS) 'sms': {'templateContent': smsContent},
+      },
     };
 
     try {
@@ -238,14 +236,14 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         // [context] threw "Null check operator used on a null value" from
         // [State.context] when the merchant tapped a button after this
         // wizard had been replaced from the navigator (i.e. unmounted).
-        final displayName = _templateNameController.text.trim().isEmpty
-            ? (_sanitizedName.isEmpty ? 'your template' : _sanitizedName)
-            : _templateNameController.text.trim();
+        final displayName =
+            _templateNameController.text.trim().isEmpty
+                ? (_sanitizedName.isEmpty ? 'your template' : _sanitizedName)
+                : _templateNameController.text.trim();
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => TemplateSubmittedSuccessPage(
-              displayName: displayName,
-            ),
+            builder:
+                (_) => TemplateSubmittedSuccessPage(displayName: displayName),
           ),
         );
       }
@@ -261,9 +259,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     SizeConfig().init(context);
 
     return Scaffold(
-      appBar: const CustomAppBar(
-        title: 'Create Promotion Template',
-      ),
+      appBar: const CustomAppBar(title: 'Create Promotion Template'),
       body: Padding(
         padding: LayoutConstants.padding10Horizontal,
         child: Form(
@@ -272,7 +268,8 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
             children: [
               if (widget.prefill?.rejectionReason != null)
                 _RejectionReasonBanner(
-                    reason: widget.prefill!.rejectionReason!),
+                  reason: widget.prefill!.rejectionReason!,
+                ),
               WizardStepper(
                 steps: const ['Name', 'Content', 'Review'],
                 currentIndex: currentStep.index,
@@ -310,8 +307,8 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           mediaUrlController: _mediaUrlController,
           photoUtil: _photoUtil,
           uploadingImage: uploadingImage,
-          onImageUploadingChanged: (val) =>
-              setState(() => uploadingImage = val),
+          onImageUploadingChanged:
+              (val) => setState(() => uploadingImage = val),
           whatsappPrice: _whatsappPrice,
           smsPricePerSegment: _smsPricePerSegment,
           smsSegments: _smsSegments,
@@ -346,9 +343,10 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     final contentValid =
         (!includeWhatsApp || whatsappFilled) && (!includeSMS || smsFilled);
 
-    final canProceed = currentStep == CreateTemplateStep.basicInfo
-        ? nameValid
-        : currentStep == CreateTemplateStep.content
+    final canProceed =
+        currentStep == CreateTemplateStep.basicInfo
+            ? nameValid
+            : currentStep == CreateTemplateStep.content
             ? contentValid
             : true;
 
@@ -360,25 +358,27 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         else
           const SizedBox.shrink(),
         ElevatedButton(
-          onPressed: saving || !canProceed
-              ? null
-              : () {
-                  if (currentStep == CreateTemplateStep.basicInfo) {
-                    if (!_formKey.currentState!.validate()) return;
-                    nextStep();
-                  } else if (currentStep == CreateTemplateStep.content) {
-                    nextStep();
-                  } else {
-                    _saveTemplate();
-                  }
-                },
-          child: saving
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(isLast ? 'Save & Submit' : 'Next'),
+          onPressed:
+              saving || !canProceed
+                  ? null
+                  : () {
+                    if (currentStep == CreateTemplateStep.basicInfo) {
+                      if (!_formKey.currentState!.validate()) return;
+                      nextStep();
+                    } else if (currentStep == CreateTemplateStep.content) {
+                      nextStep();
+                    } else {
+                      _saveTemplate();
+                    }
+                  },
+          child:
+              saving
+                  ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                  : Text(isLast ? 'Save & Submit' : 'Next'),
         ),
       ],
     );
@@ -412,7 +412,9 @@ class _RejectionReasonBanner extends StatelessWidget {
                 const Text(
                   'WhatsApp rejected the previous version',
                   style: TextStyle(
-                      color: Colors.red, fontWeight: FontWeight.bold),
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(

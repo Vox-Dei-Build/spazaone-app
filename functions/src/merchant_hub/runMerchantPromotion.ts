@@ -226,11 +226,44 @@ export const runMerchantPromotion = functions.https.onCall(
     if (!promoSnap.exists) {
       throw new functions.https.HttpsError("not-found", "Promotion not found");
     }
-    const promo = promoSnap.data()!;
+    const promo = promoSnap.data();
+    if (!promo) {
+      throw new functions.https.HttpsError("not-found", "Promotion not found");
+    }
     if (promo.merchantId !== merchantId) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Not your promotion",
+      );
+    }
+
+    const templateId =
+      typeof promo.templateId === "string" ? promo.templateId.trim() : "";
+    if (!templateId) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Promotion is missing a template",
+      );
+    }
+
+    // Load and validate the message template before marking the promotion as
+    // processing. A bad or cross-merchant template ID must fail without
+    // leaving the promotion stuck in an in-flight state.
+    const tplSnap = await db
+      .collection("messagingTemplates")
+      .doc(templateId)
+      .get();
+    if (!tplSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Template not found");
+    }
+    const tpl = tplSnap.data();
+    if (!tpl) {
+      throw new functions.https.HttpsError("not-found", "Template not found");
+    }
+    if (tpl.userId !== merchantId) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Template does not belong to this merchant",
       );
     }
 
@@ -250,13 +283,7 @@ export const runMerchantPromotion = functions.https.onCall(
     const unitSMS = promo.sendSMS ? pricing.smsReminderTemplatePrice : 0;
     let totalCost = 0;
 
-    // Load message template
-    const tplSnap = await db
-      .collection("messagingTemplates")
-      .doc(promo.templateId)
-      .get();
-    const tpl = tplSnap.data() || {};
-    const waSid = tpl.channels?.whatsapp?.twilioTemplateId ?? promo.templateId;
+    const waSid = tpl.channels?.whatsapp?.twilioTemplateId ?? templateId;
     const smsRaw = tpl.channels?.sms?.templateContent ?? "";
 
     // Send to each customer

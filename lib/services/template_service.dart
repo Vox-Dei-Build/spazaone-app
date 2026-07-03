@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class TemplateService {
   static final TemplateService _instance = TemplateService._internal();
@@ -6,14 +7,46 @@ class TemplateService {
   TemplateService._internal();
 
   List<Map<String, dynamic>> _templates = [];
+  String? _loadedMerchantId;
+  bool _hasLoadedTemplates = false;
 
-  Future<void> loadTemplatesFromFirestore() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('messagingTemplates')
-        .where('active', isEqualTo: true)
-        .get();
+  Future<void> loadTemplatesFromFirestore({
+    String? merchantId,
+    bool force = false,
+  }) async {
+    final resolvedMerchantId =
+        (merchantId?.trim().isNotEmpty ?? false)
+            ? merchantId!.trim()
+            : FirebaseAuth.instance.currentUser?.uid;
 
-    _templates = snapshot.docs.map((doc) => doc.data()).toList();
+    if (resolvedMerchantId == null || resolvedMerchantId.isEmpty) {
+      _templates = [];
+      _loadedMerchantId = null;
+      _hasLoadedTemplates = true;
+      return;
+    }
+
+    if (!force &&
+        _hasLoadedTemplates &&
+        _loadedMerchantId == resolvedMerchantId) {
+      return;
+    }
+
+    final snapshot =
+        await FirebaseFirestore.instance
+            .collection('messagingTemplates')
+            .where('userId', isEqualTo: resolvedMerchantId)
+            .where('active', isEqualTo: true)
+            .get();
+
+    _templates =
+        snapshot.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          return data;
+        }).toList();
+    _loadedMerchantId = resolvedMerchantId;
+    _hasLoadedTemplates = true;
   }
 
   bool isMatchWithMerchantTemplates(String messageText) {

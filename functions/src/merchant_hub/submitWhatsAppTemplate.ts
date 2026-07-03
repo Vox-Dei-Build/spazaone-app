@@ -86,6 +86,30 @@ function ensureNonVariableEnding(body: string): string {
   return body;
 }
 
+function buildProviderTemplateName(
+  rawName: unknown,
+  merchantId: string,
+  templateId: string,
+): string {
+  const base = String(rawName || "template")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const suffix =
+    merchantId
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 10) ||
+    templateId
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 10);
+  const scopedName = `${base || "template"}_${suffix}`;
+  return scopedName.slice(0, 512).replace(/_+$/g, "");
+}
+
 /**
  * Submits a newly created WhatsApp template to Twilio's Content API for approval.
  * Automatically triggers when a new template is created in Firestore under messagingTemplates.
@@ -99,6 +123,21 @@ exports.submitWhatsAppTemplate = functions.firestore
     const whatsapp = templateData?.channels?.whatsapp;
     if (!whatsapp) {
       console.log("No WhatsApp content found, skipping Twilio submission.");
+      return;
+    }
+
+    const merchantId =
+      typeof templateData?.userId === "string"
+        ? templateData.userId.trim()
+        : "";
+    if (!merchantId) {
+      console.error(
+        `Template ${templateId} is missing userId; not submitting.`,
+      );
+      await snap.ref.update({
+        "channels.whatsapp.approvalStatus": "submission_failed",
+        "channels.whatsapp.submissionError": "Missing merchant userId",
+      });
       return;
     }
 
@@ -124,7 +163,11 @@ exports.submitWhatsAppTemplate = functions.firestore
     };
 
     const createPayload: any = {
-      friendly_name: templateData.name,
+      friendly_name: buildProviderTemplateName(
+        templateData.name,
+        merchantId,
+        templateId,
+      ),
       language: "en",
       channel: "whatsapp",
       types: {
@@ -150,7 +193,7 @@ exports.submitWhatsAppTemplate = functions.firestore
       console.log("✅ Template created:", sid);
 
       approvalPayload = {
-        name: templateData.name.toLowerCase().replace(/\s+/g, "_"),
+        name: createPayload.friendly_name,
         category: "MARKETING",
       };
 
@@ -169,6 +212,7 @@ exports.submitWhatsAppTemplate = functions.firestore
       console.log("✅ WhatsApp approval submitted:", approvalRes.data);
 
       await db.collection("messagingTemplates").doc(templateId).update({
+        "channels.whatsapp.providerTemplateName": createPayload.friendly_name,
         "channels.whatsapp.twilioTemplateId": sid,
         "channels.whatsapp.approvalStatus": "submitted",
       });
