@@ -8,7 +8,7 @@ import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
-import 'package:pasella/pages/sales/sales_intent_bus.dart';
+import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:provider/provider.dart';
@@ -54,13 +54,12 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    final intent = SalesIntentBus.instance.consume();
-    final initialMainIndex =
-        intent?.section == SalesIntentSection.marketing ? 1 : 0;
+    final intent = SalesIntentBus.instance.take();
+    final initialMainIndex = intent == null ? 0 : 1;
 
-    if (intent?.section == SalesIntentSection.marketing) {
+    if (intent != null) {
       _selectedMarketingView =
-          intent?.marketingView == SalesIntentMarketingView.templates
+          intent.marketingView == SalesIntentMarketingView.templates
               ? MarketingViewType.templates
               : MarketingViewType.promotions;
     }

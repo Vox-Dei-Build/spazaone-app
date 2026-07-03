@@ -19,6 +19,7 @@ class CustomerGrowthNudge extends StatelessWidget {
     }
 
     final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
     final progress = (customerCount / targetCustomers).clamp(0.0, 1.0);
     final remaining = targetCustomers - customerCount;
     final remainingLabel = remaining == 1 ? 'more customer' : 'more customers';
@@ -28,9 +29,9 @@ class CustomerGrowthNudge extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(4, 8, 4, 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.green.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.green.withValues(alpha: 0.18)),
+        color: primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: primary.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -42,12 +43,12 @@ class CustomerGrowthNudge extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   Icons.groups_2_outlined,
-                  color: Colors.green.shade700,
+                  color: primary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -66,7 +67,9 @@ class CustomerGrowthNudge extends StatelessWidget {
                       '$customerCount of $targetCustomers saved '
                       'customers. Add $remaining $remainingLabel.',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade800,
+                        color: theme.textTheme.bodySmall?.color?.withValues(
+                          alpha: 0.75,
+                        ),
                         height: 1.25,
                       ),
                     ),
@@ -81,8 +84,8 @@ class CustomerGrowthNudge extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 7,
-              backgroundColor: Colors.white,
-              color: Colors.green.shade600,
+              backgroundColor: theme.colorScheme.surface,
+              color: primary,
             ),
           ),
           if (onAddCustomer != null) ...[

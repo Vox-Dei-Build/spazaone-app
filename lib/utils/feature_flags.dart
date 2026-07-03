@@ -36,6 +36,16 @@ class FeatureFlags {
   /// forcing "Cancel and try again".
   static bool enableOtpResendInDialog = false;
 
+  /// Controls whether the two-slide merchant onboarding intro sheet is
+  /// shown on the merchant's first Dashboard mount. Kept behind a flag
+  /// so we can A/B or kill it remotely as the persistent
+  /// [MerchantSetupCard] on the Customers tab matures — the two
+  /// surfaces overlap by design and we may not need both.
+  ///
+  /// Defaults to true so a missing / failed Remote Config fetch keeps
+  /// the current behaviour.
+  static bool enableMerchantOnboardingIntro = true;
+
   static Future<void> loadFlags() async {
     final rc = await RemoteConfigService.getInstance();
 
@@ -92,6 +102,10 @@ class FeatureFlags {
     enableOtpResendInDialog = rc.getBool(
       'FEATURE_OTP_RESEND_IN_DIALOG_ENABLED',
       defaultValue: false,
+    );
+    enableMerchantOnboardingIntro = rc.getBool(
+      'FEATURE_MERCHANT_ONBOARDING_INTRO_ENABLED',
+      defaultValue: true,
     );
   }
 }

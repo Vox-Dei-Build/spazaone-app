@@ -1,16 +1,19 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/models/common/app_model.dart';
-import 'package:pasella/pages/sales/sales_intent_bus.dart';
-import 'package:pasella/pages/settings/share/share.dart';
-import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
 import 'package:pasella/pages/ledger/widgets/customer_search_box.dart';
+import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
+import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
-import 'package:pasella/shared/widgets/onboarding/customer_onboarding_checklist_card.dart';
+import 'package:pasella/services/sales_intent_bus.dart';
+import 'package:pasella/shared/widgets/onboarding/merchant_setup_card.dart';
+import 'package:pasella/shared/widgets/onboarding/merchant_setup_state.dart';
 import 'package:provider/provider.dart';
 
 class CustomerTab extends StatefulWidget {
@@ -45,6 +48,19 @@ class _CustomerTabState extends State<CustomerTab> {
   final ValueNotifier<bool> _searchVisible = ValueNotifier<bool>(true);
   final FocusNode _searchFocusNode = FocusNode();
 
+  /// Drives the "should the growth nudge be visible?" gate on
+  /// `EntityTab`. Two overlapping progress surfaces on the same tab
+  /// (setup card + growth nudge) was the top piece of noise
+  /// merchants called out — activation first, growth after.
+  ///
+  /// Flipped by [_setupStateSub] once the setup card is complete.
+  final ValueNotifier<bool> _showGrowthNudge = ValueNotifier<bool>(false);
+
+  StreamSubscription<MerchantSetupState>? _setupStateSub;
+  Stream<MerchantSetupState>? _setupStateStream;
+  MerchantSetupState _setupState = const MerchantSetupState.loading();
+  String? _watchedUserId;
+
   // Small delta threshold so finger jitter doesn't toggle visibility
   // back and forth — only deliberate scroll gestures should collapse
   // the bar.
@@ -56,6 +72,45 @@ class _CustomerTabState extends State<CustomerTab> {
     super.initState();
     _scrollController.addListener(_handleScroll);
     _searchFocusNode.addListener(_handleFocusChange);
+    _bindSetupStream();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Re-subscribe if the signed-in user changes while the tab is
+    // mounted (rare but possible after logout / re-auth).
+    _bindSetupStream();
+  }
+
+  /// Subscribes to [watchMerchantSetup] once, shares the state with:
+  ///
+  ///  - the [MerchantSetupCard] via `MerchantSetupCard.fromState`
+  ///    (so the card doesn't open its own set of Firestore listeners
+  ///    for the same six queries), and
+  ///  - the [_showGrowthNudge] notifier that gates
+  ///    [CustomerGrowthNudge] rendering inside [EntityTab].
+  void _bindSetupStream() {
+    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (userId == _watchedUserId && _setupStateSub != null) return;
+
+    _setupStateSub?.cancel();
+    _setupStateSub = null;
+    _setupStateStream = null;
+    _watchedUserId = userId;
+
+    if (userId.isEmpty) {
+      _setupState = const MerchantSetupState.loading();
+      _showGrowthNudge.value = false;
+      return;
+    }
+
+    _setupStateStream = watchMerchantSetup(userId);
+    _setupStateSub = _setupStateStream!.listen((state) {
+      if (!mounted) return;
+      setState(() => _setupState = state);
+      _showGrowthNudge.value = state.isComplete;
+    });
   }
 
   void _handleScroll() {
@@ -109,11 +164,15 @@ class _CustomerTabState extends State<CustomerTab> {
     _searchFocusNode.removeListener(_handleFocusChange);
     _searchFocusNode.dispose();
     _searchVisible.dispose();
+    _showGrowthNudge.dispose();
+    _setupStateSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final userId = _watchedUserId ?? '';
+
     return Column(
       children: [
         SizedBox(height: SizeConfig.heightMultiplier * 1),
@@ -159,14 +218,18 @@ class _CustomerTabState extends State<CustomerTab> {
             emptyCtaLabel:
                 widget.onAddCustomer == null ? null : 'Add your first customer',
             onEmptyCtaTap: widget.onAddCustomer,
-            listHeader: CustomerOnboardingChecklistCard(
-              userId: FirebaseAuth.instance.currentUser?.uid ?? '',
-              onAddCustomer: widget.onAddCustomer ?? () {},
-              onChooseWhatsAppProduct: () => _openProducts(context),
-              onOpenOrderingLink: () => _openOrderingLink(context),
-              onOpenPromotions: () => _openPromotions(context),
-              onOpenBanking: () => _openBanking(context),
-            ),
+            showGrowthNudge: _showGrowthNudge,
+            listHeader: userId.isEmpty
+                ? null
+                : MerchantSetupCard.fromState(
+                    // Key on userId so the card fully rebuilds if the
+                    // signed-in user changes (Hive key + subscription
+                    // both re-resolve).
+                    key: ValueKey<String>('merchant-setup-card:$userId'),
+                    userId: userId,
+                    state: _setupState,
+                    actions: _actions(context),
+                  ),
             // PAS-AUTH-03: bring Customers up to Stock-parity by
             // surfacing the existing TUTORIAL_CAPTURE_CUSTOMERS Loom
             // video on the empty state. The remote-config key already
@@ -177,6 +240,22 @@ class _CustomerTabState extends State<CustomerTab> {
           ),
         ),
       ],
+    );
+  }
+
+  MerchantSetupActions _actions(BuildContext context) {
+    return MerchantSetupActions(
+      onAddCustomer: widget.onAddCustomer ?? () {},
+      onAddProduct: () => _openProducts(context),
+      onChooseWhatsAppProducts: () => _openProducts(context),
+      onOpenOrderingLink: () => _openOrderingLink(context),
+      onOpenBanking: () => _openBanking(context),
+      // Templates step routes to Marketing → Templates so the
+      // merchant lands on the "Create template" FAB instead of
+      // being bounced through the "no approved templates" dialog on
+      // Marketing → Promotions.
+      onCreateTemplate: () =>
+          _openMarketing(context, SalesIntentMarketingView.templates),
     );
   }
 
@@ -192,13 +271,15 @@ class _CustomerTabState extends State<CustomerTab> {
     );
   }
 
-  void _openPromotions(BuildContext context) {
-    SalesIntentBus.instance.set(
-      const SalesIntent(
-        section: SalesIntentSection.marketing,
-        marketingView: SalesIntentMarketingView.promotions,
-      ),
-    );
+  /// Opens Sales → Marketing on the requested sub-view. Stashes an
+  /// intent for `SalesPage.initState` to consume and switches the
+  /// bottom navigation to Sales in one action, mirroring what a
+  /// manual "tap Sales, tap Marketing, tap segment" would land on.
+  void _openMarketing(
+    BuildContext context,
+    SalesIntentMarketingView view,
+  ) {
+    SalesIntentBus.instance.stash(SalesIntent.marketing(marketingView: view));
     context.read<AppModel>().updateCurrentIndex(2);
   }
 

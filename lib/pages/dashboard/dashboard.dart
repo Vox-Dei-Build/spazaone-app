@@ -53,6 +53,11 @@ class _DashboardState extends State<Dashboard> {
     if (_introScheduled || userId.isEmpty) return;
     _introScheduled = true;
 
+    // The setup card on the Customers tab is the persistent guide;
+    // the intro is a first-run supplement. When the flag is off we
+    // skip the sheet entirely and let the card carry the load.
+    if (!FeatureFlags.enableMerchantOnboardingIntro) return;
+
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
@@ -230,16 +235,19 @@ class _DashboardState extends State<Dashboard> {
               _showFirstRunSurfacesIfNeeded(userId);
               _processActivationIntentIfNeeded(userId);
             });
-            // PAS-UI-01: the OnboardingChecklist that previously mounted
-            // here (per PAS-UX-09) has been removed from the visible
-            // dashboard chrome. Merchant feedback was that it consumed
-            // persistent vertical space above every tab while delivering
-            // little ongoing value once one or two items were auto-
-            // ticked. The widget definition
+            // PAS-UI-01: the OnboardingChecklist that previously
+            // mounted here (per PAS-UX-09) has been removed from the
+            // visible dashboard chrome. Merchant feedback was that it
+            // consumed persistent vertical space above every tab
+            // while delivering little ongoing value once one or two
+            // items were auto-ticked. Its role has been superseded
+            // by MerchantSetupCard on the Customers tab, which
+            // covers the full setup path (customer → product →
+            // WhatsApp listing → ordering link → payout → template)
+            // and scrolls with the customer list. The old widget
             // (`lib/shared/widgets/onboarding/onboarding_checklist.dart`)
-            // is intentionally retained un-mounted so its auto-detect
-            // logic and Hive persistence can be reused by a future
-            // activation surface (e.g. a dismissible empty-state).
+            // is `@Deprecated` — retained only for the Hive-key
+            // pattern; do not reintroduce.
             return Scaffold(
               body: value.navigationOptions[value.currentIndex],
               bottomNavigationBar: ClipRRect(

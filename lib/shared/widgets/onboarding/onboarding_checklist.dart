@@ -7,6 +7,18 @@ import 'package:pasella/pages/promote/utils/template_status.dart';
 
 /// PAS-UX-02 / PAS-UX-09: first-session aha checklist.
 ///
+/// **Deprecated (PAS-UX-rel).** Superseded by
+/// [MerchantSetupCard] in
+/// `lib/shared/widgets/onboarding/merchant_setup_card.dart`, which
+/// covers a superset of these four steps (customer, product, WhatsApp
+/// listing, ordering link, banking, template), scrolls with the
+/// Customers list rather than consuming persistent Dashboard chrome,
+/// and consumes state from a single [Stream<MerchantSetupState>]
+/// instead of four nested subscriptions. This widget is no longer
+/// mounted anywhere and is retained only so its Hive-persistence
+/// approach and auto-tick logic can be referenced if we ever need to
+/// re-introduce a per-screen banner. Do not use in new code.
+///
 /// The audit found that a new merchant landing in the app has no
 /// scaffolded path through the four actions that produce the first
 /// believable "aha" moment:
@@ -68,6 +80,12 @@ import 'package:pasella/pages/promote/utils/template_status.dart';
 ///   - Empty-state CTAs across Sales, Orders: PAS-UX-04 established
 ///     the pattern on Stock, PAS-UX-09 added Customers; the other
 ///     two surfaces should follow but are tracked separately.
+@Deprecated(
+  'Use MerchantSetupCard from '
+  'package:pasella/shared/widgets/onboarding/merchant_setup_card.dart '
+  'instead. This class is no longer mounted and will be removed once '
+  'no one references its Hive-persistence approach for reference.',
+)
 class OnboardingChecklist extends StatefulWidget {
   const OnboardingChecklist({
     super.key,
@@ -88,7 +106,9 @@ class OnboardingChecklist extends StatefulWidget {
   State<OnboardingChecklist> createState() => _OnboardingChecklistState();
 }
 
-class _OnboardingChecklistState extends State<OnboardingChecklist> {
+class _OnboardingChecklistState
+    // ignore: deprecated_member_use_from_same_package
+    extends State<OnboardingChecklist> {
   static const _boxName = 'appBox';
   static const _dismissedSuffix = ':dismissed';
 

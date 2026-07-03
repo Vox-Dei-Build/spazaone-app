@@ -48,73 +48,11 @@ class ProductList extends StatelessWidget {
           // an empty group is a different signal than an empty
           // catalogue.
           final showOnboarding = groupName == null && onAddProduct != null;
-          return Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 6,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.inventory_2_outlined,
-                    size: SizeConfig.imageSizeMultiplier * 18,
-                    color: Colors.grey.withValues(alpha: 0.5),
-                  ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  Text(
-                    showOnboarding
-                        ? 'Add your first product'
-                        : 'No products in this group',
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 2.2,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  if (showOnboarding) ...[
-                    SizedBox(height: SizeConfig.heightMultiplier * 1),
-                    Text(
-                      'Start with the item you sell most often. Products power stock, sales detail, and WhatsApp ordering.',
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.6,
-                        color: Colors.grey[700],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 3),
-                    ActivationCoachmark(
-                      userId: viewModel.userId,
-                      coachmarkKey: 'add_first_product_from_products',
-                      title: 'Add a product',
-                      message:
-                          'Create the item once so it can be used in sales, stock, and ordering.',
-                      icon: Icons.inventory_2_outlined,
-                      child: ElevatedButton.icon(
-                        onPressed: onAddProduct,
-                        icon: const Icon(Icons.inventory_2_outlined),
-                        label: const Text('Add your first product'),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: SizeConfig.imageSizeMultiplier * 6,
-                            vertical: SizeConfig.heightMultiplier * 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (onWatchTutorial != null) ...[
-                      SizedBox(height: SizeConfig.heightMultiplier * 1),
-                      TextButton.icon(
-                        onPressed: onWatchTutorial,
-                        icon: const Icon(Icons.play_circle_outline),
-                        label: const Text('Watch a 2-min walkthrough'),
-                      ),
-                    ],
-                  ],
-                ],
-              ),
-            ),
+          return ProductListEmptyState(
+            userId: viewModel.userId,
+            showOnboarding: showOnboarding,
+            onAddProduct: onAddProduct,
+            onWatchTutorial: onWatchTutorial,
           );
         }
         return CustomScrollView(
@@ -143,6 +81,105 @@ class ProductList extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Empty-state for the top-level Products catalogue.
+///
+/// Extracted so widget tests can pump the empty state without a live
+/// [StockViewModel] stream or Firestore. Rendered by [ProductList]
+/// when the catalogue is empty.
+///
+/// When [showOnboarding] is true (top-level view + [onAddProduct]
+/// supplied) the widget renders the recovery hero — icon, product-
+/// specific title, description, coach-marked CTA, and an optional
+/// walkthrough link. When false, it falls back to the compact
+/// "No products in this group" placeholder used by group drilldowns.
+class ProductListEmptyState extends StatelessWidget {
+  const ProductListEmptyState({
+    super.key,
+    required this.userId,
+    required this.showOnboarding,
+    required this.onAddProduct,
+    required this.onWatchTutorial,
+  });
+
+  final String userId;
+  final bool showOnboarding;
+  final VoidCallback? onAddProduct;
+  final VoidCallback? onWatchTutorial;
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig().init(context);
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: SizeConfig.imageSizeMultiplier * 6,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: SizeConfig.imageSizeMultiplier * 18,
+              color: Colors.grey.withValues(alpha: 0.5),
+            ),
+            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            Text(
+              showOnboarding
+                  ? 'Add your first product'
+                  : 'No products in this group',
+              style: TextStyle(
+                fontSize: SizeConfig.textMultiplier * 2.2,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (showOnboarding) ...[
+              SizedBox(height: SizeConfig.heightMultiplier * 1),
+              Text(
+                'Start with the item you sell most often. Products power stock, sales detail, and WhatsApp ordering.',
+                style: TextStyle(
+                  fontSize: SizeConfig.textMultiplier * 1.6,
+                  color: Colors.grey[700],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
+              ActivationCoachmark(
+                userId: userId,
+                coachmarkKey: 'add_first_product_from_products',
+                title: 'Add a product',
+                message:
+                    'Create the item once so it can be used in sales, stock, and ordering.',
+                icon: Icons.inventory_2_outlined,
+                child: ElevatedButton.icon(
+                  onPressed: onAddProduct,
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  label: const Text('Add your first product'),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.imageSizeMultiplier * 6,
+                      vertical: SizeConfig.heightMultiplier * 1.5,
+                    ),
+                  ),
+                ),
+              ),
+              if (onWatchTutorial != null) ...[
+                SizedBox(height: SizeConfig.heightMultiplier * 1),
+                TextButton.icon(
+                  onPressed: onWatchTutorial,
+                  icon: const Icon(Icons.play_circle_outline),
+                  label: const Text('Watch a 2-min walkthrough'),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

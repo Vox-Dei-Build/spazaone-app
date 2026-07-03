@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -45,6 +46,16 @@ class EntityTab extends StatefulWidget {
   /// list instead of consuming fixed vertical space above it.
   final Widget? listHeader;
 
+  /// PAS-UX-rel: Whether to render the [CustomerGrowthNudge] beneath
+  /// [listHeader] when the category is Customer. Only meaningful on
+  /// the Customer tab; other categories ignore it.
+  ///
+  /// CustomerTab hides the growth nudge while the merchant setup card
+  /// still has incomplete steps — two overlapping progress surfaces
+  /// on the same tab was the top piece of noise merchants called out
+  /// in the design review. Activation first, growth after.
+  final ValueListenable<bool>? showGrowthNudge;
+
   /// PAS-AUTH-03: optional walkthrough video key. When set and the
   /// matching Remote Config entry returns a non-empty URL, a "Watch a
   /// 2-min walkthrough" link is rendered below the primary CTA — same
@@ -63,6 +74,7 @@ class EntityTab extends StatefulWidget {
     this.emptyCtaLabel,
     this.onEmptyCtaTap,
     this.listHeader,
+    this.showGrowthNudge,
     this.tutorialKey,
     this.tutorialTitle = 'How to use Pasella',
     Key? key,
@@ -429,7 +441,8 @@ class _EntityTabState extends State<EntityTab> {
                       if (!hasSearchTerm && widget.listHeader != null)
                         widget.listHeader!,
                       if (widget.category == 'Customer' && !hasSearchTerm)
-                        CustomerGrowthNudge(
+                        _MaybeGrowthNudge(
+                          showGrowthNudge: widget.showGrowthNudge,
                           customerCount: allEntities.length,
                           onAddCustomer: widget.onEmptyCtaTap,
                         ),
@@ -489,5 +502,42 @@ class _EntityTabState extends State<EntityTab> {
   void dispose() {
     widget.searchTextNotifier.removeListener(_handleSearch);
     super.dispose();
+  }
+}
+
+/// Renders the customer growth nudge only when the parent surface has
+/// opted-in via [showGrowthNudge]. If [showGrowthNudge] is null the
+/// nudge is always visible — preserves behaviour for callers that
+/// don't participate in the setup-first / growth-second gating.
+class _MaybeGrowthNudge extends StatelessWidget {
+  const _MaybeGrowthNudge({
+    required this.showGrowthNudge,
+    required this.customerCount,
+    required this.onAddCustomer,
+  });
+
+  final ValueListenable<bool>? showGrowthNudge;
+  final int customerCount;
+  final VoidCallback? onAddCustomer;
+
+  @override
+  Widget build(BuildContext context) {
+    final gate = showGrowthNudge;
+    if (gate == null) {
+      return CustomerGrowthNudge(
+        customerCount: customerCount,
+        onAddCustomer: onAddCustomer,
+      );
+    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: gate,
+      builder: (context, show, _) {
+        if (!show) return const SizedBox.shrink();
+        return CustomerGrowthNudge(
+          customerCount: customerCount,
+          onAddCustomer: onAddCustomer,
+        );
+      },
+    );
   }
 }

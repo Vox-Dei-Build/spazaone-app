@@ -53,6 +53,18 @@ final kCustomThemeData = ThemeData(
   colorScheme: const ColorScheme.light(
       primary: kPrimaryColor, surfaceTint: Colors.white),
   iconTheme: const IconThemeData(color: kTertiaryColor),
+  // PAS-UX-rel: standardise Card chrome across the app so the
+  // onboarding surfaces stop rolling their own borders/elevations.
+  // 12-dp corners match M3's baseline and read as more premium than
+  // the 8-dp chrome the older widgets shipped with.
+  cardTheme: CardTheme(
+    elevation: 0.5,
+    surfaceTintColor: kPrimaryColor,
+    margin: EdgeInsets.zero,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+  ),
   navigationBarTheme: NavigationBarThemeData(
     elevation: 10.0,
     height: 70.0,

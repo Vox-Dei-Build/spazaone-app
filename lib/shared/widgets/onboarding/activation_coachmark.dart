@@ -72,11 +72,12 @@ class _ActivationCoachmarkState extends State<ActivationCoachmark> {
   Widget build(BuildContext context) {
     if (!_visible) return widget.child;
 
+    final theme = Theme.of(context);
     final bubble = _CoachmarkBubble(
       title: widget.title,
       message: widget.message,
       icon: widget.icon,
-      accentColor: widget.accentColor ?? Colors.green.shade700,
+      accentColor: widget.accentColor ?? theme.colorScheme.primary,
       onDismiss: _dismiss,
     );
 
