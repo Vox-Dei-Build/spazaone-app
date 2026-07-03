@@ -23,7 +23,7 @@ void main() {
     expect(find.text('Set up Pasella clearly'), findsOneWidget);
     expect(find.text('Start with one customer'), findsOneWidget);
     expect(
-      find.textContaining('record Pay Later credit'),
+      find.textContaining('record Pay Later transactions'),
       findsOneWidget,
     );
 
@@ -32,7 +32,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    expect(find.text('Link a product to credit'), findsOneWidget);
+    expect(find.text('Link a product to a transaction'), findsOneWidget);
     await tester.tap(find.text('Products'));
     await tester.pumpAndSettle();
 
