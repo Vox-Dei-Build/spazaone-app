@@ -66,33 +66,34 @@ class _DashboardState extends State<Dashboard> {
     final seen = box.get(seenKey, defaultValue: false) as bool;
     if (seen) return;
 
-    await showModalBottomSheet<void>(
+    final action = await showModalBottomSheet<MerchantOnboardingIntroAction>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder: (_) => MerchantOnboardingIntro(
-        onOpenCustomers: () {
-          if (!mounted) return;
-          context.read<AppModel>().updateCurrentIndex(0);
-          Navigator.of(context).pushNamed(AddContactPage.id);
-        },
-        onOpenProducts: () {
-          if (!mounted) return;
-          // PAS-UX-19: pre-select the Products tab so popping
-          // NewProductPage lands the merchant on their catalogue,
-          // then push the add-product form directly. The previous
-          // behaviour only switched tabs, which dropped a fresh
-          // merchant on the empty-state screen and required an
-          // extra tap to reach the form the CTA had just promised.
-          context.read<AppModel>().updateCurrentIndex(1);
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
-        },
-      ),
+      builder:
+          (_) => MerchantOnboardingIntro(
+            onOpenCustomers: () {
+              if (!mounted) return;
+              context.read<AppModel>().updateCurrentIndex(0);
+              Navigator.of(context).pushNamed(AddContactPage.id);
+            },
+            onOpenProducts: () {
+              if (!mounted) return;
+              // PAS-UX-19: pre-select the Products tab so popping
+              // NewProductPage lands the merchant on their catalogue,
+              // then push the add-product form directly. The previous
+              // behaviour only switched tabs, which dropped a fresh
+              // merchant on the empty-state screen and required an
+              // extra tap to reach the form the CTA had just promised.
+              context.read<AppModel>().updateCurrentIndex(1);
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
+            },
+          ),
     );
 
     // Persist only after the sheet was actually presented and dismissed.
@@ -100,6 +101,20 @@ class _DashboardState extends State<Dashboard> {
     // Dashboard during registration to consume onboarding invisibly behind
     // FinishProfilePage.
     await box.put(seenKey, true);
+
+    if (!mounted) return;
+    switch (action) {
+      case MerchantOnboardingIntroAction.openCustomers:
+        context.read<AppModel>().updateCurrentIndex(0);
+        Navigator.of(context).pushNamed(AddContactPage.id);
+      case MerchantOnboardingIntroAction.openProducts:
+        context.read<AppModel>().updateCurrentIndex(1);
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
+      case null:
+        break;
+    }
   }
 
   Future<void> _processActivationIntentIfNeeded(String userId) async {
@@ -149,12 +164,13 @@ class _DashboardState extends State<Dashboard> {
       return;
     }
 
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('customers')
-        .doc(customerId)
-        .get();
+    final doc =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('customers')
+            .doc(customerId)
+            .get();
 
     if (!mounted) return;
 
@@ -174,13 +190,15 @@ class _DashboardState extends State<Dashboard> {
     context.read<AppModel>().updateCurrentIndex(0);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AddCreditScreen(
-          customerName: customerName,
-          customerId: customerId,
-          mobileNumber: mobileNumber == null || mobileNumber.isEmpty
-              ? null
-              : mobileNumber,
-        ),
+        builder:
+            (_) => AddCreditScreen(
+              customerName: customerName,
+              customerId: customerId,
+              mobileNumber:
+                  mobileNumber == null || mobileNumber.isEmpty
+                      ? null
+                      : mobileNumber,
+            ),
       ),
     );
   }
@@ -256,8 +274,8 @@ class _DashboardState extends State<Dashboard> {
                 ),
                 child: NavigationBar(
                   selectedIndex: value.currentIndex,
-                  onDestinationSelected: (index) =>
-                      value.handleNavigation(context, index),
+                  onDestinationSelected:
+                      (index) => value.handleNavigation(context, index),
                   destinations: [
                     NavigationDestination(
                       icon: Icon(

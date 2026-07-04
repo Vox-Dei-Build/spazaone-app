@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'consent_service.dart';
 
@@ -77,6 +78,17 @@ class CrashService {
       // non-fatal because a misbehaving Cloud Function is not an app crash.
       return true;
     }
+    if (error is PlatformException) {
+      final code = error.code.toLowerCase();
+      final message = (error.message ?? '').toLowerCase();
+      if (code.contains('firebase_remote_config') ||
+          code.contains('firebase_functions') ||
+          message.contains('unable to connect') ||
+          message.contains('network') ||
+          message.contains('timed out')) {
+        return true;
+      }
+    }
     // Network-layer failures from dart:io. These bubble up from image
     // providers (NetworkImage / CachedNetworkImageProvider), http calls,
     // and any direct Firebase Storage download. Not an app crash.
@@ -99,6 +111,11 @@ class CrashService {
       return true;
     }
     return false;
+  }
+
+  @visibleForTesting
+  bool isRecoverableForTesting(Object error) {
+    return _isRecoverableBackendError(error);
   }
 
   /// Errors reported by Flutter's image pipeline (NetworkImage, decode

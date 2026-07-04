@@ -99,7 +99,8 @@ Future<void> createNotificationChannel() async {
 
   await flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
+        AndroidFlutterLocalNotificationsPlugin
+      >()
       ?.createNotificationChannel(channel);
 }
 
@@ -194,12 +195,13 @@ void _pushCustomerAccountWhenReady({
   void push() {
     navigatorKey.currentState?.push(
       MaterialPageRoute(
-        builder: (_) => CustomerManagementPage(
-          customerName: customerName,
-          customerId: customerId,
-          mobileNumber: mobileNumber,
-          initialTabIndex: 2,
-        ),
+        builder:
+            (_) => CustomerManagementPage(
+              customerName: customerName,
+              customerId: customerId,
+              mobileNumber: mobileNumber,
+              initialTabIndex: 2,
+            ),
       ),
     );
   }
@@ -252,7 +254,8 @@ Future<void> _openCustomerFromMessageNotification(
       if (customerDoc.exists && customerData != null) {
         _pushCustomerAccountWhenReady(
           customerId: customerDoc.id,
-          customerName: _firstNotificationString([
+          customerName:
+              _firstNotificationString([
                 customerData['name'],
                 payloadCustomerName,
               ]) ??
@@ -277,16 +280,18 @@ Future<void> _openCustomerFromMessageNotification(
 
     final normalizedNumber = normalizePhoneNumber(payloadCustomerNumber);
     if (normalizedNumber.isNotEmpty) {
-      final snapshot = await customerCollection
-          .where('number', isEqualTo: normalizedNumber)
-          .limit(1)
-          .get();
+      final snapshot =
+          await customerCollection
+              .where('number', isEqualTo: normalizedNumber)
+              .limit(1)
+              .get();
       if (snapshot.docs.isNotEmpty) {
         final customerDoc = snapshot.docs.first;
         final customerData = customerDoc.data();
         _pushCustomerAccountWhenReady(
           customerId: customerDoc.id,
-          customerName: _firstNotificationString([
+          customerName:
+              _firstNotificationString([
                 customerData['name'],
                 payloadCustomerName,
               ]) ??
@@ -655,9 +660,10 @@ class MyApp extends StatelessWidget {
           create: (context) => CustomerBalanceSummaryProvider(),
         ),
         ChangeNotifierProvider<LedgerViewModel>(
-          create: (context) => LedgerViewModel(
-            Provider.of<AppModel>(context, listen: false),
-          ),
+          create:
+              (context) => LedgerViewModel(
+                Provider.of<AppModel>(context, listen: false),
+              ),
         ),
         ChangeNotifierProvider<PromotionsViewModel>(
           create: (context) {
@@ -681,28 +687,53 @@ class MyApp extends StatelessWidget {
           // single-field entry screen. Default (flag off) keeps the legacy
           // `/loginPage` as the initial route so a missing / failed Remote
           // Config fetch leaves merchants on the known-good flow.
-          initialRoute: FeatureFlags.enableNumberFirstOnboarding
-              ? PhoneEntryPage.id
-              : LoginPage.id,
+          initialRoute:
+              FeatureFlags.enableNumberFirstOnboarding
+                  ? PhoneEntryPage.id
+                  : LoginPage.id,
           navigatorKey: navigatorKey,
           navigatorObservers: [TelemetryService.instance.navigatorObserver],
           routes: _routes,
           // Defensive: any code path that pushes a route not present in
           // `_routes` (e.g. stale FCM notification payloads from older app
           // versions) lands here instead of triggering the framework's
-          // `onUnknownRoute!` null-check assertion. We log it and stay on
-          // the current screen rather than showing a broken page.
-          onUnknownRoute: (settings) {
-            CrashService.instance.recordNonFatal(
-              StateError('Unknown route requested: ${settings.name}'),
-              StackTrace.current,
-              reason: 'MaterialApp.onUnknownRoute fallback',
-              context: {'route': settings.name ?? ''},
-            );
-            return null;
-          },
+          // `onUnknownRoute!` null-check assertion.
+          onUnknownRoute: buildUnknownRoute,
         ),
       ),
     );
+  }
+
+  @visibleForTesting
+  static Route<dynamic> buildUnknownRoute(RouteSettings settings) {
+    CrashService.instance.recordNonFatal(
+      StateError('Unknown route requested: ${settings.name}'),
+      StackTrace.current,
+      reason: 'MaterialApp.onUnknownRoute fallback',
+      context: {'route': settings.name ?? ''},
+    );
+
+    final routeName =
+        _hasSignedInUserForRouteFallback() ? Dashboard.id : LoginPage.id;
+
+    return MaterialPageRoute<void>(
+      settings: RouteSettings(name: routeName),
+      builder: (context) {
+        if (routeName == Dashboard.id) {
+          return const BusinessNameGate(child: Dashboard());
+        }
+        return const LoginPage();
+      },
+    );
+  }
+
+  static bool _hasSignedInUserForRouteFallback() {
+    try {
+      return FirebaseAuth.instance.currentUser != null;
+    } catch (_) {
+      // Unit tests and very early boot paths can reach this before Firebase
+      // Auth is ready. Login is the safer fallback in that case.
+      return false;
+    }
   }
 }

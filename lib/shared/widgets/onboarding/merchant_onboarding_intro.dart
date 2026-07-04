@@ -27,6 +27,8 @@ class MerchantOnboardingIntro extends StatefulWidget {
       _MerchantOnboardingIntroState();
 }
 
+enum MerchantOnboardingIntroAction { openCustomers, openProducts }
+
 class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
   final PageController _controller = PageController();
   int _index = 0;
@@ -119,8 +121,8 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
                 controller: _controller,
                 itemCount: _slides.length,
                 onPageChanged: (value) => setState(() => _index = value),
-                itemBuilder: (context, index) =>
-                    _SlideView(slide: _slides[index]),
+                itemBuilder:
+                    (context, index) => _SlideView(slide: _slides[index]),
               ),
             ),
             Row(
@@ -133,9 +135,10 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
                   height: 7,
                   margin: const EdgeInsets.symmetric(horizontal: 3),
                   decoration: BoxDecoration(
-                    color: i == _index
-                        ? primary
-                        : theme.colorScheme.outlineVariant,
+                    color:
+                        i == _index
+                            ? primary
+                            : theme.colorScheme.outlineVariant,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -145,10 +148,7 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
             if (!isLast)
               Row(
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Later'),
-                  ),
+                  TextButton(onPressed: _dismiss, child: const Text('Later')),
                   const Spacer(),
                   ElevatedButton(
                     onPressed: () {
@@ -187,14 +187,14 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
                 children: [
                   ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.of(context).pop();
-                      widget.onOpenCustomers();
+                      _dismiss(MerchantOnboardingIntroAction.openCustomers);
                     },
                     icon: const Icon(Icons.person_add_alt_1_outlined),
                     label: const Text('Start with a customer'),
                     style: ElevatedButton.styleFrom(
-                      minimumSize:
-                          const Size.fromHeight(LayoutConstants.minTouchTarget),
+                      minimumSize: const Size.fromHeight(
+                        LayoutConstants.minTouchTarget,
+                      ),
                       backgroundColor: primary,
                       foregroundColor: theme.colorScheme.onPrimary,
                       shape: RoundedRectangleBorder(
@@ -208,7 +208,7 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
                   const SizedBox(height: LayoutConstants.spaceSm),
                   Center(
                     child: TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: _dismiss,
                       child: const Text('Later'),
                     ),
                   ),
@@ -218,6 +218,25 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
         ),
       ),
     );
+  }
+
+  void _dismiss([MerchantOnboardingIntroAction? action]) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop(action);
+      return;
+    }
+
+    // Tests and any future inline render can mount the intro outside a modal
+    // route. Preserve the existing callback contract in that case only.
+    switch (action) {
+      case MerchantOnboardingIntroAction.openCustomers:
+        widget.onOpenCustomers();
+      case MerchantOnboardingIntroAction.openProducts:
+        widget.onOpenProducts();
+      case null:
+        break;
+    }
   }
 }
 
@@ -246,11 +265,7 @@ class _SlideView extends StatelessWidget {
                 color: primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: Icon(
-                slide.icon,
-                size: 44,
-                color: primary,
-              ),
+              child: Icon(slide.icon, size: 44, color: primary),
             ),
           ),
           const SizedBox(height: LayoutConstants.spaceLg),
@@ -277,17 +292,10 @@ class _SlideView extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.check_circle_outline,
-                    size: 20,
-                    color: primary,
-                  ),
+                  Icon(Icons.check_circle_outline, size: 20, color: primary),
                   const SizedBox(width: LayoutConstants.spaceSm),
                   Expanded(
-                    child: Text(
-                      text,
-                      style: theme.textTheme.bodyMedium,
-                    ),
+                    child: Text(text, style: theme.textTheme.bodyMedium),
                   ),
                 ],
               ),
