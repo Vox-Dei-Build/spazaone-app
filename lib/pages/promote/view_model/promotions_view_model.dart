@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,7 +10,22 @@ import 'package:pasella/utils/sms_pricing_util.dart';
 
 class PromotionsViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  late final StreamSubscription<User?> _authSubscription;
+  String _activeMerchantId = '';
+
+  PromotionsViewModel() {
+    _activeMerchantId = userId;
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      final nextMerchantId = user?.uid.trim() ?? '';
+      if (nextMerchantId == _activeMerchantId) return;
+      _activeMerchantId = nextMerchantId;
+      _clearMerchantScopedState();
+      notifyListeners();
+    });
+  }
+
+  String get userId => FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
+
   double? whatsappPrice;
   double? smsPricePerSegment;
   bool _isLoading = false;
@@ -64,22 +81,63 @@ class PromotionsViewModel extends ChangeNotifier {
 
   Map<String, dynamic> promoBreakdown = {};
 
+  String? _prepareMerchantScope() {
+    final merchantId = userId;
+    if (merchantId != _activeMerchantId) {
+      _activeMerchantId = merchantId;
+      _clearMerchantScopedState();
+    }
+    return merchantId.isEmpty ? null : merchantId;
+  }
+
+  bool _isStillCurrentMerchant(String merchantId) {
+    return userId == merchantId && _activeMerchantId == merchantId;
+  }
+
+  void _clearMerchantScopedState() {
+    selectedTemplateId = null;
+    selectedCustomerIds = [];
+    totalPrice = 0.0;
+    customers = [];
+    customersWithoutNumberCount = 0;
+    whatsAppCapableById = {};
+    promoBreakdown = {};
+    _templates = [];
+    promotionsReports = [];
+    shopName = '';
+    _loadingTemplates = false;
+    loadingPromotions = false;
+    _loadingWhatsAppCapability = false;
+  }
+
   /// call this once on create
   Future<void> loadInitialData() async {
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) {
+      notifyListeners();
+      return;
+    }
+
     await Future.wait([
-      fetchTemplates(),
-      fetchMessageShopName(),
+      fetchTemplates(merchantId: merchantId),
+      fetchMessageShopName(merchantId: merchantId),
       initializePricing(),
-      fetchCustomers(),
-      fetchPromotionsReports(), // if needed
+      fetchCustomers(merchantId: merchantId),
+      fetchPromotionsReports(merchantId: merchantId), // if needed
     ]);
   }
 
   /// if templates‐only tab needs less, you can also add:
   Future<void> loadTemplatesData() async {
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) {
+      notifyListeners();
+      return;
+    }
+
     await Future.wait([
-      fetchTemplates(),
-      fetchMessageShopName(),
+      fetchTemplates(merchantId: merchantId),
+      fetchMessageShopName(merchantId: merchantId),
       initializePricing(),
     ]);
   }
@@ -111,9 +169,18 @@ class PromotionsViewModel extends ChangeNotifier {
     totalPrice = count * (whatsappPrice ?? 0);
   }
 
-  Future<void> fetchMessageShopName() async {
+  Future<void> fetchMessageShopName({String? merchantId}) async {
+    final scopedMerchantId = merchantId ?? _prepareMerchantScope();
+    if (scopedMerchantId == null) {
+      shopName = '';
+      notifyListeners();
+      return;
+    }
+
     try {
-      shopName = await fetchShopName();
+      final resolvedShopName = await fetchShopNameForUser(scopedMerchantId);
+      if (!_isStillCurrentMerchant(scopedMerchantId)) return;
+      shopName = resolvedShopName ?? '';
       notifyListeners();
     } catch (e) {
       debugPrint('Failed to fetch shop name: $e');
@@ -124,6 +191,9 @@ class PromotionsViewModel extends ChangeNotifier {
     String docID,
     Map<String, dynamic> template,
   ) async {
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) return false;
+
     _isLoading = true;
     notifyListeners();
 
@@ -135,7 +205,7 @@ class PromotionsViewModel extends ChangeNotifier {
       final templateData = templateSnap.data();
       if (!templateSnap.exists ||
           templateData == null ||
-          templateData['userId'] != userId) {
+          templateData['userId'] != merchantId) {
         throw StateError('Template does not belong to the current merchant.');
       }
 
@@ -163,52 +233,73 @@ class PromotionsViewModel extends ChangeNotifier {
       debugPrint('Delete error: $e');
       return false;
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (_isStillCurrentMerchant(merchantId)) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
-  Future<void> fetchTemplates() async {
+  Future<void> fetchTemplates({String? merchantId}) async {
+    final scopedMerchantId = merchantId ?? _prepareMerchantScope();
+    if (scopedMerchantId == null) {
+      _templates = [];
+      _loadingTemplates = false;
+      notifyListeners();
+      return;
+    }
+
     _loadingTemplates = true;
     notifyListeners();
 
     try {
-      final snapshot =
-          await _firestore
-              .collection('messagingTemplates')
-              .where('userId', isEqualTo: userId)
-              .orderBy('createdAt', descending: true)
-              .get();
+      final snapshot = await _firestore
+          .collection('messagingTemplates')
+          .where('userId', isEqualTo: scopedMerchantId)
+          .orderBy('createdAt', descending: true)
+          .get();
 
-      _templates =
-          snapshot.docs.map((doc) {
+      if (!_isStillCurrentMerchant(scopedMerchantId)) return;
+      _templates = snapshot.docs
+          .map((doc) {
             final data = doc.data();
             data['id'] = doc.id; // 🔥 Include Firestore document ID
             return data;
-          }).toList();
+          })
+          .where((data) => data['userId'] == scopedMerchantId)
+          .toList();
     } catch (e) {
       debugPrint('Failed to fetch templates: $e');
     } finally {
-      _loadingTemplates = false;
-      notifyListeners();
+      if (_isStillCurrentMerchant(scopedMerchantId)) {
+        _loadingTemplates = false;
+        notifyListeners();
+      }
     }
   }
 
-  Future<void> fetchCustomers() async {
-    try {
-      final snapshot =
-          await _firestore
-              .collection('users')
-              .doc(userId)
-              .collection('customers')
-              .get();
+  Future<void> fetchCustomers({String? merchantId}) async {
+    final scopedMerchantId = merchantId ?? _prepareMerchantScope();
+    if (scopedMerchantId == null) {
+      customers = [];
+      customersWithoutNumberCount = 0;
+      notifyListeners();
+      return;
+    }
 
-      final all =
-          snapshot.docs.map((doc) {
-            final data = doc.data();
-            data['id'] = doc.id;
-            return data;
-          }).toList();
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(scopedMerchantId)
+          .collection('customers')
+          .get();
+
+      if (!_isStillCurrentMerchant(scopedMerchantId)) return;
+      final all = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
 
       // Promotions can only be delivered to customers with a phone
       // number. Numberless customers used to appear in the recipient
@@ -257,6 +348,9 @@ class PromotionsViewModel extends ChangeNotifier {
   /// already does a live check and only charges on success.
   Future<void> loadWhatsAppCapability() async {
     if (customers.isEmpty) return;
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) return;
+
     _loadingWhatsAppCapability = true;
     notifyListeners();
     try {
@@ -282,11 +376,10 @@ class PromotionsViewModel extends ChangeNotifier {
           i,
           i + chunkSize > list.length ? list.length : i + chunkSize,
         );
-        final snap =
-            await _firestore
-                .collection('successfulWhatsAppNumbers')
-                .where('phoneNumber', whereIn: chunk)
-                .get();
+        final snap = await _firestore
+            .collection('successfulWhatsAppNumbers')
+            .where('phoneNumber', whereIn: chunk)
+            .get();
         for (final doc in snap.docs) {
           final data = doc.data();
           final phone = data['phoneNumber'] as String?;
@@ -299,12 +392,15 @@ class PromotionsViewModel extends ChangeNotifier {
           }
         }
       }
+      if (!_isStillCurrentMerchant(merchantId)) return;
       whatsAppCapableById = result;
     } catch (e) {
       debugPrint('Failed to load WhatsApp capability: $e');
     } finally {
-      _loadingWhatsAppCapability = false;
-      notifyListeners();
+      if (_isStillCurrentMerchant(merchantId)) {
+        _loadingWhatsAppCapability = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -328,8 +424,7 @@ class PromotionsViewModel extends ChangeNotifier {
     List<Map<String, dynamic>> eligible,
     int hiddenNotWhatsApp,
     int unknownIncluded,
-  })
-  filterCustomersForChannels({
+  }) filterCustomersForChannels({
     required bool sendWhatsApp,
     required bool sendSMS,
   }) {
@@ -420,12 +515,11 @@ class PromotionsViewModel extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> fetchWhatsAppStatus(String phoneNumber) async {
-    final querySnapshot =
-        await FirebaseFirestore.instance
-            .collection('successfulWhatsAppNumbers')
-            .where('phoneNumber', isEqualTo: phoneNumber)
-            .limit(1)
-            .get();
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('successfulWhatsAppNumbers')
+        .where('phoneNumber', isEqualTo: phoneNumber)
+        .limit(1)
+        .get();
 
     if (querySnapshot.docs.isNotEmpty) {
       final data = querySnapshot.docs.first.data();
@@ -458,27 +552,25 @@ class PromotionsViewModel extends ChangeNotifier {
     // know about this field — it's UI metadata only.
     Map<String, dynamic>? linkedProduct,
   }) async {
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) return null;
+
     _sendingPromotion = true;
     notifyListeners();
     try {
-      if (userId.isEmpty) {
-        throw StateError('No signed-in merchant for this promotion.');
-      }
-
-      final templateSnap =
-          await _firestore
-              .collection('messagingTemplates')
-              .doc(templateId)
-              .get();
+      final templateSnap = await _firestore
+          .collection('messagingTemplates')
+          .doc(templateId)
+          .get();
       final templateData = templateSnap.data();
       if (!templateSnap.exists ||
           templateData == null ||
-          templateData['userId'] != userId) {
+          templateData['userId'] != merchantId) {
         throw StateError('Template does not belong to the current merchant.');
       }
 
       final docRef = await _firestore.collection('promotions').add({
-        'merchantId': userId,
+        'merchantId': merchantId,
         'templateId': templateId,
         'customerIds': customerIds,
         'variables': variables,
@@ -495,8 +587,10 @@ class PromotionsViewModel extends ChangeNotifier {
       debugPrint('Failed to save promotion: $e');
       return null;
     } finally {
-      _sendingPromotion = false;
-      notifyListeners();
+      if (_isStillCurrentMerchant(merchantId)) {
+        _sendingPromotion = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -529,8 +623,7 @@ class PromotionsViewModel extends ChangeNotifier {
         final lastError = promo['lastErrorMessage'] as String?;
         if (status == 'failed') {
           return SendPromotionResult.failed(
-            message:
-                lastError ??
+            message: lastError ??
                 'No messages could be delivered. Provider gave no further detail — '
                     'treat as transient and retry, then contact support if it persists.',
             failedCount: failedCount,
@@ -539,8 +632,7 @@ class PromotionsViewModel extends ChangeNotifier {
         }
         if (status == 'partial') {
           return SendPromotionResult.partial(
-            message:
-                lastError ??
+            message: lastError ??
                 'Some messages could not be delivered. See the promotion details for the affected recipients.',
             failedCount: failedCount,
             succeededCount: succeededCount,
@@ -558,11 +650,10 @@ class PromotionsViewModel extends ChangeNotifier {
       // Preserve whatever the callable layer gave us, but always
       // provide a usable fallback so we never leave the merchant
       // staring at a silent failure.
-      final detail =
-          (e.message != null && e.message!.trim().isNotEmpty)
-              ? e.message!
-              : 'Send failed (code: ${e.code}). No further detail returned — '
-                  'retry, then contact support if it persists.';
+      final detail = (e.message != null && e.message!.trim().isNotEmpty)
+          ? e.message!
+          : 'Send failed (code: ${e.code}). No further detail returned — '
+              'retry, then contact support if it persists.';
       debugPrint('sendSavedPromotion callable failure: ${e.code} ${e.message}');
       return SendPromotionResult.failed(
         message: detail,
@@ -581,33 +672,53 @@ class PromotionsViewModel extends ChangeNotifier {
   }
 
   // -- REPORTS (Simplified)
-  Future<void> fetchPromotionsReports() async {
+  Future<void> fetchPromotionsReports({String? merchantId}) async {
+    final scopedMerchantId = merchantId ?? _prepareMerchantScope();
+    if (scopedMerchantId == null) {
+      promotionsReports = [];
+      loadingPromotions = false;
+      notifyListeners();
+      return;
+    }
+
     loadingPromotions = true;
     notifyListeners();
-    final snap =
-        await _firestore
-            .collection('promotions')
-            .where('merchantId', isEqualTo: userId)
-            .orderBy('createdAt', descending: true)
-            .get();
-    promotionsReports =
-        snap.docs.map((d) {
-          final m = d.data();
-          m['id'] = d.id;
-          return m;
-        }).toList();
-    loadingPromotions = false;
-    notifyListeners();
+    try {
+      final snap = await _firestore
+          .collection('promotions')
+          .where('merchantId', isEqualTo: scopedMerchantId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      if (!_isStillCurrentMerchant(scopedMerchantId)) return;
+      promotionsReports = snap.docs
+          .map((d) {
+            final m = d.data();
+            m['id'] = d.id;
+            return m;
+          })
+          .where((data) => data['merchantId'] == scopedMerchantId)
+          .toList();
+    } catch (e) {
+      debugPrint('Failed to fetch promotions: $e');
+    } finally {
+      if (_isStillCurrentMerchant(scopedMerchantId)) {
+        loadingPromotions = false;
+        notifyListeners();
+      }
+    }
   }
 
   Future<bool> deletePromotion(String promoId) async {
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) return false;
+
     try {
       final promoRef = _firestore.collection('promotions').doc(promoId);
       final promoSnap = await promoRef.get();
       final promoData = promoSnap.data();
       if (!promoSnap.exists ||
           promoData == null ||
-          promoData['merchantId'] != userId) {
+          promoData['merchantId'] != merchantId) {
         throw StateError('Promotion does not belong to the current merchant.');
       }
 
@@ -640,6 +751,9 @@ class PromotionsViewModel extends ChangeNotifier {
 
   // Preload a saved promo into your RunPromotionPage state
   Future<void> loadPromotionIntoState(Map<String, dynamic> promo) async {
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null || promo['merchantId'] != merchantId) return;
+
     // 1) template
     selectedTemplateId = promo['templateId'] as String?;
 
@@ -669,6 +783,12 @@ class PromotionsViewModel extends ChangeNotifier {
     totalPrice = (breakdown['total'] as num).toDouble();
 
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authSubscription.cancel();
+    super.dispose();
   }
 }
 
@@ -709,23 +829,25 @@ class SendPromotionResult {
     required String message,
     required int succeededCount,
     required int failedCount,
-  }) => SendPromotionResult._(
-    outcome: SendPromotionOutcome.partial,
-    message: message,
-    succeededCount: succeededCount,
-    failedCount: failedCount,
-  );
+  }) =>
+      SendPromotionResult._(
+        outcome: SendPromotionOutcome.partial,
+        message: message,
+        succeededCount: succeededCount,
+        failedCount: failedCount,
+      );
 
   factory SendPromotionResult.failed({
     required String message,
     required int succeededCount,
     required int failedCount,
-  }) => SendPromotionResult._(
-    outcome: SendPromotionOutcome.failed,
-    message: message,
-    succeededCount: succeededCount,
-    failedCount: failedCount,
-  );
+  }) =>
+      SendPromotionResult._(
+        outcome: SendPromotionOutcome.failed,
+        message: message,
+        succeededCount: succeededCount,
+        failedCount: failedCount,
+      );
 
   bool get isOk => outcome == SendPromotionOutcome.ok;
   bool get hasFailures => failedCount > 0 || outcome != SendPromotionOutcome.ok;

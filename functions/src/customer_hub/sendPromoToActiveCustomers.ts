@@ -11,18 +11,64 @@ exports.sendPromoToActiveCustomers = functions.https.onRequest(
   async (req, res) => {
     const {
       templateId,
+      merchantId: requestedMerchantId,
       testMode = true,
       excludedMerchantNumbers = [],
       excludedCustomerNumbers = [],
     } = req.body; // Template ID, testMode flag, and excluded merchant numbers
 
     try {
-      const usersRef = db.collection("users");
-      const usersSnapshot = await usersRef.get();
+      const resolvedTemplateId =
+        typeof templateId === "string" ? templateId.trim() : "";
+      if (!resolvedTemplateId) {
+        res.status(400).send("templateId is required");
+        return;
+      }
 
-      // Process each user
-      const promises = usersSnapshot.docs.map(async (userDoc) => {
+      const templateSnap = await db
+        .collection("messagingTemplates")
+        .doc(resolvedTemplateId)
+        .get();
+      if (!templateSnap.exists) {
+        res.status(404).send("Template not found");
+        return;
+      }
+
+      const templateData = templateSnap.data();
+      const templateMerchantId =
+        typeof templateData?.userId === "string"
+          ? templateData.userId.trim()
+          : "";
+      if (!templateMerchantId) {
+        res.status(400).send("Template is missing merchant ownership");
+        return;
+      }
+
+      const requestedMerchant =
+        typeof requestedMerchantId === "string"
+          ? requestedMerchantId.trim()
+          : "";
+      if (requestedMerchant && requestedMerchant !== templateMerchantId) {
+        res.status(403).send("Template does not belong to merchant");
+        return;
+      }
+
+      const usersRef = db.collection("users");
+      const targetMerchantId = requestedMerchant || templateMerchantId;
+      const targetMerchantDoc = await usersRef.doc(targetMerchantId).get();
+      if (!targetMerchantDoc.exists) {
+        res.status(404).send("Merchant not found");
+        return;
+      }
+
+      // Process only the merchant that owns this template. The previous
+      // implementation iterated every merchant with the same templateId,
+      // which could send another merchant's promo copy to unrelated accounts.
+      const promises = [targetMerchantDoc].map(async (userDoc) => {
         const userData = userDoc.data();
+        if (!userData) {
+          return;
+        }
         const balanceData = userData.balanceData;
         const userPhoneNumber = userData.mobileNumber;
 
@@ -93,7 +139,7 @@ exports.sendPromoToActiveCustomers = functions.https.onRequest(
                   // Sending the message via axios POST request when not in test mode
                   const messageData = {
                     to: whatsappNumber,
-                    templateId,
+                    templateId: resolvedTemplateId,
                     templateParams,
                     botType: "Customer", // Assuming this is customer related
                   };
