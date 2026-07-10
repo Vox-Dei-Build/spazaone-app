@@ -1,6 +1,7 @@
 import { functions, db } from "../config/main";
 import { AndroidConfig, MulticastMessage } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
+import { sendMerchantOrderSmsFallback } from "../utils/merchantOrderSmsFallback";
 
 /** Shape of an order notification record stored in Firestore. */
 interface OrderNotificationData {
@@ -205,30 +206,74 @@ async function notifyOrderEventHandler(
         data: dataPayload,
       };
 
-      const fcmResponse = await admin.messaging().sendEachForMulticast(message);
+      try {
+        const fcmResponse = await admin
+          .messaging()
+          .sendEachForMulticast(message);
 
-      // remove bad tokens
-      if (fcmResponse.failureCount > 0) {
-        const badTokens = fcmResponse.responses
-          .map((r, i) => ({ r, t: tokens[i] }))
-          .filter(
-            ({ r }) =>
-              r.error &&
-              String(r.error.code).includes(
-                "registration-token-not-registered",
-              ),
-          )
-          .map(({ t }) => t);
-
-        if (badTokens.length) {
-          await merchantRef.set(
-            {
-              fcmTokens: admin.firestore.FieldValue.arrayRemove(...badTokens),
-            },
-            { merge: true },
-          );
+        if (fcmResponse.successCount === 0) {
+          await sendMerchantOrderSmsFallback({
+            merchantId,
+            orderId,
+            eventType,
+            customerName: customerName ?? null,
+            orderTotal: typeof orderTotal === "number" ? orderTotal : null,
+            currency,
+            source: "notifyOrderEvent",
+            reason: "push_zero_success",
+          });
         }
+
+        // remove bad tokens
+        if (fcmResponse.failureCount > 0) {
+          const badTokens = fcmResponse.responses
+            .map((r, i) => ({ r, t: tokens[i] }))
+            .filter(
+              ({ r }) =>
+                r.error &&
+                String(r.error.code).includes(
+                  "registration-token-not-registered",
+                ),
+            )
+            .map(({ t }) => t);
+
+          if (badTokens.length) {
+            await merchantRef.set(
+              {
+                fcmTokens: admin.firestore.FieldValue.arrayRemove(...badTokens),
+              },
+              { merge: true },
+            );
+          }
+        }
+      } catch (error: unknown) {
+        const err = error as { message?: string };
+        console.error(
+          `[notifyOrderEvent] FCM send failed for ${orderId}:`,
+          err?.message || error,
+        );
+        await sendMerchantOrderSmsFallback({
+          merchantId,
+          orderId,
+          eventType,
+          customerName: customerName ?? null,
+          orderTotal: typeof orderTotal === "number" ? orderTotal : null,
+          currency,
+          source: "notifyOrderEvent",
+          reason: "push_error",
+        });
       }
+    } else {
+      await sendMerchantOrderSmsFallback({
+        merchantId,
+        orderId,
+        eventType,
+        customerName: customerName ?? null,
+        orderTotal: typeof orderTotal === "number" ? orderTotal : null,
+        currency,
+        source: "notifyOrderEvent",
+        reason: "no_tokens",
+      });
     }
 
     res.status(200).json({

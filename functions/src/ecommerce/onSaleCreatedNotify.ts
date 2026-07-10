@@ -34,6 +34,7 @@
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
 import { AndroidConfig, MulticastMessage } from "firebase-admin/messaging";
+import { sendMerchantOrderSmsFallback } from "../utils/merchantOrderSmsFallback";
 
 /**
  * Firestore onCreate trigger for users/{merchantId}/sales/{saleId}.
@@ -169,6 +170,16 @@ export const onSaleCreatedNotify = functions.firestore
       console.warn(
         `[onSaleCreatedNotify] no FCM tokens for merchant ${merchantId}`,
       );
+      await sendMerchantOrderSmsFallback({
+        merchantId,
+        orderId: saleId,
+        eventType: "ORDER_PLACED",
+        customerName: customerName || null,
+        orderTotal,
+        currency,
+        source: "onSaleCreatedNotify",
+        reason: "no_tokens",
+      });
       return;
     }
 
@@ -221,6 +232,19 @@ export const onSaleCreatedNotify = functions.firestore
     try {
       const fcmResponse = await admin.messaging().sendEachForMulticast(message);
 
+      if (fcmResponse.successCount === 0) {
+        await sendMerchantOrderSmsFallback({
+          merchantId,
+          orderId: saleId,
+          eventType: "ORDER_PLACED",
+          customerName: customerName || null,
+          orderTotal,
+          currency,
+          source: "onSaleCreatedNotify",
+          reason: "push_zero_success",
+        });
+      }
+
       if (fcmResponse.failureCount > 0) {
         const badTokens = fcmResponse.responses
           .map((r, i) => ({ r, t: tokens[i] }))
@@ -247,6 +271,16 @@ export const onSaleCreatedNotify = functions.firestore
         `[onSaleCreatedNotify] FCM send failed for ${saleId}:`,
         err?.message || e,
       );
+      await sendMerchantOrderSmsFallback({
+        merchantId,
+        orderId: saleId,
+        eventType: "ORDER_PLACED",
+        customerName: customerName || null,
+        orderTotal,
+        currency,
+        source: "onSaleCreatedNotify",
+        reason: "push_error",
+      });
     }
   });
 
