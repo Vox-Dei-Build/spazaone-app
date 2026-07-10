@@ -8,6 +8,7 @@ class DateFilterBar extends StatelessWidget {
   final DateTime? endDate;
   final ValueChanged<DateTime> onDaySelect;
   final void Function(DateTime, DateTime) onRangeSelect;
+  final VoidCallback onClear;
 
   const DateFilterBar({
     super.key,
@@ -16,6 +17,7 @@ class DateFilterBar extends StatelessWidget {
     required this.endDate,
     required this.onDaySelect,
     required this.onRangeSelect,
+    required this.onClear,
   });
 
   @override
@@ -53,7 +55,7 @@ class DateFilterBar extends StatelessWidget {
             IconButton(
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               icon: const Icon(Icons.date_range, size: 18),
               onPressed: () async {
                 final picked = await showDateRangePicker(
@@ -66,8 +68,11 @@ class DateFilterBar extends StatelessWidget {
                 );
                 if (picked != null) {
                   onRangeSelect(
-                    DateTime(picked.start.year, picked.start.month,
-                        picked.start.day),
+                    DateTime(
+                      picked.start.year,
+                      picked.start.month,
+                      picked.start.day,
+                    ),
                     DateTime(picked.end.year, picked.end.month, picked.end.day),
                   );
                 }
@@ -105,10 +110,14 @@ class DateFilterBar extends StatelessWidget {
                     onDaySelect(DateTime(now.year, now.month, now.day));
                     break;
                   case _QuickRange.thisWeek:
-                    final monday =
-                        now.subtract(Duration(days: now.weekday - 1));
-                    final start =
-                        DateTime(monday.year, monday.month, monday.day);
+                    final monday = now.subtract(
+                      Duration(days: now.weekday - 1),
+                    );
+                    final start = DateTime(
+                      monday.year,
+                      monday.month,
+                      monday.day,
+                    );
                     final end = start.add(const Duration(days: 6));
                     onRangeSelect(start, end);
                     break;
@@ -118,12 +127,20 @@ class DateFilterBar extends StatelessWidget {
                     onRangeSelect(start, end);
                     break;
                   case _QuickRange.clear:
-                    onRangeSelect(DateTime(2020, 1, 1), DateTime.now());
+                    onClear();
                     break;
                 }
               },
               position: PopupMenuPosition.under,
-              child: const Icon(Icons.more_horiz, size: 18),
+              child: Semantics(
+                button: true,
+                label: 'Quick date ranges',
+                child: const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Icon(Icons.more_horiz, size: 18),
+                ),
+              ),
             ),
           ],
         ),

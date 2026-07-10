@@ -27,11 +27,12 @@ class TransactionsManagementPage extends StatefulWidget {
   final String customerId;
   final String? mobileNumber;
 
-  const TransactionsManagementPage(
-      {super.key,
-      required this.customerName,
-      required this.customerId,
-      this.mobileNumber});
+  const TransactionsManagementPage({
+    super.key,
+    required this.customerName,
+    required this.customerId,
+    this.mobileNumber,
+  });
 
   @override
   _CustomerManagementPageState createState() => _CustomerManagementPageState();
@@ -47,13 +48,17 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
     customerBalanceSummaryProvider =
         Provider.of<CustomerBalanceSummaryProvider>(context, listen: false);
     customerBalanceSummaryProvider.setCustomerDetails(
-        widget.customerName, widget.customerId, widget.mobileNumber);
+      widget.customerName,
+      widget.customerId,
+      widget.mobileNumber,
+    );
 
     customerManagementViewModel = CustomerManagementViewModel(
-        widget.customerId,
-        widget.customerName,
-        customerBalanceSummaryProvider,
-        widget.mobileNumber);
+      widget.customerId,
+      widget.customerName,
+      customerBalanceSummaryProvider,
+      widget.mobileNumber,
+    );
   }
 
   void refreshPage(String? newProfileImageUrl) {
@@ -107,14 +112,16 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                 Expanded(
                   child: StreamBuilder<List<Map<String, dynamic>>>(
                     stream: customerManagementViewModel.streamTransactions(
-                        customerManagementViewModel.userId, widget.customerId),
+                      customerManagementViewModel.userId,
+                      widget.customerId,
+                    ),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
                       } else if (snapshot.hasError) {
                         return Center(
                           child: Text(
-                            'Error: ${snapshot.error}',
+                            'Could not load transactions. Please try again.',
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
                               fontSize: SizeConfig.textMultiplier * 2,
@@ -150,12 +157,13 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
                             // Pay Later tab is now: ledger -> hero -> CTAs.
                             Expanded(
                               child: TransactionsListView(
-                                  customerManagementViewModel:
-                                      customerManagementViewModel,
-                                  transactions: snapshot.data!,
-                                  customerId: widget.customerId,
-                                  customerName: widget.customerName,
-                                  mobileNumber: widget.mobileNumber),
+                                customerManagementViewModel:
+                                    customerManagementViewModel,
+                                transactions: snapshot.data!,
+                                customerId: widget.customerId,
+                                customerName: widget.customerName,
+                                mobileNumber: widget.mobileNumber,
+                              ),
                             ),
                           ],
                         );

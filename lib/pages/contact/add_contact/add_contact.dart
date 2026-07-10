@@ -107,11 +107,7 @@ class AddContactPage extends StatelessWidget {
       }
     } catch (_) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        showErrorSnackBar(
-          context,
-          'Failed to get contact :(',
-          isWarning: true,
-        );
+        showErrorSnackBar(context, 'Failed to get contact :(', isWarning: true);
       });
     }
   }
@@ -188,8 +184,7 @@ class AddContactPage extends StatelessWidget {
                               ),
                               PrivateRegion(
                                 child: CustomTextField(
-                                  hintText:
-                                      'Change it later via "Edit Customer"',
+                                  hintText: 'Enter an SA mobile number',
                                   prefixIcon: Icons.call_outlined,
                                   label: 'Mobile Number (Optional)',
                                   textInputType: TextInputType.number,
@@ -223,13 +218,14 @@ class AddContactPage extends StatelessWidget {
                                           ?.validate() ??
                                       false) {
                                     await viewModel.addCustomerToFirestore(
-                                        context, model);
+                                      context,
+                                      model,
+                                    );
                                   }
                                 },
                                 margin: EdgeInsets.zero,
-                                title: viewModel.isLoading
-                                    ? 'Saving…'
-                                    : 'Confirm',
+                                title:
+                                    viewModel.isLoading ? 'Saving…' : 'Confirm',
                               ),
                             ],
                           ),
@@ -285,22 +281,27 @@ class _AvatarHero extends StatelessWidget {
               ),
             ),
             Positioned(
-              right: -2,
-              bottom: -2,
-              child: GestureDetector(
-                onTap: () => viewModel.handleImagePick(context),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                  child: const Icon(
-                    Icons.edit_outlined,
-                    color: Colors.white,
-                    size: 18,
+              right: -8,
+              bottom: -8,
+              child: Semantics(
+                button: true,
+                label: 'Change customer photo',
+                child: GestureDetector(
+                  onTap: () => viewModel.handleImagePick(context),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.edit_outlined,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                   ),
                 ),
               ),
@@ -330,11 +331,7 @@ class _NamePreview extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(
-          categoryLabel,
-          textAlign: TextAlign.center,
-          style: kSubTitleStyle,
-        ),
+        Text(categoryLabel, textAlign: TextAlign.center, style: kSubTitleStyle),
       ],
     );
   }
@@ -363,8 +360,11 @@ class _ImportFromContactsCard extends StatelessWidget {
                   color: kPrimaryColor.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.contacts_outlined,
-                    color: kPrimaryColor, size: 22),
+                child: const Icon(
+                  Icons.contacts_outlined,
+                  color: kPrimaryColor,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -404,10 +404,7 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label,
-      style: kLabelStyle.copyWith(
-        fontSize: 13,
-        letterSpacing: 0.3,
-      ),
+      style: kLabelStyle.copyWith(fontSize: 13, letterSpacing: 0.3),
     );
   }
 }
@@ -455,13 +452,11 @@ class _ConsentRowState extends State<_ConsentRow> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 24,
-          height: 24,
+          width: 48,
+          height: 48,
           child: Checkbox(
             value: widget.accepted,
             onChanged: (v) => widget.onChanged(v ?? false),
-            visualDensity: VisualDensity.compact,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ),
         const SizedBox(width: 10),

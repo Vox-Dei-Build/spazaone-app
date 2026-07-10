@@ -34,44 +34,49 @@ class SettingTile extends StatelessWidget {
           onTap: onTap,
           contentPadding: EdgeInsets.symmetric(
             vertical: SizeConfig.heightMultiplier * 1,
-            horizontal: removeLPadding == true
-                ? 0.0
-                : SizeConfig.imageSizeMultiplier * 2.5,
+            horizontal:
+                removeLPadding == true
+                    ? 0.0
+                    : SizeConfig.imageSizeMultiplier * 2.5,
           ),
-          leading: icon != null
-              ? Icon(
-                  icon,
-                  color: kPrimaryColor,
-                  size: SizeConfig.imageSizeMultiplier * 7,
-                )
-              : const SizedBox.shrink(),
-          title: title is String
-              ? Text(
-                  (title as String).sanitized(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: SizeConfig.textMultiplier * 2,
-                  ),
-                )
-              : title,
-          subtitle: subTitle is String
-              ? Text(
-                  (subTitle as String).sanitized(),
-                  style: kSubTitleStyle.copyWith(
-                      fontSize: SizeConfig.textMultiplier * 1.8),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                )
-              : subTitle,
+          leading:
+              icon != null
+                  ? Icon(
+                    icon,
+                    color: kPrimaryColor,
+                    size: SizeConfig.imageSizeMultiplier * 7,
+                  )
+                  : const SizedBox.shrink(),
+          title:
+              title is String
+                  ? Text(
+                    (title as String).sanitized(),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: SizeConfig.textMultiplier * 2,
+                    ),
+                  )
+                  : title,
+          subtitle:
+              subTitle is String
+                  ? Text(
+                    (subTitle as String).sanitized(),
+                    style: kSubTitleStyle.copyWith(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  )
+                  : subTitle,
           trailing: trailing,
         ),
         hideDivider == true
             ? const SizedBox.shrink()
             : Divider(
-                color: kHighLightColor,
-                height: SizeConfig.heightMultiplier * 1,
-                thickness: 1,
-              ),
+              color: kHighLightColor,
+              height: SizeConfig.heightMultiplier * 1,
+              thickness: 1,
+            ),
       ],
     );
   }

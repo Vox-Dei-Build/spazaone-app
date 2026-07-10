@@ -38,19 +38,22 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text("❌ Error: ${snapshot.error}"));
+            return const Center(
+              child: Text('Could not load billing history. Please try again.'),
+            );
           }
 
           final merged = snapshot.data ?? [];
 
           if (merged.isEmpty) {
             return const _EmptyState(
-                message: "No transactions or messages yet.");
+              message: "No transactions or messages yet.",
+            );
           }
 
           return ListView.separated(
-            separatorBuilder: (_, __) =>
-                const Divider(color: Colors.grey, thickness: .3),
+            separatorBuilder:
+                (_, __) => const Divider(color: Colors.grey, thickness: .3),
             itemCount: merged.length,
             itemBuilder: (context, index) {
               final item = merged[index];
@@ -68,11 +71,12 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
 
                 case 'message':
                   return NotificationTile(
-                      message: item['message'] ?? 'Message',
-                      messageCost: item['messageCost'] ?? 0,
-                      phone: item['phone'] ?? 'Unknown',
-                      date: timestamp,
-                      templateType: item['templateType'] ?? 'sms');
+                    message: item['message'] ?? 'Message',
+                    messageCost: item['messageCost'] ?? 0,
+                    phone: item['phone'] ?? 'Unknown',
+                    date: timestamp,
+                    templateType: item['templateType'] ?? 'sms',
+                  );
 
                 case 'payout':
                   return ListTile(
@@ -80,14 +84,16 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
                     title: Text(
                       CurrencyUtil.format(item['amount'] ?? 0),
                       style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.8,
-                          fontWeight: FontWeight.bold),
+                        fontSize: SizeConfig.textMultiplier * 1.8,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     subtitle: Text(
                       DateFormat('dd MMM yyyy, HH:mm').format(timestamp),
                       style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.5,
-                          color: Colors.grey.shade600),
+                        fontSize: SizeConfig.textMultiplier * 1.5,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                     trailing: Container(
                       padding: EdgeInsets.symmetric(
@@ -97,14 +103,16 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
                       decoration: BoxDecoration(
                         color: Colors.grey.shade200,
                         borderRadius: BorderRadius.circular(
-                            SizeConfig.blockSizeHorizontal * 2),
+                          SizeConfig.blockSizeHorizontal * 2,
+                        ),
                       ),
                       child: Text(
                         (item['status'] ?? 'Unknown').toString().toUpperCase(),
                         style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.5,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87),
+                          fontSize: SizeConfig.textMultiplier * 1.5,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                   );
@@ -133,7 +141,9 @@ class _EmptyState extends StatelessWidget {
         child: Text(
           message,
           style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 1.8, color: Colors.grey),
+            fontSize: SizeConfig.textMultiplier * 1.8,
+            color: Colors.grey,
+          ),
         ),
       ),
     );

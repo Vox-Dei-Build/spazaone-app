@@ -6,9 +6,7 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 
 class FilterBottomSheet extends StatefulWidget {
-  const FilterBottomSheet({
-    super.key,
-  });
+  const FilterBottomSheet({super.key});
 
   @override
   _FilterBottomSheetState createState() => _FilterBottomSheetState();
@@ -22,7 +20,9 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   void initState() {
     super.initState();
     final dataModel = context.read<AppModel>();
-    _tempReminderDateFilter = List.from(dataModel.reminderDateFilter);
+    _tempReminderDateFilter = dataModel.reminderDateFilter
+        .map((filter) => List<dynamic>.from(filter))
+        .toList();
     _tempSortByFilter = dataModel.selectedSortByFilter;
   }
 
@@ -44,78 +44,79 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               const SizedBox(height: 20.0),
               const Text(
                 'Filter',
-                style: TextStyle(
-                  fontSize: 18.0,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 5.0),
               const Divider(color: kHighLightColor),
               const Text(
                 'Reminder Date',
-                style: TextStyle(
-                  fontSize: 15.0,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 12.0),
-              SizedBox(
-                height: 38.0,
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  scrollDirection: Axis.horizontal,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: value.reminderDateFilter.length,
-                  itemBuilder: (context, index) {
-                    final isSelected = value.reminderDateFilter[index][1];
-                    final title = value.reminderDateFilter[index][0];
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _tempReminderDateFilter[index][1] =
-                              !_tempReminderDateFilter[index][1];
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                        decoration: BoxDecoration(
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  for (var index = 0;
+                      index < value.reminderDateFilter.length;
+                      index++)
+                    Builder(builder: (context) {
+                      final isSelected = _tempReminderDateFilter[index][1];
+                      final title = _tempReminderDateFilter[index][0];
+                      return Semantics(
+                        button: true,
+                        selected: isSelected,
+                        label: '$title reminder filter',
+                        child: Material(
                           color: isSelected
                               ? Colors.green.shade50
                               : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(12.0),
-                        ),
-                        child: Center(
-                          child: Row(
-                            children: [
-                              Text(title),
-                              isSelected
-                                  ? const Padding(
-                                      padding: EdgeInsets.only(left: 2.0),
-                                      child: Icon(
-                                        Icons.check,
-                                        color: Colors.green,
-                                        size: 20.0,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12.0),
+                            onTap: () {
+                              setState(() {
+                                final next = !_tempReminderDateFilter[index][1];
+                                for (final filter in _tempReminderDateFilter) {
+                                  filter[1] = false;
+                                }
+                                _tempReminderDateFilter[index][1] = next;
+                              });
+                            },
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minHeight: 48),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(title),
+                                    if (isSelected)
+                                      const Padding(
+                                        padding: EdgeInsets.only(left: 4),
+                                        child: Icon(
+                                          Icons.check,
+                                          color: Colors.green,
+                                          size: 20,
+                                        ),
                                       ),
-                                    )
-                                  : const SizedBox.shrink()
-                            ],
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                  separatorBuilder: (context, index) {
-                    return const SizedBox(width: 15.0);
-                  },
-                ),
+                      );
+                    }),
+                ],
               ),
               const SizedBox(height: 25.0),
               const Text(
                 'Sort By',
-                style: TextStyle(
-                  fontSize: 15.0,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w500),
               ),
               ListView.separated(
                 itemCount: value.sortByFilter.length,
@@ -124,10 +125,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 itemBuilder: (context, index) {
                   return RadioListTile(
                     contentPadding: const EdgeInsets.all(0),
-                    visualDensity: const VisualDensity(
-                      horizontal: -4,
-                      vertical: -2,
-                    ),
                     title: Text(value.sortByFilter[index]),
                     value: value.sortByFilter[index],
                     groupValue: _tempSortByFilter,
@@ -139,9 +136,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                   );
                 },
                 separatorBuilder: (context, index) {
-                  return const SizedBox(
-                    width: 15.0,
-                  );
+                  return const SizedBox(width: 15.0);
                 },
               ),
               const Divider(color: kHighLightColor),
@@ -184,7 +179,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10.0)
+              const SizedBox(height: 10.0),
             ],
           ),
         );

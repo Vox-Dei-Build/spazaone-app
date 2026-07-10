@@ -41,11 +41,12 @@ Future<void> showCustomerReportSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (ctx) => CustomerReportSheet(
-      userId: userId,
-      customerId: customerId,
-      customerName: customerName,
-    ),
+    builder:
+        (ctx) => CustomerReportSheet(
+          userId: userId,
+          customerId: customerId,
+          customerName: customerName,
+        ),
   );
 }
 
@@ -77,6 +78,15 @@ class _CustomerReportSheetState extends State<CustomerReportSheet> {
     );
   }
 
+  void _retry() {
+    setState(() {
+      _future = CurrencyUtil.fetchTransactionsForCustomer(
+        widget.userId,
+        widget.customerId,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
@@ -88,7 +98,7 @@ class _CustomerReportSheetState extends State<CustomerReportSheet> {
           return _LoadingShell();
         }
         if (snapshot.hasError) {
-          return _ErrorShell(message: '${snapshot.error}');
+          return _ErrorShell(onRetry: _retry);
         }
         final txs = snapshot.data ?? const [];
         if (txs.isEmpty) {
@@ -107,10 +117,7 @@ class _ReportBody extends StatelessWidget {
   final String customerName;
   final List<Map<String, dynamic>> transactions;
 
-  const _ReportBody({
-    required this.customerName,
-    required this.transactions,
-  });
+  const _ReportBody({required this.customerName, required this.transactions});
 
   @override
   Widget build(BuildContext context) {
@@ -138,10 +145,7 @@ class _ReportBody extends StatelessWidget {
             SizedBox(height: SizeConfig.heightMultiplier * 2.2),
 
             // ── HERO BALANCE ──
-            _BalanceHeroBlock(
-              tone: balanceState,
-              amount: stats.netBalance,
-            ),
+            _BalanceHeroBlock(tone: balanceState, amount: stats.netBalance),
             SizedBox(height: SizeConfig.heightMultiplier * 2.8),
 
             // ── RELATIONSHIP ──
@@ -447,15 +451,15 @@ class _BalanceTone {
 
 class _SheetChrome {
   static Widget grabber() => Center(
-        child: Container(
-          width: 36,
-          height: 4,
-          decoration: BoxDecoration(
-            color: const Color(0xFFCFD8DC),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      );
+    child: Container(
+      width: 36,
+      height: 4,
+      decoration: BoxDecoration(
+        color: const Color(0xFFCFD8DC),
+        borderRadius: BorderRadius.circular(2),
+      ),
+    ),
+  );
 }
 
 class _LoadingShell extends StatelessWidget {
@@ -488,8 +492,8 @@ class _LoadingShell extends StatelessWidget {
 }
 
 class _ErrorShell extends StatelessWidget {
-  final String message;
-  const _ErrorShell({required this.message});
+  final VoidCallback onRetry;
+  const _ErrorShell({required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -502,9 +506,11 @@ class _ErrorShell extends StatelessWidget {
           children: [
             _SheetChrome.grabber(),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Icon(Icons.error_outline,
-                size: SizeConfig.imageSizeMultiplier * 12,
-                color: Colors.redAccent),
+            Icon(
+              Icons.error_outline,
+              size: SizeConfig.imageSizeMultiplier * 12,
+              color: Colors.redAccent,
+            ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
             Text(
               'Could not load insights',
@@ -515,12 +521,18 @@ class _ErrorShell extends StatelessWidget {
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 0.5),
             Text(
-              message,
+              'Check your connection and try again.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.black54,
                 fontSize: SizeConfig.textMultiplier * 1.4,
               ),
+            ),
+            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try again'),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
           ],
@@ -546,9 +558,11 @@ class _EmptyShell extends StatelessWidget {
           children: [
             _SheetChrome.grabber(),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Icon(Icons.insights_outlined,
-                size: SizeConfig.imageSizeMultiplier * 12,
-                color: Colors.black26),
+            Icon(
+              Icons.insights_outlined,
+              size: SizeConfig.imageSizeMultiplier * 12,
+              color: Colors.black26,
+            ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
             Text(
               'No insights yet',
@@ -728,11 +742,13 @@ class _CustomerReportStats {
       if (when == null) continue;
       first = first == null || when.isBefore(first) ? when : first;
       last = last == null || when.isAfter(last) ? when : last;
-      dated.add(_DatedTx(
-        when: when,
-        type: (t['type'] as String?) ?? '',
-        amount: (t['amount'] as num?)?.toDouble() ?? 0.0,
-      ));
+      dated.add(
+        _DatedTx(
+          when: when,
+          type: (t['type'] as String?) ?? '',
+          amount: (t['amount'] as num?)?.toDouble() ?? 0.0,
+        ),
+      );
     }
     dated.sort((a, b) => a.when.compareTo(b.when));
 

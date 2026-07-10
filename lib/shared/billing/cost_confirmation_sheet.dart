@@ -6,6 +6,7 @@ import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 /// Modal bottom sheet that previews a wallet-deducting action's cost,
 /// the user's current balance, and the resulting balance after deduction —
@@ -71,12 +72,13 @@ class CostConfirmationSheet extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => CostConfirmationSheet(
-        breakdown: breakdown,
-        confirmLabel: confirmLabel,
-        skipLabel: skipLabel,
-        showSkip: showSkip,
-      ),
+      builder:
+          (_) => CostConfirmationSheet(
+            breakdown: breakdown,
+            confirmLabel: confirmLabel,
+            skipLabel: skipLabel,
+            showSkip: showSkip,
+          ),
     );
     return result ?? CostSheetOutcome.dismissed;
   }
@@ -178,8 +180,9 @@ class CostConfirmationSheet extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.close),
                   tooltip: 'Close',
-                  onPressed: () => Navigator.of(context)
-                      .pop(CostSheetOutcome.dismissed),
+                  onPressed:
+                      () =>
+                          Navigator.of(context).pop(CostSheetOutcome.dismissed),
                 ),
               ],
             ),
@@ -196,7 +199,8 @@ class CostConfirmationSheet extends StatelessWidget {
               final amountColor = muted ? Colors.black54 : Colors.black87;
               return Padding(
                 padding: EdgeInsets.symmetric(
-                    vertical: SizeConfig.heightMultiplier * 0.4),
+                  vertical: SizeConfig.heightMultiplier * 0.4,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -209,9 +213,8 @@ class CostConfirmationSheet extends StatelessWidget {
                             style: TextStyle(
                               fontSize: SizeConfig.textMultiplier * 1.7,
                               color: labelColor,
-                              fontStyle: muted
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
+                              fontStyle:
+                                  muted ? FontStyle.italic : FontStyle.normal,
                             ),
                           ),
                           if (line.detail != null)
@@ -220,21 +223,19 @@ class CostConfirmationSheet extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: SizeConfig.textMultiplier * 1.4,
                                 color: Colors.black54,
-                                fontStyle: muted
-                                    ? FontStyle.italic
-                                    : FontStyle.normal,
+                                fontStyle:
+                                    muted ? FontStyle.italic : FontStyle.normal,
                               ),
                             ),
                         ],
                       ),
                     ),
                     Text(
-                      'R${line.amount.toStringAsFixed(2)}',
+                      CurrencyUtil.format(line.amount),
                       style: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.7,
                         color: amountColor,
-                        fontStyle:
-                            muted ? FontStyle.italic : FontStyle.normal,
+                        fontStyle: muted ? FontStyle.italic : FontStyle.normal,
                       ),
                     ),
                   ],
@@ -242,9 +243,7 @@ class CostConfirmationSheet extends StatelessWidget {
               );
             }),
 
-            if (breakdown.lines.isNotEmpty) ...[
-              const Divider(height: 24),
-            ],
+            if (breakdown.lines.isNotEmpty) ...[const Divider(height: 24)],
 
             // Total
             Row(
@@ -258,7 +257,7 @@ class CostConfirmationSheet extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'R${cost.toStringAsFixed(2)}',
+                  CurrencyUtil.format(cost),
                   style: TextStyle(
                     fontSize: SizeConfig.textMultiplier * 1.9,
                     fontWeight: FontWeight.bold,
@@ -270,18 +269,21 @@ class CostConfirmationSheet extends StatelessWidget {
             // Notes
             if (breakdown.notes.isNotEmpty) ...[
               SizedBox(height: SizeConfig.heightMultiplier * 1),
-              ...breakdown.notes.map((n) => Padding(
-                    padding: EdgeInsets.only(
-                        top: SizeConfig.heightMultiplier * 0.3),
-                    child: Text(
-                      n,
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.4,
-                        color: Colors.black54,
-                        fontStyle: FontStyle.italic,
-                      ),
+              ...breakdown.notes.map(
+                (n) => Padding(
+                  padding: EdgeInsets.only(
+                    top: SizeConfig.heightMultiplier * 0.3,
+                  ),
+                  child: Text(
+                    n,
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.4,
+                      color: Colors.black54,
+                      fontStyle: FontStyle.italic,
                     ),
-                  )),
+                  ),
+                ),
+              ),
             ],
 
             SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -290,24 +292,23 @@ class CostConfirmationSheet extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
               decoration: BoxDecoration(
-                color: canAfford
-                    ? Colors.green.withValues(alpha: 0.08)
-                    : Colors.orange.withValues(alpha: 0.10),
+                color:
+                    canAfford
+                        ? Colors.green.withValues(alpha: 0.08)
+                        : Colors.orange.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 children: [
-                  _balanceRow(
-                      'Current balance', 'R${balance.toStringAsFixed(2)}'),
+                  _balanceRow('Current balance', CurrencyUtil.format(balance)),
                   SizedBox(height: SizeConfig.heightMultiplier * 0.5),
                   _balanceRow(
                     'Balance after',
-                    canAfford
-                        ? 'R${after.toStringAsFixed(2)}'
-                        : 'Top up to send',
-                    valueColor: canAfford
-                        ? Colors.green.shade800
-                        : Colors.orange.shade800,
+                    canAfford ? CurrencyUtil.format(after) : 'Top up to send',
+                    valueColor:
+                        canAfford
+                            ? Colors.green.shade800
+                            : Colors.orange.shade800,
                     valueBold: true,
                   ),
                 ],
@@ -337,11 +338,13 @@ class CostConfirmationSheet extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => Navigator.of(context)
-                          .pop(CostSheetOutcome.send),
+                      onPressed:
+                          () =>
+                              Navigator.of(context).pop(CostSheetOutcome.send),
                       child: Padding(
                         padding: EdgeInsets.symmetric(
-                            vertical: SizeConfig.heightMultiplier * 1.2),
+                          vertical: SizeConfig.heightMultiplier * 1.2,
+                        ),
                         child: Text(confirmLabel),
                       ),
                     ),
@@ -351,11 +354,14 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
-                        onPressed: () => Navigator.of(context)
-                            .pop(CostSheetOutcome.skip),
+                        onPressed:
+                            () => Navigator.of(
+                              context,
+                            ).pop(CostSheetOutcome.skip),
                         child: Padding(
                           padding: EdgeInsets.symmetric(
-                              vertical: SizeConfig.heightMultiplier * 1.2),
+                            vertical: SizeConfig.heightMultiplier * 1.2,
+                          ),
                           child: Text(skipLabel),
                         ),
                       ),
@@ -379,9 +385,10 @@ class CostConfirmationSheet extends StatelessWidget {
                       // PAS-UX-WTC: jump straight to the Top-Up tab —
                       // landing on Withdraw here is what made merchants
                       // think the "Top Up" CTA didn't work.
-                      Provider.of<AppModel>(context, listen: false)
-                          .goToBilling(context,
-                              initialTab: WalletInitialTab.topUp);
+                      Provider.of<AppModel>(context, listen: false).goToBilling(
+                        context,
+                        initialTab: WalletInitialTab.topUp,
+                      );
                     },
                   ),
                   if (showSkip) ...[
@@ -389,11 +396,14 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
-                        onPressed: () => Navigator.of(context)
-                            .pop(CostSheetOutcome.skip),
+                        onPressed:
+                            () => Navigator.of(
+                              context,
+                            ).pop(CostSheetOutcome.skip),
                         child: Padding(
                           padding: EdgeInsets.symmetric(
-                              vertical: SizeConfig.heightMultiplier * 1.2),
+                            vertical: SizeConfig.heightMultiplier * 1.2,
+                          ),
                           child: Text(skipLabel),
                         ),
                       ),
@@ -407,8 +417,12 @@ class CostConfirmationSheet extends StatelessWidget {
     );
   }
 
-  Widget _balanceRow(String label, String value,
-      {Color? valueColor, bool valueBold = false}) {
+  Widget _balanceRow(
+    String label,
+    String value, {
+    Color? valueColor,
+    bool valueBold = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [

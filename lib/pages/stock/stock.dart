@@ -112,27 +112,28 @@ class _StockPageState extends State<StockPage>
                                 break;
                             }
                           },
-                          itemBuilder: (context) =>
-                              const <PopupMenuEntry<_StockHeaderAction>>[
-                            PopupMenuItem(
-                              value: _StockHeaderAction.search,
-                              child: ListTile(
-                                leading: Icon(Icons.search),
-                                title: Text('Search products'),
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: _StockHeaderAction.help,
-                              child: ListTile(
-                                leading: Icon(Icons.help_outline),
-                                title: Text('How to capture stock'),
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                              ),
-                            ),
-                          ],
+                          itemBuilder:
+                              (context) =>
+                                  const <PopupMenuEntry<_StockHeaderAction>>[
+                                    PopupMenuItem(
+                                      value: _StockHeaderAction.search,
+                                      child: ListTile(
+                                        leading: Icon(Icons.search),
+                                        title: Text('Search products'),
+                                        contentPadding: EdgeInsets.zero,
+                                        dense: true,
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: _StockHeaderAction.help,
+                                      child: ListTile(
+                                        leading: Icon(Icons.help_outline),
+                                        title: Text('How to capture stock'),
+                                        contentPadding: EdgeInsets.zero,
+                                        dense: true,
+                                      ),
+                                    ),
+                                  ],
                         ),
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -143,10 +144,12 @@ class _StockPageState extends State<StockPage>
                           fontWeight: FontWeight.normal,
                         ),
                         unselectedLabelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier *
+                          fontSize:
+                              SizeConfig.textMultiplier *
                               1.8, // Font size for unselected tabs
-                          fontWeight: FontWeight
-                              .normal, // Font weight for unselected tabs
+                          fontWeight:
+                              FontWeight
+                                  .normal, // Font weight for unselected tabs
                         ),
                         tabs: const [
                           Tab(text: 'PRODUCTS'),
@@ -186,23 +189,23 @@ class _StockPageState extends State<StockPage>
   }
 
   Widget _buildFloatingActionButton(int tabIndex, StockViewModel viewModel) {
-    return tabIndex == 0
+    return tabIndex == 0 && viewModel.products.isNotEmpty
         ? FloatingActionButton.extended(
-            elevation: 3.0,
-            onPressed: _openNewProduct,
-            icon: Icon(
-              Icons.add_outlined,
+          elevation: 3.0,
+          onPressed: _openNewProduct,
+          icon: Icon(
+            Icons.add_outlined,
+            color: Colors.white,
+            size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
+          ),
+          label: Text(
+            'Add Product',
+            style: TextStyle(
               color: Colors.white,
-              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
+              fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
             ),
-            label: Text(
-              'Add Product',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
-              ),
-            ),
-          )
+          ),
+        )
         : Container();
   }
 
@@ -211,29 +214,24 @@ class _StockPageState extends State<StockPage>
   /// in behaviour.
   void _openNewProduct() {
     Navigator.of(context)
-        .push(
-      MaterialPageRoute(
-        builder: (context) => const NewProductPage(),
-      ),
-    )
+        .push(MaterialPageRoute(builder: (context) => const NewProductPage()))
         .then((_) {
-      // snap back to "Product Page" tab when you pop
-      _tabController.animateTo(0);
-    });
+          // snap back to "Product Page" tab when you pop
+          _tabController.animateTo(0);
+        });
   }
 
   /// PAS-UX-04: shared launcher for the capture-stock walkthrough so the
   /// kebab "How to capture stock" and the empty-state "Watch a 2-min
   /// walkthrough" link land on the same tutorial.
   void _openTutorial() {
-    final url =
-        TutorialConfig.getTutorialUrl(TutorialConfig.TUTORIAL_CAPTURE_STOCK);
+    final url = TutorialConfig.getTutorialUrl(
+      TutorialConfig.TUTORIAL_CAPTURE_STOCK,
+    );
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => LoomVideoPage(
-          loomUrl: url,
-          title: 'How to Capture Stock',
-        ),
+        builder:
+            (_) => LoomVideoPage(loomUrl: url, title: 'How to Capture Stock'),
       ),
     );
   }
@@ -242,10 +240,12 @@ class _StockPageState extends State<StockPage>
 class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
   @override
   Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
-    final double fabX = scaffoldGeometry.scaffoldSize.width -
+    final double fabX =
+        scaffoldGeometry.scaffoldSize.width -
         16.0 -
         scaffoldGeometry.floatingActionButtonSize.width / 2;
-    final double fabY = scaffoldGeometry.scaffoldSize.height -
+    final double fabY =
+        scaffoldGeometry.scaffoldSize.height -
         100.0 -
         scaffoldGeometry.floatingActionButtonSize.height / 2;
     return Offset(fabX, fabY);

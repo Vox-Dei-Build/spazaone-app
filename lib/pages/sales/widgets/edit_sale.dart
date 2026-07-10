@@ -32,8 +32,9 @@ class EditSale extends StatelessWidget {
       create: (_) => SalesViewModel()..loadSaleDetails(sale),
       child: Consumer<SalesViewModel>(
         builder: (context, transactionViewModel, child) {
-          final selectedDate =
-              _saleDateFmt.parse(transactionViewModel.salesSelectedDate);
+          final selectedDate = _saleDateFmt.parse(
+            transactionViewModel.salesSelectedDate,
+          );
 
           return TransactionFormScaffold(
             title: 'Edit Sale',
@@ -46,10 +47,7 @@ class EditSale extends StatelessWidget {
             primaryActionColor: Colors.green,
             totalLabel: Text(
               'Total: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             onPrimaryAction: () async {
               final confirmed = await ConfirmDialog.show(
@@ -80,7 +78,9 @@ class EditSale extends StatelessWidget {
                   hintText: 'Enter Amount',
                   prefixIcon: Icons.money,
                   controller: transactionViewModel.amountController,
-                  textInputType: TextInputType.number,
+                  textInputType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   validator: (value) {
                     if (value == null ||
                         value.isEmpty ||
@@ -100,12 +100,12 @@ class EditSale extends StatelessWidget {
                 const SizedBox(height: LayoutConstants.spaceMd),
                 if (transactionViewModel.isTransactionLoading)
                   const Padding(
-                    padding:
-                        EdgeInsets.symmetric(vertical: LayoutConstants.spaceXl),
+                    padding: EdgeInsets.symmetric(
+                      vertical: LayoutConstants.spaceXl,
+                    ),
                     child: Center(
                       child: CircularProgressIndicator(
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(Colors.green),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                       ),
                     ),
                   )

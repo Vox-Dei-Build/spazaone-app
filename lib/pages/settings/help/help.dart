@@ -27,7 +27,7 @@ class HelpPage extends StatelessWidget {
     return Scaffold(
       appBar: const CustomAppBar(title: 'Help'),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: LayoutConstants.padding10Horizontal,
           child: Column(
             children: [
@@ -36,24 +36,35 @@ class HelpPage extends StatelessWidget {
                 title: 'How to Capture Customers?',
                 onTap: () {
                   final url = TutorialConfig.getTutorialUrl(
-                      TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => LoomVideoPage(
-                        loomUrl: url, title: 'How to Capture Customers'),
-                  ));
+                    TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS,
+                  );
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title: 'How to Capture Customers',
+                          ),
+                    ),
+                  );
                 },
               ),
               SettingTile(
                 icon: Icons.help,
-                title: 'How to Capture BNPL?',
+                title: 'How to Capture Pay Later?',
                 onTap: () {
                   final url = TutorialConfig.getTutorialUrl(
-                      TutorialConfig.TUTORIAL_CAPTURE_BNPL);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => LoomVideoPage(
-                        loomUrl: url,
-                        title: 'How to Capture Buy Now Pay Later'),
-                  ));
+                    TutorialConfig.TUTORIAL_CAPTURE_BNPL,
+                  );
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title: 'How to Capture Buy Now Pay Later',
+                          ),
+                    ),
+                  );
                 },
               ),
               SettingTile(
@@ -61,13 +72,18 @@ class HelpPage extends StatelessWidget {
                 title: 'How to Capture Stock?',
                 onTap: () {
                   final url = TutorialConfig.getTutorialUrl(
-                      TutorialConfig.TUTORIAL_CAPTURE_STOCK);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => LoomVideoPage(
-                      loomUrl: url,
-                      title: 'How to add stock and link it to transactions',
+                    TutorialConfig.TUTORIAL_CAPTURE_STOCK,
+                  );
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title:
+                                'How to add stock and link it to transactions',
+                          ),
                     ),
-                  ));
+                  );
                 },
               ),
               SettingTile(
@@ -75,11 +91,17 @@ class HelpPage extends StatelessWidget {
                 title: 'How to Capture Sales?',
                 onTap: () {
                   final url = TutorialConfig.getTutorialUrl(
-                      TutorialConfig.TUTORIAL_CAPTURE_SALES);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => LoomVideoPage(
-                        loomUrl: url, title: 'How to Capture Sales'),
-                  ));
+                    TutorialConfig.TUTORIAL_CAPTURE_SALES,
+                  );
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title: 'How to Capture Sales',
+                          ),
+                    ),
+                  );
                 },
               ),
               SettingTile(
@@ -87,27 +109,37 @@ class HelpPage extends StatelessWidget {
                 title: 'Wallet?',
                 onTap: () {
                   final url = TutorialConfig.getTutorialUrl(
-                      TutorialConfig.TUTORIAL_WALLET);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (context) => LoomVideoPage(
-                      loomUrl: url,
-                      title: 'Everything you need to know about your wallet',
+                    TutorialConfig.TUTORIAL_WALLET,
+                  );
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder:
+                          (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title:
+                                'Everything you need to know about your wallet',
+                          ),
                     ),
-                  ));
+                  );
                 },
               ),
               SettingTile(
                 icon: Icons.lock,
                 title: 'Privacy Policy & Security',
-                onTap: () => openLink(
-                    'https://docs.google.com/document/d/1Oz4M_j8u0YwQBzIyDB-IAl_wYBNdrQ5k_Fx6qR7uPAQ/edit?tab=t.0'),
+                onTap:
+                    () => openLink(
+                      'https://docs.google.com/document/d/1Oz4M_j8u0YwQBzIyDB-IAl_wYBNdrQ5k_Fx6qR7uPAQ/edit?tab=t.0',
+                    ),
               ),
-              const Spacer(),
+              const SizedBox(height: 24),
               CustomButton(
                 icon: FontAwesomeIcons.whatsapp,
                 title: 'Chat with support',
-                onTap: () => SupportUtil.sendWhatsAppMessage(
-                    context, WhatsAppMessageType.support),
+                onTap:
+                    () => SupportUtil.sendWhatsAppMessage(
+                      context,
+                      WhatsAppMessageType.support,
+                    ),
               ),
               const SizedBox(height: 15.0),
             ],

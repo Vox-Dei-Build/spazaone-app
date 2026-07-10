@@ -95,6 +95,23 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     balanceSummaryViewModel.fetchBalanceSummaryWithRange(start, end);
   }
 
+  void _clearDateFilter() {
+    final now = DateTime.now();
+    setState(() {
+      _startDate = null;
+      _endDate = null;
+      _selectedDay = null;
+      _isDateViewRowsLoading = false;
+    });
+    balanceSummaryViewModel.fetchBalanceSummaryWithRange(DateTime(2000), now);
+  }
+
+  void _retrySummary() {
+    final end = _endDate ?? DateTime.now();
+    businessReportViewModel.reportFutureNotifier.value = businessReportViewModel
+        .fetchReportWithRange(DateTime(2000), end);
+  }
+
   void _setDateViewRowsLoading(bool isLoading) {
     if (!mounted || _isDateViewRowsLoading == isLoading) return;
     setState(() {
@@ -210,6 +227,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                         onRangeSelect: (s, e) {
                           _onDateRangeSelected(s, e);
                         },
+                        onClear: _clearDateFilter,
                       ),
                       if (isDateViewLoading)
                         Padding(
@@ -270,12 +288,24 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                         LayoutConstants.padding10Horizontal,
                                     child: Column(
                                       children: [
+                                        const Icon(
+                                          Icons.cloud_off_outlined,
+                                          size: 40,
+                                        ),
+                                        const SizedBox(height: 12),
                                         Text(
-                                          'Oops something is wrong, please check your network or refresh the page',
+                                          'Could not load the summary. Check your connection and try again.',
+                                          textAlign: TextAlign.center,
                                           style: TextStyle(
                                             fontSize:
-                                                SizeConfig.textMultiplier * 2.5,
+                                                SizeConfig.textMultiplier * 1.8,
                                           ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        OutlinedButton.icon(
+                                          onPressed: _retrySummary,
+                                          icon: const Icon(Icons.refresh),
+                                          label: const Text('Try again'),
                                         ),
                                       ],
                                     ),

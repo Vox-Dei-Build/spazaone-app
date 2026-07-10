@@ -109,9 +109,10 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         (selected?['channels']?['sms']?['templateContent'] ?? waContent)
             .toString();
     final mediaUrl = selected?['channels']?['whatsapp']?['mediaUrl'] as String?;
-    final smsSegments = smsContent.isNotEmpty
-        ? SMSPricingUtil.calculateSegments(smsContent)
-        : 1;
+    final smsSegments =
+        smsContent.isNotEmpty
+            ? SMSPricingUtil.calculateSegments(smsContent)
+            : 1;
 
     final noChannelsChosen = !widget.sendWhatsApp && !widget.sendSMS;
 
@@ -124,19 +125,21 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         // ── Section: Template ────────────────────────────────────────────
         _SectionHeader(
           title: 'Choose a template',
-          subtitle: hasTemplates
-              ? 'Pick the message you want to send.'
-              : 'Create your first template to get started.',
-          trailing: hasTemplates
-              ? TextButton.icon(
-                  onPressed: widget.onCreateTemplate,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('New'),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                )
-              : null,
+          subtitle:
+              hasTemplates
+                  ? 'Pick the message you want to send.'
+                  : 'Create your first template to get started.',
+          trailing:
+              hasTemplates
+                  ? TextButton.icon(
+                    onPressed: widget.onCreateTemplate,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('New'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  )
+                  : null,
         ),
         const SizedBox(height: 8),
         if (!hasTemplates)
@@ -203,9 +206,10 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           icon: Icons.chat_bubble,
           iconColor: const Color(0xFF25D366),
           title: 'WhatsApp',
-          subtitle: widget.whatsappPrice != null
-              ? 'R${widget.whatsappPrice!.toStringAsFixed(2)} per recipient'
-              : 'Pricing loading…',
+          subtitle:
+              widget.whatsappPrice != null
+                  ? '${CurrencyUtil.format(widget.whatsappPrice!)} per recipient'
+                  : 'Pricing loading…',
           value: widget.sendWhatsApp,
           onChanged: widget.onWhatsAppChanged,
         ),
@@ -213,9 +217,10 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           icon: Icons.sms,
           iconColor: Colors.blueGrey,
           title: 'SMS',
-          subtitle: widget.smsPricePerSegment != null
-              ? 'R${widget.smsPricePerSegment!.toStringAsFixed(2)} per segment ($smsSegments segment${smsSegments == 1 ? '' : 's'})'
-              : 'Pricing loading…',
+          subtitle:
+              widget.smsPricePerSegment != null
+                  ? '${CurrencyUtil.format(widget.smsPricePerSegment!)} per segment ($smsSegments segment${smsSegments == 1 ? '' : 's'})'
+                  : 'Pricing loading…',
           value: widget.sendSMS,
           onChanged: widget.onSMSChanged,
         ),
@@ -224,8 +229,9 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
               'Pick at least one channel to continue.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.error),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
             ),
           ),
 
@@ -253,9 +259,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
             mediaUrl:
                 _previewChannel == _PreviewChannel.whatsapp ? mediaUrl : null,
           ),
-          if (widget.sendWhatsApp &&
-              widget.sendSMS &&
-              smsContent == waContent)
+          if (widget.sendWhatsApp && widget.sendSMS && smsContent == waContent)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 4),
               child: Text(
@@ -296,16 +300,18 @@ class _SectionHeader extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               if (subtitle != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
                     subtitle!,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.disabledColor),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.disabledColor,
+                    ),
                   ),
                 ),
             ],
@@ -343,9 +349,10 @@ class _ChannelTile extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: value
-              ? theme.colorScheme.primary.withValues(alpha: 0.4)
-              : theme.dividerColor.withValues(alpha: 0.4),
+          color:
+              value
+                  ? theme.colorScheme.primary.withValues(alpha: 0.4)
+                  : theme.dividerColor.withValues(alpha: 0.4),
         ),
       ),
       child: SwitchListTile(
@@ -353,9 +360,12 @@ class _ChannelTile extends StatelessWidget {
         onChanged: onChanged,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         secondary: Icon(icon, color: iconColor),
-        title: Text(title,
-            style: theme.textTheme.bodyLarge
-                ?.copyWith(fontWeight: FontWeight.w600)),
+        title: Text(
+          title,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
       ),
     );
@@ -418,7 +428,10 @@ class _InlineNotice extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: TextStyle(color: color.withValues(alpha: 0.9), fontSize: 13),
+              style: TextStyle(
+                color: color.withValues(alpha: 0.9),
+                fontSize: 13,
+              ),
             ),
           ),
         ],
@@ -446,20 +459,25 @@ class _EmptyTemplatesState extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(Icons.library_books_outlined,
-              size: 48, color: theme.colorScheme.primary),
+          Icon(
+            Icons.library_books_outlined,
+            size: 48,
+            color: theme.colorScheme.primary,
+          ),
           const SizedBox(height: 12),
           Text(
             'No templates yet',
-            style: theme.textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             'Templates are pre-approved messages you can send to your customers. WhatsApp needs to approve each one before it can be used.',
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.disabledColor),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.disabledColor,
+            ),
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
@@ -503,9 +521,10 @@ class _ProductLinkTile extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: isLinked
-              ? theme.colorScheme.primary.withValues(alpha: 0.4)
-              : theme.dividerColor.withValues(alpha: 0.4),
+          color:
+              isLinked
+                  ? theme.colorScheme.primary.withValues(alpha: 0.4)
+                  : theme.dividerColor.withValues(alpha: 0.4),
         ),
       ),
       child: InkWell(
@@ -518,46 +537,51 @@ class _ProductLinkTile extends StatelessWidget {
               _LinkedThumb(image: linked?.imageUrl),
               const SizedBox(width: 12),
               Expanded(
-                child: isLinked
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            linked!.name,
-                            style: theme.textTheme.bodyLarge
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            linked!.sellingPrice != null
-                                ? CurrencyUtil.format(linked!.sellingPrice!)
-                                : 'No price set',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: linked!.sellingPrice != null
-                                  ? theme.colorScheme.primary
-                                  : theme.disabledColor,
+                child:
+                    isLinked
+                        ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              linked!.name,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Add a product',
-                            style: theme.textTheme.bodyLarge
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Tap to choose from your stock',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.disabledColor),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(height: 2),
+                            Text(
+                              linked!.sellingPrice != null
+                                  ? CurrencyUtil.format(linked!.sellingPrice!)
+                                  : 'No price set',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color:
+                                    linked!.sellingPrice != null
+                                        ? theme.colorScheme.primary
+                                        : theme.disabledColor,
+                              ),
+                            ),
+                          ],
+                        )
+                        : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Add a product',
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Tap to choose from your stock',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.disabledColor,
+                              ),
+                            ),
+                          ],
+                        ),
               ),
               if (isLinked)
                 IconButton(
@@ -600,12 +624,13 @@ class _LinkedThumb extends StatelessWidget {
         width: 44,
         height: 44,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: 44,
-          height: 44,
-          color: theme.colorScheme.surfaceContainerHighest,
-          child: Icon(Icons.broken_image, color: theme.disabledColor),
-        ),
+        errorBuilder:
+            (_, __, ___) => Container(
+              width: 44,
+              height: 44,
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: Icon(Icons.broken_image, color: theme.disabledColor),
+            ),
       ),
     );
   }

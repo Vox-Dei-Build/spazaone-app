@@ -69,8 +69,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       vsync: this,
       initialIndex: initialMainIndex,
     )..addListener(() {
-        if (mounted) setState(() {});
-      });
+      if (mounted) setState(() {});
+    });
 
     _salesVM = SalesViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -110,6 +110,15 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       _endDate = end;
       _selectedDay = null;
     });
+  }
+
+  void _clearDateFilter() {
+    setState(() {
+      _selectedDay = null;
+      _startDate = null;
+      _endDate = null;
+    });
+    _salesVM.updateSelectedDateRange(DateTime(2000), DateTime.now());
   }
 
   @override
@@ -156,20 +165,22 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   style: ButtonStyle(
                                     backgroundColor:
                                         WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => states.contains(
-                                        WidgetState.selected,
-                                      )
-                                          ? Colors.green
-                                          : Colors.white,
-                                    ),
+                                          (states) =>
+                                              states.contains(
+                                                    WidgetState.selected,
+                                                  )
+                                                  ? Colors.green
+                                                  : Colors.white,
+                                        ),
                                     foregroundColor:
                                         WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => states.contains(
-                                        WidgetState.selected,
-                                      )
-                                          ? Colors.white
-                                          : Colors.black87,
-                                    ),
+                                          (states) =>
+                                              states.contains(
+                                                    WidgetState.selected,
+                                                  )
+                                                  ? Colors.white
+                                                  : Colors.black87,
+                                        ),
                                   ),
                                 ),
                               ),
@@ -252,6 +263,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   salesVM.updateSelectedDateRange(s, e);
                                 }
                               },
+                              onClear: _clearDateFilter,
                             ),
 
                             // CASH-ONLY stats card: also loose flex
@@ -264,57 +276,57 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                               ),
                             ],
 
-                            SizedBox(
-                              height: SizeConfig.heightMultiplier * 1.0,
-                            ),
+                            SizedBox(height: SizeConfig.heightMultiplier * 1.0),
 
                             Expanded(
-                              child: _selectedSalesView == SalesViewType.cash
-                                  ? SafeArea(
-                                      top: false,
-                                      left: false,
-                                      right: false,
-                                      bottom: true,
-                                      child: SalesList(
-                                        viewModel: salesVM,
-                                        // PAS-AUTH-03: wire the FAB
-                                        // action into the empty-state
-                                        // CTA so a new merchant lands
-                                        // on a one-tap path to their
-                                        // first sale.
-                                        onAddSale: () {
-                                          TelemetryService.instance.capture(
-                                            const SaleStarted(
-                                              entryPoint: 'empty_state',
-                                            ),
-                                          );
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => AddSale(
-                                                salesViewModel: salesVM,
+                              child:
+                                  _selectedSalesView == SalesViewType.cash
+                                      ? SafeArea(
+                                        top: false,
+                                        left: false,
+                                        right: false,
+                                        bottom: true,
+                                        child: SalesList(
+                                          viewModel: salesVM,
+                                          // PAS-AUTH-03: wire the FAB
+                                          // action into the empty-state
+                                          // CTA so a new merchant lands
+                                          // on a one-tap path to their
+                                          // first sale.
+                                          onAddSale: () {
+                                            TelemetryService.instance.capture(
+                                              const SaleStarted(
+                                                entryPoint: 'empty_state',
                                               ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    )
-                                  : SafeArea(
-                                      top: false,
-                                      left: false,
-                                      right: false,
-                                      bottom: true,
-                                      child: OnlineSalesList(
-                                        key: ValueKey<String>(
-                                          '${_selectedDay?.toIso8601String() ?? ''}|'
-                                          '${_startDate?.toIso8601String() ?? ''}|'
-                                          '${_endDate?.toIso8601String() ?? ''}',
+                                            );
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder:
+                                                    (_) => AddSale(
+                                                      salesViewModel: salesVM,
+                                                    ),
+                                              ),
+                                            );
+                                          },
                                         ),
-                                        selectedDay: _selectedDay,
-                                        startDate: _startDate,
-                                        endDate: _endDate,
-                                        // If Online list scrolls, add a similar bottom padding prop there too.
+                                      )
+                                      : SafeArea(
+                                        top: false,
+                                        left: false,
+                                        right: false,
+                                        bottom: true,
+                                        child: OnlineSalesList(
+                                          key: ValueKey<String>(
+                                            '${_selectedDay?.toIso8601String() ?? ''}|'
+                                            '${_startDate?.toIso8601String() ?? ''}|'
+                                            '${_endDate?.toIso8601String() ?? ''}',
+                                          ),
+                                          selectedDay: _selectedDay,
+                                          startDate: _startDate,
+                                          endDate: _endDate,
+                                          // If Online list scrolls, add a similar bottom padding prop there too.
+                                        ),
                                       ),
-                                    ),
                             ),
                           ],
                         ),
@@ -329,20 +341,22 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   style: ButtonStyle(
                                     backgroundColor:
                                         WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => states.contains(
-                                        WidgetState.selected,
-                                      )
-                                          ? Colors.green
-                                          : Colors.white,
-                                    ),
+                                          (states) =>
+                                              states.contains(
+                                                    WidgetState.selected,
+                                                  )
+                                                  ? Colors.green
+                                                  : Colors.white,
+                                        ),
                                     foregroundColor:
                                         WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => states.contains(
-                                        WidgetState.selected,
-                                      )
-                                          ? Colors.white
-                                          : Colors.black87,
-                                    ),
+                                          (states) =>
+                                              states.contains(
+                                                    WidgetState.selected,
+                                                  )
+                                                  ? Colors.white
+                                                  : Colors.black87,
+                                        ),
                                   ),
                                 ),
                               ),
@@ -395,10 +409,11 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                             ),
                             const SizedBox(height: 16),
                             Expanded(
-                              child: _selectedMarketingView ==
-                                      MarketingViewType.promotions
-                                  ? const PromotionsTab()
-                                  : const TemplatesTab(),
+                              child:
+                                  _selectedMarketingView ==
+                                          MarketingViewType.promotions
+                                      ? const PromotionsTab()
+                                      : const TemplatesTab(),
                             ),
                           ],
                         ),
@@ -416,88 +431,90 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
 
   Widget? _buildFAB(SalesViewModel salesVM, PromotionsViewModel promoVM) {
     if (_mainController.index == 0) {
+      if (_selectedSalesView == SalesViewType.cash &&
+          salesVM.cachedSales.isEmpty) {
+        return null;
+      }
       return _selectedSalesView == SalesViewType.cash
           ? FloatingActionButton.extended(
-              heroTag: 'sales-cash-fab',
-              onPressed: () {
-                TelemetryService.instance.capture(
-                  const SaleStarted(entryPoint: 'fab'),
-                );
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => AddSale(salesViewModel: salesVM),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.add_outlined, color: Colors.white),
-              label: const Text(
-                'Record Sale',
-                style: TextStyle(color: Colors.white),
-              ),
-            )
+            heroTag: 'sales-cash-fab',
+            onPressed: () {
+              TelemetryService.instance.capture(
+                const SaleStarted(entryPoint: 'fab'),
+              );
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AddSale(salesViewModel: salesVM),
+                ),
+              );
+            },
+            icon: const Icon(Icons.add_outlined, color: Colors.white),
+            label: const Text(
+              'Record Sale',
+              style: TextStyle(color: Colors.white),
+            ),
+          )
           : null;
     } else {
       return _selectedMarketingView == MarketingViewType.promotions
           ? FloatingActionButton.extended(
-              heroTag: 'sales-marketing-promo-fab',
-              onPressed: () async {
-                // PAS-UX-09: previously this FAB ran a third
-                // copy of the "any approved templates?" predicate
-                // that had drifted from the canonical reader —
-                // it checked `whatsapp.approved == true` and missed
-                // the `approvalStatus == 'approved'` string used by
-                // every template created since that field was
-                // introduced, so on this surface the dialog would
-                // fire even when the merchant had usable templates.
-                // Routed through RunPromotionLauncher so the truth
-                // check, dialog and post-return refresh stay in
-                // one place.
-                await RunPromotionLauncher.launch(
-                  context,
-                  viewModel: promoVM,
-                  onGoToTemplates: () {
-                    setState(
-                      () =>
-                          _selectedMarketingView = MarketingViewType.templates,
-                    );
-                    promoVM.loadTemplatesData();
-                  },
-                );
-              },
-              icon: const Icon(Icons.campaign_outlined, color: Colors.white),
-              label: const Text(
-                'Run Promotion',
-                style: TextStyle(color: Colors.white),
-              ),
-            )
+            heroTag: 'sales-marketing-promo-fab',
+            onPressed: () async {
+              // PAS-UX-09: previously this FAB ran a third
+              // copy of the "any approved templates?" predicate
+              // that had drifted from the canonical reader —
+              // it checked `whatsapp.approved == true` and missed
+              // the `approvalStatus == 'approved'` string used by
+              // every template created since that field was
+              // introduced, so on this surface the dialog would
+              // fire even when the merchant had usable templates.
+              // Routed through RunPromotionLauncher so the truth
+              // check, dialog and post-return refresh stay in
+              // one place.
+              await RunPromotionLauncher.launch(
+                context,
+                viewModel: promoVM,
+                onGoToTemplates: () {
+                  setState(
+                    () => _selectedMarketingView = MarketingViewType.templates,
+                  );
+                  promoVM.loadTemplatesData();
+                },
+              );
+            },
+            icon: const Icon(Icons.campaign_outlined, color: Colors.white),
+            label: const Text(
+              'Run Promotion',
+              style: TextStyle(color: Colors.white),
+            ),
+          )
           : FloatingActionButton.extended(
-              heroTag: 'sales-marketing-template-fab',
-              onPressed: () async {
-                final result = await Navigator.of(
-                  context,
-                ).push<TemplateSubmitResult>(
-                  MaterialPageRoute(
-                    builder: (_) => CreateTemplatePage(viewModel: promoVM),
-                  ),
-                );
-                if (!mounted) return;
-                // Both outcomes succeed the same way (refresh the list).
-                // The Sales surface has no Templates tab to route to, so
-                // "View pending templates" can't be honoured strictly
-                // from here — refreshing is the best we can do without
-                // pushing the user into an unrelated page they didn't
-                // ask to be in.
-                if (result != null) {
-                  await promoVM.loadTemplatesData();
-                }
-              },
-              icon:
-                  const Icon(Icons.library_books_outlined, color: Colors.white),
-              label: const Text(
-                'Create Template',
-                style: TextStyle(color: Colors.white),
-              ),
-            );
+            heroTag: 'sales-marketing-template-fab',
+            onPressed: () async {
+              final result = await Navigator.of(
+                context,
+              ).push<TemplateSubmitResult>(
+                MaterialPageRoute(
+                  builder: (_) => CreateTemplatePage(viewModel: promoVM),
+                ),
+              );
+              if (!mounted) return;
+              // Both outcomes succeed the same way (refresh the list).
+              // The Sales surface has no Templates tab to route to, so
+              // "View pending templates" can't be honoured strictly
+              // from here — refreshing is the best we can do without
+              // pushing the user into an unrelated page they didn't
+              // ask to be in.
+              if (result != null) {
+                await promoVM.loadTemplatesData();
+              }
+            },
+            icon: const Icon(Icons.library_books_outlined, color: Colors.white),
+            label: const Text(
+              'Create Template',
+              style: TextStyle(color: Colors.white),
+            ),
+          );
     }
   }
 }

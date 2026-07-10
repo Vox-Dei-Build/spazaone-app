@@ -40,14 +40,15 @@ class EditTransactionScreen extends StatelessWidget {
     final transactionLabel = isCredit ? 'Transaction' : transactionType;
 
     return ChangeNotifierProvider(
-      create: (_) => EditTransactionViewModel(
-        customerName: customerName,
-        customerId: customerId,
-        transaction: transaction,
-        transactionId: transactionId,
-        transactionType: transactionType,
-        mobileNumber: mobileNumber,
-      ),
+      create:
+          (_) => EditTransactionViewModel(
+            customerName: customerName,
+            customerId: customerId,
+            transaction: transaction,
+            transactionId: transactionId,
+            transactionType: transactionType,
+            mobileNumber: mobileNumber,
+          ),
       child: Consumer<EditTransactionViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
@@ -60,15 +61,16 @@ class EditTransactionScreen extends StatelessWidget {
             primaryActionIcon:
                 isCredit ? Icons.arrow_downward : Icons.arrow_upward,
             primaryActionColor: isCredit ? Colors.red : Colors.green,
-            totalLabel: isCredit
-                ? Text(
-                    'Total: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : null,
+            totalLabel:
+                isCredit
+                    ? Text(
+                      'Total: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    )
+                    : null,
             onPrimaryAction: () async {
               final confirmed = await ConfirmDialog.show(
                 context,
@@ -93,7 +95,9 @@ class EditTransactionScreen extends StatelessWidget {
                   hintText: 'Enter Amount',
                   prefixIcon: Icons.money,
                   controller: viewModel.amountController,
-                  textInputType: TextInputType.number,
+                  textInputType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   validator: (value) {
                     if (value == null ||
                         value.isEmpty ||
@@ -132,17 +136,20 @@ class EditTransactionScreen extends StatelessWidget {
                   if (viewModel.isProductsLoading)
                     const Padding(
                       padding: EdgeInsets.symmetric(
-                          vertical: LayoutConstants.spaceXl),
+                        vertical: LayoutConstants.spaceXl,
+                      ),
                       child: Center(
                         child: CircularProgressIndicator(
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.green),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.green,
+                          ),
                         ),
                       ),
                     )
                   else
                     ProductSelectionWidget<EditTransactionViewModel>(
-                        viewModel: viewModel),
+                      viewModel: viewModel,
+                    ),
                 ],
                 const SizedBox(height: LayoutConstants.spaceLg),
                 TextFormField(

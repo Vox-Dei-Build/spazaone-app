@@ -54,104 +54,110 @@ class TemplateSubmittedSuccessPage extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: const CustomAppBar(title: 'Submitted'),
-      body: Padding(
-        padding: LayoutConstants.padding20Horizontal,
-        child: Column(
-          children: [
-            SizedBox(height: SizeConfig.heightMultiplier * 4),
-            // Hero icon ─────────────────────────────────────────────────
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: LayoutConstants.padding20Horizontal,
+          child: Column(
+            children: [
+              SizedBox(height: SizeConfig.heightMultiplier * 4),
+              // Hero icon ─────────────────────────────────────────────────
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                ),
+                child: Icon(
+                  Icons.send_rounded,
+                  size: 44,
+                  color: theme.colorScheme.primary,
+                ),
               ),
-              child: Icon(
-                Icons.send_rounded,
-                size: 44,
-                color: theme.colorScheme.primary,
+              SizedBox(height: SizeConfig.heightMultiplier * 3),
+              Text(
+                'Template submitted!',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
-            Text(
-              'Template submitted!',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '"$displayName" is on its way to WhatsApp for review.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.disabledColor),
-              textAlign: TextAlign.center,
-            ),
-
-            SizedBox(height: SizeConfig.heightMultiplier * 4),
-
-            // What happens next ────────────────────────────────────────
-            const _StepRow(
-              number: 1,
-              title: 'WhatsApp reviews it',
-              body:
-                  'Most templates are approved within a few minutes — sometimes it takes a few hours, occasionally up to 24 hours.',
-            ),
-            const _StepDivider(),
-            const _StepRow(
-              number: 2,
-              title: 'We send you a notification',
-              body:
-                  'You\'ll get a push notification the moment it\'s approved (or rejected with a reason). Tap it to jump straight back here.',
-              icon: Icons.notifications_active_outlined,
-            ),
-            const _StepDivider(),
-            const _StepRow(
-              number: 3,
-              title: 'Run your first promotion',
-              body:
-                  'Once approved, the template will appear in the picker when you tap "Run Promotion".',
-              icon: Icons.campaign_outlined,
-            ),
-
-            const Spacer(),
-
-            // Actions ─────────────────────────────────────────────────
-            //
-            // Two genuinely distinct outcomes:
-            //
-            //   * View pending templates → host should land the
-            //     merchant on the Templates tab so they can watch
-            //     the new submission. Pops with
-            //     [TemplateSubmitResult.viewPending].
-            //   * Done → return to wherever the wizard was launched
-            //     from. Pops with [TemplateSubmitResult.doneCreating].
-            //
-            // The two return values are how callers tell the actions
-            // apart; previously both buttons popped `true` and the
-            // host could not respond differently.
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onViewPending ??
-                    () => Navigator.of(context)
-                        .pop(TemplateSubmitResult.viewPending),
-                icon: const Icon(Icons.list_alt),
-                label: const Text('View pending templates'),
+              const SizedBox(height: 8),
+              Text(
+                '"$displayName" is on its way to WhatsApp for review.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.disabledColor,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: onDone ??
-                    () => Navigator.of(context)
-                        .pop(TemplateSubmitResult.doneCreating),
-                child: const Text('Done'),
+
+              SizedBox(height: SizeConfig.heightMultiplier * 4),
+
+              // What happens next ────────────────────────────────────────
+              const _StepRow(
+                number: 1,
+                title: 'WhatsApp reviews it',
+                body:
+                    'Most templates are approved within a few minutes — sometimes it takes a few hours, occasionally up to 24 hours.',
               ),
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
-          ],
+              const _StepDivider(),
+              const _StepRow(
+                number: 2,
+                title: 'Check the approval status',
+                body:
+                    'If notifications are enabled, we\'ll alert you when it is approved or rejected. You can always check Pending templates here.',
+                icon: Icons.notifications_active_outlined,
+              ),
+              const _StepDivider(),
+              const _StepRow(
+                number: 3,
+                title: 'Run your first promotion',
+                body:
+                    'Once approved, the template will appear in the picker when you tap "Run Promotion".',
+                icon: Icons.campaign_outlined,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Actions ─────────────────────────────────────────────────
+              //
+              // Two genuinely distinct outcomes:
+              //
+              //   * View pending templates → host should land the
+              //     merchant on the Templates tab so they can watch
+              //     the new submission. Pops with
+              //     [TemplateSubmitResult.viewPending].
+              //   * Done → return to wherever the wizard was launched
+              //     from. Pops with [TemplateSubmitResult.doneCreating].
+              //
+              // The two return values are how callers tell the actions
+              // apart; previously both buttons popped `true` and the
+              // host could not respond differently.
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onViewPending ??
+                      () => Navigator.of(
+                            context,
+                          ).pop(TemplateSubmitResult.viewPending),
+                  icon: const Icon(Icons.list_alt),
+                  label: const Text('View pending templates'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: onDone ??
+                      () => Navigator.of(
+                            context,
+                          ).pop(TemplateSubmitResult.doneCreating),
+                  child: const Text('Done'),
+                ),
+              ),
+              SizedBox(height: SizeConfig.heightMultiplier * 2),
+            ],
+          ),
         ),
       ),
     );
@@ -202,14 +208,17 @@ class _StepRow extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
                 body,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.disabledColor, height: 1.4),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.disabledColor,
+                  height: 1.4,
+                ),
               ),
             ],
           ),

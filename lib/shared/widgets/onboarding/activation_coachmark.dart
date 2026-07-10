@@ -163,9 +163,7 @@ class _CoachmarkBubble extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Dismiss',
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             onPressed: onDismiss,
             icon: const Icon(Icons.close, size: 18),
           ),

@@ -8,6 +8,7 @@ class ReportDateFilterBar extends StatelessWidget {
   final DateTime? endDate;
   final ValueChanged<DateTime> onDaySelect;
   final void Function(DateTime, DateTime) onRangeSelect;
+  final VoidCallback onClear;
 
   const ReportDateFilterBar({
     super.key,
@@ -16,6 +17,7 @@ class ReportDateFilterBar extends StatelessWidget {
     required this.endDate,
     required this.onDaySelect,
     required this.onRangeSelect,
+    required this.onClear,
   });
 
   @override
@@ -52,7 +54,7 @@ class ReportDateFilterBar extends StatelessWidget {
             IconButton(
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               icon: const Icon(Icons.date_range, size: 18),
               onPressed: () async {
                 final now = DateTime.now();
@@ -62,10 +64,9 @@ class ReportDateFilterBar extends StatelessWidget {
                   context: context,
                   firstDate: DateTime(2020),
                   lastDate: lastSelectableDate,
-                  initialDateRange:
-                      (startDate != null && endDate != null)
-                          ? DateTimeRange(start: startDate!, end: endDate!)
-                          : null,
+                  initialDateRange: (startDate != null && endDate != null)
+                      ? DateTimeRange(start: startDate!, end: endDate!)
+                      : null,
                 );
                 if (picked != null) {
                   onRangeSelect(
@@ -83,27 +84,26 @@ class ReportDateFilterBar extends StatelessWidget {
             SizedBox(width: SizeConfig.imageSizeMultiplier * 2.5),
             PopupMenuButton<_QuickRange>(
               tooltip: 'Quick ranges',
-              itemBuilder:
-                  (context) => [
-                    const PopupMenuItem(
-                      value: _QuickRange.today,
-                      child: Text('Today'),
-                    ),
-                    const PopupMenuItem(
-                      value: _QuickRange.thisWeek,
-                      child: Text('This Week'),
-                    ),
-                    const PopupMenuItem(
-                      value: _QuickRange.thisMonth,
-                      child: Text('This Month'),
-                    ),
-                    if (selectedDay != null ||
-                        (startDate != null && endDate != null))
-                      const PopupMenuItem(
-                        value: _QuickRange.clear,
-                        child: Text('Clear'),
-                      ),
-                  ],
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: _QuickRange.today,
+                  child: Text('Today'),
+                ),
+                const PopupMenuItem(
+                  value: _QuickRange.thisWeek,
+                  child: Text('This Week'),
+                ),
+                const PopupMenuItem(
+                  value: _QuickRange.thisMonth,
+                  child: Text('This Month'),
+                ),
+                if (selectedDay != null ||
+                    (startDate != null && endDate != null))
+                  const PopupMenuItem(
+                    value: _QuickRange.clear,
+                    child: Text('Clear'),
+                  ),
+              ],
               onSelected: (v) {
                 final now = DateTime.now();
                 switch (v) {
@@ -128,12 +128,20 @@ class ReportDateFilterBar extends StatelessWidget {
                     onRangeSelect(start, end);
                     break;
                   case _QuickRange.clear:
-                    onRangeSelect(DateTime(2020, 1, 1), DateTime.now());
+                    onClear();
                     break;
                 }
               },
               position: PopupMenuPosition.under,
-              child: const Icon(Icons.more_horiz, size: 18),
+              child: Semantics(
+                button: true,
+                label: 'Quick date ranges',
+                child: const SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Icon(Icons.more_horiz, size: 18),
+                ),
+              ),
             ),
           ],
         ),

@@ -11,12 +11,13 @@ class ConnectManagementPage extends StatefulWidget {
   final String customerName;
   final String? mobileNumber;
 
-  const ConnectManagementPage(
-      {super.key,
-      required this.customerId,
-      this.profileImageUrl,
-      required this.customerName,
-      this.mobileNumber});
+  const ConnectManagementPage({
+    super.key,
+    required this.customerId,
+    this.profileImageUrl,
+    required this.customerName,
+    this.mobileNumber,
+  });
 
   @override
   _ConnectManagementPageState createState() => _ConnectManagementPageState();
@@ -84,7 +85,7 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
                       } else if (snapshot.hasError) {
                         return Center(
                           child: Text(
-                            'Error: ${snapshot.error}',
+                            'Could not load messages. Please try again.',
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
                               fontSize: SizeConfig.textMultiplier * 2,

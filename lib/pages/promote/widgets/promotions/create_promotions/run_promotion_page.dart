@@ -11,6 +11,7 @@ import 'package:pasella/pages/promote/widgets/templates/create_template/create_t
 import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:pasella/shared/widgets/wizard_stepper.dart';
 import 'package:provider/provider.dart';
 
@@ -75,6 +76,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   RunPromotionStep currentStep = RunPromotionStep.templateAndDetails;
   bool calculating = false;
   bool sending = false;
+  bool _completed = false;
 
   // ─── Save vs. Send Flow ───────────────────────────
   bool isSaved = false;
@@ -174,7 +176,8 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     if (currentStep == RunPromotionStep.customerSelection) {
       if (vm.selectedCustomerIds.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Select at least one customer.')));
+          const SnackBar(content: Text('Select at least one customer.')),
+        );
         return;
       }
       setState(() => calculating = true);
@@ -217,10 +220,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     final promoId = await vm.savePromotion(
       templateId: selectedTemplateId!,
       customerIds: vm.selectedCustomerIds,
-      variables: {
-        'shopName': vm.shopName,
-        'customerName': '[Customer Name]',
-      },
+      variables: {'shopName': vm.shopName, 'customerName': '[Customer Name]'},
       sendWhatsApp: sendWhatsApp,
       sendSMS: sendSMS,
       testMode: false,
@@ -238,9 +238,11 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     setState(() => sending = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(isSaved
-            ? 'Promotion saved. You can send it now.'
-            : 'Failed to save promotion.'),
+        content: Text(
+          isSaved
+              ? 'Promotion saved. You can send it now.'
+              : 'Failed to save promotion.',
+        ),
       ),
     );
   }
@@ -254,16 +256,17 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     // failed. The view-model now returns a structured result with
     // a message that is always populated (provider detail when
     // present, Pasella fallback otherwise).
-    final result =
-        await Provider.of<PromotionsViewModel>(context, listen: false)
-            .sendSavedPromotion(savedPromotionId!);
+    final result = await Provider.of<PromotionsViewModel>(
+      context,
+      listen: false,
+    ).sendSavedPromotion(savedPromotionId!);
     if (!mounted) return;
     setState(() => sending = false);
     final messenger = ScaffoldMessenger.of(context);
     if (result.isOk) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Promotion sent.')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('Promotion sent.')));
+      _completed = true;
+      Navigator.pop(context);
     } else {
       messenger.showSnackBar(
         SnackBar(
@@ -274,7 +277,6 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
         ),
       );
     }
-    Navigator.pop(context);
   }
 
   Future<void> _openCreateTemplate() async {
@@ -283,9 +285,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
 
     final result = await Navigator.push<TemplateSubmitResult>(
       context,
-      MaterialPageRoute(
-        builder: (_) => CreateTemplatePage(viewModel: vm),
-      ),
+      MaterialPageRoute(builder: (_) => CreateTemplatePage(viewModel: vm)),
     );
 
     if (result == null || !mounted) return;
@@ -321,10 +321,13 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       });
       vm.selectTemplate(newest['id'] as String);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Selected your new template "${newest['displayName'] ?? newest['name']}".'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Selected your new template "${newest['displayName'] ?? newest['name']}".',
+          ),
+        ),
+      );
     }
     // No fallback snackbar: TemplateSubmittedSuccessPage already explained
     // the pending state and the next-steps. Adding another toast on top
@@ -339,9 +342,10 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       final step1Valid =
           selectedTemplateId != null && (sendWhatsApp || sendSMS);
       final step2Valid = vm.selectedCustomerIds.isNotEmpty;
-      final canProceed = currentStep == RunPromotionStep.templateAndDetails
-          ? step1Valid
-          : step2Valid;
+      final canProceed =
+          currentStep == RunPromotionStep.templateAndDetails
+              ? step1Valid
+              : step2Valid;
 
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -350,13 +354,14 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
             OutlinedButton(onPressed: previousStep, child: const Text('Back')),
           ElevatedButton(
             onPressed: (sending || !canProceed) ? null : nextStep,
-            child: sending
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Next'),
+            child:
+                sending
+                    ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : const Text('Next'),
           ),
         ],
       );
@@ -373,13 +378,14 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           OutlinedButton(onPressed: previousStep, child: const Text('Back')),
           ElevatedButton(
             onPressed: sending ? null : _savePromotion,
-            child: sending
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Save Promotion'),
+            child:
+                sending
+                    ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                    : const Text('Save Promotion'),
           ),
         ],
       );
@@ -453,8 +459,8 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
               }
             });
           },
-          onCustomerToggle: (id) =>
-              setState(() => vm.toggleCustomerSelection(id)),
+          onCustomerToggle:
+              (id) => setState(() => vm.toggleCustomerSelection(id)),
         );
 
       case RunPromotionStep.reviewAndPricing:
@@ -479,13 +485,35 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   @override
   Widget build(BuildContext context) {
     final vm = Provider.of<PromotionsViewModel>(context);
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Run Promotion'),
-      body: vm.loadingTemplates
-          ? const Center(child: CircularProgressIndicator())
-          : calculating
-              ? const Center(child: CircularProgressIndicator())
-              : Padding(
+    final hasProgress =
+        !_completed &&
+        (currentStep != RunPromotionStep.templateAndDetails ||
+            selectedTemplateId != null ||
+            linkedProduct != null ||
+            vm.selectedCustomerIds.isNotEmpty ||
+            sendSMS ||
+            !sendWhatsApp);
+    return PopScope(
+      canPop: !hasProgress,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final discard = await ConfirmDialog.showDestructive(
+          context,
+          title: 'Discard promotion?',
+          message: 'Leaving now will discard your promotion selections.',
+          confirmLabel: 'Discard',
+          cancelLabel: 'Keep editing',
+        );
+        if (discard && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        appBar: const CustomAppBar(title: 'Run Promotion'),
+        body:
+            vm.loadingTemplates
+                ? const Center(child: CircularProgressIndicator())
+                : calculating
+                ? const Center(child: CircularProgressIndicator())
+                : Padding(
                   padding: LayoutConstants.padding10Horizontal,
                   child: Column(
                     children: [
@@ -499,6 +527,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
                     ],
                   ),
                 ),
+      ),
     );
   }
 }

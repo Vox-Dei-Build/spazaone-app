@@ -49,17 +49,25 @@ class _LedgerPageState extends State<LedgerPage> {
         floatingActionButton: ValueListenableBuilder<int>(
           valueListenable: _tabIndexNotifier,
           builder: (context, tabIndex, child) {
-            return tabIndex == 0
-                ? Padding(
-                    padding: EdgeInsets.only(
-                      bottom: SizeConfig.heightMultiplier * 1,
-                      right: SizeConfig.imageSizeMultiplier * 1,
-                    ),
-                    child: LedgerFloatingActionButton(
-                      onPressed: () =>
-                          Navigator.pushNamed(context, AddContactPage.id),
-                    ))
-                : Container(); // Return an empty container if it's the second tab
+            if (tabIndex != 0) return const SizedBox.shrink();
+            return ValueListenableBuilder<bool>(
+              valueListenable: ledgerViewModel.hasCustomersNotifier,
+              builder: (context, hasCustomers, child) {
+                // The empty state already contains the primary Add Customer
+                // action. Avoid presenting two competing CTAs there.
+                if (!hasCustomers) return const SizedBox.shrink();
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: SizeConfig.heightMultiplier * 1,
+                    right: SizeConfig.imageSizeMultiplier * 1,
+                  ),
+                  child: LedgerFloatingActionButton(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, AddContactPage.id),
+                  ),
+                );
+              },
+            );
           },
         ),
         body: SafeArea(

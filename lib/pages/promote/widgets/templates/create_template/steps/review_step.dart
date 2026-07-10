@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 class ReviewStep extends StatelessWidget {
   final String templateName;
@@ -14,6 +15,7 @@ class ReviewStep extends StatelessWidget {
   final double? whatsappPrice;
   final double? smsPricePerSegment;
   final int smsSegments;
+
   /// See `ContentStep.smsEncodingInfo` — same data, displayed on the
   /// review step so a merchant doesn't have to navigate back to learn why
   /// the SMS cost is what it is.
@@ -44,16 +46,23 @@ class ReviewStep extends StatelessWidget {
     }
 
     return ListView(
-      padding:
-          EdgeInsets.symmetric(horizontal: SizeConfig.imageSizeMultiplier * 1),
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.imageSizeMultiplier * 1,
+      ),
       children: [
-        Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Text('Name: $templateName',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              'Name: $templateName',
               style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 2,
-                  fontWeight: FontWeight.bold)),
-          SizedBox(height: SizeConfig.heightMultiplier * 1),
-        ]),
+                fontSize: SizeConfig.textMultiplier * 2,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
+          ],
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
           child: Container(
@@ -84,21 +93,23 @@ class ReviewStep extends StatelessWidget {
             ),
           ),
         ),
-        Divider(
-          color: Colors.grey,
-          thickness: SizeConfig.heightMultiplier * 0,
-        ),
+        Divider(color: Colors.grey, thickness: SizeConfig.heightMultiplier * 0),
         if (includeWhatsApp)
           Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('WhatsApp Preview',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'WhatsApp Preview',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               Text(
-                  'WhatsApp Cost: R${whatsappPrice!.toStringAsFixed(2)} per recipient'),
+                'WhatsApp Cost: ${CurrencyUtil.format(whatsappPrice!)} per recipient',
+              ),
               MessagePreviewCard(
                 content: resolvedMessage(
-                    forceBoilerplate(whatsappContent), shopName),
+                  forceBoilerplate(whatsappContent),
+                  shopName,
+                ),
                 mediaUrl: mediaUrl,
               ),
               Divider(
@@ -111,10 +122,13 @@ class ReviewStep extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('SMS Preview',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'SMS Preview',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               Text(
-                  'SMS Cost: R${(smsSegments * smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
+                'SMS Cost: ${CurrencyUtil.format(smsSegments * smsPricePerSegment!)} per recipient',
+              ),
               MessagePreviewCard(
                 content: resolvedMessage(smsContent, shopName),
               ),
@@ -131,10 +145,12 @@ class ReviewStep extends StatelessWidget {
             SizedBox(height: SizeConfig.heightMultiplier * 1),
             if (includeWhatsApp)
               Text(
-                  'WhatsApp Cost: R${whatsappPrice!.toStringAsFixed(2)} per recipient'),
+                'WhatsApp Cost: ${CurrencyUtil.format(whatsappPrice!)} per recipient',
+              ),
             if (includeSMS)
               Text(
-                  'SMS Cost: R${(smsSegments * smsPricePerSegment!).toStringAsFixed(2)} per recipient'),
+                'SMS Cost: ${CurrencyUtil.format(smsSegments * smsPricePerSegment!)} per recipient',
+              ),
             if (includeSMS && smsEncodingInfo.offenderLabel != null)
               Padding(
                 padding: EdgeInsets.symmetric(

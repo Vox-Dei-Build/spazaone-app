@@ -46,7 +46,14 @@ class _SalesListState extends State<SalesList> {
       initialData: viewModel.cachedSales,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return _paddedScroll(Center(child: Text('Error: ${snapshot.error}')));
+          return _paddedScroll(
+            const Center(
+              child: Text(
+                'Could not load sales. Check your connection and try again.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
