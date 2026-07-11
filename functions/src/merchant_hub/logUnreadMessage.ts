@@ -299,11 +299,23 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
       return;
     }
 
-    const merchantData = await merchantRef.get();
-    const merchantFCMToken = merchantData.data()?.fcmToken;
+    const latestMerchantDoc = await merchantRef.get();
+    const latestMerchantData = latestMerchantDoc.data() ?? {};
+    const tokens = new Set<string>();
+    const legacyToken = latestMerchantData.fcmToken;
+    if (typeof legacyToken === "string" && legacyToken.trim()) {
+      tokens.add(legacyToken.trim());
+    }
+    if (Array.isArray(latestMerchantData.fcmTokens)) {
+      for (const token of latestMerchantData.fcmTokens) {
+        if (typeof token === "string" && token.trim()) {
+          tokens.add(token.trim());
+        }
+      }
+    }
 
-    if (!merchantFCMToken) {
-      console.log("Merchant FCM Token not found.");
+    if (tokens.size === 0) {
+      console.log("Merchant FCM tokens not found.");
       res
         .status(200)
         .json({ message: "Unread message logged, but no FCM token." });
@@ -334,12 +346,39 @@ export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
         notificationCustomer,
         customerNumber,
       ),
-      token: merchantFCMToken,
+      tokens: [...tokens],
     };
 
     try {
-      const response = await admin.messaging().send(payload);
-      console.log("✅ Push notification sent successfully:", response);
+      const response = await admin.messaging().sendEachForMulticast(payload);
+      console.log(
+        `✅ Push notification sent successfully to ${response.successCount}/${tokens.size} token(s).`,
+      );
+
+      const invalidTokens: string[] = [];
+      response.responses.forEach((result, index) => {
+        if (result.success) return;
+        const code = result.error?.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+          code === "messaging/invalid-registration-token"
+        ) {
+          invalidTokens.push(payload.tokens[index]);
+        }
+      });
+
+      if (invalidTokens.length > 0) {
+        const tokenCleanup: Record<string, unknown> = {
+          fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
+        };
+        if (invalidTokens.includes(legacyToken)) {
+          tokenCleanup.fcmToken = admin.firestore.FieldValue.delete();
+        }
+        await merchantRef.update(tokenCleanup);
+        console.log(
+          `[logUnreadMessage] removed ${invalidTokens.length} invalid FCM token(s) for ${merchantId}`,
+        );
+      }
     } catch (error) {
       console.error("❌ Error sending push notification:", error);
     }
