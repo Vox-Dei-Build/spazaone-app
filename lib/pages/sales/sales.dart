@@ -244,8 +244,10 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                 },
                               ),
                             ),
-                            if (_selectedSalesView == SalesViewType.cash)
+                            if (_selectedSalesView == SalesViewType.cash) ...[
                               const _SalesMeaningHint(),
+                              const SizedBox(height: LayoutConstants.spaceMd),
+                            ],
 
                             DateFilterBar(
                               selectedDay: _selectedDay,
