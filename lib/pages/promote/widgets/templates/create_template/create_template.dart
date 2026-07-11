@@ -11,6 +11,7 @@ import 'package:pasella/pages/promote/widgets/templates/create_template/template
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:pasella/shared/widgets/wizard_stepper.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
@@ -69,6 +70,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   bool includeWhatsApp = true;
   bool includeSMS = true;
   bool saving = false;
+  bool _submitted = false;
 
   DynamicPricingService? _pricingService;
   double? _whatsappPrice;
@@ -240,6 +242,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
             _templateNameController.text.trim().isEmpty
                 ? (_sanitizedName.isEmpty ? 'your template' : _sanitizedName)
                 : _templateNameController.text.trim();
+        _submitted = true;
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder:
@@ -249,6 +252,16 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
       }
     } catch (e) {
       debugPrint("Failed to save template: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not submit the template. Check your connection and try again.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -258,30 +271,54 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Create Promotion Template'),
-      body: Padding(
-        padding: LayoutConstants.padding10Horizontal,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              if (widget.prefill?.rejectionReason != null)
-                _RejectionReasonBanner(
-                  reason: widget.prefill!.rejectionReason!,
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final discard = await ConfirmDialog.showDestructive(
+          context,
+          title: 'Discard template?',
+          message: 'Leaving now will discard the template you are creating.',
+          confirmLabel: 'Discard',
+          cancelLabel: 'Keep editing',
+        );
+        if (discard && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        appBar: const CustomAppBar(title: 'Create Promotion Template'),
+        body: Padding(
+          padding: LayoutConstants.padding10Horizontal,
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                if (widget.prefill?.rejectionReason != null)
+                  _RejectionReasonBanner(
+                    reason: widget.prefill!.rejectionReason!,
+                  ),
+                WizardStepper(
+                  steps: const ['Name', 'Content', 'Review'],
+                  currentIndex: currentStep.index,
                 ),
-              WizardStepper(
-                steps: const ['Name', 'Content', 'Review'],
-                currentIndex: currentStep.index,
-              ),
-              Expanded(child: _buildStepContent()),
-              _buildNavigationButtons(),
-            ],
+                Expanded(child: _buildStepContent()),
+                _buildNavigationButtons(),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+
+  bool get _hasUnsavedChanges =>
+      !_submitted &&
+      (currentStep != CreateTemplateStep.basicInfo ||
+          _templateNameController.text.trim().isNotEmpty ||
+          _whatsappContentController.text.trim().isNotEmpty ||
+          _smsContentController.text.trim().isNotEmpty ||
+          _mediaUrlController.text.trim().isNotEmpty ||
+          !includeWhatsApp ||
+          !includeSMS);
 
   Widget _buildStepContent() {
     switch (currentStep) {

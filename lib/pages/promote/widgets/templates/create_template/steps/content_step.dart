@@ -5,6 +5,7 @@ import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:path/path.dart' as path;
+import 'package:pasella/utils/currency_util.dart';
 
 class ContentStep extends StatelessWidget {
   final bool includeWhatsApp;
@@ -18,6 +19,7 @@ class ContentStep extends StatelessWidget {
   final double? whatsappPrice;
   final double? smsPricePerSegment;
   final int smsSegments;
+
   /// Encoding + offending-character info for the current SMS body. Drives
   /// the inline warning that explains *why* a body went UCS-2 (e.g.
   /// "Contains an en-dash (–) — message costs 2 segments. Replace with -
@@ -50,10 +52,7 @@ class ContentStep extends StatelessWidget {
       children: [
         _buildMessageAppEditor(context),
         SizedBox(height: SizeConfig.heightMultiplier * 1),
-        Divider(
-          color: Colors.grey,
-          thickness: SizeConfig.heightMultiplier * 0,
-        ),
+        Divider(color: Colors.grey, thickness: SizeConfig.heightMultiplier * 0),
         _buildPricingCard(),
       ],
     );
@@ -63,8 +62,10 @@ class ContentStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Hello [Customer Name],',
-            style: TextStyle(fontStyle: FontStyle.italic)),
+        const Text(
+          'Hello [Customer Name],',
+          style: TextStyle(fontStyle: FontStyle.italic),
+        ),
         SizedBox(height: SizeConfig.heightMultiplier * 1),
         TextFormField(
           controller: whatsappContentController,
@@ -79,13 +80,17 @@ class ContentStep extends StatelessWidget {
             labelText: 'Message',
             border: OutlineInputBorder(),
           ),
-          validator: (val) => val == null || val.isEmpty || val.trim().isEmpty
-              ? 'Message Body is required'
-           : null,
+          validator:
+              (val) =>
+                  val == null || val.isEmpty || val.trim().isEmpty
+                      ? 'Message Body is required'
+                      : null,
         ),
         const SizedBox(height: 8),
-        const Text('Kind regards,',
-            style: TextStyle(fontStyle: FontStyle.italic)),
+        const Text(
+          'Kind regards,',
+          style: TextStyle(fontStyle: FontStyle.italic),
+        ),
         // PAS-UX-09 follow-up: shopName may be blank for legacy merchants;
         // avoid rendering "The  team" in the preview.
         Text(
@@ -94,13 +99,8 @@ class ContentStep extends StatelessWidget {
               : 'The ${shopName.trim()} team',
           style: const TextStyle(fontStyle: FontStyle.italic),
         ),
-        Divider(
-          color: Colors.grey,
-          thickness: SizeConfig.heightMultiplier * 0,
-        ),
-        if (includeWhatsApp) ...[
-          _buildMediaSection(context),
-        ],
+        Divider(color: Colors.grey, thickness: SizeConfig.heightMultiplier * 0),
+        if (includeWhatsApp) ...[_buildMediaSection(context)],
       ],
     );
   }
@@ -120,7 +120,8 @@ class ContentStep extends StatelessWidget {
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                    content: Text('Failed to upload image. Try again.')),
+                  content: Text('Failed to upload image. Try again.'),
+                ),
               );
             }
           }
@@ -138,8 +139,8 @@ class ContentStep extends StatelessWidget {
             height: 100,
             width: 100,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                const Icon(Icons.broken_image, size: 80),
+            errorBuilder:
+                (_, __, ___) => const Icon(Icons.broken_image, size: 80),
           ),
         );
       } else {
@@ -160,8 +161,10 @@ class ContentStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('📷 Media (Whatsapp)',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text(
+          '📷 Media (Whatsapp)',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -172,13 +175,14 @@ class ContentStep extends StatelessWidget {
               child: _mediaDisplay(),
             ),
             IconButton(
-              icon: uploadingImage
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.upload),
+              icon:
+                  uploadingImage
+                      ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                      : const Icon(Icons.upload),
               onPressed: uploadingImage ? null : _handleImageUpload,
             ),
           ],
@@ -202,8 +206,9 @@ class ContentStep extends StatelessWidget {
       margin: const EdgeInsets.all(8),
       child: Padding(
         padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.imageSizeMultiplier * 4,
-            vertical: SizeConfig.heightMultiplier * 1),
+          horizontal: SizeConfig.imageSizeMultiplier * 4,
+          vertical: SizeConfig.heightMultiplier * 1,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -221,7 +226,7 @@ class ContentStep extends StatelessWidget {
                     size: SizeConfig.textMultiplier * 2,
                   ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  Text('WhatsApp: R${whatsappPrice!.toStringAsFixed(2)}'),
+                  Text('WhatsApp: ${CurrencyUtil.format(whatsappPrice!)}'),
                 ],
               ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
@@ -236,7 +241,7 @@ class ContentStep extends StatelessWidget {
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   Expanded(
                     child: Text(
-                      'SMS: $smsSegments segment(s) × R${smsPricePerSegment!.toStringAsFixed(2)} = R${(smsSegments * smsPricePerSegment!).toStringAsFixed(2)}',
+                      'SMS: $smsSegments segment(s) × ${CurrencyUtil.format(smsPricePerSegment!)} = ${CurrencyUtil.format(smsSegments * smsPricePerSegment!)}',
                     ),
                   ),
                 ],
@@ -272,8 +277,9 @@ class ContentStep extends StatelessWidget {
             Text(
               'This is the cost per customer. Final cost will depend on how many customers you send to.',
               style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.5,
-                  color: Colors.grey),
+                fontSize: SizeConfig.textMultiplier * 1.5,
+                color: Colors.grey,
+              ),
             ),
           ],
         ),

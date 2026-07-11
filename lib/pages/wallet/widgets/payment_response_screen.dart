@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 class PaymentResponseScreen extends StatelessWidget {
   final bool isSuccess;
@@ -47,7 +48,7 @@ class PaymentResponseScreen extends StatelessWidget {
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 3),
-            _buildDetailRow("Amount", "R${amount.toStringAsFixed(2)}"),
+            _buildDetailRow("Amount", CurrencyUtil.format(amount)),
             _buildDetailRow("Reference", reference),
             SizedBox(height: SizeConfig.heightMultiplier * 4),
             ElevatedButton(

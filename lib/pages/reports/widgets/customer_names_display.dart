@@ -38,7 +38,7 @@ class CustomersWithBadLoansTile extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const CircularProgressIndicator();
         } else if (snapshot.hasError) {
-          return Text('Error: ${snapshot.error}');
+          return const Text('Could not load customer details.');
         } else {
           List<dynamic> customers = snapshot.data!;
           customers.sort((a, b) => a['balance'].compareTo(b['balance']));

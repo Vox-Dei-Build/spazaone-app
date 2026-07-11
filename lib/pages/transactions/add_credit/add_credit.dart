@@ -28,11 +28,12 @@ class AddCreditScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AddCreditViewModel(
-        customerName: customerName,
-        customerId: customerId,
-        mobileNumber: mobileNumber,
-      ),
+      create:
+          (_) => AddCreditViewModel(
+            customerName: customerName,
+            customerId: customerId,
+            mobileNumber: mobileNumber,
+          ),
       child: Consumer<AddCreditViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
@@ -46,10 +47,7 @@ class AddCreditScreen extends StatelessWidget {
             primaryActionColor: Colors.red,
             totalLabel: Text(
               'Total: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             onPrimaryAction: () => viewModel.addCreditTransaction(context),
             body: Column(
@@ -60,7 +58,9 @@ class AddCreditScreen extends StatelessWidget {
                   hintText: 'Enter Amount',
                   prefixIcon: Icons.money,
                   controller: viewModel.amountController,
-                  textInputType: TextInputType.number,
+                  textInputType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   validator: (value) {
                     if (value == null ||
                         value.isEmpty ||

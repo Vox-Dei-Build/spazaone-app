@@ -92,11 +92,11 @@ class PaymentService {
     'UNASSIGN_DRIVER': 'Driver unassigned',
     'MARK_OUT_FOR_DELIVERY': 'Order out for delivery',
     'MARK_DELIVERED': 'Order marked delivered',
-    'ACCEPT_BNPL': 'BNPL approved',
-    'REJECT_BNPL': 'BNPL rejected',
+    'ACCEPT_BNPL': 'Pay Later approved',
+    'REJECT_BNPL': 'Pay Later rejected',
     'MARK_CASH_RECEIVED': 'Cash received recorded',
     'MARK_COLLECTED': 'Order marked collected',
-    'SETTLE_BNPL': 'BNPL settled · marked paid',
+    'SETTLE_BNPL': 'Pay Later settled · marked paid',
     'CANCEL_ORDER': 'Order cancelled',
   };
 

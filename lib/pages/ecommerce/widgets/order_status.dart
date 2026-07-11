@@ -40,9 +40,9 @@ extension OrderStatusLabel on OrderStatus {
         OrderStatus.collected => 'Collected',
         OrderStatus.outForDelivery => 'Out for Delivery',
         OrderStatus.delivered => 'Delivered',
-        OrderStatus.bnplPending => 'BNPL Pending',
-        OrderStatus.bnplOutstanding => 'BNPL Outstanding',
-        OrderStatus.bnplRejected => 'BNPL Rejected',
+        OrderStatus.bnplPending => 'Pay Later Pending',
+        OrderStatus.bnplOutstanding => 'Pay Later Outstanding',
+        OrderStatus.bnplRejected => 'Pay Later Rejected',
       };
 }
 
@@ -224,15 +224,15 @@ StatusMeta buildPaymentStatusMeta(
   // BNPL rules
   if (isBnpl) {
     if (ps == 'rejected') {
-      return const StatusMeta('BNPL Rejected', Colors.deepOrange);
+      return const StatusMeta('Pay Later Rejected', Colors.deepOrange);
     }
     if (ps == 'approved' || ps == 'outstanding') {
-      return const StatusMeta('BNPL Outstanding', Colors.brown);
+      return const StatusMeta('Pay Later Outstanding', Colors.brown);
     }
     if (ps == 'paid' || ps == 'settled') {
       return const StatusMeta('Paid', Colors.green);
     }
-    return const StatusMeta('BNPL Pending', Colors.amber);
+    return const StatusMeta('Pay Later Pending', Colors.amber);
   }
 
   // Non-BNPL generic payment statuses

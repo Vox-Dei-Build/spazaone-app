@@ -11,6 +11,7 @@ import 'package:pasella/pages/promote/widgets/templates/create_template/create_t
 import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 class TemplateDetailPage extends StatefulWidget {
   final PromotionsViewModel viewModel;
@@ -44,15 +45,19 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
   Future<void> _deleteTemplate() async {
     setState(() => _actionLoading = true);
     final templateId = widget.template['id'];
-    final success =
-        await widget.viewModel.deleteTemplate(templateId, widget.template);
+    final success = await widget.viewModel.deleteTemplate(
+      templateId,
+      widget.template,
+    );
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(success
-            ? 'Template deleted successfully'
-            : 'Failed to delete template'),
+        content: Text(
+          success
+              ? 'Template deleted successfully'
+              : 'Failed to delete template',
+        ),
       ),
     );
     if (success) {
@@ -90,7 +95,8 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
   /// edit-and-resubmit. After successful submission we delete the failed
   /// original so the list stays tidy.
   Future<void> _fixAndResubmit() async {
-    final wa = widget.template['channels']?['whatsapp'] as Map<String, dynamic>?;
+    final wa =
+        widget.template['channels']?['whatsapp'] as Map<String, dynamic>?;
     final sms = widget.template['channels']?['sms'] as Map<String, dynamic>?;
 
     final result = await Navigator.of(context).push<TemplateSubmitResult>(
@@ -98,9 +104,10 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
         builder: (_) => CreateTemplatePage(
           viewModel: widget.viewModel,
           prefill: TemplatePrefill(
-            displayName:
-                (widget.template['displayName'] ?? widget.template['name'] ?? '')
-                    .toString(),
+            displayName: (widget.template['displayName'] ??
+                    widget.template['name'] ??
+                    '')
+                .toString(),
             whatsappContent: (wa?['templateContent'] ?? '').toString(),
             smsContent: (sms?['templateContent'] ?? '').toString(),
             mediaUrl: (wa?['mediaUrl'] ?? '').toString(),
@@ -118,8 +125,10 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
     if (result != null && mounted) {
       // The new submission lives independently. Delete the old rejected /
       // failed entry so the merchant's library doesn't accumulate dead docs.
-      await widget.viewModel
-          .deleteTemplate(widget.template['id'], widget.template);
+      await widget.viewModel.deleteTemplate(
+        widget.template['id'],
+        widget.template,
+      );
       if (mounted) Navigator.of(context).pop();
     }
   }
@@ -138,7 +147,8 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
     final sms = channels['sms'] as Map<String, dynamic>?;
     final smsSegments = sms != null
         ? SMSPricingUtil.calculateSegments(
-            sms['templateContent'] as String? ?? '')
+            sms['templateContent'] as String? ?? '',
+          )
         : 1;
 
     final status = templateStatusOf(t);
@@ -181,9 +191,11 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
                 child: ElevatedButton.icon(
                   onPressed: _fixAndResubmit,
                   icon: const Icon(Icons.refresh),
-                  label: Text(status == TemplateStatus.submissionFailed
-                      ? 'Retry submission'
-                      : 'Fix and resubmit'),
+                  label: Text(
+                    status == TemplateStatus.submissionFailed
+                        ? 'Retry submission'
+                        : 'Fix and resubmit',
+                  ),
                 ),
               ),
             ),
@@ -219,33 +231,39 @@ class _TemplateDetailPageState extends State<TemplateDetailPage> {
           Text('Created: $formattedDate', textAlign: TextAlign.center),
           SizedBox(height: SizeConfig.heightMultiplier * 2),
           if (whatsapp != null) ...[
-            const Text('WhatsApp Preview',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text(
+              'WhatsApp Preview',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             if (widget.whatsappPrice != null)
               Text(
-                'WhatsApp Cost: R${widget.whatsappPrice!.toStringAsFixed(2)} per recipient',
+                'WhatsApp Cost: ${CurrencyUtil.format(widget.whatsappPrice!)} per recipient',
                 textAlign: TextAlign.center,
               ),
             MessagePreviewCard(
               content: _resolvedMessage(
-                  (whatsapp['templateContent'] ?? '').toString()),
+                (whatsapp['templateContent'] ?? '').toString(),
+              ),
               mediaUrl: whatsapp['mediaUrl'],
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 4),
           ],
           if (sms != null) ...[
-            const Text('SMS Preview',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text(
+              'SMS Preview',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             if (widget.smsPricePerSegment != null)
               Text(
-                'SMS Cost: R${(smsSegments * widget.smsPricePerSegment!).toStringAsFixed(2)} per recipient',
+                'SMS Cost: ${CurrencyUtil.format(smsSegments * widget.smsPricePerSegment!)} per recipient',
                 textAlign: TextAlign.center,
               ),
             MessagePreviewCard(
               content: _resolvedMessage(
-                  (sms['templateContent'] ?? '').toString()),
+                (sms['templateContent'] ?? '').toString(),
+              ),
             ),
           ],
         ],
@@ -301,9 +319,8 @@ class _StatusBanner extends StatelessWidget {
             ? 'Reason: $reason'
             : 'No reason was provided. Tweak the wording and resubmit.';
       case TemplateStatus.submissionFailed:
-        return reason != null
-            ? 'Error: $reason'
-            : 'Something went wrong on our side. Tap retry below.';
+        return 'We couldn\'t submit this template. Check your connection and '
+            'tap retry below.';
       case TemplateStatus.draft:
         return 'This template hasn\'t been submitted yet.';
       case TemplateStatus.unknown:

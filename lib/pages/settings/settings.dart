@@ -4,6 +4,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/pages/settings/help/help.dart';
 import 'package:pasella/pages/settings/privacy/privacy_page.dart';
+import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/models/common/app_model.dart';
@@ -81,6 +82,14 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.shield_outlined,
                           title: 'Privacy',
                           subTitle: 'Crash reports, analytics, session replay',
+                        ),
+                        SettingTile(
+                          onTap: () => FCMService()
+                              .showPermissionExplanationDialog(context),
+                          icon: Icons.notifications_outlined,
+                          title: 'Notifications',
+                          subTitle:
+                              'Enable payment reminders and account updates',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

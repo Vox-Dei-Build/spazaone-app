@@ -23,25 +23,29 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     SizeConfig().init(context); // Initialize SizeConfig
 
     return AppBar(
-      leadingWidth: 30,
-      leading: onBack
-          ? IconButton(
-              onPressed: () {
-                FocusScope.of(context).unfocus();
-                SystemChannels.textInput.invokeMethod('TextInput.hide');
-                if (onBackPressed != null) {
-                  onBackPressed!();
-                } else {
-                  Navigator.pop(context);
-                }
-              },
-              icon: Icon(
-                Icons.arrow_back_ios,
-                size:
-                    SizeConfig.imageSizeMultiplier * 6, // Responsive icon size
-              ),
-            )
-          : leading, // Provide an empty space or null if onBack is false or there is no leading icon
+      leadingWidth: 48,
+      leading:
+          onBack
+              ? IconButton(
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  SystemChannels.textInput.invokeMethod('TextInput.hide');
+                  if (onBackPressed != null) {
+                    onBackPressed!();
+                  } else {
+                    Navigator.pop(context);
+                  }
+                },
+                icon: Icon(
+                  Icons.arrow_back_ios,
+                  size:
+                      SizeConfig.imageSizeMultiplier *
+                      6, // Responsive icon size
+                ),
+                tooltip: 'Back',
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              )
+              : leading, // Provide an empty space or null if onBack is false or there is no leading icon
       title: Text(
         title,
         style: TextStyle(
@@ -51,9 +55,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         overflow: TextOverflow.ellipsis,
       ),
       centerTitle: true,
-      actions: <Widget>[
-        if (trailing != null) trailing! else Container(),
-      ],
+      actions: <Widget>[if (trailing != null) trailing! else Container()],
       // Customize your AppBar further if needed
     );
   }

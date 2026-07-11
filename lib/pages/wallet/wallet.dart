@@ -50,6 +50,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   @override
   void dispose() {
     _tabController.dispose();
+    walletVM.dispose();
     super.dispose();
   }
 
@@ -148,47 +149,56 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
                     final walletState = snapshot.data!;
 
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _balanceCard(
-                          title: 'App Balance',
-                          amount: walletState.balance,
-                          description:
-                              'Pays for SMS & WhatsApp sends from this app',
-                          color: Colors.green,
-                          icon: Icons.account_balance_wallet,
-                          // PAS-UX-WTC: the whole card becomes a shortcut
-                          // to the Top-Up tab. Urgent tint kicks in when
-                          // balance is low so it's obvious which surface
-                          // needs attention — no extra chrome on the card.
-                          onAction: FeatureFlags.enableTopUp
-                              ? () {
-                                  final i = _topUpTabIndex();
-                                  if (i != null) _tabController.animateTo(i);
-                                }
-                              : null,
-                          actionIsUrgent: walletState.balance < 5.0,
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+                      ),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _balanceCard(
+                              title: 'App Balance',
+                              amount: walletState.balance,
+                              description:
+                                  'Pays for SMS & WhatsApp sends from this app',
+                              color: Colors.green,
+                              icon: Icons.account_balance_wallet,
+                              // PAS-UX-WTC: the whole card becomes a shortcut
+                              // to the Top-Up tab. Urgent tint kicks in when
+                              // balance is low so it's obvious which surface
+                              // needs attention — no extra chrome on the card.
+                              onAction:
+                                  FeatureFlags.enableTopUp
+                                      ? () {
+                                        final i = _topUpTabIndex();
+                                        if (i != null)
+                                          _tabController.animateTo(i);
+                                      }
+                                      : null,
+                              actionIsUrgent: walletState.balance < 5.0,
+                            ),
+                            _balanceCard(
+                              title: 'Sales Balance',
+                              amount: walletState.salesVirtualBalance,
+                              description: 'Available for withdrawal',
+                              color: Colors.blue,
+                              icon: Icons.account_balance_wallet,
+                            ),
+                            if (FeatureFlags.enableCashAdvance)
+                              _balanceCard(
+                                title: 'Cash Advance',
+                                amount: walletState.cashAdvanceBalance,
+                                description: 'Available for withdrawal',
+                                color: Colors.orange,
+                                icon: Icons.account_balance,
+                              ),
+                            if (FeatureFlags.enableCashAdvance &&
+                                walletState.cashAdvanceWithdrawn > 0)
+                              _repaymentCard(walletState),
+                          ],
                         ),
-                        _balanceCard(
-                          title: 'Sales Balance',
-                          amount: walletState.salesVirtualBalance,
-                          description: 'Available for withdrawal',
-                          color: Colors.blue,
-                          icon: Icons.account_balance_wallet,
-                        ),
-                        if (FeatureFlags.enableCashAdvance)
-                          _balanceCard(
-                            title: 'Cash Advance',
-                            amount: walletState.cashAdvanceBalance,
-                            description: 'Available for withdrawal',
-                            color: Colors.orange,
-                            icon: Icons.account_balance,
-                          ),
-                        if (FeatureFlags.enableCashAdvance &&
-                            walletState.cashAdvanceWithdrawn > 0)
-                          _repaymentCard(walletState),
-                      ],
+                      ),
                     );
                   },
                 ),
@@ -421,9 +431,10 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => FullRepaymentReportPage(
-                            walletState: walletState,
-                          ),
+                          builder:
+                              (context) => FullRepaymentReportPage(
+                                walletState: walletState,
+                              ),
                         ),
                       );
                     },

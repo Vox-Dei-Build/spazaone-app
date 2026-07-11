@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/promotions/recepients.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 class ReviewAndPricingStep extends StatelessWidget {
   final String? templateContent;
@@ -32,7 +33,8 @@ class ReviewAndPricingStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolved = templateContent
+    final resolved =
+        templateContent
             ?.replaceAll('{{customerName}}', '[Customer Name]')
             .replaceAll('{{shopName}}', shopName) ??
         'No preview available';
@@ -64,14 +66,11 @@ class ReviewAndPricingStep extends StatelessWidget {
             ),
             Text(
               "$whatsappCount WhatsApp recipient${whatsappCount == 1 ? '' : 's'} "
-              "@ R${whatsappUnit.toStringAsFixed(2)} = "
-              "R${(whatsappCount * whatsappUnit).toStringAsFixed(2)}",
+              "@ ${CurrencyUtil.format(whatsappUnit)} = "
+              "${CurrencyUtil.format(whatsappCount * whatsappUnit)}",
               textAlign: TextAlign.center,
             ),
-            MessagePreviewCard(
-              content: resolved,
-              mediaUrl: mediaUrl,
-            ),
+            MessagePreviewCard(content: resolved, mediaUrl: mediaUrl),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
           ],
 
@@ -88,13 +87,15 @@ class ReviewAndPricingStep extends StatelessWidget {
             Text(
               "$smsCount SMS recipient${smsCount == 1 ? '' : 's'} × "
               "$smsSegments segment${smsSegments == 1 ? '' : 's'} "
-              "@ R${smsUnit.toStringAsFixed(2)} = "
-              "R${(smsCount * smsUnit * smsSegments).toStringAsFixed(2)}",
+              "@ ${CurrencyUtil.format(smsUnit)} = "
+              "${CurrencyUtil.format(smsCount * smsUnit * smsSegments)}",
               textAlign: TextAlign.center,
             ),
             if (smsSegments > 1)
               Padding(
-                padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 0.5),
+                padding: EdgeInsets.only(
+                  top: SizeConfig.heightMultiplier * 0.5,
+                ),
                 child: Text(
                   "This SMS is long enough to be sent as $smsSegments segments, "
                   "so each recipient is charged for $smsSegments messages.",
@@ -131,7 +132,9 @@ class ReviewAndPricingStep extends StatelessWidget {
             SelectedCustomersRecipients(
               customers: customers!,
               selectedCustomerIds: selectedCustomerIds!,
-              onCustomerTap: (customer) {/* … */},
+              onCustomerTap: (customer) {
+                /* … */
+              },
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 1),
           ],
@@ -140,7 +143,7 @@ class ReviewAndPricingStep extends StatelessWidget {
 
           // Total
           Text(
-            "Total: R${totalCost.toStringAsFixed(2)}",
+            "Total: ${CurrencyUtil.format(totalCost)}",
             style: TextStyle(
               fontSize: SizeConfig.textMultiplier * 2,
               fontWeight: FontWeight.bold,

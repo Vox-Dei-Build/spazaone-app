@@ -5,7 +5,7 @@ class LedgerFloatingActionButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   const LedgerFloatingActionButton({Key? key, required this.onPressed})
-      : super(key: key);
+    : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +20,7 @@ class LedgerFloatingActionButton extends StatelessWidget {
           size: SizeConfig.heightMultiplier * 2.5,
         ),
         label: Text(
-          'Add Contact',
+          'Add Customer',
           style: TextStyle(
             color: Colors.white,
             fontSize: SizeConfig.textMultiplier * 2,

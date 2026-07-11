@@ -48,48 +48,41 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
         borderRadius: BorderRadius.circular(SizeConfig.imageSizeMultiplier * 3),
       ),
       child: InkWell(
-        onTap: () =>
-            _showFullStats(context, sales, cost, profit, count, marginPct),
+        onTap:
+            () =>
+                _showFullStats(context, sales, cost, profit, count, marginPct),
         child: Padding(
           padding: EdgeInsets.fromLTRB(hPad, vPad, hPad, vPad),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // micro pills (scroll if tight)
-              Flexible(
-                flex: 0,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      children: [
-                        _MiniStatPill(
-                          label: 'Revenue',
-                          value: CurrencyUtil.format(sales),
-                          fg: const Color(0xFF0B5FFF),
-                          bg: const Color(0x140B5FFF),
-                          icon: Icons.point_of_sale,
-                        ),
-                        SizedBox(width: pillGap / 2),
-                        _MiniStatPill(
-                          label: 'Profit',
-                          value: CurrencyUtil.format(profit),
-                          fg: const Color(0xFF2E7D32),
-                          bg: const Color(0x142E7D32),
-                          icon: Icons.trending_up_rounded,
-                        ),
-                        SizedBox(width: pillGap / 2),
-                        _MiniStatPill(
-                          label: 'Entries',
-                          value: count.toString(),
-                          fg: const Color(0xFF6A1B9A),
-                          bg: const Color(0x146A1B9A),
-                          icon: Icons.receipt_long_outlined,
-                        ),
-                      ],
+              Expanded(
+                child: Wrap(
+                  spacing: pillGap / 2,
+                  runSpacing: pillGap / 2,
+                  children: [
+                    _MiniStatPill(
+                      label: 'Revenue',
+                      value: CurrencyUtil.format(sales),
+                      fg: const Color(0xFF0B5FFF),
+                      bg: const Color(0x140B5FFF),
+                      icon: Icons.point_of_sale,
                     ),
-                  ),
+                    _MiniStatPill(
+                      label: 'Profit',
+                      value: CurrencyUtil.format(profit),
+                      fg: const Color(0xFF2E7D32),
+                      bg: const Color(0x142E7D32),
+                      icon: Icons.trending_up_rounded,
+                    ),
+                    _MiniStatPill(
+                      label: 'Entries',
+                      value: count.toString(),
+                      fg: const Color(0xFF6A1B9A),
+                      bg: const Color(0x146A1B9A),
+                      icon: Icons.receipt_long_outlined,
+                    ),
+                  ],
                 ),
               ),
               SizedBox(width: pillGap / 2),
@@ -228,7 +221,8 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
     }
     if (selectedDay != null) {
       final now = DateTime.now();
-      final same = now.year == selectedDay.year &&
+      final same =
+          now.year == selectedDay.year &&
           now.month == selectedDay.month &&
           now.day == selectedDay.day;
       return same ? "Today's Sales" : 'Sales: ${fmt(selectedDay)}';

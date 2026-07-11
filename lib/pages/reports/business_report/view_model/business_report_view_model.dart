@@ -35,8 +35,8 @@ class BusinessReportViewModel {
   // BalanceSummaryProvider produced impossible percentages (e.g. 130%
   // who owe you) because the numerator (NPAs) is all-time and the
   // denominator (totalCustomers) was today-only.
-  final HttpsCallable _allTimeBalanceCallable = FirebaseFunctions.instance
-      .httpsCallable('calculateUserBalance');
+  final HttpsCallable _allTimeBalanceCallable =
+      FirebaseFunctions.instance.httpsCallable('calculateUserBalance');
 
   ValueNotifier<Future<Report>?> reportFutureNotifier = ValueNotifier(null);
   final ValueNotifier<int?> allTimeTotalCustomersNotifier = ValueNotifier(null);
@@ -76,12 +76,7 @@ class BusinessReportViewModel {
         final Map<String, dynamic> reportData =
             Map<String, dynamic>.from(result.data as Map);
 
-        return Report(
-          totalNumberofNPAs: reportData['totalNumberofNPAs'],
-          customersWithNPAs: reportData['customersWithNPAs'],
-          nplRatio: reportData['nplRatio'].toDouble(),
-          cashflowImpact: reportData['cashflowImpact']?.toDouble() ?? 0,
-        );
+        return normalizeCashflowReport(reportData);
       } catch (e, st) {
         lastError = e;
         lastStack = st;
@@ -115,6 +110,44 @@ class BusinessReportViewModel {
     throw ReportFetchException(lastError ?? 'unknown', lastStack);
   }
 
+  /// Treat the stored balance as the source of truth for who owes money.
+  ///
+  /// Older customer documents can retain `isNPA: true` after payment, and
+  /// the deployed report function historically queried that cached flag.
+  /// Filtering again here keeps the merchant-facing count, total, and list
+  /// correct immediately, even before the backend fix is deployed.
+  @visibleForTesting
+  static Report normalizeCashflowReport(Map<String, dynamic> reportData) {
+    final rawCustomers = reportData['customersWithNPAs'];
+    final owingCustomers = <dynamic>[];
+    var outstandingBalance = 0.0;
+
+    if (rawCustomers is List) {
+      for (final rawCustomer in rawCustomers) {
+        if (rawCustomer is! Map) continue;
+        final customer = Map<String, dynamic>.from(rawCustomer);
+        final rawBalance = customer['balance'];
+        final balance = rawBalance is num
+            ? rawBalance.toDouble()
+            : double.tryParse(rawBalance?.toString() ?? '');
+        if (balance == null || balance >= 0) continue;
+
+        customer['balance'] = balance;
+        customer['isNPA'] = true;
+        owingCustomers.add(customer);
+        outstandingBalance += balance;
+      }
+    }
+
+    final rawRatio = reportData['nplRatio'];
+    return Report(
+      totalNumberofNPAs: owingCustomers.length,
+      customersWithNPAs: owingCustomers,
+      nplRatio: rawRatio is num ? rawRatio.toDouble() : 0,
+      cashflowImpact: outstandingBalance,
+    );
+  }
+
   /// For updating the notifier directly
   Future<Report> fetchReportWithRange(DateTime start, DateTime end) async {
     final future = fetchReport(startDate: start, endDate: end);
@@ -143,8 +176,7 @@ class BusinessReportViewModel {
         st,
         reason: 'BusinessReportViewModel.fetchAllTimeTotalCustomers',
         context: {
-          'functions_code':
-              e is FirebaseFunctionsException ? e.code : 'n/a',
+          'functions_code': e is FirebaseFunctionsException ? e.code : 'n/a',
         },
       );
       // Leave notifier as null so the UI renders "—" instead of "0".

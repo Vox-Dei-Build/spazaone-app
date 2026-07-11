@@ -49,7 +49,7 @@ class OrderFilterChips extends StatelessWidget {
   static const _primary = <_PrimaryChipDef>[
     _PrimaryChipDef(OrderFilterGroup.all, 'All'),
     _PrimaryChipDef(OrderFilterGroup.pending, 'Pending'),
-    _PrimaryChipDef(OrderFilterGroup.bnpl, 'BNPL'),
+    _PrimaryChipDef(OrderFilterGroup.bnpl, 'Pay Later'),
     _PrimaryChipDef(OrderFilterGroup.delivery, 'Delivery'),
   ];
 
@@ -332,9 +332,8 @@ class _MoreStatusesSheet extends StatelessWidget {
                               s.label,
                               style: TextStyle(
                                 fontSize: SizeConfig.textMultiplier * 1.7,
-                                fontWeight: isSel
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
+                                fontWeight:
+                                    isSel ? FontWeight.w700 : FontWeight.w500,
                                 color: const Color(0xFF1A1F2B),
                               ),
                             ),
@@ -379,7 +378,8 @@ class OrderFilterChipsSkeleton extends StatelessWidget {
         children: List.generate(5, (i) {
           final w = [70.0, 95.0, 78.0, 100.0, 72.0][i];
           return Padding(
-            padding: EdgeInsets.only(right: SizeConfig.imageSizeMultiplier * 1.8),
+            padding:
+                EdgeInsets.only(right: SizeConfig.imageSizeMultiplier * 1.8),
             child: Container(
               width: w,
               height: SizeConfig.heightMultiplier * 4.2,

@@ -11,6 +11,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
+import 'package:pasella/config/firebase_options.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
@@ -99,8 +100,7 @@ Future<void> createNotificationChannel() async {
 
   await flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin
-      >()
+          AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
 }
 
@@ -195,13 +195,12 @@ void _pushCustomerAccountWhenReady({
   void push() {
     navigatorKey.currentState?.push(
       MaterialPageRoute(
-        builder:
-            (_) => CustomerManagementPage(
-              customerName: customerName,
-              customerId: customerId,
-              mobileNumber: mobileNumber,
-              initialTabIndex: 2,
-            ),
+        builder: (_) => CustomerManagementPage(
+          customerName: customerName,
+          customerId: customerId,
+          mobileNumber: mobileNumber,
+          initialTabIndex: 2,
+        ),
       ),
     );
   }
@@ -254,8 +253,7 @@ Future<void> _openCustomerFromMessageNotification(
       if (customerDoc.exists && customerData != null) {
         _pushCustomerAccountWhenReady(
           customerId: customerDoc.id,
-          customerName:
-              _firstNotificationString([
+          customerName: _firstNotificationString([
                 customerData['name'],
                 payloadCustomerName,
               ]) ??
@@ -280,18 +278,16 @@ Future<void> _openCustomerFromMessageNotification(
 
     final normalizedNumber = normalizePhoneNumber(payloadCustomerNumber);
     if (normalizedNumber.isNotEmpty) {
-      final snapshot =
-          await customerCollection
-              .where('number', isEqualTo: normalizedNumber)
-              .limit(1)
-              .get();
+      final snapshot = await customerCollection
+          .where('number', isEqualTo: normalizedNumber)
+          .limit(1)
+          .get();
       if (snapshot.docs.isNotEmpty) {
         final customerDoc = snapshot.docs.first;
         final customerData = customerDoc.data();
         _pushCustomerAccountWhenReady(
           customerId: customerDoc.id,
-          customerName:
-              _firstNotificationString([
+          customerName: _firstNotificationString([
                 customerData['name'],
                 payloadCustomerName,
               ]) ??
@@ -393,17 +389,6 @@ Future<void> _initializeRemoteConfigAndSmartlook() async {
   }
 }
 
-void requestNotificationPermission() async {
-  NotificationSettings settings = await FirebaseMessaging.instance
-      .requestPermission(alert: true, badge: true, sound: true);
-
-  if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-    print('✅ User granted permission');
-  } else {
-    print('❌ User declined or has not accepted permission');
-  }
-}
-
 /// Heartbeat: send app version/build once after sign-in and on updates (throttled 24h).
 Future<void> setupMerchantHeartbeatBootHook() async {
   // Open a small local box to track last heartbeat
@@ -455,7 +440,30 @@ void _onInitialMessage(RemoteMessage? message) {
   _firebaseMessagingGetInitialMessage(message);
 }
 
-void main() async {
+Future<void> _initializeDeferredServices() async {
+  try {
+    await SMSMessages.loadTemplates();
+    await ReviewPromptService.instance.init();
+    await setupFlutterNotifications();
+    await createNotificationChannel();
+
+    // Permission is intentionally not requested here. It should be requested
+    // from a notification-related user action with clear benefit and context.
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedAppHandler);
+    FirebaseMessaging.instance.getInitialMessage().then(_onInitialMessage);
+    FirebaseMessaging.onMessage.listen(showLocalNotification);
+    await setupMerchantHeartbeatBootHook();
+  } catch (error, stack) {
+    await CrashService.instance.recordNonFatal(
+      error,
+      stack,
+      reason: 'deferred app initialisation failed',
+    );
+  }
+}
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set UI overlay style
@@ -466,133 +474,209 @@ void main() async {
     ),
   );
 
-  try {
-    // Load environment variables
-    await dotenv.load();
+  // Render a useful first frame immediately. Network and storage boot work
+  // continues behind a branded loading surface instead of leaving users on
+  // the native splash while Remote Config waits for its network timeout.
+  runApp(const _AppBootstrap());
+}
 
-    // Initialize Firebase
-    await Firebase.initializeApp();
+Future<void> _initializeCoreServices() async {
+  // Load environment variables
+  await dotenv.load();
 
-    // TODO(app-check): Activate Firebase App Check here.
-    //
-    // `firebase_app_check` is in pubspec.yaml and two call sites
-    // (online_sales_list.dart, online_sale_detail_page.dart) already
-    // call `FirebaseAppCheck.instance.getToken()`, but no provider is
-    // registered so those calls return null and the backend is not
-    // protected against script/scraper/billing-bombing abuse.
-    //
-    // Suspected contributor to the Crashlytics
-    //   `[firebase_functions/unknown] 1 out of 2 underlying tasks failed`
-    // signature (the Android Functions SDK awaits auth + AppCheck
-    // tokens in parallel; the missing provider can fail that Task).
-    //
-    // Rollout plan: see docs/firebase_app_check_todo.md
-    //   Phase 1: activate with playIntegrity / deviceCheck, monitor-only.
-    //   Phase 2: enforce per service in Firebase Console.
-    //   Phase 3: drop manual `X-Firebase-AppCheck` header plumbing.
-
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-    );
-
-    // Initialize Remote Config
-    if (kReleaseMode) {
-      await RemoteConfigService.getInstance();
-      await _initializeRemoteConfigAndSmartlook();
-    }
-
-    await FeatureFlags.loadFlags();
-    await SMSMessages.loadTemplates();
-
-    await Hive.initFlutter();
-    Hive.registerAdapter(QueuedSMSAdapter());
-    await Hive.openBox<QueuedSMS>('smsQueue');
-    await Hive.openBox('deepLinkBox');
-    await Hive.openBox('appBox');
-    await Hive.openBox(ConsentService.boxName);
-
-    // Telemetry boot order matters:
-    //   1. ConsentService.init() reads the persisted choice (or seeds first-run
-    //      defaults: crash ON, analytics OFF, replay OFF).
-    //   2. CrashService.init() wires FlutterError.onError + PlatformDispatcher
-    //      error handlers BEFORE any other code can throw, then applies the
-    //      consent flag to Crashlytics' native collection.
-    //   3. TelemetryService.init() calls PostHog setup() with optOut=true and
-    //      then flips opt-out off only if the user previously consented.
-    //
-    // Anything that throws during initialisation up to this point will not be
-    // captured. We accept that trade-off because Crashlytics needs Firebase
-    // initialised first.
-    await ConsentService.instance.init();
-    await CrashService.instance.init();
-    await CrashService.instance.applyConsent(ConsentService.instance.state);
-    await TelemetryService.instance.init();
-
-    // Review nudge state is local-only (Hive `appBox`), independent of
-    // analytics consent: counters and cooldown timestamps are persisted
-    // even if the merchant has opted out of telemetry. Init must run after
-    // `Hive.openBox('appBox')` above and is safe before sign-in because it
-    // does not touch FirebaseAuth.
-    await ReviewPromptService.instance.init();
-
-    // Tag Crashlytics with the merchant id (and clear it on sign-out) so
-    // crash reports can be grouped per merchant without leaking PII.
-    FirebaseAuth.instance.authStateChanges().listen((user) {
-      CrashService.instance.setMerchantId(user?.uid);
-      if (user == null) {
-        TelemetryService.instance.reset();
-      }
-    });
-
-    await setupFlutterNotifications();
-    await createNotificationChannel();
-    requestNotificationPermission();
-
-    // Firebase Messaging setup
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedAppHandler);
-    FirebaseMessaging.instance.getInitialMessage().then(_onInitialMessage);
-
-    // Foreground message listener
-    FirebaseMessaging.onMessage.listen(
-      showLocalNotification,
-    ); // ✅ listen and display
-
-    // NOTE: onMessageOpenedApp is already wired above via
-    // `_onMessageOpenedAppHandler`; do not subscribe twice or
-    // `_handleNotificationRoute` will fire for each tap once per listener.
-
-    // Setup merchant heartbeat boot hook
-    await setupMerchantHeartbeatBootHook();
-  } catch (error, stack) {
-    if (kDebugMode) {
-      debugPrint('Initialization error: $error');
-    }
-    // Funnel boot-time errors into Crashlytics so we don't lose them silently.
-    // CrashService is initialised inside this same try-block; it is null-safe
-    // and won't throw if it never reached its init step.
-    await CrashService.instance.recordNonFatal(
-      error,
-      stack,
-      reason: 'main() initialisation failed',
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
     );
   }
 
-  runApp(const MyApp());
+  // TODO(app-check): Activate Firebase App Check here.
+  //
+  // `firebase_app_check` is in pubspec.yaml and two call sites
+  // (online_sales_list.dart, online_sale_detail_page.dart) already
+  // call `FirebaseAppCheck.instance.getToken()`, but no provider is
+  // registered so those calls return null and the backend is not
+  // protected against script/scraper/billing-bombing abuse.
+  //
+  // Suspected contributor to the Crashlytics
+  //   `[firebase_functions/unknown] 1 out of 2 underlying tasks failed`
+  // signature (the Android Functions SDK awaits auth + AppCheck
+  // tokens in parallel; the missing provider can fail that Task).
+  //
+  // Rollout plan: see docs/firebase_app_check_todo.md
+  //   Phase 1: activate with playIntegrity / deviceCheck, monitor-only.
+  //   Phase 2: enforce per service in Firebase Console.
+  //   Phase 3: drop manual `X-Firebase-AppCheck` header plumbing.
 
-  // Set up the SMSEvent listener once the app is fully initialized
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    eventBus.on<SMSEvent>().listen((event) {
-      final context = navigatorKey.currentContext;
-      if (context != null) {
-        showSMSSnackBar(context, event.message, event.success);
-      }
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+  );
+
+  // Feature flags must be ready before MyApp selects its initial route. The
+  // bootstrap surface remains visible while this potentially network-backed
+  // work completes.
+  if (kReleaseMode) {
+    await _initializeRemoteConfigAndSmartlook();
+  }
+
+  await FeatureFlags.loadFlags();
+
+  await Hive.initFlutter();
+  if (!Hive.isAdapterRegistered(0)) {
+    Hive.registerAdapter(QueuedSMSAdapter());
+  }
+  await Hive.openBox<QueuedSMS>('smsQueue');
+  await Hive.openBox('deepLinkBox');
+  await Hive.openBox('appBox');
+  await Hive.openBox(ConsentService.boxName);
+
+  // Telemetry boot order matters:
+  //   1. ConsentService.init() reads the persisted choice (or seeds first-run
+  //      defaults: crash ON, analytics OFF, replay OFF).
+  //   2. CrashService.init() wires FlutterError.onError + PlatformDispatcher
+  //      error handlers BEFORE any other code can throw, then applies the
+  //      consent flag to Crashlytics' native collection.
+  //   3. TelemetryService.init() calls PostHog setup() with optOut=true and
+  //      then flips opt-out off only if the user previously consented.
+  //
+  // Anything that throws during initialisation up to this point will not be
+  // captured. We accept that trade-off because Crashlytics needs Firebase
+  // initialised first.
+  await ConsentService.instance.init();
+  await CrashService.instance.init();
+  await CrashService.instance.applyConsent(ConsentService.instance.state);
+  await TelemetryService.instance.init();
+
+  // Review nudge state is local-only (Hive `appBox`), independent of
+  // analytics consent: counters and cooldown timestamps are persisted
+  // even if the merchant has opted out of telemetry. Init must run after
+  // `Hive.openBox('appBox')` above and is safe before sign-in because it
+  // does not touch FirebaseAuth.
+  // Tag Crashlytics with the merchant id (and clear it on sign-out) so
+  // crash reports can be grouped per merchant without leaking PII.
+  FirebaseAuth.instance.authStateChanges().listen((user) {
+    CrashService.instance.setMerchantId(user?.uid);
+    if (user == null) {
+      TelemetryService.instance.reset();
+    }
+  });
+}
+
+class _AppBootstrap extends StatefulWidget {
+  const _AppBootstrap();
+
+  @override
+  State<_AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends State<_AppBootstrap> {
+  bool _ready = false;
+  bool _starting = false;
+  bool _deferredServicesStarted = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    if (_starting) return;
+    setState(() {
+      _starting = true;
+      _errorMessage = null;
     });
 
-    // First-run consent is owned by the auth/dashboard surfaces. When
-    // deferred consent is enabled, Dashboard shows it after phone auth while
-    // telemetry remains disabled until a choice is saved.
-  });
+    try {
+      await _initializeCoreServices();
+      if (!mounted) return;
+      setState(() {
+        _ready = true;
+        _starting = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_deferredServicesStarted) return;
+        _deferredServicesStarted = true;
+        unawaited(_initializeDeferredServices());
+        eventBus.on<SMSEvent>().listen((event) {
+          final context = navigatorKey.currentContext;
+          if (context != null) {
+            showSMSSnackBar(context, event.message, event.success);
+          }
+        });
+      });
+    } catch (error, stack) {
+      if (kDebugMode) debugPrint('Initialization error: $error');
+      try {
+        await CrashService.instance.recordNonFatal(
+          error,
+          stack,
+          reason: 'app bootstrap failed',
+        );
+      } catch (_) {
+        // Crash reporting may not itself be initialized yet.
+      }
+      if (!mounted) return;
+      setState(() {
+        _starting = false;
+        _errorMessage =
+            'Pasella could not finish starting. Check your connection and try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_ready) return const MyApp();
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: kCustomThemeData,
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.storefront_outlined,
+                      size: 64,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _errorMessage == null
+                          ? 'Preparing Pasella…'
+                          : 'We couldn\'t start Pasella',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 12),
+                    if (_errorMessage == null)
+                      const CircularProgressIndicator()
+                    else ...[
+                      Text(_errorMessage!, textAlign: TextAlign.center),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: _starting ? null : _start,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try again'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -619,23 +703,16 @@ class MyApp extends StatelessWidget {
     // gate because the register validator now requires the field.
     Dashboard.id: (context) => const BusinessNameGate(child: Dashboard()),
     AddContactPage.id: (context) => const AddContactPage(),
-    SecurityPage.id: (context) => const SecurityPage(),
-    ProfilePage.id: (context) => const ProfilePage(),
     BusinessNamePage.id: (context) => const BusinessNamePage(),
     BusinessTypePage.id: (context) => const BusinessTypePage(),
     BusinessCategoryPage.id: (context) => const BusinessCategoryPage(),
     BusinessReportPage.id: (context) => const BusinessReportPage(),
     ChatPage.id: (context) => const ChatPage(),
-    AccountPage.id: (context) => const AccountPage(),
-    LanguagePage.id: (context) => const LanguagePage(),
-    UpdateNumberPage.id: (context) => const UpdateNumberPage(),
-    BackupPage.id: (context) => const BackupPage(),
     HelpPage.id: (context) => const HelpPage(),
     SharePage.id: (context) => const SharePage(),
     DeleteAccountPage.id: (context) => const DeleteAccountPage(),
     SalesPage.id: (context) => const SalesPage(),
     WalletPage.id: (context) => const WalletPage(),
-    FindDefaulterPage.id: (context) => const FindDefaulterPage(),
     PrivacyPage.id: (context) => const PrivacyPage(),
     PromotionsPage.id: (context) => const PromotionsPage(),
   };
@@ -660,10 +737,9 @@ class MyApp extends StatelessWidget {
           create: (context) => CustomerBalanceSummaryProvider(),
         ),
         ChangeNotifierProvider<LedgerViewModel>(
-          create:
-              (context) => LedgerViewModel(
-                Provider.of<AppModel>(context, listen: false),
-              ),
+          create: (context) => LedgerViewModel(
+            Provider.of<AppModel>(context, listen: false),
+          ),
         ),
         ChangeNotifierProvider<PromotionsViewModel>(
           create: (context) {
@@ -687,10 +763,9 @@ class MyApp extends StatelessWidget {
           // single-field entry screen. Default (flag off) keeps the legacy
           // `/loginPage` as the initial route so a missing / failed Remote
           // Config fetch leaves merchants on the known-good flow.
-          initialRoute:
-              FeatureFlags.enableNumberFirstOnboarding
-                  ? PhoneEntryPage.id
-                  : LoginPage.id,
+          initialRoute: FeatureFlags.enableNumberFirstOnboarding
+              ? PhoneEntryPage.id
+              : LoginPage.id,
           navigatorKey: navigatorKey,
           navigatorObservers: [TelemetryService.instance.navigatorObserver],
           routes: _routes,

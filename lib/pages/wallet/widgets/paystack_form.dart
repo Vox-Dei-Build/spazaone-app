@@ -79,20 +79,23 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
 
       if (init == null) {
         // Failed to create link
-        await TelemetryService.instance.capture(WalletTopupFailed(
-          amountBucket: amountBucket,
-          method: method,
-          failureCode: 'init_null',
-        ));
+        await TelemetryService.instance.capture(
+          WalletTopupFailed(
+            amountBucket: amountBucket,
+            method: method,
+            failureCode: 'init_null',
+          ),
+        );
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PaymentResponseScreen(
-              isSuccess: false,
-              message: "Transaction failed. Please try again.",
-              amount: amount,
-              reference: "—",
-            ),
+            builder:
+                (context) => PaymentResponseScreen(
+                  isSuccess: false,
+                  message: "Transaction failed. Please try again.",
+                  amount: amount,
+                  reference: "—",
+                ),
           ),
         );
         return;
@@ -102,11 +105,12 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
       final success = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder: (context) => PaystackWebView(
-            url: init.authorizationUrl,
-            reference: init.reference, // ✅ use real reference from Paystack
-            amount: amount,
-          ),
+          builder:
+              (context) => PaystackWebView(
+                url: init.authorizationUrl,
+                reference: init.reference, // ✅ use real reference from Paystack
+                amount: amount,
+              ),
         ),
       );
 
@@ -119,13 +123,14 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PaymentResponseScreen(
-              isSuccess: true,
-              message:
-                  "Your payment was captured. Your balance will update shortly.",
-              amount: amount,
-              reference: init.reference,
-            ),
+            builder:
+                (context) => PaymentResponseScreen(
+                  isSuccess: true,
+                  message:
+                      "Your payment was captured. Your balance will update shortly.",
+                  amount: amount,
+                  reference: init.reference,
+                ),
           ),
         );
       } else {
@@ -133,11 +138,13 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         // success == false => Paystack reported a failure.
         // Webhooks remain the source of truth for wallet credit; this event
         // tracks the UX outcome only.
-        await TelemetryService.instance.capture(WalletTopupFailed(
-          amountBucket: amountBucket,
-          method: method,
-          failureCode: success == null ? 'cancelled' : 'webview_failed',
-        ));
+        await TelemetryService.instance.capture(
+          WalletTopupFailed(
+            amountBucket: amountBucket,
+            method: method,
+            failureCode: success == null ? 'cancelled' : 'webview_failed',
+          ),
+        );
       }
     } catch (e, st) {
       if (mounted) setState(() => isLoading = false);
@@ -146,20 +153,23 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         st,
         reason: 'paystack_form _startTransaction failed',
       );
-      await TelemetryService.instance.capture(WalletTopupFailed(
-        amountBucket: amountBucket,
-        method: method,
-        failureCode: 'exception',
-      ));
+      await TelemetryService.instance.capture(
+        WalletTopupFailed(
+          amountBucket: amountBucket,
+          method: method,
+          failureCode: 'exception',
+        ),
+      );
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PaymentResponseScreen(
-            isSuccess: false,
-            message: "Transaction failed. Please try again.",
-            amount: double.tryParse(amountController.text.trim()) ?? 0,
-            reference: "—",
-          ),
+          builder:
+              (context) => PaymentResponseScreen(
+                isSuccess: false,
+                message: "Transaction failed. Please try again.",
+                amount: double.tryParse(amountController.text.trim()) ?? 0,
+                reference: "—",
+              ),
         ),
       );
     }
@@ -178,12 +188,16 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
               hintText: 'R100',
               prefixIcon: Icons.money_sharp,
               label: 'Enter Amount *',
-              textInputType: TextInputType.number,
+              textInputType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               maxLength: 20,
               controller: amountController,
-              validator: (value) => (value == null || value.isEmpty)
-                  ? 'This field is required'
-                  : null,
+              validator:
+                  (value) =>
+                      (value == null || value.isEmpty)
+                          ? 'This field is required'
+                          : null,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 1.5),
             CustomTextField(
@@ -192,9 +206,11 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
               label: 'Enter Email *',
               textInputType: TextInputType.emailAddress,
               controller: emailController,
-              validator: (value) => (value == null || value.isEmpty)
-                  ? 'This field is required'
-                  : null,
+              validator:
+                  (value) =>
+                      (value == null || value.isEmpty)
+                          ? 'This field is required'
+                          : null,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             Center(
@@ -202,11 +218,12 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
                 alignment: Alignment.center,
                 children: [
                   CustomButton(
-                    onTap: isLoading
-                        ? () => ()
-                        : () {
-                            _startTransaction(); // fire & forget
-                          },
+                    onTap:
+                        isLoading
+                            ? () => ()
+                            : () {
+                              _startTransaction(); // fire & forget
+                            },
                     margin: const EdgeInsets.fromLTRB(10, 0, 10, 10.0),
                     title: 'Proceed to Paystack',
                   ),

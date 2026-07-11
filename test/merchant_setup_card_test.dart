@@ -158,7 +158,7 @@ void main() {
         await _pumpCardWith(tester, _empty);
 
         expect(find.text('Up next'), findsOneWidget);
-        expect(find.text('Save your first customer'), findsWidgets);
+        expect(find.text('Save your first customer'), findsOneWidget);
         expect(find.widgetWithText(ElevatedButton, 'Add customer'),
             findsOneWidget);
       },
@@ -169,7 +169,7 @@ void main() {
       (tester) async {
         await _pumpCardWith(tester, _customerOnly);
 
-        expect(find.text('Add your first product'), findsWidgets);
+        expect(find.text('Add your first product'), findsOneWidget);
         expect(
             find.widgetWithText(ElevatedButton, 'Add product'), findsOneWidget);
       },
@@ -181,7 +181,7 @@ void main() {
       (tester) async {
         await _pumpCardWith(tester, _allButTemplate);
 
-        expect(find.text('Create a promotion template'), findsWidgets);
+        expect(find.text('Create a promotion template'), findsOneWidget);
         expect(
           find.widgetWithText(ElevatedButton, 'Create template'),
           findsOneWidget,
@@ -212,15 +212,16 @@ void main() {
         // template rows are all gated (no chevron). The product-add
         // and payout rows are not product-gated, so they do show
         // chevrons — that's 2 total, and lets us prove the gated
-        // three are NOT interactive.
+        // three are NOT interactive. The current Add product step is
+        // promoted into the Up next panel, so only payout remains as a row.
         await _pumpCardWith(tester, _customerOnly);
 
         final chevrons = tester.widgetList(find.byIcon(Icons.chevron_right));
         expect(
           chevrons.length,
-          2,
-          reason: 'Only product-add + payout rows should be tappable '
-              'when the merchant has no products yet.',
+          1,
+          reason: 'Only the payout row should remain tappable when the '
+              'current Add product action is promoted above the checklist.',
         );
       },
     );
@@ -233,9 +234,10 @@ void main() {
         // With customer+product done, WhatsApp/link/payout/template
         // rows are all tappable. Only "First customer" and
         // "First product" are done, so they show check circles, not
-        // chevrons. That leaves 4 chevrons.
+        // chevrons. The current WhatsApp-products action is promoted above
+        // the checklist, leaving 3 chevrons in the rows.
         final chevrons = find.byIcon(Icons.chevron_right);
-        expect(chevrons, findsNWidgets(4));
+        expect(chevrons, findsNWidgets(3));
       },
     );
   });

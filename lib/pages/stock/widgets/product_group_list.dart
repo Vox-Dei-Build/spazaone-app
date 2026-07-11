@@ -17,7 +17,9 @@ class ProductGroupList extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return const Center(
+            child: Text('Could not load product groups. Please try again.'),
+          );
         }
         final productGroups = snapshot.data ?? [];
 
@@ -42,11 +44,15 @@ class ProductGroupList extends StatelessWidget {
                         if (countSnapshot.connectionState ==
                             ConnectionState.waiting) {
                           return ProductGroupCard(
-                              viewModel: viewModel, name: groupName);
+                            viewModel: viewModel,
+                            name: groupName,
+                          );
                         }
                         if (countSnapshot.hasError) {
                           return ProductGroupCard(
-                              viewModel: viewModel, name: groupName);
+                            viewModel: viewModel,
+                            name: groupName,
+                          );
                         }
                         final productCount = countSnapshot.data ?? 0;
                         return ProductGroupCard(

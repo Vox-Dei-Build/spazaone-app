@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
 
-Widget MetricTile(BuildContext context, String title,
-    Future<dynamic> Function() fetchMetric, bool isCurrency) {
+Widget MetricTile(
+  BuildContext context,
+  String title,
+  Future<dynamic> Function() fetchMetric,
+  bool isCurrency,
+) {
   SizeConfig().init(context);
 
   return FutureBuilder<dynamic>(
@@ -12,7 +16,7 @@ Widget MetricTile(BuildContext context, String title,
       if (snapshot.connectionState == ConnectionState.waiting) {
         return CircularProgressIndicator();
       } else if (snapshot.hasError) {
-        return Text('Error: ${snapshot.error}');
+        return const Text('Unavailable');
       } else {
         String displayValue;
         if (snapshot.data is num && isCurrency) {
@@ -23,9 +27,7 @@ Widget MetricTile(BuildContext context, String title,
         return ListTile(
           title: Text(
             title,
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 2,
-            ),
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
           ),
           trailing: Text(
             displayValue,

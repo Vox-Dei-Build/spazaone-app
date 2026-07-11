@@ -4,6 +4,7 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 /// Inline footer that shows the user's live wallet balance vs. an action's
 /// cost, and renders either a confirm button (if affordable) or a "Top Up
@@ -58,8 +59,10 @@ class WalletAffordabilityFooter extends StatelessWidget {
     Navigator.of(context).popUntil((r) => r.isFirst);
     // PAS-UX-WTC: open WalletPage on the Top-Up tab so the CTA name
     // and the destination match.
-    Provider.of<AppModel>(context, listen: false)
-        .goToBilling(context, initialTab: WalletInitialTab.topUp);
+    Provider.of<AppModel>(
+      context,
+      listen: false,
+    ).goToBilling(context, initialTab: WalletInitialTab.topUp);
   }
 
   @override
@@ -69,15 +72,17 @@ class WalletAffordabilityFooter extends StatelessWidget {
     final loading = wallet.isLoading;
     final canAfford = balance >= cost;
 
-    final statusText = loading
-        ? 'Checking wallet…'
-        : 'You have R${balance.toStringAsFixed(2)} • '
-            'this costs R${cost.toStringAsFixed(2)}'
-            '${canAfford ? ' • R${(balance - cost).toStringAsFixed(2)} after' : ''}';
+    final statusText =
+        loading
+            ? 'Checking wallet…'
+            : 'You have ${CurrencyUtil.format(balance)} • '
+                'this costs ${CurrencyUtil.format(cost)}'
+                '${canAfford ? ' • ${CurrencyUtil.format(balance - cost)} after' : ''}';
 
-    final statusColor = loading
-        ? Colors.black54
-        : (canAfford ? Colors.black87 : Colors.orange.shade800);
+    final statusColor =
+        loading
+            ? Colors.black54
+            : (canAfford ? Colors.black87 : Colors.orange.shade800);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -112,14 +117,17 @@ class WalletAffordabilityFooter extends StatelessWidget {
             else if (canAfford)
               ElevatedButton.icon(
                 icon: Icon(confirmIcon ?? Icons.check),
-                label: busy
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : Text(confirmLabel),
+                label:
+                    busy
+                        ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                        : Text(confirmLabel),
                 onPressed:
                     (busy || onConfirm == null) ? null : () => onConfirm!(),
               )
@@ -131,8 +139,7 @@ class WalletAffordabilityFooter extends StatelessWidget {
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
                 ),
-                onPressed: () =>
-                    (onTopUp ?? () => _defaultTopUp(context))(),
+                onPressed: () => (onTopUp ?? () => _defaultTopUp(context))(),
               ),
           ],
         ),
