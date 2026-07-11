@@ -29,6 +29,7 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/review_prompt_service.dart';
+import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -679,7 +680,7 @@ class _AppBootstrapState extends State<_AppBootstrap> {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   /// Static route table. Exposed as a separate map (instead of being inlined
@@ -718,6 +719,91 @@ class MyApp extends StatelessWidget {
   };
 
   static Set<String> get knownRoutes => _routes.keys.toSet();
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+
+  @visibleForTesting
+  static Route<dynamic> buildUnknownRoute(RouteSettings settings) {
+    CrashService.instance.recordNonFatal(
+      StateError('Unknown route requested: ${settings.name}'),
+      StackTrace.current,
+      reason: 'MaterialApp.onUnknownRoute fallback',
+      context: {'route': settings.name ?? ''},
+    );
+
+    final routeName =
+        _hasSignedInUserForRouteFallback() ? Dashboard.id : LoginPage.id;
+
+    return MaterialPageRoute<void>(
+      settings: RouteSettings(name: routeName),
+      builder: (context) {
+        if (routeName == Dashboard.id) {
+          return const BusinessNameGate(child: Dashboard());
+        }
+        return const LoginPage();
+      },
+    );
+  }
+
+  static bool _hasSignedInUserForRouteFallback() {
+    try {
+      return FirebaseAuth.instance.currentUser != null;
+    } catch (_) {
+      // Unit tests and very early boot paths can reach this before Firebase
+      // Auth is ready. Login is the safer fallback in that case.
+      return false;
+    }
+  }
+}
+
+class _MyAppState extends State<MyApp> {
+  StreamSubscription<User?>? _authSubscription;
+  bool _permissionCheckScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
+      _handleAuthChange,
+      onError: (Object error, StackTrace stack) {
+        unawaited(CrashService.instance.recordNonFatal(
+          error,
+          stack,
+          reason: 'notification permission auth listener failed',
+        ));
+      },
+    );
+    _handleAuthChange(FirebaseAuth.instance.currentUser);
+  }
+
+  void _handleAuthChange(User? user) {
+    if (user == null) {
+      _permissionCheckScheduled = false;
+      return;
+    }
+    if (_permissionCheckScheduled) return;
+    _permissionCheckScheduled = true;
+
+    // Let post-login navigation settle before showing the explanation. The
+    // OS prompt itself is only requested for `notDetermined` users.
+    Future<void>.delayed(const Duration(milliseconds: 900), () async {
+      if (!mounted || FirebaseAuth.instance.currentUser == null) return;
+      final appContext = navigatorKey.currentContext;
+      if (appContext == null) {
+        _permissionCheckScheduled = false;
+        return;
+      }
+      if (!appContext.mounted) return;
+      await FCMService().requestPermissionIfNeeded(appContext);
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -768,47 +854,14 @@ class MyApp extends StatelessWidget {
               : LoginPage.id,
           navigatorKey: navigatorKey,
           navigatorObservers: [TelemetryService.instance.navigatorObserver],
-          routes: _routes,
+          routes: MyApp._routes,
           // Defensive: any code path that pushes a route not present in
           // `_routes` (e.g. stale FCM notification payloads from older app
           // versions) lands here instead of triggering the framework's
           // `onUnknownRoute!` null-check assertion.
-          onUnknownRoute: buildUnknownRoute,
+          onUnknownRoute: MyApp.buildUnknownRoute,
         ),
       ),
     );
-  }
-
-  @visibleForTesting
-  static Route<dynamic> buildUnknownRoute(RouteSettings settings) {
-    CrashService.instance.recordNonFatal(
-      StateError('Unknown route requested: ${settings.name}'),
-      StackTrace.current,
-      reason: 'MaterialApp.onUnknownRoute fallback',
-      context: {'route': settings.name ?? ''},
-    );
-
-    final routeName =
-        _hasSignedInUserForRouteFallback() ? Dashboard.id : LoginPage.id;
-
-    return MaterialPageRoute<void>(
-      settings: RouteSettings(name: routeName),
-      builder: (context) {
-        if (routeName == Dashboard.id) {
-          return const BusinessNameGate(child: Dashboard());
-        }
-        return const LoginPage();
-      },
-    );
-  }
-
-  static bool _hasSignedInUserForRouteFallback() {
-    try {
-      return FirebaseAuth.instance.currentUser != null;
-    } catch (_) {
-      // Unit tests and very early boot paths can reach this before Firebase
-      // Auth is ready. Login is the safer fallback in that case.
-      return false;
-    }
   }
 }

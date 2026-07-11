@@ -6,7 +6,41 @@ import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class FCMService {
-  void requestPermission(BuildContext context) async {
+  @visibleForTesting
+  static bool shouldPromptForPermission(AuthorizationStatus status) {
+    return status == AuthorizationStatus.notDetermined;
+  }
+
+  /// Requests notification permission only when the operating system has not
+  /// received a decision yet. This keeps the prompt contextual without
+  /// repeatedly interrupting merchants who already declined it.
+  Future<void> requestPermissionIfNeeded(BuildContext context) async {
+    try {
+      final settings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+
+      if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional) {
+        await handleToken();
+        return;
+      }
+
+      if (!shouldPromptForPermission(settings.authorizationStatus) ||
+          !context.mounted) {
+        return;
+      }
+
+      await showPermissionExplanationDialog(context);
+    } catch (error, stack) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        stack,
+        reason: 'fcm permission check failed',
+      );
+    }
+  }
+
+  Future<void> requestPermission(BuildContext context) async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
 
     NotificationSettings settings = await messaging.requestPermission(
@@ -19,22 +53,24 @@ class FCMService {
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       print('User granted permission');
       // Get the token and send it to the server
-      handleToken();
+      await handleToken();
     } else if (settings.authorizationStatus ==
         AuthorizationStatus.provisional) {
       print('User granted provisional permission');
       // Handle provisional permission if necessary
       // You can still get the token and send it to the server
-      handleToken();
+      await handleToken();
     } else {
       print('User declined or has not accepted permission');
       // Show a SnackBar if permission is declined
-      showErrorSnackBar(context,
-          "You won't receive notifications as permission was declined.");
+      if (context.mounted) {
+        showErrorSnackBar(context,
+            "You won't receive notifications as permission was declined.");
+      }
     }
   }
 
-  void handleToken() async {
+  Future<void> handleToken() async {
     // Obtain the new token
     String? newToken = await FirebaseMessaging.instance.getToken();
 
@@ -49,37 +85,22 @@ class FCMService {
         return;
       }
 
-      // Get the current token from Firestore
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .get();
-
-      // Cast the data to a Map<String, dynamic> and check if 'fcmToken' exists
-      Map<String, dynamic>? userData = userDoc.data() as Map<String, dynamic>?;
-      String? currentToken =
-          userData != null && userData.containsKey('fcmToken')
-              ? userData['fcmToken']
-              : null;
-
-      // If the current token is different from the new token, update the Firestore document
-      if (currentToken != newToken) {
-        FirebaseFirestore.instance.collection('users').doc(userId).set({
+      try {
+        // Keep the legacy scalar for older functions and an array for
+        // multi-device delivery. arrayUnion is idempotent.
+        await FirebaseFirestore.instance.collection('users').doc(userId).set({
           'fcmToken': newToken,
+          'fcmTokens': FieldValue.arrayUnion([newToken]),
         }, SetOptions(merge: true)).then((_) {
           print('FCM Token updated in Firestore for user $userId');
-        }).catchError((error, stack) {
-          // Network/Firestore failure writing the token. Non-fatal: the next
-          // launch will retry via handleToken() and notifications simply
-          // won't arrive until then.
-          CrashService.instance.recordNonFatal(
-            error,
-            stack is StackTrace ? stack : StackTrace.current,
-            reason: 'fcm handleToken update failed',
-          );
         });
-      } else {
-        print('FCM Token is up-to-date for user $userId');
+      } catch (error, stack) {
+        // Non-fatal: the next launch retries token registration.
+        await CrashService.instance.recordNonFatal(
+          error,
+          stack,
+          reason: 'fcm handleToken update failed',
+        );
       }
     } else {
       print('FCM Token is null. Cannot store token.');
@@ -97,15 +118,15 @@ class FCMService {
     try {
       String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
       if (userId.isNotEmpty) {
-        // Update the user's document in Firestore with the new FCM token
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .update({
+        // Keep both token representations in sync for old and new functions.
+        await FirebaseFirestore.instance.collection('users').doc(userId).set({
           'fcmToken': newToken,
-        });
-        showSnackbar(context, 'Notification settings updated successfully :)',
-            Colors.green);
+          'fcmTokens': FieldValue.arrayUnion([newToken]),
+        }, SetOptions(merge: true));
+        if (context is BuildContext && context.mounted) {
+          showSnackbar(context, 'Notification settings updated successfully :)',
+              Colors.green);
+        }
       }
     } catch (e, st) {
       await CrashService.instance.recordNonFatal(
@@ -113,7 +134,9 @@ class FCMService {
         st,
         reason: 'fcm updateTokenOnServer failed',
       );
-      showErrorSnackBar(context, "Failed to update notification settings.");
+      if (context is BuildContext && context.mounted) {
+        showErrorSnackBar(context, "Failed to update notification settings.");
+      }
     }
   }
 
@@ -123,29 +146,32 @@ class FCMService {
       barrierDismissible: false, // User must tap a button to dismiss.
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Notification Permission'),
-          content: SingleChildScrollView(
+          title: const Text('Stay on top of your business'),
+          content: const SingleChildScrollView(
             child: ListBody(
               children: <Widget>[
-                Text('We would like to send you notifications for:'),
-                Text('- Payment reminders'),
-                Text('- Account updates'),
-                Text('- Special offers'),
+                Text(
+                  'Allow notifications so you do not miss:',
+                ),
+                SizedBox(height: 12),
+                Text('• New customer messages'),
+                Text('• New orders and order updates'),
+                Text('• Payment and account updates'),
               ],
             ),
           ),
           actions: <Widget>[
             TextButton(
-              child: Text('Decline'),
+              child: const Text('Not now'),
               onPressed: () {
                 Navigator.of(context).pop();
               },
             ),
             TextButton(
-              child: Text('Allow'),
-              onPressed: () {
+              child: const Text('Allow notifications'),
+              onPressed: () async {
                 Navigator.of(context).pop();
-                requestPermission(context);
+                await requestPermission(context);
               },
             ),
           ],
