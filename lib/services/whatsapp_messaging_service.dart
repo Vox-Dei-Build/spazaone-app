@@ -1,102 +1,88 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:pasella/config/remote_config.dart';
+
+import 'package:flutter/foundation.dart';
+import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/twilio_proxy_client.dart';
 
 class WhatsAppMessagingService {
-  late final String accountSid;
-  late final String authToken;
-  late final String fromNumber;
-  late final String messagingServiceSid;
+  final TwilioProxyClient _proxy;
 
-  WhatsAppMessagingService._(this.accountSid, this.authToken, this.fromNumber,
-      this.messagingServiceSid);
+  WhatsAppMessagingService._(this._proxy);
 
   static Future<WhatsAppMessagingService> create() async {
-    final remoteConfigService =
-        await RemoteConfigService.getInstance(); // ✅ Get Singleton
-
-    return WhatsAppMessagingService._(
-      remoteConfigService.getString('TWILIO_ACCOUNT_SID'),
-      remoteConfigService.getString('TWILIO_AUTH_TOKEN'),
-      remoteConfigService.getString('TWILIO_NUMBER'),
-      remoteConfigService.getString('TWILIO_MESSAGING_SERVICE_ID'),
-    );
+    return WhatsAppMessagingService._(TwilioProxyClient());
   }
 
-// Function to send a WhatsApp message using a template
+  @visibleForTesting
+  factory WhatsAppMessagingService.forTesting(TwilioProxyClient proxy) {
+    return WhatsAppMessagingService._(proxy);
+  }
+
   Future<String?> sendWhatsAppMessage(
-      String to, String templateSid, Map<String, dynamic> variables) async {
-    final uri = Uri.parse(
-        'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages.json');
-    final headers = {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization':
-          'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}'
-    };
-
-    String encodedVariables = json.encode(variables);
-
-    final body = {
-      'To': 'whatsapp:$to',
-      'From': messagingServiceSid,
-      'ContentSid': templateSid,
-      'ContentVariables': encodedVariables,
-    };
-
+    String to,
+    String templateSid,
+    Map<String, dynamic> variables,
+  ) async {
     try {
-      final response = await http.post(uri, headers: headers, body: body);
+      final response = await _proxy.post({
+        'action': 'send',
+        'channel': 'whatsapp',
+        'to': to,
+        'templateId': templateSid,
+        'templateParams': variables,
+        'botType': 'Customer',
+      });
 
       if (response.statusCode == 201) {
-        // HTTP 201 Created is expected
-        final responseBody = json.decode(response.body);
-        final String messageID = responseBody['sid'];
-        // Return message ID for further processing (polling)
-        return messageID;
-      } else {
-        print(
-            'Failed to send WhatsApp message. Status: ${response.statusCode}');
-        return null;
+        final responseBody = jsonDecode(response.body) as Map<String, dynamic>;
+        return responseBody['sid'] as String?;
       }
-    } catch (e) {
-      print('Error sending WhatsApp message: $e');
+
+      await CrashService.instance.recordNonFatal(
+        'WhatsApp proxy returned ${response.statusCode}',
+        StackTrace.current,
+        reason: 'sendWhatsAppMessage proxy error',
+        context: {'status_code': response.statusCode},
+      );
+      return null;
+    } catch (error, stack) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        stack,
+        reason: 'sendWhatsAppMessage failed',
+      );
       return null;
     }
   }
 
   Future<bool> pollMessageStatus(String messageSid) async {
-    final statusUri = Uri.parse(
-        'https://api.twilio.com/2010-04-01/Accounts/$accountSid/Messages/$messageSid.json');
-    final headers = {
-      'Authorization':
-          'Basic ${base64Encode(utf8.encode('$accountSid:$authToken'))}'
-    };
-
-    int delaySeconds = 1; // Start with 1 seconds
-    bool isFinalStatus = false;
-
-    while (!isFinalStatus) {
+    var delaySeconds = 1;
+    while (true) {
       await Future.delayed(Duration(seconds: delaySeconds));
-      final response = await http.get(statusUri, headers: headers);
+      try {
+        final response = await _proxy.post({
+          'action': 'status',
+          'messageSid': messageSid,
+        });
+        if (response.statusCode != 200) return false;
 
-      if (response.statusCode == 200) {
-        final status = json.decode(response.body)['status'];
-
-        if (status == 'delivered' ||
-            status == 'failed' ||
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final status = body['status'] as String?;
+        if (status == 'delivered') return true;
+        if (status == 'failed' ||
             status == 'undelivered' ||
             status == 'canceled') {
-          isFinalStatus = true;
-          return status == 'delivered';
-        } else {
-          delaySeconds = (delaySeconds < 60)
-              ? delaySeconds * 2
-              : 60; // Exponential backoff, cap at 60 seconds
+          return false;
         }
-      } else {
+        delaySeconds = delaySeconds < 60 ? delaySeconds * 2 : 60;
+      } catch (error, stack) {
+        await CrashService.instance.recordNonFatal(
+          error,
+          stack,
+          reason: 'pollMessageStatus failed',
+        );
         return false;
       }
     }
-
-    return false;
   }
 }
