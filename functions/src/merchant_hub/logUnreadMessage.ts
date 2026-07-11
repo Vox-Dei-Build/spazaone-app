@@ -1,6 +1,7 @@
 import { functions, db } from "../config/main";
 import { AndroidConfig } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
+import { requireBotRequest } from "../security/requestAuth";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
 
 type NotificationCustomer = {
@@ -169,225 +170,229 @@ const shouldThrottlePush = (args: {
   return false; // no prior inbound from this customer → push
 };
 
-export const logUnreadMessage = functions.https.onRequest(async (req, res) => {
-  try {
-    const {
-      merchantId,
-      customerNumber,
-      message,
-      direction,
-      senderRole,
-      channel,
-      kind,
-      externalId,
-      timestamp,
-    } = req.body ?? {};
+export const logUnreadMessage = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
+    try {
+      const {
+        merchantId,
+        customerNumber,
+        message,
+        direction,
+        senderRole,
+        channel,
+        kind,
+        externalId,
+        timestamp,
+      } = req.body ?? {};
 
-    if (!merchantId || !customerNumber || !message) {
-      res.status(400).json({ error: "Missing required fields" });
-      return;
-    }
+      if (!merchantId || !customerNumber || !message) {
+        res.status(400).json({ error: "Missing required fields" });
+        return;
+      }
 
-    // Default direction to 'inbound' so legacy callers (Twilio receive hooks)
-    // keep their existing behaviour: badge + FCM ring on the merchant.
-    const resolvedDirection: "inbound" | "outbound" =
-      direction === "outbound" ? "outbound" : "inbound";
-    const resolvedSenderRole: string =
-      senderRole ?? (resolvedDirection === "outbound" ? "bot" : "customer");
-    const resolvedChannel: string = channel ?? "whatsapp";
-    const resolvedKind: string = kind ?? "text";
-    const resolvedTimestamp: string =
-      typeof timestamp === "string" && timestamp
-        ? timestamp
-        : new Date().toISOString();
+      // Default direction to 'inbound' so legacy callers (Twilio receive hooks)
+      // keep their existing behaviour: badge + FCM ring on the merchant.
+      const resolvedDirection: "inbound" | "outbound" =
+        direction === "outbound" ? "outbound" : "inbound";
+      const resolvedSenderRole: string =
+        senderRole ?? (resolvedDirection === "outbound" ? "bot" : "customer");
+      const resolvedChannel: string = channel ?? "whatsapp";
+      const resolvedKind: string = kind ?? "text";
+      const resolvedTimestamp: string =
+        typeof timestamp === "string" && timestamp
+          ? timestamp
+          : new Date().toISOString();
 
-    const merchantRef = db.collection("users").doc(merchantId);
-    const merchantDoc = await merchantRef.get();
-    let unreadCount = 0;
-    let unreadMessages: Array<Record<string, unknown>> = [];
+      const merchantRef = db.collection("users").doc(merchantId);
+      const merchantDoc = await merchantRef.get();
+      let unreadCount = 0;
+      let unreadMessages: Array<Record<string, unknown>> = [];
 
-    if (merchantDoc.exists) {
-      const data = merchantDoc.data();
-      unreadMessages =
-        (data?.unreadMessages as Array<Record<string, unknown>>) ?? [];
-      unreadCount = (data?.unreadCount as number) ?? 0;
-    }
+      if (merchantDoc.exists) {
+        const data = merchantDoc.data();
+        unreadMessages =
+          (data?.unreadMessages as Array<Record<string, unknown>>) ?? [];
+        unreadCount = (data?.unreadCount as number) ?? 0;
+      }
 
-    // Idempotency: if the caller supplies an externalId we never persist the
-    // same message twice. Bot retries (network, function cold start, etc.)
-    // become safe.
-    if (
-      externalId &&
-      unreadMessages.some(
-        (entry) => (entry as { externalId?: string }).externalId === externalId,
-      )
-    ) {
-      res.status(200).json({
-        message: "Duplicate externalId — message already logged.",
-        deduped: true,
-      });
-      return;
-    }
+      // Idempotency: if the caller supplies an externalId we never persist the
+      // same message twice. Bot retries (network, function cold start, etc.)
+      // become safe.
+      if (
+        externalId &&
+        unreadMessages.some(
+          (entry) =>
+            (entry as { externalId?: string }).externalId === externalId,
+        )
+      ) {
+        res.status(200).json({
+          message: "Duplicate externalId — message already logged.",
+          deduped: true,
+        });
+        return;
+      }
 
-    // Decide push throttling BEFORE we mutate the array, so the throttle
-    // compares against the previous state, not against the message we are
-    // about to add.
-    const messageText = typeof message === "string" ? message : "";
-    const isHandoff = /^bot\s+handoff[:\s]/i.test(messageText.trim());
-    const kindBypassesThrottle =
-      resolvedKind === "image" || resolvedKind === "document";
-    const newTimestampMs = parseTimestampMs(resolvedTimestamp) ?? Date.now();
+      // Decide push throttling BEFORE we mutate the array, so the throttle
+      // compares against the previous state, not against the message we are
+      // about to add.
+      const messageText = typeof message === "string" ? message : "";
+      const isHandoff = /^bot\s+handoff[:\s]/i.test(messageText.trim());
+      const kindBypassesThrottle =
+        resolvedKind === "image" || resolvedKind === "document";
+      const newTimestampMs = parseTimestampMs(resolvedTimestamp) ?? Date.now();
 
-    const throttlePush =
-      resolvedDirection === "inbound" &&
-      !isHandoff &&
-      !kindBypassesThrottle &&
-      shouldThrottlePush({
-        unreadMessages,
-        customerNumber: String(customerNumber),
-        newTimestampMs,
-      });
+      const throttlePush =
+        resolvedDirection === "inbound" &&
+        !isHandoff &&
+        !kindBypassesThrottle &&
+        shouldThrottlePush({
+          unreadMessages,
+          customerNumber: String(customerNumber),
+          newTimestampMs,
+        });
 
-    // Append the new entry. We keep `customerNumber`, `message`, `timestamp`
-    // for backwards compatibility with the existing app stream and add the
-    // structured fields for the Connect tab's truth-surface renderer.
-    unreadMessages.push({
-      customerNumber,
-      message,
-      timestamp: resolvedTimestamp,
-      direction: resolvedDirection,
-      senderRole: resolvedSenderRole,
-      channel: resolvedChannel,
-      kind: resolvedKind,
-      ...(externalId ? { externalId } : {}),
-    });
-
-    // Outbound bot replies should NOT ring the merchant's bell — the merchant
-    // already saw their bot reply in the conversation, this is just truth
-    // capture. Only inbound entries advance the unread counter.
-    const nextUnreadCount =
-      resolvedDirection === "inbound" ? unreadCount + 1 : unreadCount;
-
-    await merchantRef.set(
-      {
-        unreadMessages,
-        unreadCount: nextUnreadCount,
-      },
-      { merge: true },
-    );
-
-    // FCM push only fires for inbound (legacy + new customer messages).
-    if (resolvedDirection !== "inbound") {
-      res.status(200).json({
-        message: "Outbound reply mirrored to truth surface.",
+      // Append the new entry. We keep `customerNumber`, `message`, `timestamp`
+      // for backwards compatibility with the existing app stream and add the
+      // structured fields for the Connect tab's truth-surface renderer.
+      unreadMessages.push({
+        customerNumber,
+        message,
+        timestamp: resolvedTimestamp,
         direction: resolvedDirection,
+        senderRole: resolvedSenderRole,
+        channel: resolvedChannel,
+        kind: resolvedKind,
+        ...(externalId ? { externalId } : {}),
       });
-      return;
-    }
 
-    if (throttlePush) {
-      console.log(
-        `[logUnreadMessage] suppressing FCM push for ${merchantId}/${customerNumber} ` +
-          "(within throttle window)",
+      // Outbound bot replies should NOT ring the merchant's bell — the merchant
+      // already saw their bot reply in the conversation, this is just truth
+      // capture. Only inbound entries advance the unread counter.
+      const nextUnreadCount =
+        resolvedDirection === "inbound" ? unreadCount + 1 : unreadCount;
+
+      await merchantRef.set(
+        {
+          unreadMessages,
+          unreadCount: nextUnreadCount,
+        },
+        { merge: true },
       );
-      res.status(200).json({
-        message:
-          "Unread message logged; FCM push suppressed by throttle window.",
-        pushed: false,
-        throttled: true,
-      });
-      return;
-    }
 
-    const latestMerchantDoc = await merchantRef.get();
-    const latestMerchantData = latestMerchantDoc.data() ?? {};
-    const tokens = new Set<string>();
-    const legacyToken = latestMerchantData.fcmToken;
-    if (typeof legacyToken === "string" && legacyToken.trim()) {
-      tokens.add(legacyToken.trim());
-    }
-    if (Array.isArray(latestMerchantData.fcmTokens)) {
-      for (const token of latestMerchantData.fcmTokens) {
-        if (typeof token === "string" && token.trim()) {
-          tokens.add(token.trim());
+      // FCM push only fires for inbound (legacy + new customer messages).
+      if (resolvedDirection !== "inbound") {
+        res.status(200).json({
+          message: "Outbound reply mirrored to truth surface.",
+          direction: resolvedDirection,
+        });
+        return;
+      }
+
+      if (throttlePush) {
+        console.log(
+          `[logUnreadMessage] suppressing FCM push for ${merchantId}/${customerNumber} ` +
+            "(within throttle window)",
+        );
+        res.status(200).json({
+          message:
+            "Unread message logged; FCM push suppressed by throttle window.",
+          pushed: false,
+          throttled: true,
+        });
+        return;
+      }
+
+      const latestMerchantDoc = await merchantRef.get();
+      const latestMerchantData = latestMerchantDoc.data() ?? {};
+      const tokens = new Set<string>();
+      const legacyToken = latestMerchantData.fcmToken;
+      if (typeof legacyToken === "string" && legacyToken.trim()) {
+        tokens.add(legacyToken.trim());
+      }
+      if (Array.isArray(latestMerchantData.fcmTokens)) {
+        for (const token of latestMerchantData.fcmTokens) {
+          if (typeof token === "string" && token.trim()) {
+            tokens.add(token.trim());
+          }
         }
       }
-    }
 
-    if (tokens.size === 0) {
-      console.log("Merchant FCM tokens not found.");
+      if (tokens.size === 0) {
+        console.log("Merchant FCM tokens not found.");
+        res
+          .status(200)
+          .json({ message: "Unread message logged, but no FCM token." });
+        return;
+      }
+
+      const androidConfig: AndroidConfig = {
+        priority: "high",
+        notification: {
+          channelId: "default_channel",
+          sound: "default",
+        },
+      };
+
+      const notificationCustomer = await findCustomerForMessageNotification(
+        merchantId,
+        customerNumber,
+      );
+
+      const payload = {
+        notification: {
+          title: "New Customer Message 📩",
+          body: "Tap to open the customer's account.",
+        },
+        android: androidConfig,
+        data: buildCustomerMessageNotificationData(
+          nextUnreadCount,
+          notificationCustomer,
+          customerNumber,
+        ),
+        tokens: [...tokens],
+      };
+
+      try {
+        const response = await admin.messaging().sendEachForMulticast(payload);
+        console.log(
+          `✅ Push notification sent successfully to ${response.successCount}/${tokens.size} token(s).`,
+        );
+
+        const invalidTokens: string[] = [];
+        response.responses.forEach((result, index) => {
+          if (result.success) return;
+          const code = result.error?.code;
+          if (
+            code === "messaging/registration-token-not-registered" ||
+            code === "messaging/invalid-registration-token"
+          ) {
+            invalidTokens.push(payload.tokens[index]);
+          }
+        });
+
+        if (invalidTokens.length > 0) {
+          const tokenCleanup: Record<string, unknown> = {
+            fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
+          };
+          if (invalidTokens.includes(legacyToken)) {
+            tokenCleanup.fcmToken = admin.firestore.FieldValue.delete();
+          }
+          await merchantRef.update(tokenCleanup);
+          console.log(
+            `[logUnreadMessage] removed ${invalidTokens.length} invalid FCM token(s) for ${merchantId}`,
+          );
+        }
+      } catch (error) {
+        console.error("❌ Error sending push notification:", error);
+      }
+
       res
         .status(200)
-        .json({ message: "Unread message logged, but no FCM token." });
-      return;
-    }
-
-    const androidConfig: AndroidConfig = {
-      priority: "high",
-      notification: {
-        channelId: "default_channel",
-        sound: "default",
-      },
-    };
-
-    const notificationCustomer = await findCustomerForMessageNotification(
-      merchantId,
-      customerNumber,
-    );
-
-    const payload = {
-      notification: {
-        title: "New Customer Message 📩",
-        body: "Tap to open the customer's account.",
-      },
-      android: androidConfig,
-      data: buildCustomerMessageNotificationData(
-        nextUnreadCount,
-        notificationCustomer,
-        customerNumber,
-      ),
-      tokens: [...tokens],
-    };
-
-    try {
-      const response = await admin.messaging().sendEachForMulticast(payload);
-      console.log(
-        `✅ Push notification sent successfully to ${response.successCount}/${tokens.size} token(s).`,
-      );
-
-      const invalidTokens: string[] = [];
-      response.responses.forEach((result, index) => {
-        if (result.success) return;
-        const code = result.error?.code;
-        if (
-          code === "messaging/registration-token-not-registered" ||
-          code === "messaging/invalid-registration-token"
-        ) {
-          invalidTokens.push(payload.tokens[index]);
-        }
-      });
-
-      if (invalidTokens.length > 0) {
-        const tokenCleanup: Record<string, unknown> = {
-          fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
-        };
-        if (invalidTokens.includes(legacyToken)) {
-          tokenCleanup.fcmToken = admin.firestore.FieldValue.delete();
-        }
-        await merchantRef.update(tokenCleanup);
-        console.log(
-          `[logUnreadMessage] removed ${invalidTokens.length} invalid FCM token(s) for ${merchantId}`,
-        );
-      }
+        .json({ message: "Unread message logged & notification sent." });
     } catch (error) {
-      console.error("❌ Error sending push notification:", error);
+      console.error("Error logging unread message:", error);
+      res.status(500).json({ error: "Internal Server Error" });
     }
-
-    res
-      .status(200)
-      .json({ message: "Unread message logged & notification sent." });
-  } catch (error) {
-    console.error("Error logging unread message:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+  });

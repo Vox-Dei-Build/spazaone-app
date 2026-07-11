@@ -29,6 +29,7 @@ export * from "./payments/paystack/getPaystackQuote";
 export * from "./customer_hub/fetchCustomerAndMerchantDetails";
 export * from "./customer_hub/sendPromoToActiveCustomers";
 export * from "./bots/twillio-whatsapp-notification-bot";
+export * from "./bots/botpress-conversation-proxy";
 
 /* ---- Customer Bot ---- */
 export * from "./community/receive-whatsapp";

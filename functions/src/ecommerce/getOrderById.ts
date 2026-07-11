@@ -1,7 +1,8 @@
 // functions/src/http/getOrderById.ts
 import { db, functions } from "../config/main";
+import { authorizeCallableMerchantOrBot } from "../security/requestAuth";
 
-export const getOrderById = functions.https.onCall(async (data) => {
+export const getOrderById = functions.https.onCall(async (data, context) => {
   try {
     const merchantId = data.merchantId as string;
     const orderId = data.orderId as string;
@@ -9,6 +10,12 @@ export const getOrderById = functions.https.onCall(async (data) => {
       throw new functions.https.HttpsError(
         "invalid-argument",
         "merchantId and orderId are required",
+      );
+    }
+    if (!authorizeCallableMerchantOrBot(context, merchantId)) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Access denied",
       );
     }
 
@@ -47,6 +54,7 @@ export const getOrderById = functions.https.onCall(async (data) => {
     };
   } catch (err: any) {
     console.error("getOrderById", err);
+    if (err instanceof functions.https.HttpsError) throw err;
     throw new functions.https.HttpsError("internal", "Failed to fetch order");
   }
 });

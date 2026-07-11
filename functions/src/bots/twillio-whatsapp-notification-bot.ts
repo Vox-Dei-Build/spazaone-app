@@ -1,83 +1,313 @@
-import { functions } from "../config/main"; // Assuming functions is a Firebase or GCP cloud function import
 import twilio from "twilio/lib/index";
+import { db, functions } from "../config/main";
+import { authenticateFirebaseRequest } from "../security/requestAuth";
+import { formatPhoneNumber } from "../utils/phoneUtils";
+import { normalizeTwilioError } from "../utils/twilioError";
+
+type TwilioAction = "send" | "status" | "messages" | "media";
+type TwilioChannel = "whatsapp" | "sms";
+
+const env = (...names: string[]): string => {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return "";
+};
+
+const normalizeRecipient = (raw: unknown): string => {
+  const withoutChannel = String(raw ?? "").replace(/^whatsapp:/i, "");
+  return formatPhoneNumber(withoutChannel);
+};
+
+const responseStatus = (providerStatus: number | null): number =>
+  providerStatus != null && providerStatus >= 400 && providerStatus <= 599
+    ? providerStatus
+    : 502;
+
+const parseAction = (raw: unknown): TwilioAction | null => {
+  const action = String(raw ?? "send");
+  return action === "send" ||
+    action === "status" ||
+    action === "messages" ||
+    action === "media"
+    ? action
+    : null;
+};
+
+const authorizedCustomerNumber = async (
+  merchantId: string,
+  customerId: unknown,
+): Promise<string | null> => {
+  const id = String(customerId ?? "").trim();
+  if (!id) return null;
+
+  const customer = await db
+    .collection("users")
+    .doc(merchantId)
+    .collection("customers")
+    .doc(id)
+    .get();
+  if (!customer.exists) return null;
+  return normalizeRecipient(customer.data()?.number);
+};
 
 /**
- * Google Cloud Function to send a Twilio message using a template ID.
- * This function sends a WhatsApp or SMS message using a pre-approved Twilio template.
+ * Authenticated Twilio proxy for the merchant app.
  *
- * @function sendTwilioMessage
- * @param {functions.https.Request} req - The HTTP request object from the client. Expects `to`, `templateId`, and optionally `templateParams` in the request body.
- * @param {string} req.body.to - The recipient's phone number (e.g., for WhatsApp: 'whatsapp:+123456789').
- * @param {string} req.body.templateId - The template ID (Content SID) of the pre-approved Twilio template.
- * @param {string} [req.body.templateParams] - Optional parameters to replace placeholders in the template message.
- * @param {string} [req.body.botType] - Optional parameters to replace placeholders in the template message.
- * @param {functions.Response} res - The HTTP response object sent back to the client.
- * @returns {void | Promise<void>} - Sends a JSON response indicating success or failure.
- *
- * @example
- * // Example request body to send a message
- * {
- *   "to": "+27123456789",
- *   "templateId": "your-template-id",
- *   "templateParams": "Hello, {{name}}, your order {{order_number}} has been confirmed."
- *   "botType": "Merchant"
- * }
+ * The previous mobile implementation downloaded the master Twilio Auth Token
+ * from Remote Config and called Twilio directly. Besides exposing a privileged
+ * credential to every installed APK, that made every released app stop sending
+ * the instant Twilio rotated the leaked token. This function keeps the token on
+ * the server and supports both message dispatch and delivery-status polling.
  */
-exports.sendTwilioMessage = functions.https.onRequest(async (req, res) => {
-  // Extract phone number, template ID, and optional template parameters from the request
-  const { to, templateId, templateParams, botType } = req.body;
+export const sendTwilioMessage = functions
+  .runWith({ secrets: ["TWILIO_AUTH_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set(
+      "Access-Control-Allow-Headers",
+      "Authorization, Content-Type, X-Firebase-AppCheck",
+    );
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const messagingServiceID =
-    botType === "Merchant"
-      ? process.env.TWILIO_MERCHANT_MESSAGING_SERVICE_SID
-      : process.env.TWILIO_CUSTOMER_MESSAGING_SERVICE_SID;
-  const client = twilio(accountSid, authToken);
-
-  console.log(to);
-  console.log(templateId);
-  console.log(JSON.stringify(templateParams));
-
-  // Validate the required fields
-  if (!to || !templateId) {
-    res
-      .status(400)
-      .json({ error: "Please provide a valid phone number and template ID." });
-    return;
-  }
-
-  try {
-    // Sending the template-based message using Twilio API
-    let messageResponse;
-    if (templateParams != null) {
-      messageResponse = await client.messages.create({
-        to: to, // Phone number to send the message to (WhatsApp/SMS)
-        messagingServiceSid: messagingServiceID,
-        contentVariables: templateParams ? JSON.stringify(templateParams) : "", // Template params for dynamic placeholders
-        contentSid: templateId, // The template ID (Content SID) for the pre-approved message template
-      });
-    } else {
-      messageResponse = await client.messages.create({
-        to: to, // Phone number to send the message to (WhatsApp/SMS)
-        messagingServiceSid: messagingServiceID,
-        contentSid: templateId, // The template ID (Content SID) for the pre-approved message template
-      });
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+    if (req.method !== "POST") {
+      res.status(405).json({ success: false, error: "Method not allowed." });
+      return;
     }
 
-    // Respond with success without returning the response object
-    res.status(200).json({
-      success: true,
-      message: "Message sent successfully using the template!",
-      sid: messageResponse.sid, // Twilio message ID
+    const merchantId = await authenticateFirebaseRequest(req, res, {
+      requireAppCheck: true,
     });
-  } catch (error) {
-    // Handle error and respond
-    console.error("Failed to send message", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to send message",
-      details: error,
-    });
-  }
-});
+    if (!merchantId) return;
+
+    const accountSid = env("TWILIO_ACCOUNT_SID", "TWILIO_SID");
+    const authToken = env("TWILIO_AUTH_TOKEN", "TWILIO_TOKEN");
+    if (!accountSid || !authToken) {
+      console.error(
+        "[sendTwilioMessage] Twilio credentials are not configured",
+      );
+      res.status(503).json({
+        success: false,
+        error: "Messaging is temporarily unavailable.",
+      });
+      return;
+    }
+
+    const action = parseAction(req.body?.action);
+    if (!action) {
+      res.status(400).json({ success: false, error: "Invalid action." });
+      return;
+    }
+    const client = twilio(accountSid, authToken);
+
+    if (action === "status") {
+      const messageSid = String(req.body?.messageSid ?? "").trim();
+      if (!/^SM[a-fA-F0-9]{32}$/.test(messageSid)) {
+        res.status(400).json({ success: false, error: "Invalid message SID." });
+        return;
+      }
+
+      try {
+        const message = await client.messages(messageSid).fetch();
+        res.status(200).json({ success: true, status: message.status });
+      } catch (error) {
+        const normalized = normalizeTwilioError(error, "whatsapp");
+        console.error(
+          `[sendTwilioMessage] status lookup failed for merchant ${merchantId}:`,
+          normalized.providerCode ?? normalized.providerMessage,
+        );
+        res.status(responseStatus(normalized.providerStatus)).json({
+          success: false,
+          error: normalized.pasellaMessage,
+          providerCode: normalized.providerCode,
+        });
+      }
+      return;
+    }
+
+    if (action === "messages") {
+      const customerNumber = await authorizedCustomerNumber(
+        merchantId,
+        req.body?.customerId,
+      );
+      if (!customerNumber) {
+        res.status(403).json({
+          success: false,
+          error: "Customer access could not be verified.",
+        });
+        return;
+      }
+
+      const channel: TwilioChannel =
+        req.body?.channel === "sms" ? "sms" : "whatsapp";
+      const direction = req.body?.direction === "from" ? "from" : "to";
+      const queryNumber =
+        channel === "whatsapp" ? `whatsapp:${customerNumber}` : customerNumber;
+
+      try {
+        const messages = await client.messages.list({
+          ...(direction === "from"
+            ? { from: queryNumber }
+            : { to: queryNumber }),
+          limit: 100,
+        });
+        res.status(200).json({
+          success: true,
+          messages: messages.map((message) => ({
+            sid: message.sid,
+            body: message.body,
+            dateSent: message.dateSent?.toISOString() ?? null,
+            status: message.status,
+            from: message.from,
+            to: message.to,
+            uri: message.uri,
+            numMedia: message.numMedia,
+          })),
+        });
+      } catch (error) {
+        const normalized = normalizeTwilioError(error, channel);
+        console.error(
+          `[sendTwilioMessage] history lookup failed for merchant ${merchantId}:`,
+          normalized.providerCode ?? normalized.providerMessage,
+        );
+        res.status(responseStatus(normalized.providerStatus)).json({
+          success: false,
+          error: normalized.pasellaMessage,
+          providerCode: normalized.providerCode,
+        });
+      }
+      return;
+    }
+
+    if (action === "media") {
+      const messageSid = String(req.body?.messageSid ?? "").trim();
+      const customerNumber = await authorizedCustomerNumber(
+        merchantId,
+        req.body?.customerId,
+      );
+      if (!/^SM[a-fA-F0-9]{32}$/.test(messageSid) || !customerNumber) {
+        res.status(403).json({
+          success: false,
+          error: "Media access could not be verified.",
+        });
+        return;
+      }
+
+      try {
+        const message = await client.messages(messageSid).fetch();
+        const belongsToCustomer = [message.from, message.to].some(
+          (number) => normalizeRecipient(number) === customerNumber,
+        );
+        if (!belongsToCustomer) {
+          res.status(403).json({
+            success: false,
+            error: "Media access could not be verified.",
+          });
+          return;
+        }
+
+        const media = await client.messages(messageSid).media.list({
+          limit: 20,
+        });
+        res.status(200).json({
+          success: true,
+          urls: media.map(
+            (item) =>
+              `https://api.twilio.com${item.uri.replace(/\.json$/, "")}`,
+          ),
+        });
+      } catch (error) {
+        const normalized = normalizeTwilioError(error, "whatsapp");
+        console.error(
+          `[sendTwilioMessage] media lookup failed for merchant ${merchantId}:`,
+          normalized.providerCode ?? normalized.providerMessage,
+        );
+        res.status(responseStatus(normalized.providerStatus)).json({
+          success: false,
+          error: normalized.pasellaMessage,
+          providerCode: normalized.providerCode,
+        });
+      }
+      return;
+    }
+
+    const channel: TwilioChannel =
+      req.body?.channel === "sms" ? "sms" : "whatsapp";
+    const recipient = normalizeRecipient(req.body?.to);
+    if (!recipient) {
+      res
+        .status(400)
+        .json({ success: false, error: "Invalid SA mobile number." });
+      return;
+    }
+
+    const merchantMessagingServiceSid = env(
+      "TWILIO_MERCHANT_MESSAGING_SERVICE_SID",
+    );
+    const customerMessagingServiceSid = env(
+      "TWILIO_CUSTOMER_MESSAGING_SERVICE_SID",
+    );
+    const messagingServiceSid =
+      req.body?.botType === "Merchant"
+        ? merchantMessagingServiceSid
+        : customerMessagingServiceSid;
+
+    try {
+      if (channel === "sms") {
+        const body = String(req.body?.body ?? "").trim();
+        const from = env("TWILIO_NUMBER");
+        if (!body || !from) {
+          res.status(400).json({
+            success: false,
+            error: "SMS body or sender is missing.",
+          });
+          return;
+        }
+
+        const message = await client.messages.create({
+          to: recipient,
+          from,
+          body,
+        });
+        res.status(201).json({ success: true, sid: message.sid });
+        return;
+      }
+
+      const templateId = String(req.body?.templateId ?? "").trim();
+      if (!templateId || !messagingServiceSid) {
+        res.status(400).json({
+          success: false,
+          error: "WhatsApp template or messaging service is missing.",
+        });
+        return;
+      }
+
+      const templateParams = req.body?.templateParams;
+      const message = await client.messages.create({
+        to: `whatsapp:${recipient}`,
+        messagingServiceSid,
+        contentSid: templateId,
+        ...(templateParams != null
+          ? { contentVariables: JSON.stringify(templateParams) }
+          : {}),
+      });
+
+      res.status(201).json({ success: true, sid: message.sid });
+    } catch (error) {
+      const normalized = normalizeTwilioError(error, channel);
+      console.error(
+        `[sendTwilioMessage] ${channel} send failed for merchant ${merchantId}:`,
+        normalized.providerCode ?? normalized.providerMessage,
+      );
+      res.status(responseStatus(normalized.providerStatus)).json({
+        success: false,
+        error: normalized.pasellaMessage,
+        providerCode: normalized.providerCode,
+      });
+    }
+  });

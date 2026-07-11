@@ -1,14 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_app_badger_plus/flutter_app_badger_plus.dart';
-import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/botpress_service.dart';
 import 'package:pasella/services/twilio_service.dart';
+import 'package:pasella/services/secure_function_client.dart';
 import 'package:pasella/utils/phone_util.dart';
-import 'package:http/http.dart' as http;
 
 class ConnectManagementViewModel {
   final String customerId;
@@ -89,11 +87,6 @@ class ConnectManagementViewModel {
       // (a single document), so this is one cheap listener per ViewModel.
       _ensureTruthSurfaceSubscription(customerNumber);
 
-      final rc = await RemoteConfigService.getInstance();
-      final twilioSmsNumber = rc.getString('TWILIO_NUMBER');
-      final twilioMessagingServiceId =
-          rc.getString('TWILIO_MESSAGING_SERVICE_ID');
-
       final results = await Future.wait([
         _twilio.fetchMessagesToCustomer(
           customerNumber: customerNumber,
@@ -102,11 +95,10 @@ class ConnectManagementViewModel {
         ),
         _twilio.fetchMessagesFromCustomer(
           customerNumber: customerNumber,
-          twilioSmsNumber: twilioSmsNumber,
-          twilioMessagingServiceId: twilioMessagingServiceId,
+          customerId: customerId,
         ),
         _botpress.fetchBotpressMessages(
-          customerNumber: customerNumber,
+          customerId: customerId,
         ),
       ]);
 
@@ -365,16 +357,15 @@ class ConnectManagementViewModel {
   Future<void> markMessagesAsRead(String? customerNumber) async {
     if (customerNumber == null) return;
     try {
-      await http.post(
+      await SecureFunctionClient().post(
         Uri.parse(
             'https://us-central1-pasella-ledger.cloudfunctions.net/markMessagesAsRead'),
-        body: jsonEncode({
+        {
           'merchantId': currentUserId,
           'customerNumber': customerNumber,
-        }),
-        headers: {'Content-Type': 'application/json'},
+        },
       );
-      FlutterAppBadger.removeBadge();
+      FlutterAppBadgerPlus.removeBadge();
     } catch (e) {
       // ignore: avoid_print
       print('markMessagesAsRead failed: $e');
@@ -420,7 +411,7 @@ class ConnectManagementViewModel {
     // --- 3) Fallback: any later inbound within 48h → inferred read ---
     const fallbackWindow = Duration(hours: 48);
 
-    DateTime? _nextInboundAfter(DateTime t, {required bool requireWhatsApp}) {
+    DateTime? nextInboundAfter(DateTime t, {required bool requireWhatsApp}) {
       for (final m in msgs) {
         if (m['direction'] == 'inbound') {
           final dt = m['dateSent'] as DateTime;
@@ -437,7 +428,7 @@ class ConnectManagementViewModel {
       final sentAt = m['dateSent'] as DateTime;
       final requireWa = m['isWhatsApp'] == true;
 
-      final nextIn = _nextInboundAfter(sentAt, requireWhatsApp: requireWa);
+      final nextIn = nextInboundAfter(sentAt, requireWhatsApp: requireWa);
       if (nextIn != null && nextIn.difference(sentAt) <= fallbackWindow) {
         m['isRead'] = true;
         m['readReason'] = 'inferred';

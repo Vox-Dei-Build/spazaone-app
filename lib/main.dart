@@ -38,6 +38,7 @@ import 'package:pasella/utils/show_toast.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import './app_imports.dart';
 import 'pages/auth/registerAnonymous/register_anonymous.dart';
 import 'pages/ledger/view_model/ledger_view_model.dart';
@@ -491,23 +492,14 @@ Future<void> _initializeCoreServices() async {
     );
   }
 
-  // TODO(app-check): Activate Firebase App Check here.
-  //
-  // `firebase_app_check` is in pubspec.yaml and two call sites
-  // (online_sales_list.dart, online_sale_detail_page.dart) already
-  // call `FirebaseAppCheck.instance.getToken()`, but no provider is
-  // registered so those calls return null and the backend is not
-  // protected against script/scraper/billing-bombing abuse.
-  //
-  // Suspected contributor to the Crashlytics
-  //   `[firebase_functions/unknown] 1 out of 2 underlying tasks failed`
-  // signature (the Android Functions SDK awaits auth + AppCheck
-  // tokens in parallel; the missing provider can fail that Task).
-  //
-  // Rollout plan: see docs/firebase_app_check_todo.md
-  //   Phase 1: activate with playIntegrity / deviceCheck, monitor-only.
-  //   Phase 2: enforce per service in Firebase Console.
-  //   Phase 3: drop manual `X-Firebase-AppCheck` header plumbing.
+  // Both production apps are registered in Firebase App Check. Keep global
+  // Firebase services in monitoring mode while older releases age out; new
+  // security-sensitive HTTP functions verify these tokens immediately.
+  await FirebaseAppCheck.instance.activate(
+    androidProvider:
+        kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+    appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+  );
 
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,

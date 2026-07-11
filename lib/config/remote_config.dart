@@ -27,8 +27,6 @@ class RemoteConfigService {
       // Set defaults from environment variables
       try {
         await remoteConfig.setDefaults(<String, dynamic>{
-          'TWILIO_ACCOUNT_SID': dotenv.env['TWILIO_ACCOUNT_SID'] ?? '',
-          'TWILIO_AUTH_TOKEN': dotenv.env['TWILIO_AUTH_TOKEN'] ?? '',
           'TWILIO_NUMBER': dotenv.env['TWILIO_NUMBER'] ?? '',
           'TWILIO_MESSAGING_SERVICE_ID':
               dotenv.env['TWILIO_MESSAGING_SERVICE_ID'] ?? '',
@@ -83,17 +81,17 @@ class RemoteConfigService {
           // See `docs/openclaw/pas-sms-01-template-segment-audit.md` (QW-3).
           'SMS_CREDIT_CONFIRMATION_SHORT':
               'Hi {customerName}, transaction of -{amount} at {shopName} recorded. '
-              'Balance: {balance}. Thanks for your trust. - {shopName}',
+                  'Balance: {balance}. Thanks for your trust. - {shopName}',
           'SMS_PAYMENT_CONFIRMATION_SHORT':
               'Hi {customerName}, payment of +{amount} at {shopName} recorded. '
-              'Balance: {balance}. Thanks for your payment. - {shopName}',
+                  'Balance: {balance}. Thanks for your payment. - {shopName}',
           'SMS_ONBOARDING_SHORT':
               'Hi {customerName}, welcome to {shopName}! Your account is now '
-              'online. Balance: R0,00. Thanks for joining! - {shopName}',
+                  'online. Balance: R0,00. Thanks for joining! - {shopName}',
           'SMS_REMINDER_SHORT':
               'Hi {customerName}, your balance of {balance} at {shopName} is '
-              'due. Please make your payment to avoid any late fees. From '
-              '{shopName}',
+                  'due. Please make your payment to avoid any late fees. From '
+                  '{shopName}',
           'SMS_TEMPLATE_KEYWORDS': '[]',
           'FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED':
               dotenv.env['FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED'] == 'true',
