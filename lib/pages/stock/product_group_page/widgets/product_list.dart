@@ -34,7 +34,9 @@ class ProductList extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return const Center(
+            child: Text('Could not load products. Please try again.'),
+          );
         }
         final products = snapshot.data ?? [];
         if (products.isEmpty) {

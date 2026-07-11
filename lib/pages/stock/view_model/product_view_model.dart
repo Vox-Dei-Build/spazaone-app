@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +17,7 @@ class ProductViewModel extends ChangeNotifier {
   bool isLoading = false;
   bool _disposed = false; // Track whether the ViewModel is disposed
   String? imageUrl;
+  File? pendingImage;
   final PhotoUploadUtil _photoUploadUtil = PhotoUploadUtil();
 
   // Controllers to manage the text input fields
@@ -44,6 +47,7 @@ class ProductViewModel extends ChangeNotifier {
   }
 
   bool get hasUnsavedChanges => _hasUnsavedChanges;
+  bool get hasImage => pendingImage != null || (imageUrl?.isNotEmpty ?? false);
 
   void markUnsavedChanges() {
     _hasUnsavedChanges = true;
@@ -52,11 +56,12 @@ class ProductViewModel extends ChangeNotifier {
 
   Future<void> _fetchProductGroups() async {
     try {
-      final querySnapshot = await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('productGroups')
-          .get();
+      final querySnapshot =
+          await _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('productGroups')
+              .get();
 
       final userGroups =
           querySnapshot.docs.map((doc) => doc['name'] as String).toList();
@@ -71,23 +76,9 @@ class ProductViewModel extends ChangeNotifier {
   void handleImagePick(BuildContext context, Product product) async {
     await _photoUploadUtil.handleImagePick(context, (pickedImage) async {
       if (pickedImage != null) {
-        isLoading = true;
         markUnsavedChanges();
+        pendingImage = pickedImage;
         notifyListeners();
-
-        try {
-          imageUrl = await _photoUploadUtil.uploadImage(
-            pickedImage,
-            'products/$userId/${pickedImage.path.split('/').last}',
-          );
-          product.image = imageUrl;
-        } catch (e) {
-          print('Failed to upload image: $e');
-          imageUrl = null;
-        } finally {
-          isLoading = false;
-          notifyListeners();
-        }
       }
     });
   }
@@ -103,7 +94,7 @@ class ProductViewModel extends ChangeNotifier {
     // field validators on the create/edit page can't catch this — gate it
     // here, before any Firestore write, so customers never see a listed
     // product with no photo.
-    if (product.whatsappListed && (imageUrl == null || imageUrl!.isEmpty)) {
+    if (product.whatsappListed && !hasImage) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         showErrorSnackBar(
           context,
@@ -118,6 +109,18 @@ class ProductViewModel extends ChangeNotifier {
     try {
       isLoading = true;
       notifyListeners();
+
+      if (pendingImage != null) {
+        final uploadedUrl = await _photoUploadUtil.uploadImage(
+          pendingImage!,
+          'products/$userId/${pendingImage!.path.split('/').last}',
+        );
+        if (uploadedUrl == null || uploadedUrl.isEmpty) {
+          throw StateError('Product image upload failed');
+        }
+        imageUrl = uploadedUrl;
+        pendingImage = null;
+      }
 
       product.name = nameController.text;
       product.cost = double.tryParse(costController.text);
@@ -154,19 +157,20 @@ class ProductViewModel extends ChangeNotifier {
       // onboarding funnel ('signup -> first product -> first
       // customer -> first sale -> first message') is measurable
       // end-to-end. Buckets are coarse and contain no merchant PII.
-      final event = (docID == null)
-          ? ProductCreated(
-              group: product.group,
-              sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
-              costPriceBucket: amountBucketZAR(product.cost ?? 0),
-              hasImage: (product.image ?? '').isNotEmpty,
-            )
-          : ProductUpdated(
-              group: product.group,
-              sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
-              costPriceBucket: amountBucketZAR(product.cost ?? 0),
-              hasImage: (product.image ?? '').isNotEmpty,
-            );
+      final event =
+          (docID == null)
+              ? ProductCreated(
+                group: product.group,
+                sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
+                costPriceBucket: amountBucketZAR(product.cost ?? 0),
+                hasImage: (product.image ?? '').isNotEmpty,
+              )
+              : ProductUpdated(
+                group: product.group,
+                sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
+                costPriceBucket: amountBucketZAR(product.cost ?? 0),
+                hasImage: (product.image ?? '').isNotEmpty,
+              );
       // Fire-and-forget: telemetry must never block the UI.
       // ignore: unawaited_futures
       TelemetryService.instance.capture(event);
@@ -198,12 +202,13 @@ class ProductViewModel extends ChangeNotifier {
       // it without an extra round-trip after the doc is gone.
       String? groupBeforeDelete;
       try {
-        final snap = await _firestore
-            .collection('users')
-            .doc(userId)
-            .collection('products')
-            .doc(docID)
-            .get();
+        final snap =
+            await _firestore
+                .collection('users')
+                .doc(userId)
+                .collection('products')
+                .doc(docID)
+                .get();
         groupBeforeDelete = snap.data()?['group'] as String?;
       } catch (_) {
         // If the read fails the analytics event still fires without

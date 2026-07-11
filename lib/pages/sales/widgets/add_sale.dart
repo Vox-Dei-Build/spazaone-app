@@ -76,7 +76,9 @@ class AddSale extends StatelessWidget {
                   hintText: 'Enter day total or sale amount',
                   prefixIcon: Icons.money,
                   controller: transactionViewModel.amountController,
-                  textInputType: TextInputType.number,
+                  textInputType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   validator: (value) {
                     if (value == null ||
                         value.isEmpty ||

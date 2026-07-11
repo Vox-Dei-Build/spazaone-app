@@ -53,13 +53,15 @@ class LedgerMainContent extends StatelessWidget {
                   );
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => LoomVideoPage(
-                        loomUrl: url,
-                        title: 'How to Add Customers',
-                      ),
+                      builder:
+                          (context) => LoomVideoPage(
+                            loomUrl: url,
+                            title: 'How to Add Customers',
+                          ),
                     ),
                   );
                 },
+                tooltip: 'Customer help',
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),

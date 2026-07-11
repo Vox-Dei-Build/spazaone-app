@@ -289,9 +289,10 @@ class _PromotionsTabState extends State<PromotionsTab> {
                               child: OutlinedButton.icon(
                                 style: OutlinedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  minimumSize: const Size(0, 32),
-                                  visualDensity: VisualDensity.compact,
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  minimumSize: const Size(48, 48),
                                 ),
                                 onPressed: () {
                                   // Clear any selection that may

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../services/analytics_event.dart';
 import '../../../services/consent_service.dart';
@@ -83,25 +84,26 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
 
     if (!mounted) return;
     setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Privacy settings updated')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Privacy settings updated')));
   }
 
   @override
   Widget build(BuildContext context) {
-    final dirty = _analytics != widget.state.analytics ||
+    final dirty =
+        _analytics != widget.state.analytics ||
         _replay != widget.state.replay ||
         _crash != widget.state.crash;
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
             'Choose what data Pasella may collect to keep the app stable and '
-            'understand how merchants use it. Changes apply immediately.',
+            'understand how merchants use it. Save to apply your changes.',
           ),
           const SizedBox(height: 12),
           SwitchListTile(
@@ -118,9 +120,10 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
               'Anonymous usage events. No message contents, no contacts.',
             ),
             value: _analytics,
-            onChanged: _saving
-                ? null
-                : (v) => setState(() {
+            onChanged:
+                _saving
+                    ? null
+                    : (v) => setState(() {
                       _analytics = v;
                       // Replay is meaningless without analytics.
                       if (!v) _replay = false;
@@ -133,9 +136,10 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
               'and images are blurred. Requires product analytics.',
             ),
             value: _replay && _analytics,
-            onChanged: (_saving || !_analytics)
-                ? null
-                : (v) => setState(() => _replay = v),
+            onChanged:
+                (_saving || !_analytics)
+                    ? null
+                    : (v) => setState(() => _replay = v),
           ),
           const SizedBox(height: 24),
           FilledButton(
@@ -145,7 +149,7 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
           if (widget.state.decidedAt != null) ...[
             const SizedBox(height: 12),
             Text(
-              'Last updated ${widget.state.decidedAt!.toLocal()}',
+              'Last updated ${DateFormat.yMMMd().add_jm().format(widget.state.decidedAt!.toLocal())}',
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),

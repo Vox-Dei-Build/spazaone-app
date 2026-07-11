@@ -8,7 +8,6 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
-import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -163,41 +162,26 @@ class _SharePageState extends State<SharePage> {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final textSize = SizeConfig.textMultiplier * 1.8;
-    final titleSize = SizeConfig.textMultiplier * 2.1;
 
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Share ordering link'),
+      backgroundColor: Colors.grey.shade50,
+      appBar: const CustomAppBar(title: 'Ordering link'),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(SizeConfig.blockSizeHorizontal * 4),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Share your ordering link',
-                style: TextStyle(
-                  fontSize: titleSize,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              SizedBox(height: SizeConfig.blockSizeVertical * 0.7),
-              Text(
-                'Share this link with anyone. They can open WhatsApp and place an order with ${_shopName ?? 'your shop'}.',
-                style: TextStyle(
-                  fontSize: textSize,
-                  color: Colors.grey.shade700,
-                  height: 1.35,
-                ),
-              ),
-              SizedBox(height: SizeConfig.blockSizeVertical * 1.8),
               if (_loading)
-                const Center(child: CircularProgressIndicator())
+                const SizedBox(
+                  height: 280,
+                  child: Center(child: CircularProgressIndicator()),
+                )
               else if (_error != null)
                 _ErrorPanel(message: _error!, onRetry: _loadOrderingLink)
               else
                 _OrderingLinkPanel(
-                  userId: userId,
+                  shopName: _shopName ?? 'your shop',
                   code: _code ?? '',
                   orderingUrl: _orderingUrl ?? '',
                   pasellaWhatsappNumber: _pasellaWhatsappNumber ?? '',
@@ -219,7 +203,7 @@ class _SharePageState extends State<SharePage> {
 
 class _OrderingLinkPanel extends StatelessWidget {
   const _OrderingLinkPanel({
-    required this.userId,
+    required this.shopName,
     required this.code,
     required this.orderingUrl,
     required this.pasellaWhatsappNumber,
@@ -232,7 +216,7 @@ class _OrderingLinkPanel extends StatelessWidget {
     required this.onRegenerate,
   });
 
-  final String userId;
+  final String shopName;
   final String code;
   final String orderingUrl;
   final String pasellaWhatsappNumber;
@@ -247,152 +231,136 @@ class _OrderingLinkPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
+    final theme = Theme.of(context);
     final green = Colors.green.shade700;
-    final textSize = SizeConfig.textMultiplier;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          padding: EdgeInsets.all(SizeConfig.blockSizeHorizontal * 4),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
+            gradient: LinearGradient(
+              colors: [
+                green.withValues(alpha: 0.14),
+                green.withValues(alpha: 0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: green.withValues(alpha: 0.18)),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: green.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      FontAwesomeIcons.whatsapp,
-                      color: green,
-                      size: 22,
-                    ),
-                  ),
-                  SizedBox(width: SizeConfig.blockSizeHorizontal * 3),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Ready to send',
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontSize: textSize * 1.7,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Send it on WhatsApp, copy it, or share it in any channel.',
-                          style: TextStyle(
-                            color: Colors.grey.shade700,
-                            fontSize: textSize * 1.35,
-                            height: 1.25,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              Container(
+                width: 58,
+                height: 58,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(17),
+                ),
+                child: Icon(
+                  FontAwesomeIcons.whatsapp,
+                  color: green,
+                  size: 30,
+                ),
               ),
-              SizedBox(height: SizeConfig.blockSizeVertical * 1.6),
-              _CopyableField(
-                label: 'Ordering link',
-                value: orderingUrl,
-                icon: Icons.link,
-                onCopy: orderingUrl.isEmpty ? null : onCopyLink,
+              const SizedBox(height: 16),
+              Text(
+                'Take orders on WhatsApp',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                ),
               ),
-              SizedBox(height: SizeConfig.blockSizeVertical),
-              _CopyableField(
-                label: 'Shop code',
-                value: code,
-                icon: Icons.tag_outlined,
-                emphasize: true,
-                onCopy: code.isEmpty ? null : onCopyCode,
+              const SizedBox(height: 6),
+              Text(
+                'Share one link and customers can start an order with $shopName.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey.shade700,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: orderingUrl.isEmpty ? null : onWhatsApp,
+                icon: const Icon(FontAwesomeIcons.whatsapp),
+                label: const Text('Share on WhatsApp'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: green,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(54),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextButton.icon(
+                onPressed: orderingUrl.isEmpty ? null : onShare,
+                icon: const Icon(Icons.ios_share_outlined),
+                label: const Text('Share another way'),
+                style: TextButton.styleFrom(
+                  foregroundColor: green,
+                  minimumSize: const Size.fromHeight(48),
+                ),
               ),
             ],
           ),
         ),
-        SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
-        ActivationCoachmark(
-          userId: userId,
-          coachmarkKey: 'share_ordering_link',
-          title: 'Share this with anyone',
-          message: 'Anyone with the link can open WhatsApp and start an order.',
-          icon: FontAwesomeIcons.whatsapp,
-          accentColor: green,
-          child: ElevatedButton.icon(
-            onPressed: orderingUrl.isEmpty ? null : onWhatsApp,
-            icon: const Icon(FontAwesomeIcons.whatsapp),
-            label: const Text('Share on WhatsApp'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: green,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              textStyle: const TextStyle(fontWeight: FontWeight.w800),
-            ),
+        const SizedBox(height: 24),
+        Text(
+          'Your link',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
-        SizedBox(height: SizeConfig.blockSizeVertical),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: orderingUrl.isEmpty ? null : onCopyLink,
-                icon: const Icon(Icons.link),
-                label: const Text('Copy link'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: SizeConfig.blockSizeHorizontal * 2),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: orderingUrl.isEmpty ? null : onShare,
-                icon: const Icon(Icons.ios_share),
-                label: const Text('Share'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-          ],
+        const SizedBox(height: 4),
+        Text(
+          'Copy these details when you need to paste them somewhere manually.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: Colors.grey.shade700,
+            height: 1.35,
+          ),
         ),
-        SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
+        const SizedBox(height: 12),
+        _CopyableField(
+          label: 'Ordering link',
+          value: orderingUrl,
+          icon: Icons.link,
+          onCopy: orderingUrl.isEmpty ? null : onCopyLink,
+        ),
+        const SizedBox(height: 10),
+        _CopyableField(
+          label: 'Shop code',
+          value: code,
+          icon: Icons.tag_outlined,
+          emphasize: true,
+          onCopy: code.isEmpty ? null : onCopyCode,
+        ),
+        const SizedBox(height: 18),
         Container(
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: ExpansionTile(
+            leading: const Icon(Icons.tune_outlined),
             tilePadding: const EdgeInsets.symmetric(horizontal: 14),
             childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             title: const Text(
-              'Advanced details',
+              'Link details and reset',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
             children: [
-              _DetailRow(label: 'Customer command', value: 'shop $code'),
               _DetailRow(
                 label: 'Pasella WhatsApp',
                 value: pasellaWhatsappNumber,

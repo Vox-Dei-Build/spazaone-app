@@ -12,20 +12,27 @@ class PromotionsPageHeader extends StatelessWidget {
     return PageHeader(
       actionWidget: Expanded(
         child: IconButton(
-            icon: Icon(Icons.help_outline,
-                color: Colors.black, size: SizeConfig.imageSizeMultiplier * 5),
-            onPressed: () {
-              final url = TutorialConfig.getTutorialUrl(
-                  TutorialConfig.TUTORIAL_RUN_PROMOTIONS);
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => LoomVideoPage(
-                    loomUrl: url,
-                    title: 'How to Run Promotions',
-                  ),
-                ),
-              );
-            }),
+          icon: Icon(
+            Icons.help_outline,
+            color: Colors.black,
+            size: SizeConfig.imageSizeMultiplier * 5,
+          ),
+          onPressed: () {
+            final url = TutorialConfig.getTutorialUrl(
+              TutorialConfig.TUTORIAL_RUN_PROMOTIONS,
+            );
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder:
+                    (context) => LoomVideoPage(
+                      loomUrl: url,
+                      title: 'How to Run Promotions',
+                    ),
+              ),
+            );
+          },
+          tooltip: 'Marketing help',
+        ),
       ),
     );
   }

@@ -54,7 +54,8 @@ class CustomTextField extends StatelessWidget {
     return Consumer<AppModel>(
       builder: (context, value, child) {
         return Container(
-          margin: margin ??
+          margin:
+              margin ??
               EdgeInsets.only(bottom: SizeConfig.heightMultiplier * 0.5),
           padding: EdgeInsets.fromLTRB(
             SizeConfig.imageSizeMultiplier * 1.5,
@@ -109,9 +110,10 @@ class CustomTextField extends StatelessWidget {
                   floatingLabelBehavior: FloatingLabelBehavior.always,
                   hintText: hintText,
                   hintStyle: TextStyle(
-                    color: const Color(0xff757784),
+                    color: kSecondaryAccent,
                     fontSize: SizeConfig.textMultiplier * 1.8,
                   ),
+                  errorMaxLines: 3,
                   prefixIcon: Icon(
                     prefixIcon,
                     color: kPrimaryColor,

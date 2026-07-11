@@ -3,6 +3,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 /// Always-visible wallet entry point in the app header.
 ///
@@ -23,48 +24,57 @@ class WalletBalancePill extends StatelessWidget {
     final wallet = context.watch<WalletBalanceProvider>();
     final bool isLow = wallet.virtualBalance < lowBalanceThreshold;
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: () {
-            // PAS-UX-WTC: when balance is low, sending the merchant
-            // directly to the Top-Up tab matches the visible warning
-            // tint; otherwise open the Account tab first for billing setup.
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => WalletPage(
-                  initialTab:
-                      isLow ? WalletInitialTab.topUp : WalletInitialTab.account,
+    return Semantics(
+      button: true,
+      label:
+          'Billing, app balance ${CurrencyUtil.format(wallet.virtualBalance)}',
+      excludeSemantics: true,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(24),
+            onTap: () {
+              // PAS-UX-WTC: when balance is low, sending the merchant
+              // directly to the Top-Up tab matches the visible warning
+              // tint; otherwise open the Account tab first for billing setup.
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder:
+                      (_) => WalletPage(
+                        initialTab:
+                            isLow
+                                ? WalletInitialTab.topUp
+                                : WalletInitialTab.account,
+                      ),
                 ),
-              ),
-            );
-          },
-          child: _PillBody(
-            isLoading: wallet.isLoading,
-            balance: wallet.virtualBalance,
-            isLow: isLow,
-          ),
-        ),
-        if (wallet.salesVirtualBalance > 0)
-          Positioned(
-            right: -2,
-            top: -2,
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                border: Border.all(color: Colors.white, width: 1.5),
-              ),
-              child: Icon(
-                Icons.circle,
-                color: Colors.green,
-                size: SizeConfig.imageSizeMultiplier * 2.5,
-              ),
+              );
+            },
+            child: _PillBody(
+              isLoading: wallet.isLoading,
+              balance: wallet.virtualBalance,
+              isLow: isLow,
             ),
           ),
-      ],
+          if (wallet.salesVirtualBalance > 0)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                child: Icon(
+                  Icons.circle,
+                  color: Colors.green,
+                  size: SizeConfig.imageSizeMultiplier * 2.5,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -82,9 +92,10 @@ class _PillBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isLow
-        ? Colors.orange.withOpacity(0.12)
-        : Colors.black.withOpacity(0.05);
+    final bg =
+        isLow
+            ? Colors.orange.withOpacity(0.12)
+            : Colors.black.withOpacity(0.05);
     final border = isLow ? Colors.orange : Colors.black26;
     final fg = isLow ? Colors.orange.shade800 : Colors.black87;
 
@@ -109,46 +120,46 @@ class _PillBody extends StatelessWidget {
           SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
           isLoading
               ? SizedBox(
-                  width: SizeConfig.imageSizeMultiplier * 8,
-                  height: SizeConfig.textMultiplier * 1.6,
-                  child: const _Shimmer(),
-                )
+                width: SizeConfig.imageSizeMultiplier * 8,
+                height: SizeConfig.textMultiplier * 1.6,
+                child: const _Shimmer(),
+              )
               : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'R${balance.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.7,
-                        fontWeight: FontWeight.w600,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    CurrencyUtil.format(balance),
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.7,
+                      fontWeight: FontWeight.w600,
+                      color: fg,
+                    ),
+                  ),
+                  // PAS-UX-WTC: inline "Top up" affordance so the
+                  // low-balance state isn't just a colour change.
+                  if (isLow) ...[
+                    SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: SizeConfig.imageSizeMultiplier * 1.5,
+                        vertical: SizeConfig.heightMultiplier * 0.2,
+                      ),
+                      decoration: BoxDecoration(
                         color: fg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Top up',
+                        style: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 1.2,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                    // PAS-UX-WTC: inline "Top up" affordance so the
-                    // low-balance state isn't just a colour change.
-                    if (isLow) ...[
-                      SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.imageSizeMultiplier * 1.5,
-                          vertical: SizeConfig.heightMultiplier * 0.2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: fg,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'Top up',
-                          style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.2,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
-                ),
+                ],
+              ),
         ],
       ),
     );

@@ -217,17 +217,17 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
               _sectionTitle('Paystack fees (South Africa)'),
               _buildBulletPoint(
                 'Local payments: ${localPercent.toStringAsFixed(1)}% + '
-                'R${localFlat.toStringAsFixed(2)} (excl. VAT)',
+                '${CurrencyUtil.format(localFlat)} (excl. VAT)',
               ),
               _buildBulletPoint(
                 'Bank EFT: ${eftPercent.toStringAsFixed(1)}% (excl. VAT)',
               ),
               _buildBulletPoint(
                 'International payments: ${intPercent.toStringAsFixed(1)}% + '
-                'R${intFlat.toStringAsFixed(2)} (excl. VAT)',
+                '${CurrencyUtil.format(intFlat)} (excl. VAT)',
               ),
               _buildBulletPoint(
-                'Settlement (payouts): R${settlementFee.toStringAsFixed(2)} '
+                'Settlement (payouts): ${CurrencyUtil.format(settlementFee)} '
                 'per transfer (excl. VAT)',
               ),
               _sectionGap(),
@@ -298,20 +298,20 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
           SizedBox(height: SizeConfig.heightMultiplier * 0.5),
           _exampleLine(
             'Base fee: ${percent.toStringAsFixed(1)}% of '
-            'R${sale.toStringAsFixed(0)} = R${base.toStringAsFixed(2)}',
+            '${CurrencyUtil.format(sale)} = ${CurrencyUtil.format(base)}',
           ),
           if (flat > 0)
             _exampleLine(
-              'Flat fee: R${flat.toStringAsFixed(2)} → '
-              'subtotal R${subtotal.toStringAsFixed(2)}',
+              'Flat fee: ${CurrencyUtil.format(flat)} → '
+              'subtotal ${CurrencyUtil.format(subtotal)}',
             ),
           _exampleLine(
             'VAT: ${vat.toStringAsFixed(0)}% of '
-            'R${subtotal.toStringAsFixed(2)} = R${vatAmount.toStringAsFixed(2)}',
+            '${CurrencyUtil.format(subtotal)} = ${CurrencyUtil.format(vatAmount)}',
           ),
-          _exampleLine('Total fee: R${total.toStringAsFixed(2)}'),
+          _exampleLine('Total fee: ${CurrencyUtil.format(total)}'),
           _exampleLine(
-            'Merchant receives: R${merchant.toStringAsFixed(2)}',
+            'Merchant receives: ${CurrencyUtil.format(merchant)}',
             emphasised: true,
           ),
         ],
@@ -339,10 +339,10 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
   Widget _sectionGap() => SizedBox(height: SizeConfig.heightMultiplier * 3);
 
   Widget _divider() => Divider(
-        thickness: 0.6,
-        height: SizeConfig.heightMultiplier * 2,
-        color: Colors.grey.shade300,
-      );
+    thickness: 0.6,
+    height: SizeConfig.heightMultiplier * 2,
+    color: Colors.grey.shade300,
+  );
 
   /// Body bullet — no leading glyph; the indentation and line spacing
   /// alone communicate list structure.
@@ -429,8 +429,11 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
 
   Widget _helpOption() {
     return FilledButton.icon(
-      onPressed: () =>
-          SupportUtil.sendWhatsAppMessage(context, WhatsAppMessageType.support),
+      onPressed:
+          () => SupportUtil.sendWhatsAppMessage(
+            context,
+            WhatsAppMessageType.support,
+          ),
       icon: Icon(
         FontAwesomeIcons.whatsapp,
         size: SizeConfig.textMultiplier * 2,

@@ -132,20 +132,22 @@ async function fetchCustomersWithNPAsCashflowImpact(currentUserId: string) {
       .collection("users")
       .doc(currentUserId)
       .collection("customers")
-      .where("isNPA", "==", true)
+      .where("balance", "<", 0)
       .get();
 
     snapshot.forEach((doc) => {
       const customerData = doc.data();
+      const balance = Number(customerData.balance ?? 0);
+      if (balance >= 0) return;
       npaCustomers.push({
         id: doc.id,
         name: customerData.name,
         number: customerData.number,
         category: customerData.category,
-        balance: customerData.balance,
+        balance,
         lastTransaction: customerData.lastTransaction,
         lastReminderSent: customerData.lastReminderSent,
-        isNPA: customerData.isNPA,
+        isNPA: true,
         profileImageUrl: customerData.profileImageUrl,
       });
     });
@@ -177,11 +179,14 @@ async function fetchCustomersWithNPAs(currentUserId: string) {
       .collection("users")
       .doc(currentUserId)
       .collection("customers")
-      .where("isNPA", "==", true)
+      .where("balance", "<", 0)
       .get();
 
     snapshot.forEach((doc) => {
-      npaCustomers.push(doc.data().name);
+      const customerData = doc.data();
+      if (Number(customerData.balance ?? 0) < 0) {
+        npaCustomers.push(customerData.name);
+      }
     });
 
     return npaCustomers;

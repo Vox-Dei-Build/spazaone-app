@@ -258,8 +258,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     final String confirmLabel;
     if (isOutForDelivery) {
       title = 'Pull $who off this delivery?';
-      body =
-          'The customer was already told their order is on the way. '
+      body = 'The customer was already told their order is on the way. '
           'Unassigning will reset this order to "Accepted" so you can '
           'arrange a new driver — only do this if $who can no longer '
           'complete the delivery (accident, package lost, etc.).';
@@ -691,7 +690,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           // Without this gate a merchant can mark cash received on an
           // order still sitting in the shop or out on a truck, which
           // silently reconciles money that hasn't moved.
-          final hasHandedOver = isDelivery ? isDelivered : (isCollected == true);
+          final hasHandedOver =
+              isDelivery ? isDelivered : (isCollected == true);
           final canMarkCash = (methodForLogic == 'cash' ||
                   methodForLogic == 'transfer' ||
                   methodForLogic == 'eft') &&
@@ -811,9 +811,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                   final ok = await showDialog<bool>(
                     context: context,
                     builder: (_) => AlertDialog(
-                      title: const Text('Reject BNPL?'),
+                      title: const Text('Reject Pay Later request?'),
                       content: const Text(
-                        'This will decline the customer’s BNPL request.',
+                        'This will decline the customer’s Pay Later request.',
                       ),
                       actions: [
                         TextButton(
@@ -918,7 +918,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                               isPendingMerchantReview:
                                                   isPendingMerchantReview,
                                               isAcceptedOrder: isAcceptedOrder,
-                                              isOutForDelivery: isOutForDelivery,
+                                              isOutForDelivery:
+                                                  isOutForDelivery,
                                               isDelivered: isDelivered,
                                               isCollected: isCollected == true,
                                               isDelivery: isDelivery,
@@ -947,10 +948,11 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                                               total,
                                             ),
                                             dateText: createdAt,
-                                            paymentMethod:
-                                                methodForDisplay.isEmpty
-                                                    ? (isBnpl ? 'BNPL' : '—')
-                                                    : methodForDisplay,
+                                            paymentMethod: isBnpl
+                                                ? 'Pay Later'
+                                                : (methodForDisplay.isEmpty
+                                                    ? '—'
+                                                    : methodForDisplay),
                                             paymentStatus: paymentStatus.isEmpty
                                                 ? (isBnplApproved
                                                     ? 'approved'

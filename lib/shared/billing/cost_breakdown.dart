@@ -1,3 +1,5 @@
+import 'package:pasella/utils/currency_util.dart';
+
 /// A unified, presentation-friendly cost breakdown for any wallet-deducting
 /// action.
 ///
@@ -157,20 +159,18 @@ class CostBreakdown {
         CostLine(
           label: 'WhatsApp',
           detail:
-              '$whatsappCount recipient${whatsappCount == 1 ? '' : 's'} × R${whatsappUnit.toStringAsFixed(2)}',
+              '$whatsappCount recipient${whatsappCount == 1 ? '' : 's'} × ${CurrencyUtil.format(whatsappUnit)}',
           amount: whatsappCount * whatsappUnit,
         ),
       );
     }
     if (smsCount > 0) {
-      final segLabel = smsSegments == 1
-          ? '1 segment'
-          : '$smsSegments segments';
+      final segLabel = smsSegments == 1 ? '1 segment' : '$smsSegments segments';
       lines.add(
         CostLine(
           label: 'SMS',
           detail:
-              '$smsCount recipient${smsCount == 1 ? '' : 's'} × $segLabel × R${smsUnit.toStringAsFixed(2)}',
+              '$smsCount recipient${smsCount == 1 ? '' : 's'} × $segLabel × ${CurrencyUtil.format(smsUnit)}',
           amount: smsCount * smsSegments * smsUnit,
         ),
       );

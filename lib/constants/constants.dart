@@ -9,7 +9,7 @@ const kTertiaryColor = Color(0xff2B325F);
 
 const kHighLightColor = Color(0xffeef4ef);
 
-const kSecondaryAccent = Color(0xff757784);
+const kSecondaryAccent = Color(0xff686A77);
 
 const kTextFieldStyle = TextStyle(
   fontSize: 14.5,
@@ -18,7 +18,7 @@ const kTextFieldStyle = TextStyle(
 );
 
 const kLabelStyle = TextStyle(
-  color: Color(0xff757784),
+  color: kSecondaryAccent,
   fontSize: 13.0,
   fontWeight: FontWeight.bold,
 );
@@ -47,11 +47,10 @@ class WaBrandColour {
 
 final kCustomThemeData = ThemeData(
   useMaterial3: true,
-  splashColor: Colors.transparent,
-  highlightColor: Colors.transparent,
-  splashFactory: NoSplash.splashFactory,
   colorScheme: const ColorScheme.light(
-      primary: kPrimaryColor, surfaceTint: Colors.white),
+    primary: kPrimaryColor,
+    surfaceTint: Colors.white,
+  ),
   iconTheme: const IconThemeData(color: kTertiaryColor),
   // PAS-UX-rel: standardise Card chrome across the app so the
   // onboarding surfaces stop rolling their own borders/elevations.
@@ -61,18 +60,19 @@ final kCustomThemeData = ThemeData(
     elevation: 0.5,
     surfaceTintColor: kPrimaryColor,
     margin: EdgeInsets.zero,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
   ),
   navigationBarTheme: NavigationBarThemeData(
     elevation: 10.0,
     height: 70.0,
-    iconTheme: const MaterialStatePropertyAll(
-      IconThemeData(
-        color: kSecondaryColor,
-      ),
-    ),
+    iconTheme: MaterialStateProperty.resolveWith((states) {
+      return IconThemeData(
+        color:
+            states.contains(MaterialState.selected)
+                ? kSecondaryColor
+                : kTertiaryColor,
+      );
+    }),
     indicatorColor: kTertiaryColor,
     backgroundColor: Colors.grey.shade100,
     surfaceTintColor: Colors.white,
@@ -98,9 +98,7 @@ final kCustomThemeData = ThemeData(
   inputDecorationTheme: const InputDecorationTheme(
     prefixIconColor: Colors.grey,
     enabledBorder: UnderlineInputBorder(
-      borderSide: BorderSide(
-        color: Colors.grey,
-      ),
+      borderSide: BorderSide(color: Colors.grey),
     ),
   ),
 );

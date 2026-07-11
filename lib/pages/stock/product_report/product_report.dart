@@ -10,7 +10,7 @@ class ProductReportsTab extends StatefulWidget {
   final StockViewModel viewModel;
 
   const ProductReportsTab({Key? key, required this.viewModel})
-      : super(key: key);
+    : super(key: key);
 
   @override
   _ProductReportsTabState createState() => _ProductReportsTabState();
@@ -24,13 +24,17 @@ class _ProductReportsTabState extends State<ProductReportsTab> {
       final lowStockProducts = widget.viewModel.checkLowStock();
       for (var product in lowStockProducts) {
         if (product.quantity! < 1) {
-          showSnackbar(context,
-              '${product.name} is finished, please restock :(', Colors.red);
+          showSnackbar(
+            context,
+            '${product.name} is finished, please restock :(',
+            Colors.red,
+          );
         } else {
           showSnackbar(
-              context,
-              '${product.name} only has ${product.quantity} item(s) left. Stock soon ;)',
-              Colors.orange);
+            context,
+            '${product.name} only has ${product.quantity} item(s) left. Stock soon ;)',
+            Colors.orange,
+          );
         }
       }
     });
@@ -46,24 +50,31 @@ class _ProductReportsTabState extends State<ProductReportsTab> {
     List<Product> lowStockProductsTwo =
         lowStockProducts.where((product) => product.quantity! > 1).toList();
 
-    double totalCost = allProducts.fold(0,
-        (sum, product) => sum + (product.cost ?? 0) * (product.quantity ?? 0));
+    double totalCost = allProducts.fold(
+      0,
+      (sum, product) => sum + (product.cost ?? 0) * (product.quantity ?? 0),
+    );
     double totalSellingPrice = allProducts.fold(
-        0,
-        (sum, product) =>
-            sum + (product.sellingPrice ?? 0) * (product.quantity ?? 0));
+      0,
+      (sum, product) =>
+          sum + (product.sellingPrice ?? 0) * (product.quantity ?? 0),
+    );
     double potentialProfit = totalSellingPrice - totalCost;
 
     return ListView(
       padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
       children: [
-        SummaryCard(title: 'Product(s) Cost Value', amount: totalCost),
-        SummaryCard(title: 'Product(s) Sales Value', amount: totalSellingPrice),
-        SummaryCard(
-            title: 'Potential Profit from Product(s)', amount: potentialProfit),
+        SummaryCard(title: 'Product Cost Value', amount: totalCost),
+        SummaryCard(title: 'Product Sales Value', amount: totalSellingPrice),
+        SummaryCard(title: 'Potential Product Profit', amount: potentialProfit),
         ProductSection(
-            title: 'Almost Finished Product(s)', products: lowStockProductsTwo),
-        ProductSection(title: 'Finished Product(s)', products: noStockProducts),
+          title: 'Low-stock Products',
+          products: lowStockProductsTwo,
+        ),
+        ProductSection(
+          title: 'Out-of-stock Products',
+          products: noStockProducts,
+        ),
       ],
     );
   }

@@ -174,9 +174,7 @@ class _ConsentModalState extends State<ConsentModal> {
                       onPressed: _saving ? null : _rejectAll,
                       style: TextButton.styleFrom(
                         foregroundColor: kSecondaryAccent,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: const Size(0, 32),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        minimumSize: const Size(48, 48),
                       ),
                       child: const Text('Reject all'),
                     ),
@@ -237,10 +235,9 @@ class _ConsentModalState extends State<ConsentModal> {
                       'Anonymous stats about which features get used. No '
                       'messages, no contacts.',
                   value: _analytics,
-                  onChanged:
-                      _saving
-                          ? null
-                          : (v) => setState(() {
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() {
                             _analytics = v;
                             if (!v) _replay = false;
                           }),
@@ -253,10 +250,9 @@ class _ConsentModalState extends State<ConsentModal> {
                       'Blurred recordings of your screens so we can debug '
                       'rough edges. Needs usage insights on.',
                   value: _replay && _analytics,
-                  onChanged:
-                      (_saving || !_analytics)
-                          ? null
-                          : (v) => setState(() => _replay = v),
+                  onChanged: (_saving || !_analytics)
+                      ? null
+                      : (v) => setState(() => _replay = v),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -285,7 +281,7 @@ class _ConsentModalState extends State<ConsentModal> {
                   onPressed: _saving ? null : _acceptAll,
                   style: TextButton.styleFrom(
                     foregroundColor: kPrimaryColor,
-                    minimumSize: const Size(0, 40),
+                    minimumSize: const Size(48, 48),
                   ),
                   child: const Text(
                     'Accept all',
@@ -378,11 +374,9 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
             ),
             const SizedBox(height: 18),
             FilledButton(
-              onPressed:
-                  _saving
-                      ? null
-                      : () =>
-                          _save(analytics: true, replay: false, crash: true),
+              onPressed: _saving
+                  ? null
+                  : () => _save(analytics: true, replay: false, crash: true),
               style: FilledButton.styleFrom(
                 backgroundColor: kPrimaryColor,
                 foregroundColor: Colors.white,
@@ -398,11 +392,9 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
             ),
             const SizedBox(height: 8),
             OutlinedButton(
-              onPressed:
-                  _saving
-                      ? null
-                      : () =>
-                          _save(analytics: false, replay: false, crash: true),
+              onPressed: _saving
+                  ? null
+                  : () => _save(analytics: false, replay: false, crash: true),
               style: OutlinedButton.styleFrom(
                 foregroundColor: kSecondaryAccent,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -416,10 +408,9 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
               ),
             ),
             TextButton(
-              onPressed:
-                  _saving
-                      ? null
-                      : () => Navigator.of(
+              onPressed: _saving
+                  ? null
+                  : () => Navigator.of(
                         context,
                       ).pop(_PostAuthConsentAction.customize),
               child: const Text('Customize'),

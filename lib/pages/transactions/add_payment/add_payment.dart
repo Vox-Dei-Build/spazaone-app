@@ -25,11 +25,12 @@ class AddPaymentScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AddPaymentViewModel(
-        customerName: customerName,
-        customerId: customerId,
-        mobileNumber: mobileNumber,
-      ),
+      create:
+          (_) => AddPaymentViewModel(
+            customerName: customerName,
+            customerId: customerId,
+            mobileNumber: mobileNumber,
+          ),
       child: Consumer<AddPaymentViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
@@ -50,7 +51,9 @@ class AddPaymentScreen extends StatelessWidget {
                   hintText: 'Enter Amount',
                   prefixIcon: Icons.money,
                   controller: viewModel.amountController,
-                  textInputType: TextInputType.number,
+                  textInputType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   validator: (value) {
                     if (value == null ||
                         value.isEmpty ||

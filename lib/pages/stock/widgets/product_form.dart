@@ -64,11 +64,15 @@ class _ProductFormState extends State<ProductForm> {
 
     return Consumer<ProductViewModel>(
       builder: (context, viewModel, child) {
-        String? selectedGroup = widget.product.group ?? widget.initialGroup;
-        if (selectedGroup != null &&
-            !viewModel.productGroups.contains(selectedGroup)) {
-          selectedGroup = null;
-        }
+        final selectedGroup = widget.product.group ?? widget.initialGroup;
+        // Preserve a custom group while the asynchronous group list loads.
+        // Clearing an unknown value during build silently removed the group
+        // from existing products before the merchant touched the field.
+        final availableGroups = <String>{
+          ...viewModel.productGroups,
+          if (selectedGroup != null) selectedGroup,
+        }.toList()
+          ..sort();
 
         return Form(
           key: widget.formKey,
@@ -115,66 +119,60 @@ class _ProductFormState extends State<ProductForm> {
                               },
                             ),
                             SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CustomTextField(
-                                    label: "Cost*",
-                                    hintText: "Cost",
-                                    prefixIcon: Icons.money,
-                                    controller: viewModel.costController,
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter the cost';
-                                      }
-                                      if (double.tryParse(value) == null) {
-                                        return 'Please enter a valid number';
-                                      }
-                                      return null;
-                                    },
-                                    onChanged: (value) {
-                                      viewModel.markUnsavedChanges();
-                                      widget.product.cost = double.tryParse(
-                                        value,
-                                      );
-                                      setState(() {
-                                        _cost = double.tryParse(value);
-                                      });
-                                    },
-                                    textInputType: TextInputType.number,
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: SizeConfig.imageSizeMultiplier * 5,
-                                ),
-                                Expanded(
-                                  child: CustomTextField(
-                                    label: "Selling Price*",
-                                    hintText: "Selling Price",
-                                    prefixIcon: Icons.money,
-                                    controller:
-                                        viewModel.sellingPriceController,
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter the selling price';
-                                      }
-                                      if (double.tryParse(value) == null) {
-                                        return 'Please enter a valid number';
-                                      }
-                                      return null;
-                                    },
-                                    onChanged: (value) {
-                                      viewModel.markUnsavedChanges();
-                                      widget.product.sellingPrice =
-                                          double.tryParse(value);
-                                      setState(() {
-                                        _sellingPrice = double.tryParse(value);
-                                      });
-                                    },
-                                    textInputType: TextInputType.number,
-                                  ),
-                                ),
-                              ],
+                            CustomTextField(
+                              label: "Cost*",
+                              hintText: "Cost",
+                              prefixIcon: Icons.money,
+                              controller: viewModel.costController,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter the cost';
+                                }
+                                if (double.tryParse(value) == null) {
+                                  return 'Please enter a valid number';
+                                }
+                                return null;
+                              },
+                              onChanged: (value) {
+                                viewModel.markUnsavedChanges();
+                                widget.product.cost = double.tryParse(value);
+                                setState(() {
+                                  _cost = double.tryParse(value);
+                                });
+                              },
+                              textInputType:
+                                  const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                            ),
+                            SizedBox(height: SizeConfig.heightMultiplier * 1.5),
+                            CustomTextField(
+                              label: "Selling Price*",
+                              hintText: "Selling Price",
+                              prefixIcon: Icons.money,
+                              controller: viewModel.sellingPriceController,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter the selling price';
+                                }
+                                if (double.tryParse(value) == null) {
+                                  return 'Please enter a valid number';
+                                }
+                                return null;
+                              },
+                              onChanged: (value) {
+                                viewModel.markUnsavedChanges();
+                                widget.product.sellingPrice = double.tryParse(
+                                  value,
+                                );
+                                setState(() {
+                                  _sellingPrice = double.tryParse(value);
+                                });
+                              },
+                              textInputType:
+                                  const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
                             ),
                             // PAS-UX-XX: cost field clarity. Merchant
                             // feedback (Gugu) flagged confusion over
@@ -195,8 +193,7 @@ class _ProductFormState extends State<ProductForm> {
                                     color: Colors.grey[600],
                                   ),
                                   SizedBox(
-                                    width:
-                                        SizeConfig.imageSizeMultiplier * 1.2,
+                                    width: SizeConfig.imageSizeMultiplier * 1.2,
                                   ),
                                   Expanded(
                                     child: Text(
@@ -343,8 +340,7 @@ class _ProductFormState extends State<ProductForm> {
                             // never a surprise. Hidden as soon as an image
                             // is attached or the toggle is turned back off.
                             if (widget.product.whatsappListed &&
-                                (viewModel.imageUrl == null ||
-                                    viewModel.imageUrl!.isEmpty)) ...[
+                                !viewModel.hasImage) ...[
                               SizedBox(height: SizeConfig.heightMultiplier * 1),
                               Row(
                                 key: const ValueKey('wa-image-required-cue'),
@@ -385,7 +381,8 @@ class _ProductFormState extends State<ProductForm> {
                               child: ExpansionTile(
                                 tilePadding: EdgeInsets.zero,
                                 childrenPadding: EdgeInsets.zero,
-                                initiallyExpanded: (viewModel
+                                initiallyExpanded: selectedGroup != null ||
+                                    (viewModel
                                         .companyController.text.isNotEmpty) ||
                                     (viewModel
                                         .descriptionController.text.isNotEmpty),
@@ -394,6 +391,32 @@ class _ProductFormState extends State<ProductForm> {
                                   style: TextStyle(fontWeight: FontWeight.w500),
                                 ),
                                 children: [
+                                  DropdownButtonFormField<String>(
+                                    value: selectedGroup,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Product group (optional)',
+                                      prefixIcon: Icon(Icons.category_outlined),
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    items: availableGroups
+                                        .map(
+                                          (group) => DropdownMenuItem<String>(
+                                            value: group,
+                                            child: Text(group),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (group) {
+                                      viewModel.markUnsavedChanges();
+                                      setState(() {
+                                        widget.product.group = group;
+                                      });
+                                    },
+                                  ),
+                                  SizedBox(
+                                    height: SizeConfig.heightMultiplier * 2,
+                                  ),
                                   CustomTextField(
                                     label: "Company",
                                     hintText: "Company",
@@ -448,7 +471,7 @@ class _ProductFormState extends State<ProductForm> {
                                       ? const Center(
                                           child: CircularProgressIndicator(),
                                         )
-                                      : (viewModel.imageUrl == null)
+                                      : (!viewModel.hasImage)
                                           ? Center(
                                               child: Column(
                                                 mainAxisAlignment:
@@ -475,19 +498,25 @@ class _ProductFormState extends State<ProductForm> {
                                                 ],
                                               ),
                                             )
-                                          : CachedNetworkImage(
-                                              fit: BoxFit.cover,
-                                              imageUrl: viewModel.imageUrl!,
-                                              errorWidget:
-                                                  (context, url, error) => Icon(
-                                                Icons.image,
-                                                size: SizeConfig
-                                                        .imageSizeMultiplier *
-                                                    6,
-                                                color: Colors.green
-                                                    .withOpacity(0.5),
-                                              ),
-                                            ),
+                                          : viewModel.pendingImage != null
+                                              ? Image.file(
+                                                  viewModel.pendingImage!,
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : CachedNetworkImage(
+                                                  fit: BoxFit.cover,
+                                                  imageUrl: viewModel.imageUrl!,
+                                                  errorWidget:
+                                                      (context, url, error) =>
+                                                          Icon(
+                                                    Icons.image,
+                                                    size: SizeConfig
+                                                            .imageSizeMultiplier *
+                                                        6,
+                                                    color: Colors.green
+                                                        .withOpacity(0.5),
+                                                  ),
+                                                ),
                                 ),
                               ),
                             ),

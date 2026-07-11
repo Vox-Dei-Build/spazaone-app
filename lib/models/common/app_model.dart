@@ -7,11 +7,7 @@ import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/stock/stock.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 
-enum SwitchType {
-  appLock,
-  paymentPassword,
-  fingerPrint,
-}
+enum SwitchType { appLock, paymentPassword, fingerPrint }
 
 class AppModel with ChangeNotifier {
   final List<Widget> _navigationOptions = [
@@ -37,9 +33,7 @@ class AppModel with ChangeNotifier {
       return;
     }
     Navigator.of(ctx).push(
-      MaterialPageRoute(
-        builder: (_) => WalletPage(initialTab: initialTab),
-      ),
+      MaterialPageRoute(builder: (_) => WalletPage(initialTab: initialTab)),
     );
   }
 
@@ -102,49 +96,65 @@ class AppModel with ChangeNotifier {
   }
 
   void updateFromTemporaryFilters(
-      List<List> reminderDateFilter, String sortByFilter) {
-    _reminderDateFilter = List.from(reminderDateFilter);
+    List<List> reminderDateFilter,
+    String sortByFilter,
+  ) {
+    _reminderDateFilter =
+        reminderDateFilter.map((filter) => List<dynamic>.from(filter)).toList();
     _selectedSortByFilter = sortByFilter;
     notifyListeners();
   }
 
   List<CustomerWithTransactions> applyFilters(
-      List<CustomerWithTransactions> originalEntries) {
+    List<CustomerWithTransactions> originalEntries,
+  ) {
     List<CustomerWithTransactions> filteredEntries = originalEntries;
 
     // Apply reminder date filters
     if (_reminderDateFilter[0][1]) {
       // Today
-      filteredEntries = filteredEntries.where((entry) {
-        final lastTransactionDate =
-            entry.customer.lastTransaction?['date'] as Timestamp?;
-        return lastTransactionDate?.toDate().day == DateTime.now().day;
-      }).toList();
+      filteredEntries =
+          filteredEntries.where((entry) {
+            final lastTransactionDate =
+                entry.customer.lastTransaction?['date'] as Timestamp?;
+            final date = lastTransactionDate?.toDate();
+            final now = DateTime.now();
+            return date != null &&
+                date.year == now.year &&
+                date.month == now.month &&
+                date.day == now.day;
+          }).toList();
     } else if (_reminderDateFilter[1][1]) {
       // Pending
-      filteredEntries = filteredEntries.where((entry) {
-        final lastTransactionDate =
-            entry.customer.lastTransaction?['date'] as Timestamp?;
-        return lastTransactionDate?.toDate().isBefore(DateTime.now()) ?? false;
-      }).toList();
+      filteredEntries =
+          filteredEntries.where((entry) {
+            final lastTransactionDate =
+                entry.customer.lastTransaction?['date'] as Timestamp?;
+            return lastTransactionDate?.toDate().isBefore(DateTime.now()) ??
+                false;
+          }).toList();
     } else if (_reminderDateFilter[2][1]) {
       // Upcoming
-      filteredEntries = filteredEntries.where((entry) {
-        final lastTransactionDate =
-            entry.customer.lastTransaction?['date'] as Timestamp?;
-        return lastTransactionDate?.toDate().isAfter(DateTime.now()) ?? false;
-      }).toList();
+      filteredEntries =
+          filteredEntries.where((entry) {
+            final lastTransactionDate =
+                entry.customer.lastTransaction?['date'] as Timestamp?;
+            return lastTransactionDate?.toDate().isAfter(DateTime.now()) ??
+                false;
+          }).toList();
     }
 
     // Sort the filtered entries
     switch (_selectedSortByFilter) {
       case 'Name':
-        filteredEntries
-            .sort((a, b) => a.customer.name.compareTo(b.customer.name));
+        filteredEntries.sort(
+          (a, b) => a.customer.name.compareTo(b.customer.name),
+        );
         break;
       case 'Amount':
-        filteredEntries
-            .sort((a, b) => a.customer.balance.compareTo(b.customer.balance));
+        filteredEntries.sort(
+          (a, b) => a.customer.balance.compareTo(b.customer.balance),
+        );
         break;
       case 'Latest':
         filteredEntries.sort((a, b) {
@@ -154,9 +164,10 @@ class AppModel with ChangeNotifier {
         });
         break;
       case "Non-Payers":
-        filteredEntries = filteredEntries.where((entry) {
-          return entry.customer.isNPA == true;
-        }).toList();
+        filteredEntries =
+            filteredEntries.where((entry) {
+              return entry.customer.isNPA == true;
+            }).toList();
         break;
     }
 
