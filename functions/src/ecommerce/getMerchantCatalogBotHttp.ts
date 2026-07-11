@@ -6,6 +6,7 @@
  * the transport contract small and avoids leaking unrelated stock metadata.
  */
 import { db, functions } from "../config/main";
+import { requireBotRequest } from "../security/requestAuth";
 
 type CatalogProduct = {
   id: string;
@@ -41,8 +42,10 @@ function isWhatsAppListed(data: Record<string, unknown>): boolean {
   );
 }
 
-export const getMerchantCatalogBotHttp = functions.https.onRequest(
-  async (req, res) => {
+export const getMerchantCatalogBotHttp = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
       return;
@@ -94,5 +97,4 @@ export const getMerchantCatalogBotHttp = functions.https.onRequest(
       console.error("Error fetching bot catalog:", error?.message || error);
       res.status(500).json({ error: "failed_to_fetch_catalog" });
     }
-  },
-);
+  });

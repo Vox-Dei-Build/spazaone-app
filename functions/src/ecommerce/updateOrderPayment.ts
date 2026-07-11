@@ -1,5 +1,6 @@
 // functions/src/http/updateOrderPayment.ts
 import { db, functions } from "../config/main";
+import { authorizeCallableMerchantOrBot } from "../security/requestAuth";
 import * as admin from "firebase-admin";
 
 const ALLOWED = new Set([
@@ -169,6 +170,12 @@ export const updateOrderPayment = functions.https.onCall(
           "merchantId, orderId, paymentAction are required",
         );
       }
+      if (!authorizeCallableMerchantOrBot(context, merchantId)) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Access denied",
+        );
+      }
       if (!ALLOWED.has(paymentAction)) {
         throw new functions.https.HttpsError(
           "invalid-argument",
@@ -286,8 +293,7 @@ export const updateOrderPayment = functions.https.onCall(
           // assigned — otherwise there's nothing operationally true to
           // tell the customer.
           const driver = orderData.driver || {};
-          const hasDriver =
-            !!(driver.id || driver.name || driver.phone);
+          const hasDriver = !!(driver.id || driver.name || driver.phone);
           if (!hasDriver) {
             throw new functions.https.HttpsError(
               "failed-precondition",

@@ -11,6 +11,7 @@ void main() {
     late http.Request captured;
     final client = TwilioProxyClient(
       idTokenProvider: () async => 'firebase-id-token',
+      appCheckTokenProvider: () async => 'firebase-app-check-token',
       httpClient: MockClient((request) async {
         captured = request;
         return http.Response('{"success":true,"sid":"SM123"}', 201);
@@ -27,6 +28,10 @@ void main() {
     expect(response.statusCode, 201);
     expect(captured.url, TwilioProxyClient.endpoint);
     expect(captured.headers['authorization'], 'Bearer firebase-id-token');
+    expect(
+      captured.headers['x-firebase-appcheck'],
+      'firebase-app-check-token',
+    );
     expect(captured.headers['content-type'], startsWith('application/json'));
     expect(jsonDecode(captured.body)['channel'], 'sms');
     expect(captured.body, isNot(contains('TWILIO_AUTH_TOKEN')));
@@ -35,6 +40,20 @@ void main() {
   test('proxy refuses requests when no merchant is signed in', () async {
     final client = TwilioProxyClient(
       idTokenProvider: () async => null,
+      appCheckTokenProvider: () async => 'firebase-app-check-token',
+      httpClient: MockClient((_) async => http.Response('', 500)),
+    );
+
+    expect(
+      () => client.post({'action': 'send'}),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('proxy refuses requests from an unattested app', () async {
+    final client = TwilioProxyClient(
+      idTokenProvider: () async => 'firebase-id-token',
+      appCheckTokenProvider: () async => null,
       httpClient: MockClient((_) async => http.Response('', 500)),
     );
 

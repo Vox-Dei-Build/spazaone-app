@@ -6,6 +6,7 @@ import * as admin from "firebase-admin";
 import { Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
+import { requireBotRequest } from "../security/requestAuth";
 
 function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   const pa = a.split(".").map(Number);
@@ -106,8 +107,10 @@ async function markRefCodeUsed(refCode: string | undefined): Promise<void> {
     );
 }
 
-export const getShopContextBotHttp = functions.https.onRequest(
-  async (req, res) => {
+export const getShopContextBotHttp = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
     if (req.method !== "POST") {
       console.warn("Rejected non-POST request", { method: req.method });
       res.status(405).json({ error: "method_not_allowed" });
@@ -371,5 +374,4 @@ export const getShopContextBotHttp = functions.https.onRequest(
       res.status(500).json({ error: e?.message || "internal_error" });
       return;
     }
-  },
-);
+  });

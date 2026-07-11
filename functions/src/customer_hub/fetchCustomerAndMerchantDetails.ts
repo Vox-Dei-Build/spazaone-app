@@ -1,5 +1,6 @@
 import { normalizePhoneNumber } from "..";
 import { functions, db } from "../config/main";
+import { requireBotRequest } from "../security/requestAuth";
 
 /**
  * HTTP GET Function to fetch the most recent customer and merchant details based on the phone number.
@@ -38,8 +39,10 @@ import { functions, db } from "../config/main";
  * @throws {404} - If no customer or merchant details are found for the provided phone number.
  * @throws {500} - If there is a server error while querying Firestore.
  */
-exports.fetchCustomerAndMerchantDetails = functions.https.onRequest(
-  async (req, res) => {
+exports.fetchCustomerAndMerchantDetails = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
     const rawNumber = req.query.number as string; // Get phone number from query params
 
     if (!rawNumber) {
@@ -134,5 +137,4 @@ exports.fetchCustomerAndMerchantDetails = functions.https.onRequest(
       console.error("Failed to fetch customer and merchant details:", error);
       res.status(500).send("Failed to fetch customer and merchant details.");
     }
-  },
-);
+  });

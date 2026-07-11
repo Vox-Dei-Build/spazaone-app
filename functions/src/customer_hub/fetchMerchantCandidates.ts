@@ -1,6 +1,7 @@
 // functions/src/http/fetchMerchantCandidates.ts
 import { functions, db } from "../config/main";
 import { normalizePhoneNumber } from "..";
+import { requireBotRequest } from "../security/requestAuth";
 
 interface MerchantCandidate {
   merchantId: string;
@@ -21,8 +22,10 @@ interface MerchantCandidate {
  * If activeTo (Twilio/WhatsApp business number the user messaged) matches a merchant,
  * that merchant is boosted to the top.
  */
-export const fetchMerchantCandidates = functions.https.onRequest(
-  async (req, res) => {
+export const fetchMerchantCandidates = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
     try {
       const raw = (req.query.number as string) || "";
       const activeTo = (req.query.activeTo as string) || ""; // optional
@@ -119,5 +122,4 @@ export const fetchMerchantCandidates = functions.https.onRequest(
       console.error(e);
       res.status(500).send("Failed to fetch merchant candidates.");
     }
-  },
-);
+  });

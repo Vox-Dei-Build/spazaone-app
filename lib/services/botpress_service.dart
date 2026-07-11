@@ -1,50 +1,29 @@
 import 'dart:convert';
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
-import 'package:pasella/config/remote_config.dart';
-
-/// Normalizes phone numbers for Botpress conversation tags:
-/// Twilio/your app: +27XXXXXXXXX
-/// Botpress tags:   27XXXXXXXXX  (no plus)
-String normalizeMsisdnForBotpressTag(String e164) {
-  if (e164.isEmpty) return e164;
-  final digits = e164.replaceAll(RegExp(r'[^\d]'), '');
-  // keep leading country code; for ZA this is 27
-  return digits;
-}
 
 class BotpressService {
-  BotpressService._(this._apiToken, this._botId) : _http = http.Client();
+  BotpressService._() : _http = http.Client();
 
-  final String _apiToken;
-  final String _botId;
   final http.Client _http;
 
-  static const _host = 'api.botpress.cloud';
+  static final Uri _endpoint = Uri.parse(
+    'https://us-central1-pasella-ledger.cloudfunctions.net/getBotpressMessages',
+  );
 
   static Future<BotpressService> create() async {
-    final rc = await RemoteConfigService.getInstance();
-    final token = rc.getString('Botpress_Keys');
-    final botId = rc.getString('BOTPRESS_BOT_ID');
-
-    if (token.isEmpty || botId.isEmpty) {
-      throw StateError(
-          'Missing Remote Config: Botpress_Keys and/or BOTPRESS_BOT_ID');
-    }
-    return BotpressService._(token, botId);
+    return BotpressService._();
   }
 
   void dispose() => _http.close();
 
-  /// Public: fetch mapped messages for a customer number (E.164, e.g. +27…)
+  /// Fetch mapped messages for a merchant-owned customer thread.
   Future<List<Map<String, dynamic>>> fetchBotpressMessages({
-    required String customerNumber,
+    required String customerId,
   }) async {
     try {
-      final userPhoneNoPlus = normalizeMsisdnForBotpressTag(customerNumber);
-      final conversationId = await _findConversationId(userPhoneNoPlus);
-      if (conversationId == null) return const [];
-
-      final raw = await _fetchMessages(conversationId);
+      final raw = await _fetchMessages(customerId);
       // Map to your app's message shape
       return raw.map<Map<String, dynamic>>((msg) {
         final payload = (msg['payload'] as Map?)?.cast<String, dynamic>() ??
@@ -221,60 +200,32 @@ class BotpressService {
     return null;
   }
 
-  Future<String?> _findConversationId(String userPhoneNoPlus) async {
-    String? nextToken;
-    do {
-      final uri = Uri.https(_host, '/v1/chat/conversations', {
-        if (nextToken != null && nextToken.isNotEmpty) 'nextToken': nextToken,
-      });
+  Future<List<dynamic>> _fetchMessages(String customerId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final idToken = await user?.getIdToken();
+    final appCheckToken = await FirebaseAppCheck.instance.getToken();
+    if (idToken == null ||
+        idToken.isEmpty ||
+        appCheckToken == null ||
+        appCheckToken.isEmpty) {
+      throw StateError('Verified merchant session required.');
+    }
 
-      final res = await _http.get(uri, headers: _headers());
-      if (res.statusCode != 200) {
-        // ignore: avoid_print
-        print('❌ conversations ${res.statusCode}: ${res.body}');
-        return null;
-      }
-
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final conversations = (data['conversations'] as List?) ?? const [];
-      for (final c in conversations) {
-        final tags = (c is Map ? c['tags'] : null) as Map<String, dynamic>?;
-        final tPhone = tags?['whatsapp:userPhone']?.toString();
-        if (tPhone == userPhoneNoPlus) {
-          return c['id']?.toString();
-        }
-      }
-      nextToken = (data['meta'] as Map?)?['nextToken']?.toString();
-    } while (nextToken != null && nextToken.isNotEmpty);
-
-    return null;
+    final response = await _http.post(
+      _endpoint,
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'X-Firebase-AppCheck': appCheckToken,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'customerId': customerId}),
+    );
+    if (response.statusCode != 200) {
+      throw StateError('Conversation proxy returned ${response.statusCode}.');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['messages'] as List? ?? const [];
   }
-
-  Future<List<dynamic>> _fetchMessages(String conversationId) async {
-    final all = <dynamic>[];
-    String? nextToken;
-    do {
-      final uri = Uri.https(_host, '/v1/chat/messages', {
-        'conversationId': conversationId,
-        if (nextToken != null && nextToken.isNotEmpty) 'nextToken': nextToken,
-      });
-      final res = await _http.get(uri, headers: _headers());
-      if (res.statusCode != 200) {
-        // ignore: avoid_print
-        print('❌ messages ${res.statusCode}: ${res.body}');
-        break;
-      }
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      all.addAll((data['messages'] as List?) ?? const []);
-      nextToken = (data['meta'] as Map?)?['nextToken']?.toString();
-    } while (nextToken != null && nextToken.isNotEmpty);
-    return all;
-  }
-
-  Map<String, String> _headers() => {
-        'Authorization': 'Bearer $_apiToken',
-        'x-bot-id': _botId,
-      };
 
   String _normalizeDirection(dynamic d) {
     final v = d?.toString().toLowerCase();

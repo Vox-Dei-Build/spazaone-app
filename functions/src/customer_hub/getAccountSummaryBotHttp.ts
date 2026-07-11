@@ -1,13 +1,16 @@
 import { functions, db } from "../config/main";
 import { normalizePhoneNumber } from "../contact/fetchUserBalance";
+import { requireBotRequest } from "../security/requestAuth";
 
 function asMoney(value: unknown): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
 
-export const getAccountSummaryBotHttp = functions.https.onRequest(
-  async (req, res) => {
+export const getAccountSummaryBotHttp = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).send("Method Not Allowed");
       return;
@@ -62,5 +65,4 @@ export const getAccountSummaryBotHttp = functions.https.onRequest(
       console.error("Failed to fetch bot account summary:", error);
       res.status(500).json({ error: "Failed to fetch account summary" });
     }
-  },
-);
+  });

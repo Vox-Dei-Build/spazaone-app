@@ -1,6 +1,6 @@
-import * as admin from "firebase-admin";
 import twilio from "twilio/lib/index";
 import { db, functions } from "../config/main";
+import { authenticateFirebaseRequest } from "../security/requestAuth";
 import { formatPhoneNumber } from "../utils/phoneUtils";
 import { normalizeTwilioError } from "../utils/twilioError";
 
@@ -13,15 +13,6 @@ const env = (...names: string[]): string => {
     if (value) return value;
   }
   return "";
-};
-
-const authenticateMerchant = async (
-  authorization: string | undefined,
-): Promise<string> => {
-  const match = authorization?.match(/^Bearer\s+(.+)$/i);
-  if (!match) throw new Error("UNAUTHENTICATED");
-  const decoded = await admin.auth().verifyIdToken(match[1]);
-  return decoded.uid;
 };
 
 const normalizeRecipient = (raw: unknown): string => {
@@ -74,7 +65,10 @@ export const sendTwilioMessage = functions
   .runWith({ secrets: ["TWILIO_AUTH_TOKEN"] })
   .https.onRequest(async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
-    res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.set(
+      "Access-Control-Allow-Headers",
+      "Authorization, Content-Type, X-Firebase-AppCheck",
+    );
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
 
     if (req.method === "OPTIONS") {
@@ -86,16 +80,10 @@ export const sendTwilioMessage = functions
       return;
     }
 
-    let merchantId: string;
-    try {
-      merchantId = await authenticateMerchant(req.get("Authorization"));
-    } catch (error) {
-      console.warn("[sendTwilioMessage] rejected unauthenticated request");
-      res
-        .status(401)
-        .json({ success: false, error: "Authentication required." });
-      return;
-    }
+    const merchantId = await authenticateFirebaseRequest(req, res, {
+      requireAppCheck: true,
+    });
+    if (!merchantId) return;
 
     const accountSid = env("TWILIO_ACCOUNT_SID", "TWILIO_SID");
     const authToken = env("TWILIO_AUTH_TOKEN", "TWILIO_TOKEN");

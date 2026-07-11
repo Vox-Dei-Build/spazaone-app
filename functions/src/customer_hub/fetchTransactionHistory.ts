@@ -5,6 +5,7 @@
  */
 import { functions, db } from "../config/main";
 import { normalizePhoneNumber } from "../contact/fetchUserBalance";
+import { requireBotRequest } from "../security/requestAuth";
 
 /**
  * HTTP GET Function to fetch the transaction history for a user.
@@ -12,8 +13,10 @@ import { normalizePhoneNumber } from "../contact/fetchUserBalance";
  * @param {functions.Response} res - The HTTP response object.
  * @return {Promise<void>} - Sends the transaction history as an HTTP response.
  */
-exports.fetchTransactionHistoryOption = functions.https.onRequest(
-  async (req, res) => {
+exports.fetchTransactionHistoryOption = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
     const rawNumber = req.query.number as string; // Get phone number from query params
 
     if (!rawNumber) {
@@ -135,5 +138,4 @@ exports.fetchTransactionHistoryOption = functions.https.onRequest(
       console.error("Failed to fetch transaction history:", error);
       res.status(500).send("Failed to fetch transaction history.");
     }
-  },
-);
+  });

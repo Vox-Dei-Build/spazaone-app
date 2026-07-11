@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_app_badger_plus/flutter_app_badger_plus.dart';
 import 'package:pasella/services/botpress_service.dart';
 import 'package:pasella/services/twilio_service.dart';
+import 'package:pasella/services/secure_function_client.dart';
 import 'package:pasella/utils/phone_util.dart';
-import 'package:http/http.dart' as http;
 
 class ConnectManagementViewModel {
   final String customerId;
@@ -99,7 +98,7 @@ class ConnectManagementViewModel {
           customerId: customerId,
         ),
         _botpress.fetchBotpressMessages(
-          customerNumber: customerNumber,
+          customerId: customerId,
         ),
       ]);
 
@@ -358,14 +357,13 @@ class ConnectManagementViewModel {
   Future<void> markMessagesAsRead(String? customerNumber) async {
     if (customerNumber == null) return;
     try {
-      await http.post(
+      await SecureFunctionClient().post(
         Uri.parse(
             'https://us-central1-pasella-ledger.cloudfunctions.net/markMessagesAsRead'),
-        body: jsonEncode({
+        {
           'merchantId': currentUserId,
           'customerNumber': customerNumber,
-        }),
-        headers: {'Content-Type': 'application/json'},
+        },
       );
       FlutterAppBadgerPlus.removeBadge();
     } catch (e) {

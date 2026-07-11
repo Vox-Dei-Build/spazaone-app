@@ -1,5 +1,6 @@
 import { normalizePhoneNumber } from "..";
 import { functions, db } from "../config/main";
+import { requireBotRequest } from "../security/requestAuth";
 
 /**
  * HTTP GET Function to fetch the most recent merchant details based on the phone number.
@@ -30,56 +31,60 @@ import { functions, db } from "../config/main";
  * @throws {404} - If no merchant details are found for the provided phone number.
  * @throws {500} - If there is a server error while querying Firestore.
  */
-exports.fetchMerchantDetails = functions.https.onRequest(async (req, res) => {
-  const rawNumber = req.query.number as string; // Get phone number from query params
-  if (!rawNumber) {
-    res.status(400).send("The phone number must be provided.");
-    return;
-  }
-  const normalizedNumber = normalizePhoneNumber(
-    rawNumber.replace("whatsapp:", ""),
-  );
-  console.log(`Normalized incoming number for matching: ${normalizedNumber}`);
-  try {
-    // Query users (merchants) based on the phone number
-    const usersRef = db.collection("users");
-    const userSnapshot = await usersRef
-      .where("mobileNumber", "==", normalizedNumber)
-      .get();
-
-    if (userSnapshot.empty) {
-      res.status(404).send("No merchants found with this number.");
+exports.fetchMerchantDetails = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
+    const rawNumber = req.query.number as string; // Get phone number from query params
+    if (!rawNumber) {
+      res.status(400).send("The phone number must be provided.");
       return;
     }
+    const normalizedNumber = normalizePhoneNumber(
+      rawNumber.replace("whatsapp:", ""),
+    );
+    console.log(`Normalized incoming number for matching: ${normalizedNumber}`);
+    try {
+      // Query users (merchants) based on the phone number
+      const usersRef = db.collection("users");
+      const userSnapshot = await usersRef
+        .where("mobileNumber", "==", normalizedNumber)
+        .get();
 
-    // Variables to store the most recent merchant details
-    let mostRecentMerchant = null;
-    let latestMerchantDate = new Date(0); // Initialize with an old date
-
-    // Process each user document
-    userSnapshot.docs.forEach((userDoc) => {
-      const merchant = userDoc.data();
-      const merchantLastUpdated = merchant?.balanceData?.lastUpdated?.toDate();
-      if (merchantLastUpdated && merchantLastUpdated > latestMerchantDate) {
-        latestMerchantDate = merchantLastUpdated;
-        mostRecentMerchant = {
-          merchantId: userDoc.id,
-          merchantName: merchant?.name || "Unknown Merchant",
-          shopName: merchant?.shopName || "Unknown Shop",
-          merchantNumber: merchant?.mobileNumber || "Unknown",
-        };
+      if (userSnapshot.empty) {
+        res.status(404).send("No merchants found with this number.");
+        return;
       }
-    });
 
-    if (!mostRecentMerchant) {
-      res.status(404).send("No recent merchant found.");
-      return;
+      // Variables to store the most recent merchant details
+      let mostRecentMerchant = null;
+      let latestMerchantDate = new Date(0); // Initialize with an old date
+
+      // Process each user document
+      userSnapshot.docs.forEach((userDoc) => {
+        const merchant = userDoc.data();
+        const merchantLastUpdated =
+          merchant?.balanceData?.lastUpdated?.toDate();
+        if (merchantLastUpdated && merchantLastUpdated > latestMerchantDate) {
+          latestMerchantDate = merchantLastUpdated;
+          mostRecentMerchant = {
+            merchantId: userDoc.id,
+            merchantName: merchant?.name || "Unknown Merchant",
+            shopName: merchant?.shopName || "Unknown Shop",
+            merchantNumber: merchant?.mobileNumber || "Unknown",
+          };
+        }
+      });
+
+      if (!mostRecentMerchant) {
+        res.status(404).send("No recent merchant found.");
+        return;
+      }
+
+      // Send response with the most recent merchant details
+      res.status(200).send({ merchantDetails: mostRecentMerchant });
+    } catch (error) {
+      console.error("Failed to fetch merchant details:", error);
+      res.status(500).send("Failed to fetch merchant details.");
     }
-
-    // Send response with the most recent merchant details
-    res.status(200).send({ merchantDetails: mostRecentMerchant });
-  } catch (error) {
-    console.error("Failed to fetch merchant details:", error);
-    res.status(500).send("Failed to fetch merchant details.");
-  }
-});
+  });

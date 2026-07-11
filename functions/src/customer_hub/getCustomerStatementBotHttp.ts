@@ -1,5 +1,6 @@
 import { functions, db } from "../config/main";
 import { normalizePhoneNumber } from "../contact/fetchUserBalance";
+import { requireBotRequest } from "../security/requestAuth";
 
 type StatementKind = "purchase" | "payment" | "adjustment";
 
@@ -130,8 +131,10 @@ async function productsFor(
   return products;
 }
 
-export const getCustomerStatementBotHttp = functions.https.onRequest(
-  async (req, res) => {
+export const getCustomerStatementBotHttp = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
     if (req.method !== "POST") {
       res.status(405).send("Method Not Allowed");
       return;
@@ -217,5 +220,4 @@ export const getCustomerStatementBotHttp = functions.https.onRequest(
       console.error("Failed to fetch bot statement:", error);
       res.status(500).json({ error: "Failed to fetch statement" });
     }
-  },
-);
+  });

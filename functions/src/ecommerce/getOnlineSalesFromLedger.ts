@@ -1,6 +1,7 @@
 // functions/src/http/getOnlineSalesFromLedger.ts
 import { db, functions } from "../config/main";
 import { FieldPath } from "firebase-admin/firestore";
+import { authenticateFirebaseRequest } from "../security/requestAuth";
 
 type AnyMap = { [k: string]: any };
 
@@ -124,6 +125,10 @@ export const getOnlineSalesFromLedger = functions.https.onRequest(
         res.status(400).json({ error: "merchantId is required" });
         return;
       }
+      const authenticatedUid = await authenticateFirebaseRequest(req, res, {
+        expectedUid: merchantId,
+      });
+      if (!authenticatedUid) return;
 
       const ledgerCol = db
         .collection("users")
