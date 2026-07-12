@@ -21,6 +21,7 @@ export * from "./notifications/retention_notifications";
 export * from "./notifications/non_payment_notifications";
 export * from "./notifications/activation_nudges";
 export * from "./notifications/add_customer_nudge_notifications";
+export * from "./notifications/urgent_update_nudges";
 export * from "./stock/scheduledTasks/scheduledLowStockCheck";
 export * from "./payments/paystack/createPaystackTransaction";
 export * from "./payments/paystack/verifyPaystackTransaction";

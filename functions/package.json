@@ -5,6 +5,7 @@
     "lint:fix": "npm run lint -- --fix",
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test:urgent-update": "npm run build && node --test test/urgent_update_nudge_policy.test.mjs",
     "serve": "npm run build && firebase emulators:start --only functions",
     "serve-debug": "npm run build && firebase emulators:start --only functions --debug",
     "shell": "npm run build && firebase functions:shell",
