@@ -266,14 +266,20 @@ class OrderStatusMessagingService {
     required WhatsAppMessagingService waService,
   }) async {
     try {
-      final delivered = await waService.pollMessageStatus(messageSid);
+      final outcome = await waService.pollMessageStatus(messageSid);
+      final delivered = outcome == WhatsAppDeliveryOutcome.delivered;
+      final failed = outcome == WhatsAppDeliveryOutcome.failed;
       await _stampOrderMessage(
         merchantId: merchantId,
         orderId: orderId,
         data: {
-          'status': delivered ? 'delivered' : 'failed',
+          'status': delivered
+              ? 'delivered'
+              : failed
+                  ? 'failed'
+                  : 'sent_unconfirmed',
           if (delivered) 'deliveredAt': FieldValue.serverTimestamp(),
-          if (!delivered) 'failedAt': FieldValue.serverTimestamp(),
+          if (failed) 'failedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         },
       );

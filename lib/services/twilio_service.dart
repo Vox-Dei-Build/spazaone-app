@@ -24,8 +24,8 @@ class TwilioService {
     String mediaResourceUri, {
     required String customerId,
   }) async {
-    final match =
-        RegExp(r'/Messages/(SM[a-fA-F0-9]{32})').firstMatch(mediaResourceUri);
+    final match = RegExp(r'/Messages/((?:SM|MM)[a-fA-F0-9]{32})')
+        .firstMatch(mediaResourceUri);
     if (match == null) return [];
 
     final response = await _proxy.post({

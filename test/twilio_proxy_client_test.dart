@@ -62,4 +62,54 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('retries cold-start token acquisition with forced refresh', () async {
+    late http.Request captured;
+    final client = TwilioProxyClient(
+      idTokenProvider: () async => 'cached-id-token',
+      appCheckTokenProvider: () async => null,
+      refreshedIdTokenProvider: () async => 'refreshed-id-token',
+      refreshedAppCheckTokenProvider: () async => 'refreshed-app-check-token',
+      retryDelay: (_) async {},
+      httpClient: MockClient((request) async {
+        captured = request;
+        return http.Response('{"success":true,"sid":"SM123"}', 201);
+      }),
+    );
+
+    final response = await client.post({'action': 'send'});
+
+    expect(response.statusCode, 201);
+    expect(captured.headers['authorization'], 'Bearer refreshed-id-token');
+    expect(
+      captured.headers['x-firebase-appcheck'],
+      'refreshed-app-check-token',
+    );
+  });
+
+  test('refreshes credentials and retries once after 401', () async {
+    final captured = <http.Request>[];
+    final client = TwilioProxyClient(
+      idTokenProvider: () async => 'cached-id-token',
+      appCheckTokenProvider: () async => 'cached-app-check-token',
+      refreshedIdTokenProvider: () async => 'refreshed-id-token',
+      refreshedAppCheckTokenProvider: () async => 'refreshed-app-check-token',
+      httpClient: MockClient((request) async {
+        captured.add(request);
+        if (captured.length == 1) return http.Response('', 401);
+        return http.Response('{"success":true,"sid":"SM123"}', 201);
+      }),
+    );
+
+    final response = await client.post({'action': 'send'});
+
+    expect(response.statusCode, 201);
+    expect(captured, hasLength(2));
+    expect(captured.first.headers['authorization'], 'Bearer cached-id-token');
+    expect(captured.last.headers['authorization'], 'Bearer refreshed-id-token');
+    expect(
+      captured.last.headers['x-firebase-appcheck'],
+      'refreshed-app-check-token',
+    );
+  });
 }

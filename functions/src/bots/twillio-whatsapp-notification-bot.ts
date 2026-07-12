@@ -7,6 +7,12 @@ import { normalizeTwilioError } from "../utils/twilioError";
 type TwilioAction = "send" | "status" | "messages" | "media";
 type TwilioChannel = "whatsapp" | "sms";
 
+// Twilio uses SM SIDs for standard messages and can return MM SIDs for
+// WhatsApp messages created through a Messaging Service / Content Template.
+// Both identify a Message resource and are safe to pass to client.messages().
+const isMessageSid = (value: string): boolean =>
+  /^(?:SM|MM)[a-fA-F0-9]{32}$/.test(value);
+
 const env = (...names: string[]): string => {
   for (const name of names) {
     const value = process.env[name]?.trim();
@@ -107,7 +113,7 @@ export const sendTwilioMessage = functions
 
     if (action === "status") {
       const messageSid = String(req.body?.messageSid ?? "").trim();
-      if (!/^SM[a-fA-F0-9]{32}$/.test(messageSid)) {
+      if (!isMessageSid(messageSid)) {
         res.status(400).json({ success: false, error: "Invalid message SID." });
         return;
       }
@@ -190,7 +196,7 @@ export const sendTwilioMessage = functions
         merchantId,
         req.body?.customerId,
       );
-      if (!/^SM[a-fA-F0-9]{32}$/.test(messageSid) || !customerNumber) {
+      if (!isMessageSid(messageSid) || !customerNumber) {
         res.status(403).json({
           success: false,
           error: "Media access could not be verified.",

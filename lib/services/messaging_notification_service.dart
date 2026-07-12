@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/services/analytics_event.dart';
@@ -103,8 +104,8 @@ class MessagingNotificationService {
 
         if (messageId != null) {
           // Fire and forget → Poll for delivery status in the background
-          whatsappService.pollMessageStatus(messageId).then((delivered) async {
-            if (delivered) {
+          whatsappService.pollMessageStatus(messageId).then((outcome) async {
+            if (outcome == WhatsAppDeliveryOutcome.delivered) {
               // WhatsApp delivery confirmed by Twilio poll. This is the
               // billable event -- balance is deducted in the same block, so
               // CommsSent fires exactly when the merchant is charged.
@@ -139,8 +140,11 @@ class MessagingNotificationService {
               );
 
               eventBus.fire(SMSEvent(inAppNotificationMessage, success: true));
-            } else {
-              // If WhatsApp failed, fallback to SMS and store failure in Firestore
+            } else if (shouldFallbackToSmsForStatus(outcome)) {
+              // Only a definitive provider failure may trigger SMS fallback.
+              // A transient status-poll/auth/network error is not proof that
+              // WhatsApp failed: the accepted WhatsApp can still arrive and
+              // would otherwise be followed by a duplicate SMS.
               await storeWhatsAppCheck(normalizedPhone, false);
               await _sendSMSFallback(
                   phoneNumber,
@@ -160,6 +164,13 @@ class MessagingNotificationService {
                 "shopName": shopName,
                 "balance": formattedBalance,
               });
+            } else {
+              await CrashService.instance.recordNonFatal(
+                'WhatsApp send accepted but delivery could not be confirmed',
+                StackTrace.current,
+                reason: 'WhatsApp delivery status unknown; SMS suppressed',
+                context: {'template_id': templateSid},
+              );
             }
           });
 
@@ -199,6 +210,12 @@ class MessagingNotificationService {
           "Notification was unsuccessful, please try again later",
           success: false));
     }
+  }
+
+  @visibleForTesting
+  static bool shouldFallbackToSmsForStatus(
+      WhatsAppDeliveryOutcome outcome) {
+    return outcome == WhatsAppDeliveryOutcome.failed;
   }
 
   Future<void> _sendSMSFallback(
