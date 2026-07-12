@@ -14,7 +14,9 @@ const DEFAULT_TARGET_BUILD = 70;
 const DEFAULT_TARGET_VERSION = "4.1.6";
 const DEFAULT_MAX_PER_RUN = 500;
 const DEFAULT_MAX_SENDS = 3;
-const DEFAULT_COOLDOWN_HOURS = 24;
+// The scheduler runs once per day. Keep this below 24 hours so normal
+// scheduler jitter cannot suppress the following day's reminder.
+const DEFAULT_COOLDOWN_HOURS = 23;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=com.tsepo.pasella";
