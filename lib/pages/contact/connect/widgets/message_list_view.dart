@@ -22,49 +22,61 @@ class MessagesListView extends StatefulWidget {
 class _MessagesListViewState extends State<MessagesListView> {
   final ScrollController _scrollController = ScrollController();
   int _lastMessageCount = 0;
+  int _scrollRequest = 0;
+  String _latestMessageKey = '';
 
   @override
   void initState() {
     super.initState();
     _lastMessageCount = widget.messages.length;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Delay to ensure long lists + sticky headers finish layout
-      Future.delayed(const Duration(milliseconds: 100), scrollToBottom);
-    });
+    _latestMessageKey = _messageKey(widget.messages);
+    _scheduleScrollToBottom();
   }
 
   @override
   void didUpdateWidget(covariant MessagesListView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.messages.length != _lastMessageCount) {
+    final latestMessageKey = _messageKey(widget.messages);
+    if (widget.messages.length != _lastMessageCount ||
+        latestMessageKey != _latestMessageKey) {
       _lastMessageCount = widget.messages.length;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 50), scrollToBottom);
-      });
+      _latestMessageKey = latestMessageKey;
+      _scheduleScrollToBottom();
     }
   }
 
   @override
   void dispose() {
+    _scrollRequest++;
     _scrollController.dispose();
     super.dispose();
   }
 
-  void scrollToBottom({int retry = 0}) {
+  String _messageKey(List<Map<String, dynamic>> messages) {
+    if (messages.isEmpty) return '';
+    final latest = messages.last;
+    return '${latest['sid'] ?? latest['id'] ?? ''}:'
+        '${latest['dateSent'] ?? ''}:'
+        '${latest['message'] ?? ''}';
+  }
+
+  void _scheduleScrollToBottom() {
+    final request = ++_scrollRequest;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scrollToBottom(request: request);
+    });
+  }
+
+  void scrollToBottom({int? request}) {
+    final activeRequest = request ?? _scrollRequest;
+    if (!mounted || activeRequest != _scrollRequest) return;
+
     if (_scrollController.hasClients) {
       final position = _scrollController.position;
-      final maxExtent = position.maxScrollExtent;
-      final currentOffset = position.pixels;
-
-      // If not at the bottom, try again (with a small delay)
-      if ((maxExtent - currentOffset).abs() > 50.0 && retry < 3) {
-        Future.delayed(const Duration(milliseconds: 100), () {
-          scrollToBottom(retry: retry + 1);
-        });
+      final bottomExtent = position.minScrollExtent;
+      if ((bottomExtent - position.pixels).abs() > 0.5) {
+        _scrollController.jumpTo(bottomExtent);
       }
-
-      _scrollController.animateTo(maxExtent,
-          curve: Curves.easeOut, duration: const Duration(milliseconds: 100));
     }
   }
 
@@ -99,10 +111,15 @@ class _MessagesListViewState extends State<MessagesListView> {
 
   @override
   Widget build(BuildContext context) {
-    final rows = _buildRows();
+    // A reversed chat list builds the newest row first and anchors it at the
+    // bottom. Reversing the chronological row collection at the same time
+    // preserves the expected visual order and keeps date headers above their
+    // messages.
+    final rows = _buildRows().reversed.toList(growable: false);
 
     return ListView.builder(
       controller: _scrollController,
+      reverse: true,
       itemCount: rows.length,
       itemBuilder: (context, index) {
         final row = rows[index];
