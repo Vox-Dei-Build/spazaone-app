@@ -47,14 +47,14 @@ type CampaignResult =
   | "failed";
 
 /**
- * Nudges known app builds below the configured release every six hours.
+ * Nudges known app builds below the configured release daily at 08:00 SAST.
  *
  * The Firestore config is disabled by default. Dry-run is the safe default
  * even after enabling it, so rollout requires two deliberate switches.
  */
 export const sendUrgentUpdateNudges = functions
   .runWith({ timeoutSeconds: 540, memory: "512MB" })
-  .pubsub.schedule("every 6 hours")
+  .pubsub.schedule("0 8 * * *")
   .timeZone("Africa/Johannesburg")
   .onRun(async () => {
     const configRef = db.doc(CONFIG_PATH);
