@@ -14,7 +14,7 @@ The function reads `systemConfig/urgentUpdateNudges`:
   "targetVersion": "4.1.6",
   "maxPerRun": 500,
   "maxSendsPerUser": 3,
-  "cooldownHours": 24,
+  "cooldownHours": 23,
   "title": "Urgent: update Pasella today",
   "body": "Don't miss customer messages. Update to {version} now to keep WhatsApp, SMS and conversations working reliably."
 }
