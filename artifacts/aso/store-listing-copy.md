@@ -2,6 +2,16 @@
 
 Nothing in this document has been published. It is the approval-ready copy for the App Store and Google Play rebrand.
 
+## Release
+
+- Marketing version: **4.2.0**
+- Build number: **71**
+- Release tag when approved: `v4.2.0+71`
+- Previous customer-facing name: **Pasella: Orders & Reminders**
+- New customer-facing name: **SpazaOne**
+- Artwork status: **Provisional — replace before store submission**
+- Upload status: **Not uploaded**
+
 ## Shared app name
 
 **SpazaOne**
@@ -24,7 +34,23 @@ Your whole shop, in your pocket. Track customer balances, take WhatsApp orders, 
 
 ### Keywords
 
-shop,spaza,orders,whatsapp,credit,balances,stock,sales,customers,inventory,merchant
+shop,spaza,orders,messaging,credit,balances,stock,sales,customers,inventory,merchant
+
+### What's New
+
+Pasella is now SpazaOne — your whole shop, in your pocket.
+
+Your account and business records stay right where they are. This update also adds product-first promotions, clearer WhatsApp delivery status, and automatic SMS fallback when a message cannot be delivered on WhatsApp.
+
+### URLs
+
+- Marketing URL: `https://spazaone.com`
+- Privacy policy URL: keep the current public Google Doc until `https://spazaone.com/privacy-policy` is live
+- Support URL: pending a working SpazaOne support/contact page
+
+### App Review note
+
+This app previously appeared as Pasella: Orders & Reminders. Version 4.2.0 changes the customer-facing name to SpazaOne. The bundle ID, existing user accounts and stored business data are unchanged, so this is an update to the existing app rather than a new app.
 
 ### Description
 
@@ -59,7 +85,19 @@ SpazaOne
 
 ### Short description
 
-Run orders, balances, stock and sales from one simple shop app.
+Your whole shop in your pocket: manage orders, balances, stock and sales.
+
+### Release notes
+
+Pasella is now SpazaOne — your whole shop, in your pocket.
+
+Your account and business records stay right where they are. This update also adds product-first promotions, clearer WhatsApp delivery status, and automatic SMS fallback when a message cannot be delivered on WhatsApp.
+
+### URLs
+
+- Website: `https://spazaone.com`
+- Privacy policy: keep the current public Google Doc until `https://spazaone.com/privacy-policy` is live
+- Support: pending a working SpazaOne support/contact page
 
 ### Full description
 
