@@ -96,7 +96,7 @@ Future<void> createNotificationChannel() async {
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
     'default_channel', // matches manifest EXACTLY
     'Default Notifications',
-    description: 'Default notification channel for Pasella app.',
+    description: 'Default notification channel for SpazaOne app.',
     importance: Importance.high,
   );
 
@@ -614,7 +614,7 @@ class _AppBootstrapState extends State<_AppBootstrap> {
       setState(() {
         _starting = false;
         _errorMessage =
-            'Pasella could not finish starting. Check your connection and try again.';
+            'SpazaOne could not finish starting. Check your connection and try again.';
       });
     }
   }
@@ -644,8 +644,8 @@ class _AppBootstrapState extends State<_AppBootstrap> {
                     const SizedBox(height: 20),
                     Text(
                       _errorMessage == null
-                          ? 'Preparing Pasella…'
-                          : 'We couldn\'t start Pasella',
+                          ? 'Preparing SpazaOne…'
+                          : 'We couldn\'t start SpazaOne',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),

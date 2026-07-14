@@ -109,10 +109,9 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         (selected?['channels']?['sms']?['templateContent'] ?? waContent)
             .toString();
     final mediaUrl = selected?['channels']?['whatsapp']?['mediaUrl'] as String?;
-    final smsSegments =
-        smsContent.isNotEmpty
-            ? SMSPricingUtil.calculateSegments(smsContent)
-            : 1;
+    final smsSegments = smsContent.isNotEmpty
+        ? SMSPricingUtil.calculateSegments(smsContent)
+        : 1;
 
     final noChannelsChosen = !widget.sendWhatsApp && !widget.sendSMS;
 
@@ -125,21 +124,19 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         // ── Section: Template ────────────────────────────────────────────
         _SectionHeader(
           title: 'Choose a template',
-          subtitle:
-              hasTemplates
-                  ? 'Pick the message you want to send.'
-                  : 'Create your first template to get started.',
-          trailing:
-              hasTemplates
-                  ? TextButton.icon(
-                    onPressed: widget.onCreateTemplate,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New'),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                  )
-                  : null,
+          subtitle: hasTemplates
+              ? 'Pick the message you want to send.'
+              : 'Create your first template to get started.',
+          trailing: hasTemplates
+              ? TextButton.icon(
+                  onPressed: widget.onCreateTemplate,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('New'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                )
+              : null,
         ),
         const SizedBox(height: 8),
         if (!hasTemplates)
@@ -177,9 +174,10 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         // a product is linked the tile becomes a summary chip with an
         // unlink action.
         const _SectionHeader(
-          title: 'Link a product (optional)',
+          title: 'Attach a product (optional)',
           subtitle:
-              'Attach the product this promotion is about. Helps you remember later — and we\'ll use it in reports.',
+              'Connect this campaign to one stock item. Customers can order it '
+              'from your WhatsApp catalogue when the product is listed there.',
         ),
         const SizedBox(height: 8),
         _ProductLinkTile(
@@ -193,6 +191,23 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           },
           onUnlink: () => widget.onLinkedProductChanged(null),
         ),
+        if (widget.linkedProduct != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4, right: 4),
+            child: Text(
+              widget.linkedProduct!.whatsappListed == true
+                  ? 'Attaching keeps the campaign connected to this item. '
+                      'The approved message is unchanged, so tell customers '
+                      'to reply CATALOG if you want them to order it.'
+                  : 'Customers cannot order this item from WhatsApp yet. '
+                      'Turn on its WhatsApp listing in Stock before sending.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: widget.linkedProduct!.whatsappListed == true
+                    ? theme.colorScheme.onSurfaceVariant
+                    : Colors.orange.shade800,
+              ),
+            ),
+          ),
 
         SizedBox(height: SizeConfig.heightMultiplier * 3),
 
@@ -206,10 +221,9 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           icon: Icons.chat_bubble,
           iconColor: const Color(0xFF25D366),
           title: 'WhatsApp',
-          subtitle:
-              widget.whatsappPrice != null
-                  ? '${CurrencyUtil.format(widget.whatsappPrice!)} per recipient'
-                  : 'Pricing loading…',
+          subtitle: widget.whatsappPrice != null
+              ? '${CurrencyUtil.format(widget.whatsappPrice!)} per recipient'
+              : 'Pricing loading…',
           value: widget.sendWhatsApp,
           onChanged: widget.onWhatsAppChanged,
         ),
@@ -217,10 +231,9 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           icon: Icons.sms,
           iconColor: Colors.blueGrey,
           title: 'SMS',
-          subtitle:
-              widget.smsPricePerSegment != null
-                  ? '${CurrencyUtil.format(widget.smsPricePerSegment!)} per segment ($smsSegments segment${smsSegments == 1 ? '' : 's'})'
-                  : 'Pricing loading…',
+          subtitle: widget.smsPricePerSegment != null
+              ? '${CurrencyUtil.format(widget.smsPricePerSegment!)} per segment ($smsSegments segment${smsSegments == 1 ? '' : 's'})'
+              : 'Pricing loading…',
           value: widget.sendSMS,
           onChanged: widget.onSMSChanged,
         ),
@@ -349,10 +362,9 @@ class _ChannelTile extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color:
-              value
-                  ? theme.colorScheme.primary.withValues(alpha: 0.4)
-                  : theme.dividerColor.withValues(alpha: 0.4),
+          color: value
+              ? theme.colorScheme.primary.withValues(alpha: 0.4)
+              : theme.dividerColor.withValues(alpha: 0.4),
         ),
       ),
       child: SwitchListTile(
@@ -521,10 +533,9 @@ class _ProductLinkTile extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color:
-              isLinked
-                  ? theme.colorScheme.primary.withValues(alpha: 0.4)
-                  : theme.dividerColor.withValues(alpha: 0.4),
+          color: isLinked
+              ? theme.colorScheme.primary.withValues(alpha: 0.4)
+              : theme.dividerColor.withValues(alpha: 0.4),
         ),
       ),
       child: InkWell(
@@ -537,51 +548,62 @@ class _ProductLinkTile extends StatelessWidget {
               _LinkedThumb(image: linked?.imageUrl),
               const SizedBox(width: 12),
               Expanded(
-                child:
-                    isLinked
-                        ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              linked!.name,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                child: isLinked
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            linked!.name,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              linked!.sellingPrice != null
-                                  ? CurrencyUtil.format(linked!.sellingPrice!)
-                                  : 'No price set',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color:
-                                    linked!.sellingPrice != null
-                                        ? theme.colorScheme.primary
-                                        : theme.disabledColor,
-                              ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            linked!.sellingPrice != null
+                                ? CurrencyUtil.format(linked!.sellingPrice!)
+                                : 'No price set',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: linked!.sellingPrice != null
+                                  ? theme.colorScheme.primary
+                                  : theme.disabledColor,
                             ),
-                          ],
-                        )
-                        : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Add a product',
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            linked!.whatsappListed == true
+                                ? 'Available in WhatsApp catalogue'
+                                : linked!.whatsappListed == false
+                                    ? 'Not listed for WhatsApp orders'
+                                    : 'Catalogue availability unknown',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: linked!.whatsappListed == true
+                                  ? Colors.green.shade700
+                                  : Colors.orange.shade800,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Tap to choose from your stock',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.disabledColor,
-                              ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add a product',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Tap to choose from your stock',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.disabledColor,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
               if (isLinked)
                 IconButton(
@@ -624,13 +646,12 @@ class _LinkedThumb extends StatelessWidget {
         width: 44,
         height: 44,
         fit: BoxFit.cover,
-        errorBuilder:
-            (_, __, ___) => Container(
-              width: 44,
-              height: 44,
-              color: theme.colorScheme.surfaceContainerHighest,
-              child: Icon(Icons.broken_image, color: theme.disabledColor),
-            ),
+        errorBuilder: (_, __, ___) => Container(
+          width: 44,
+          height: 44,
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: Icon(Icons.broken_image, color: theme.disabledColor),
+        ),
       ),
     );
   }

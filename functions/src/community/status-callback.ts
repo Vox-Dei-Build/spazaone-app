@@ -30,7 +30,9 @@ export const messageStatusCallback = functions.https.onRequest(
     console.log(`Error Code: ${errorCodeRaw ?? "None"}`);
     console.log(`Error Message: ${errorMessageRaw ?? "None"}`);
 
-    if (messageStatus === "delivered") {
+    const isWhatsApp = toNumber.startsWith("whatsapp:");
+
+    if (messageStatus === "delivered" && isWhatsApp) {
       const normalizedNumber = toNumber.replace("whatsapp:+27", "0"); // Normalize WhatsApp number to local format
 
       const successfulWhatsAppRef = db.collection("successfulWhatsAppNumbers");
@@ -42,19 +44,26 @@ export const messageStatusCallback = functions.https.onRequest(
           .limit(1)
           .get();
 
+        const capabilityData = {
+          phoneNumber: normalizedNumber,
+          hasWhatsApp: true,
+          messageSid,
+          lastChecked: FieldValue.serverTimestamp(),
+          timestamp: FieldValue.serverTimestamp(),
+        };
+
         // If the number doesn't exist, add it to Firestore
         if (existingNumberSnapshot.empty) {
-          await successfulWhatsAppRef.add({
-            phoneNumber: normalizedNumber,
-            messageSid: messageSid, // Optional: Store the Twilio MessageSid
-            timestamp: FieldValue.serverTimestamp(),
-          });
+          await successfulWhatsAppRef.add(capabilityData);
           console.log(
             `Successfully stored delivered WhatsApp number: ${normalizedNumber}`,
           );
         } else {
+          await existingNumberSnapshot.docs[0].ref.set(capabilityData, {
+            merge: true,
+          });
           console.log(
-            `WhatsApp number ${normalizedNumber} already exists, skipping.`,
+            `Refreshed delivered WhatsApp number: ${normalizedNumber}.`,
           );
         }
       } catch (error) {
@@ -63,17 +72,13 @@ export const messageStatusCallback = functions.https.onRequest(
           error,
         );
       }
-    } else if (
-      messageStatus === "failed" ||
-      messageStatus === "undelivered"
-    ) {
+    } else if (messageStatus === "failed" || messageStatus === "undelivered") {
       // PAS-WA-01: persist the failure so support has something to
       // query. We always write — even when ErrorCode/ErrorMessage
       // are absent — so a "we know it failed but Twilio gave no
       // detail" state is visible rather than silently dropped.
-      const providerCode = errorCodeRaw && errorCodeRaw.trim() !== ""
-        ? errorCodeRaw
-        : null;
+      const providerCode =
+        errorCodeRaw && errorCodeRaw.trim() !== "" ? errorCodeRaw : null;
       const providerMessage =
         errorMessageRaw && errorMessageRaw.trim() !== ""
           ? errorMessageRaw
@@ -106,6 +111,42 @@ export const messageStatusCallback = functions.https.onRequest(
         console.log(
           `Recorded delivery failure for ${messageSid}: ${pasellaMessage}`,
         );
+
+        // Some SMS carriers stop at Twilio's `sent` state because they do not
+        // provide delivery receipts. If a late terminal failure later arrives,
+        // refund the charge exactly once. The wallet and tracking document are
+        // updated together so duplicate callbacks cannot double-refund.
+        const chargeRef = db
+          .collection("messageDeliveryCharges")
+          .doc(messageSid);
+        await db.runTransaction(async (tx) => {
+          const chargeSnap = await tx.get(chargeRef);
+          const charge = chargeSnap.data();
+          if (!chargeSnap.exists || charge?.refunded === true) return;
+
+          const merchantId = String(charge?.merchantId ?? "");
+          const cost = Number(charge?.cost ?? 0);
+          if (!merchantId || !Number.isFinite(cost) || cost <= 0) return;
+
+          const walletRef = db
+            .collection("users")
+            .doc(merchantId)
+            .collection("wallet")
+            .doc("current");
+          const walletSnap = await tx.get(walletRef);
+          const balance = Number(walletSnap.data()?.virtualBalance ?? 0);
+          tx.update(walletRef, { virtualBalance: balance + cost });
+          tx.set(
+            chargeRef,
+            {
+              refunded: true,
+              refundedAt: FieldValue.serverTimestamp(),
+              refundStatus: messageStatus,
+              refundProviderCode: providerCode,
+            },
+            { merge: true },
+          );
+        });
       } catch (error) {
         console.error(
           `Failed to persist delivery failure for ${messageSid}:`,

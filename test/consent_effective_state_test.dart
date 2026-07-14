@@ -15,7 +15,7 @@ void main() {
       expect(state.effectiveReplay, isFalse);
     });
 
-    test('saved choices become effective after decision timestamp exists', () {
+    test('saved analytics and crash choices become effective after decision', () {
       final decided = ConsentState(
         analytics: true,
         replay: true,
@@ -26,10 +26,10 @@ void main() {
       expect(decided.hasDecided, isTrue);
       expect(decided.effectiveAnalytics, isTrue);
       expect(decided.effectiveCrash, isTrue);
-      expect(decided.effectiveReplay, isTrue);
+      expect(decided.effectiveReplay, isFalse);
     });
 
-    test('replay cannot be effective when analytics is disabled', () {
+    test('replay remains disabled even for a legacy saved opt-in', () {
       final decided = ConsentState(
         analytics: false,
         replay: true,

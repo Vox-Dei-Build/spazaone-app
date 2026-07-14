@@ -43,7 +43,7 @@ class AddContactPage extends StatelessWidget {
 
   Future<void> _openPrivacyPolicy(BuildContext context) async {
     // PAS-UX-10: routed through AppUrls so privacy-policy hosting can
-    // move from the legacy public Google Doc to a pasella.co.za URL
+    // move from the legacy public Google Doc to a spazaone.com URL
     // by changing one constant.
     final uri = Uri.parse(AppUrls.privacyPolicy);
     if (await canLaunchUrl(uri)) {

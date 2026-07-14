@@ -1,9 +1,13 @@
-# CodeMagic CI configuration for Pasella.
+# CodeMagic CI configuration for SpazaOne.
+#
+# Legacy technical identifiers such as com.tsepo.pasella and the
+# pasella_* credential groups are intentionally unchanged so this remains an
+# update to the existing store apps and continues using the configured secrets.
 #
 # Triggers
 # --------
 # Both workflows fire on git tags matching `v*.*.*+*` (e.g. v3.0.2+41).
-# Push the tag from the release branch:
+# Push the tag from main after the release commit is approved:
 #   git tag -a v3.0.2+41 -m "Release 3.0.2+41"
 #   git push --tags
 #
@@ -417,8 +421,8 @@ workflows:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
         BUNDLE_ID: "com.tsepo.pasella"
-        APP_STORE_APPLE_ID: "6751821457"   # numeric Apple ID for Pasella
-                                            # in App Store Connect.
+        APP_STORE_APPLE_ID: "6751821457"   # numeric Apple ID for the existing
+                                            # app record (formerly Pasella).
     triggering:
       events:
         - tag

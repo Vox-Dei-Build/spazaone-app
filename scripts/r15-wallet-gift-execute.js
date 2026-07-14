@@ -15,9 +15,9 @@ const EXPECTED_RECIPIENTS = 149;
 const EXPECTED_LIABILITY_ZAR = 2235;
 const EXPECTED_MANIFEST_DIGEST =
   "c6c2d711c9ae021e533fb00705fc0d72651440861eaab219c3b9844cc50b6e90";
-const PUSH_TITLE = "R15 added to your Pasella wallet";
+const PUSH_TITLE = "R15 added to your SpazaOne wallet";
 const PUSH_BODY =
-  "We’ve added R15 for messaging customers. Open Pasella to use it.";
+  "We’ve added R15 for messaging customers. Open SpazaOne to use it.";
 const WALLET_ROUTE = "/walletPage";
 const MAX_TRANSACTION_ATTEMPTS = 5;
 

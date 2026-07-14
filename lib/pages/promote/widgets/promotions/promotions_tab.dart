@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/view_promotion/view_promotion.dart';
 import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:provider/provider.dart';
@@ -57,10 +59,8 @@ class _PromotionsTabState extends State<PromotionsTab> {
             const EmptyStateOnboarding(
               icon: Icons.campaign_outlined,
               headline: 'No promotions yet',
-              subtitle: 'Run a promotion to send WhatsApp specials, restock '
-                  'announcements or seasonal offers to your saved '
-                  'customers. Use the "Run Promotion" button below to '
-                  'pick a template and recipients.',
+              subtitle: 'Choose a WhatsApp-listed product, select customers, '
+                  'review the cost and send. SpazaOne prepares the message.',
               tutorialKey: TutorialConfig.TUTORIAL_RUN_PROMOTIONS,
               tutorialTitle: 'How to run a promotion',
             ),
@@ -111,11 +111,17 @@ class _PromotionsTabState extends State<PromotionsTab> {
           );
 
           final channels = template['channels'] as Map<String, dynamic>? ?? {};
-          final name =
-              sanitizeMalformedUtf16(template['name'] as String? ?? '–');
-          final mediaUrl = channels['whatsapp']?['mediaUrl'];
           final total = promos.length;
           final displayIndex = total - i;
+          final linkedProductValue = promo['linkedProduct'];
+          final linkedProduct = linkedProductValue is Map<String, dynamic>
+              ? LinkedProductRef.fromMap(linkedProductValue)
+              : null;
+          final name = sanitizeMalformedUtf16(
+            linkedProduct?.name ?? template['name'] as String? ?? '–',
+          );
+          final mediaUrl =
+              linkedProduct?.imageUrl ?? channels['whatsapp']?['mediaUrl'];
 
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 8),
@@ -257,6 +263,30 @@ class _PromotionsTabState extends State<PromotionsTab> {
                               fontSize: SizeConfig.textMultiplier * 1.5,
                             ),
                           ),
+                          if (linkedProduct != null) ...[
+                            SizedBox(height: SizeConfig.heightMultiplier * 0.3),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 14,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    linkedProduct.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: SizeConfig.textMultiplier * 1.4,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                           if (isPendingSend) ...[
                             SizedBox(height: SizeConfig.heightMultiplier * 0.5),
                             Row(
@@ -302,6 +332,14 @@ class _PromotionsTabState extends State<PromotionsTab> {
                                   // ViewPromotionPage flow does the
                                   // same thing.
                                   vm.clearCustomerSelection();
+                                  if (linkedProduct != null) {
+                                    RunPromotionLauncher.launch(
+                                      context,
+                                      viewModel: vm,
+                                      initialProduct: linkedProduct,
+                                    );
+                                    return;
+                                  }
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(

@@ -16,7 +16,9 @@ class ConsentState {
   /// PostHog product analytics events (capture, identify, screen views).
   final bool analytics;
 
-  /// PostHog session replay snapshots.
+  /// Reserved session-replay choice from the version 1 consent schema.
+  /// Replay is disabled in the current release because the installed SDK
+  /// cannot honour an independent runtime replay choice.
   final bool replay;
 
   /// Firebase Crashlytics crash + non-fatal reports.
@@ -36,8 +38,7 @@ class ConsentState {
   /// First-launch UI defaults:
   ///   * `crash: true`   -- preselects crash reports in the consent UI.
   ///   * `analytics: true` -- preselects usage insights in the consent UI.
-  ///   * `replay: false` -- session replay is screen recording and remains
-  ///     opt-in only.
+  ///   * `replay: false` -- session replay is disabled in this release.
   ///
   /// These are presentation defaults only. The `effective*` getters below
   /// return false while `decidedAt` is null, so no telemetry sink is enabled
@@ -45,17 +46,17 @@ class ConsentState {
   ///
   /// `decidedAt` is null so we still know to show the modal on first launch.
   const ConsentState.firstRun()
-    : analytics = true,
-      replay = false,
-      crash = true,
-      decidedAt = null,
-      version = 1;
+      : analytics = true,
+        replay = false,
+        crash = true,
+        decidedAt = null,
+        version = 1;
 
   bool get hasDecided => decidedAt != null;
 
   bool get effectiveAnalytics => hasDecided && analytics;
 
-  bool get effectiveReplay => hasDecided && analytics && replay;
+  bool get effectiveReplay => false;
 
   bool get effectiveCrash => hasDecided && crash;
 
@@ -75,22 +76,21 @@ class ConsentState {
   }
 
   Map<String, dynamic> toJson() => {
-    'analytics': analytics,
-    'replay': replay,
-    'crash': crash,
-    'decidedAt': decidedAt?.toIso8601String(),
-    'version': version,
-  };
+        'analytics': analytics,
+        'replay': replay,
+        'crash': crash,
+        'decidedAt': decidedAt?.toIso8601String(),
+        'version': version,
+      };
 
   factory ConsentState.fromJson(Map<String, dynamic> json) {
     return ConsentState(
       analytics: json['analytics'] as bool? ?? false,
       replay: json['replay'] as bool? ?? false,
       crash: json['crash'] as bool? ?? true,
-      decidedAt:
-          (json['decidedAt'] as String?) != null
-              ? DateTime.tryParse(json['decidedAt'] as String)
-              : null,
+      decidedAt: (json['decidedAt'] as String?) != null
+          ? DateTime.tryParse(json['decidedAt'] as String)
+          : null,
       version: json['version'] as int? ?? 1,
     );
   }
@@ -147,6 +147,14 @@ class ConsentService {
       loaded = const ConsentState.firstRun();
     }
 
+    // Migrate any previously saved replay opt-in to off. PostHog 4.11 cannot
+    // stop/start replay independently from analytics, so the only honest
+    // runtime behavior in this release is to keep replay disabled.
+    if (loaded.replay) {
+      loaded = loaded.copyWith(replay: false);
+      await box.put(_storageKey, jsonEncode(loaded.toJson()));
+    }
+
     notifier = ValueNotifier<ConsentState>(loaded);
     _initialised = true;
   }
@@ -162,13 +170,12 @@ class ConsentService {
   /// Convenience used by the consent modal "Accept all" / "Reject all" buttons.
   Future<void> recordDecision({
     required bool analytics,
-    required bool replay,
     required bool crash,
   }) {
     return update(
       ConsentState(
         analytics: analytics,
-        replay: replay,
+        replay: false,
         crash: crash,
         decidedAt: DateTime.now(),
       ),

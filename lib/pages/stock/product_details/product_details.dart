@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/stock/product_model.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
+import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/stock/product_details/widgets/delete_product_confirmation_dialog.dart';
 import 'package:pasella/pages/stock/widgets/product_form.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
@@ -26,6 +29,23 @@ class ProductDetailsPage extends StatefulWidget {
 class _ProductDetailsPage extends State<ProductDetailsPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
+  Future<void> _promote(
+    BuildContext context,
+    ProductViewModel productViewModel,
+  ) {
+    return RunPromotionLauncher.launch(
+      context,
+      viewModel: context.read<PromotionsViewModel>(),
+      initialProduct: LinkedProductRef(
+        id: widget.docID,
+        name: widget.product.name ?? 'Product',
+        sellingPrice: widget.product.sellingPrice,
+        imageUrl: productViewModel.imageUrl,
+        whatsappListed: widget.product.whatsappListed,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
@@ -33,34 +53,51 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
       child: Consumer<ProductViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
+            bottomNavigationBar: widget.product.whatsappListed
+                ? SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            viewModel.isLoading || viewModel.hasUnsavedChanges
+                                ? null
+                                : () => _promote(context, viewModel),
+                        icon: const Icon(Icons.campaign_outlined),
+                        label: Text(
+                          viewModel.hasUnsavedChanges
+                              ? 'Save before promoting'
+                              : 'Promote on WhatsApp',
+                        ),
+                      ),
+                    ),
+                  )
+                : null,
             floatingActionButton: Padding(
               padding: const EdgeInsets.only(bottom: 35, right: 5),
               child: FloatingActionButton.extended(
                 backgroundColor:
                     viewModel.hasUnsavedChanges ? Colors.green : Colors.grey,
-                onPressed:
-                    viewModel.isLoading || !viewModel.hasUnsavedChanges
-                        ? null
-                        : () async {
-                          if (_formKey.currentState?.validate() ?? false) {
-                            await viewModel.saveProduct(
-                              context,
-                              widget.product,
-                              widget.docID,
-                            );
-                          }
-                        },
-                icon:
-                    viewModel.isLoading
-                        ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                        : const Icon(Icons.done, color: Colors.white),
+                onPressed: viewModel.isLoading || !viewModel.hasUnsavedChanges
+                    ? null
+                    : () async {
+                        if (_formKey.currentState?.validate() ?? false) {
+                          await viewModel.saveProduct(
+                            context,
+                            widget.product,
+                            widget.docID,
+                          );
+                        }
+                      },
+                icon: viewModel.isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.done, color: Colors.white),
                 label: Text(
                   viewModel.isLoading ? 'Saving…' : 'Save changes',
                   style: const TextStyle(color: Colors.white),
@@ -76,24 +113,23 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
                   color: Colors.black,
                   size: SizeConfig.imageSizeMultiplier * 7,
                 ),
-                onPressed:
-                    viewModel.isLoading
-                        ? null
-                        : () {
-                          showDialog(
-                            context: context,
-                            builder: (BuildContext context) {
-                              return DeleteConfirmationDialog(
-                                onConfirm: () async {
-                                  await viewModel.deleteProduct(
-                                    context,
-                                    widget.docID,
-                                  );
-                                },
-                              );
-                            },
-                          );
-                        },
+                onPressed: viewModel.isLoading
+                    ? null
+                    : () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return DeleteConfirmationDialog(
+                              onConfirm: () async {
+                                await viewModel.deleteProduct(
+                                  context,
+                                  widget.docID,
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
               ),
             ),
             body: PopScope(

@@ -250,12 +250,10 @@ class _CustomerTabState extends State<CustomerTab> {
       onChooseWhatsAppProducts: () => _openProducts(context),
       onOpenOrderingLink: () => _openOrderingLink(context),
       onOpenBanking: () => _openBanking(context),
-      // Templates step routes to Marketing → Templates so the
-      // merchant lands on the "Create template" FAB instead of
-      // being bounced through the "no approved templates" dialog on
-      // Marketing → Promotions.
+      // Product promotion setup is automatic; Marketing owns readiness and
+      // never sends the merchant through a template editor.
       onCreateTemplate: () =>
-          _openMarketing(context, SalesIntentMarketingView.templates),
+          _openMarketing(context, SalesIntentMarketingView.promotions),
     );
   }
 

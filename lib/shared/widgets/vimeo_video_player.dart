@@ -43,7 +43,7 @@ class _VimeoVideoPageState extends State<VimeoVideoPage> {
 
     return Scaffold(
       appBar: CustomAppBar(
-        title: widget.title.isNotEmpty ? widget.title : 'How to use Pasella',
+        title: widget.title.isNotEmpty ? widget.title : 'How to use SpazaOne',
       ),
       body: Padding(
         padding: EdgeInsets.symmetric(

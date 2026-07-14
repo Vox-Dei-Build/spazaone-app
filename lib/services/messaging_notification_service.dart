@@ -59,7 +59,7 @@ class MessagingNotificationService {
       ]);
 
       String? phoneNumber = results[0] as String?;
-      String shopName = results[1] as String? ?? 'Pasella';
+      String shopName = results[1] as String? ?? 'SpazaOne';
       double balance = results[2] as double;
       // SMS-safe formatting: avoids U+00A0 thousands separator from
       // NumberFormat('en_ZA') which would force UCS-2 segmentation on any
@@ -213,8 +213,7 @@ class MessagingNotificationService {
   }
 
   @visibleForTesting
-  static bool shouldFallbackToSmsForStatus(
-      WhatsAppDeliveryOutcome outcome) {
+  static bool shouldFallbackToSmsForStatus(WhatsAppDeliveryOutcome outcome) {
     return outcome == WhatsAppDeliveryOutcome.failed;
   }
 
@@ -244,7 +243,9 @@ class MessagingNotificationService {
       unitCost: (messageCost as num).toDouble(),
     );
 
-    await messageService.sendSMS(phoneNumber, smsMessage).then((statusCode) async {
+    await messageService
+        .sendSMS(phoneNumber, smsMessage)
+        .then((statusCode) async {
       if (statusCode == 201) {
         // Twilio accepted the SMS for delivery (201). We treat acceptance as
         // the billable signal because the SMS layer does not surface a later

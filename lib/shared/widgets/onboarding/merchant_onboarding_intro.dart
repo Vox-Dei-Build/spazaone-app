@@ -40,7 +40,7 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
       body:
           'Save one real customer so you can record Pay Later transactions and send WhatsApp confirmations right away.',
       bullets: [
-        'Pasella guides you from Customers',
+        'SpazaOne guides you from Customers',
         'Pay Later opens after saving',
       ],
     ),
@@ -121,8 +121,8 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
                 controller: _controller,
                 itemCount: _slides.length,
                 onPageChanged: (value) => setState(() => _index = value),
-                itemBuilder:
-                    (context, index) => _SlideView(slide: _slides[index]),
+                itemBuilder: (context, index) =>
+                    _SlideView(slide: _slides[index]),
               ),
             ),
             Row(
@@ -135,10 +135,9 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
                   height: 7,
                   margin: const EdgeInsets.symmetric(horizontal: 3),
                   decoration: BoxDecoration(
-                    color:
-                        i == _index
-                            ? primary
-                            : theme.colorScheme.outlineVariant,
+                    color: i == _index
+                        ? primary
+                        : theme.colorScheme.outlineVariant,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),

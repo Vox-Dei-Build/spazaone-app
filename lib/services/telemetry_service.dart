@@ -17,9 +17,7 @@ import 'crash_service.dart';
 ///     flip it off after [ConsentService] reports analytics consent. This
 ///     means the SDK never sends a single event before the user has agreed.
 ///   * PII scrubbing. PostHog 4.11 has no `beforeSend` hook, so we scrub
-///     properties here before calling `Posthog().capture()`. Replay snapshots
-///     are masked at SDK config time (see [_buildConfig]) and at widget level
-///     via `PostHogMaskWidget`.
+///     properties here before calling `Posthog().capture()`.
 ///   * Typed events. The public API only accepts [AnalyticsEvent] subclasses;
 ///     no callsite can fire a free-form string + map.
 class TelemetryService {
@@ -46,7 +44,7 @@ class TelemetryService {
   ///   2. Call `Posthog().setup(...)` exactly once with `optOut = true` so
   ///      nothing is captured before consent.
   ///   3. Read the consent state and, if analytics is enabled, flip optOut
-  ///      off and start session replay if replay is also enabled.
+  ///      off for consented product analytics.
   ///
   /// If the project token is missing the wrapper degrades to a no-op so
   /// debug/local builds without `.env` still run.
@@ -97,14 +95,11 @@ class TelemetryService {
       // explicitly agreed. Without this the SDK could send events between
       // setup() returning and applyConsent() running.
       ..optOut = true
-      ..sessionReplay = true;
-
-    // Strict masking: every text node and image is masked at the native
-    // recorder level. Specific widgets can be unmasked later with
-    // PostHogMaskWidget(masking: false) once we've audited what's safe.
-    config.sessionReplayConfig
-      ..maskAllTexts = true
-      ..maskAllImages = true;
+      // PostHog 4.11 cannot stop/start replay independently at runtime.
+      // Keeping this enabled would mean the separate replay consent toggle
+      // could not be honoured. Replay stays disabled until the SDK is upgraded
+      // and the runtime consent behavior is covered by tests.
+      ..sessionReplay = false;
 
     return config;
   }
@@ -131,16 +126,8 @@ class TelemetryService {
         _enabled = false;
       }
 
-      // Replay is a strict subset of analytics: you cannot record without
-      // also capturing events. The PostHog SDK enforces this implicitly
-      // (replay snapshots ride on the same transport) so when analytics is
-      // off, replay is automatically off too.
-      //
-      // PostHog 4.11 has no runtime API to start/stop replay independently
-      // of opt-out -- replay follows the `sessionReplay` config flag which
-      // is set once at setup. If the user disables replay but keeps
-      // analytics, we cannot honour that within this SDK version. See note
-      // in docs/observability.md; we'll revisit when we move to PostHog 5.x.
+      // Session replay is deliberately disabled in [_buildConfig]. Product
+      // analytics consent never implies screen recording.
     } catch (e, st) {
       await CrashService.instance.recordNonFatal(
         e,
@@ -402,7 +389,6 @@ class TelemetryService {
         eventName: '\$exception',
         properties: {
           'exception_type': error.runtimeType.toString(),
-          'exception_message': error.toString(),
           'exception_stack': stack.toString(),
         },
       );

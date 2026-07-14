@@ -25,6 +25,12 @@ async function resolveOwnedTwilioTemplateId(
         "Template does not belong to the signed-in merchant.",
       );
     }
+    if (data.systemManaged === true) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "SpazaOne-managed templates cannot be deleted.",
+      );
+    }
 
     const storedTwilioTemplateId =
       data.channels?.whatsapp?.twilioTemplateId ?? "";
@@ -63,6 +69,12 @@ async function resolveOwnedTwilioTemplateId(
   }
 
   const data = snapshot.docs[0].data();
+  if (data.systemManaged === true) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "SpazaOne-managed templates cannot be deleted.",
+    );
+  }
   if (data.userId !== uid) {
     throw new functions.https.HttpsError(
       "permission-denied",

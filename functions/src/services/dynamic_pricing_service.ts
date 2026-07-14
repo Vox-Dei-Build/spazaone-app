@@ -54,8 +54,12 @@ export class DynamicPricingService {
     if (!param) {
       // Search within each parameter group
       for (const group of Object.values(this.template.parameterGroups)) {
-        if (group.parameters[key]) {
-          param = group.parameters[key];
+        // Remote Config can return empty groups without a `parameters`
+        // object. The promotion callable previously crashed here before it
+        // reached the pricing group, surfacing only "internal" to merchants.
+        const parameters = group?.parameters;
+        if (parameters?.[key]) {
+          param = parameters[key];
           break;
         }
       }

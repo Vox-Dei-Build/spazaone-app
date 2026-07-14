@@ -8,6 +8,6 @@ Please, keep up to date with your payments and join the 98% of {customerName}'s 
 
 Thank you for trusting {shopName}'s business!
 
-From {shopName} (https://pasella.page.link/app)
+From {shopName} (https://spazaone.com)
 ''';
 }

@@ -1,9 +1,9 @@
 name: pasella
-description: A new Flutter project.
+description: SpazaOne helps South African merchants manage customers, balances, orders, stock, sales and promotions.
 
 publish_to: "none"
 
-version: 4.1.6+70
+version: 4.2.0+71
 
 environment:
   sdk: ">=3.0.5 <4.0.0"

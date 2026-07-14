@@ -13,6 +13,27 @@ import {
   normalizeTwilioError,
   NormalizedSendError,
 } from "../utils/twilioError";
+import { ensureMerchantOrderingLink } from "../ecommerce/getMerchantOrderingLink";
+import { PRODUCT_PROMOTION_TEMPLATE_KIND } from "./ensureProductPromotionTemplate";
+
+function formatProductPrice(value: unknown): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "a price available in WhatsApp";
+  return `R${amount.toFixed(2)}`;
+}
+
+function buildProductPromotionSms(
+  shopName: string,
+  productName: string,
+  productPrice: string,
+  merchantMobileNumber: unknown,
+): string {
+  const contact = normalizePhoneNumber(String(merchantMobileNumber ?? ""));
+  const orderInstruction = contact
+    ? `Call ${contact} to order.`
+    : "Contact the shop to order.";
+  return `${shopName}: ${productName} is ${productPrice}. ${orderInstruction} Reply STOP to opt out.`;
+}
 
 function calculateSmsSegments(text: string): number {
   const content = (text || "").trim();
@@ -38,6 +59,68 @@ const {
 
 // initialize once
 const twilioClient = twilio(ACCOUNT_SID, AUTH_TOKEN);
+const MESSAGE_STATUS_CALLBACK_URL =
+  "https://us-central1-pasella-ledger.cloudfunctions.net/messageStatusCallback";
+const DELIVERY_POLL_INTERVAL_MS = 1000;
+const DELIVERY_CONFIRMATION_TIMEOUT_MS = 20000;
+const FAILED_DELIVERY_STATUSES = new Set(["failed", "undelivered", "canceled"]);
+
+const wait = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+/**
+ * Waits until Twilio confirms that a message was actually delivered.
+ * A successful Messages.create response only means the provider accepted the
+ * request; Meta can still reject it asynchronously a few seconds later.
+ *
+ * WhatsApp is only charged after `delivered`. SMS is charged after `sent` when
+ * the carrier does not provide delivery receipts; a later terminal failure is
+ * refunded idempotently by messageStatusCallback.
+ */
+async function waitForMessageDelivery(
+  messageSid: string,
+  channel: "WhatsApp" | "SMS",
+): Promise<void> {
+  const deadline = Date.now() + DELIVERY_CONFIRMATION_TIMEOUT_MS;
+  let lastStatus = "unknown";
+
+  while (Date.now() < deadline) {
+    const message = await twilioClient.messages(messageSid).fetch();
+    const status = String(message.status ?? "unknown").toLowerCase();
+    lastStatus = status;
+    // Many SMS carriers do not return a delivery receipt. `sent` means Twilio
+    // successfully handed the message to the mobile network and is the final
+    // successful state available for those routes. WhatsApp must still reach
+    // the stricter `delivered` state because Meta does provide receipts.
+    if (status === "delivered" || (channel === "SMS" && status === "sent")) {
+      return;
+    }
+
+    if (FAILED_DELIVERY_STATUSES.has(status)) {
+      const errorCode = message.errorCode ?? null;
+      let detail = message.errorMessage?.trim() || `Delivery ${status}.`;
+      if (channel === "WhatsApp" && errorCode === 63032) {
+        detail =
+          "Meta temporarily limited marketing messages to this customer. " +
+          "Try another customer or try again later. You were not charged.";
+      }
+      const deliveryError = new Error(detail) as Error & {
+        code?: number | string;
+      };
+      deliveryError.code = errorCode ?? `delivery-${status}`;
+      throw deliveryError;
+    }
+
+    await wait(DELIVERY_POLL_INTERVAL_MS);
+  }
+
+  const timeoutError = new Error(
+    `${channel} delivery was not confirmed (last status: ${lastStatus}). ` +
+      "You were not charged.",
+  ) as Error & { code?: string };
+  timeoutError.code = "delivery-unconfirmed";
+  throw timeoutError;
+}
 
 /**
  * Reads WhatsApp availability and last‑check timestamp from Firestore.
@@ -121,12 +204,26 @@ async function recordSend(
     .collection("wallet")
     .doc("current");
 
-  await db.runTransaction((tx) =>
-    tx.get(walletRef).then((snap) => {
-      const bal = (snap.data()?.virtualBalance || 0) - cost;
-      tx.update(walletRef, { virtualBalance: bal });
-    }),
-  );
+  const deliveryChargeRef = messageSid
+    ? db.collection("messageDeliveryCharges").doc(messageSid)
+    : null;
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(walletRef);
+    const bal = (snap.data()?.virtualBalance || 0) - cost;
+    tx.update(walletRef, { virtualBalance: bal });
+    if (deliveryChargeRef) {
+      tx.set(deliveryChargeRef, {
+        merchantId,
+        customerId,
+        phone,
+        channel,
+        cost,
+        refunded: false,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
 
   await db
     .collection("notifications")
@@ -150,7 +247,7 @@ async function recordSend(
  * Persists a per-recipient send failure under the promotion so that
  * support and the merchant UI can diagnose what went wrong without
  * having to scrape Cloud Function logs. We always record the
- * Pasella-normalized message (including the fallback case where the
+ * SpazaOne-normalized message (including the fallback case where the
  * provider gave us nothing), the channel attempted, and the raw
  * provider fields where present.
  *
@@ -200,334 +297,447 @@ async function recordFailure(
  * @param {functions.https.CallableContext} context - Callable context (auth info).
  * @returns {Promise<{success: boolean}>} - Resolves when complete.
  */
-export const runMerchantPromotion = functions.https.onCall(
-  async (
-    data: { promotionId?: string },
-    context: functions.https.CallableContext,
-  ): Promise<{ success: boolean }> => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        "unauthenticated",
-        "Must be signed in",
-      );
-    }
-    const merchantId = context.auth.uid;
-    const promotionId = data.promotionId;
-    if (!promotionId) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "promotionId is required",
-      );
-    }
+export const runMerchantPromotion = functions
+  .runWith({ timeoutSeconds: 540 })
+  .https.onCall(
+    async (
+      data: { promotionId?: string },
+      context: functions.https.CallableContext,
+    ): Promise<{ success: boolean }> => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "Must be signed in",
+        );
+      }
+      const merchantId = context.auth.uid;
+      const promotionId = data.promotionId;
+      if (!promotionId) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "promotionId is required",
+        );
+      }
 
-    // Load promotion
-    const promoRef = db.collection("promotions").doc(promotionId);
-    const promoSnap = await promoRef.get();
-    if (!promoSnap.exists) {
-      throw new functions.https.HttpsError("not-found", "Promotion not found");
-    }
-    const promo = promoSnap.data();
-    if (!promo) {
-      throw new functions.https.HttpsError("not-found", "Promotion not found");
-    }
-    if (promo.merchantId !== merchantId) {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "Not your promotion",
-      );
-    }
+      // Load promotion
+      const promoRef = db.collection("promotions").doc(promotionId);
+      const promoSnap = await promoRef.get();
+      if (!promoSnap.exists) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Promotion not found",
+        );
+      }
+      const promo = promoSnap.data();
+      if (!promo) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Promotion not found",
+        );
+      }
+      if (promo.merchantId !== merchantId) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Not your promotion",
+        );
+      }
 
-    const templateId =
-      typeof promo.templateId === "string" ? promo.templateId.trim() : "";
-    if (!templateId) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "Promotion is missing a template",
-      );
-    }
+      const templateId =
+        typeof promo.templateId === "string" ? promo.templateId.trim() : "";
+      if (!templateId) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Promotion is missing a template",
+        );
+      }
 
-    // Load and validate the message template before marking the promotion as
-    // processing. A bad or cross-merchant template ID must fail without
-    // leaving the promotion stuck in an in-flight state.
-    const tplSnap = await db
-      .collection("messagingTemplates")
-      .doc(templateId)
-      .get();
-    if (!tplSnap.exists) {
-      throw new functions.https.HttpsError("not-found", "Template not found");
-    }
-    const tpl = tplSnap.data();
-    if (!tpl) {
-      throw new functions.https.HttpsError("not-found", "Template not found");
-    }
-    if (tpl.userId !== merchantId) {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "Template does not belong to this merchant",
-      );
-    }
+      // Load and validate the message template before marking the promotion as
+      // processing. A bad or cross-merchant template ID must fail without
+      // leaving the promotion stuck in an in-flight state.
+      const tplSnap = await db
+        .collection("messagingTemplates")
+        .doc(templateId)
+        .get();
+      if (!tplSnap.exists) {
+        throw new functions.https.HttpsError("not-found", "Template not found");
+      }
+      const tpl = tplSnap.data();
+      if (!tpl) {
+        throw new functions.https.HttpsError("not-found", "Template not found");
+      }
+      if (tpl.userId !== merchantId) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "Template does not belong to this merchant",
+        );
+      }
 
-    // Mark processing
-    await promoRef.update({
-      status: "processing",
-      startedAt: FieldValue.serverTimestamp(),
-    });
+      // Resolve every runtime field before marking the promotion as processing.
+      // A missing/deleted product or ordering link should fail cleanly instead of
+      // leaving the campaign stuck in an in-flight state.
+      const usrSnap = await db.collection("users").doc(merchantId).get();
+      const user = usrSnap.data();
+      const shopName =
+        String(user?.shopName ?? "SpazaOne").trim() || "SpazaOne";
+      const isProductPromotion =
+        tpl.systemManaged === true &&
+        tpl.templateKind === PRODUCT_PROMOTION_TEMPLATE_KIND;
+      let productVariables: Record<string, string> = {};
 
-    // Fetch shop name
-    const usrSnap = await db.collection("users").doc(merchantId).get();
-    const shopName = usrSnap.data()?.shopName ?? "Pasella";
-
-    // Pricing via Remote Config
-    const pricing = await DynamicPricingService.initialize();
-    const unitWA = promo.sendWhatsApp ? pricing.whatsappPromotionPrice : 0;
-    const unitSMS = promo.sendSMS ? pricing.smsReminderTemplatePrice : 0;
-    let totalCost = 0;
-
-    const waSid = tpl.channels?.whatsapp?.twilioTemplateId ?? templateId;
-    const smsRaw = tpl.channels?.sms?.templateContent ?? "";
-
-    // Send to each customer
-    // PAS-WA-01: keep running tallies so we can write a terminal
-    // status that reflects reality. Previously the promotion always
-    // landed on `complete` no matter how many sends failed.
-    let attempted = 0;
-    let succeeded = 0;
-    let failed = 0;
-    let lastErrorMessage: string | null = null;
-
-    for (const custId of promo.customerIds as string[]) {
-      try {
-        const cSnap = await db
+      if (isProductPromotion) {
+        const linkedProduct = promo.linkedProduct;
+        const productId =
+          typeof linkedProduct?.id === "string" ? linkedProduct.id.trim() : "";
+        if (!productId) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Choose a product before sending this promotion.",
+          );
+        }
+        const productSnap = await db
           .collection("users")
           .doc(merchantId)
-          .collection("customers")
-          .doc(custId)
+          .collection("products")
+          .doc(productId)
           .get();
-        const cust = cSnap.data();
-        if (!cust?.number) {
-          console.log(`Skipping ${custId}: no number`);
-          continue;
+        const product = productSnap.data();
+        if (!productSnap.exists || !product) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "This product no longer exists. Choose another product.",
+          );
+        }
+        const isWhatsAppListed =
+          product.whatsappListed === true ||
+          product.whatsappEnabled === true ||
+          product.availableOnWhatsApp === true;
+        if (!isWhatsAppListed) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "List this product for WhatsApp orders before promoting it.",
+          );
         }
 
-        // Validate & normalize. Reject anything not a valid SA mobile so
-        // we never hand junk to Twilio (which silently fails per-customer).
-        if (!isValidSAPhoneNumber(cust.number)) {
-          console.warn(
-            `Skipping ${custId}: invalid SA phone number "${cust.number}"`,
+        const productName = String(product.name || "").trim();
+        if (!productName) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Add a product name before promoting it.",
           );
-          continue;
         }
-        const num = formatPhoneNumber(cust.number); // E.164 "+27..."
-        const waTo = `whatsapp:${num}`;
-        const smsTo = num;
 
-        // WhatsApp TTL logic
-        const { hasWhatsApp, lastChecked } = await fetchWhatsAppStatus(num);
-        const days = lastChecked
-          ? (Date.now() - lastChecked.getTime()) / 86400000
-          : Infinity;
-        const needsCheck = days > 30;
+        const ordering = await ensureMerchantOrderingLink(merchantId);
+        productVariables = {
+          productName,
+          productPrice: formatProductPrice(
+            product.sellingPrice ?? product.price ?? product.productPrice,
+          ),
+          productImagePath: `${merchantId}/${productId}.png`,
+          orderCode: ordering.code,
+        };
+      }
 
-        let sentViaWA = false;
-        let waErrorWasFallback = false;
+      // Mark processing
+      await promoRef.update({
+        status: "processing",
+        startedAt: FieldValue.serverTimestamp(),
+      });
 
-        if (promo.sendWhatsApp && (needsCheck || hasWhatsApp)) {
-          attempted++;
-          console.log(
-            `[WA] ${custId} ➡️ trying WA (needsCheck=${needsCheck}, has=${hasWhatsApp})`,
-          );
-          if (!promo.testMode) {
-            try {
-              // PAS-WA-01: capture the SDK response so we can persist
-              // the MessageSid. Without the sid, the status-callback
-              // webhook has no way to correlate a later
-              // failed/undelivered status back to this promotion
-              // and recipient.
-              // PAS-WA-02: contentVariables must be keyed by the
-              // *named* placeholders used when the template was
-              // registered with Twilio (see submitWhatsAppTemplate.ts
-              // -> parseNamedVariables, which submits `customerName`
-              // and `shopName` as the named variables and "Test Shop"
-              // / "Tsepo" as approval samples). The previous payload
-              // used positional keys "1" and "2", which Twilio could
-              // not match against the named template, so it silently
-              // fell back to the registered sample values — that's
-              // why every WhatsApp promotion arrived as
-              // "...The Test Shop team" regardless of the merchant's
-              // actual shop name. Keys here must match the names in
-              // the template body exactly. If a new named placeholder
-              // is added to the boilerplate it must also be added
-              // here. SMS interpolation in the fallback branch below
-              // already does this correctly via local replaceAll.
-              const waResp = await twilioClient.messages.create({
-                to: waTo,
-                from: CUSTOMER_WA_SID,
-                contentSid: waSid,
-                contentVariables: JSON.stringify({
-                  customerName: cust.name,
-                  shopName: shopName,
-                }),
-              });
+      // Pricing via Remote Config
+      const pricing = await DynamicPricingService.initialize();
+      const unitWA = promo.sendWhatsApp ? pricing.whatsappPromotionPrice : 0;
+      const unitSMS = promo.sendSMS ? pricing.smsReminderTemplatePrice : 0;
+      let totalCost = 0;
+
+      const waSid = tpl.channels?.whatsapp?.twilioTemplateId ?? templateId;
+      const smsRaw = isProductPromotion
+        ? buildProductPromotionSms(
+            shopName,
+            productVariables.productName,
+            productVariables.productPrice,
+            user?.mobileNumber ?? context.auth.token.phone_number,
+          )
+        : (tpl.channels?.sms?.templateContent ?? "");
+
+      // Send to each customer
+      // PAS-WA-01: keep running tallies so we can write a terminal
+      // status that reflects reality. Previously the promotion always
+      // landed on `complete` no matter how many sends failed.
+      let attempted = 0;
+      let succeeded = 0;
+      let failed = 0;
+      let lastErrorMessage: string | null = null;
+
+      for (const custId of promo.customerIds as string[]) {
+        try {
+          const cSnap = await db
+            .collection("users")
+            .doc(merchantId)
+            .collection("customers")
+            .doc(custId)
+            .get();
+          const cust = cSnap.data();
+          if (!cust?.number) {
+            console.log(`Skipping ${custId}: no number`);
+            continue;
+          }
+
+          // Validate & normalize. Reject anything not a valid SA mobile so
+          // we never hand junk to Twilio (which silently fails per-customer).
+          if (!isValidSAPhoneNumber(cust.number)) {
+            console.warn(
+              `Skipping ${custId}: invalid SA phone number "${cust.number}"`,
+            );
+            continue;
+          }
+          const num = formatPhoneNumber(cust.number); // E.164 "+27..."
+          const waTo = `whatsapp:${num}`;
+          const smsTo = num;
+
+          // WhatsApp TTL logic
+          const { hasWhatsApp, lastChecked } = await fetchWhatsAppStatus(num);
+          const days = lastChecked
+            ? (Date.now() - lastChecked.getTime()) / 86400000
+            : Infinity;
+          const needsCheck = days > 30;
+
+          let sentViaWA = false;
+          let waErrorWasFallback = false;
+
+          // A fresh negative capability record means this recipient should go
+          // directly to SMS. Unknown/stale numbers get a live WhatsApp attempt
+          // first and automatically fall back to SMS on any delivery failure.
+          const shouldAttemptWhatsApp =
+            promo.sendWhatsApp && (needsCheck || hasWhatsApp);
+
+          if (shouldAttemptWhatsApp) {
+            attempted++;
+            console.log(
+              `[WA] ${custId} ➡️ trying WA (needsCheck=${needsCheck}, has=${hasWhatsApp})`,
+            );
+            if (!promo.testMode) {
+              try {
+                // PAS-WA-01: capture the SDK response so we can persist
+                // the MessageSid. Without the sid, the status-callback
+                // webhook has no way to correlate a later
+                // failed/undelivered status back to this promotion
+                // and recipient.
+                // PAS-WA-02: contentVariables must be keyed by the
+                // *named* placeholders used when the template was
+                // registered with Twilio (see submitWhatsAppTemplate.ts
+                // -> parseNamedVariables, which submits `customerName`
+                // and `shopName` as the named variables and "Test Shop"
+                // / "Tsepo" as approval samples). The previous payload
+                // used positional keys "1" and "2", which Twilio could
+                // not match against the named template, so it silently
+                // fell back to the registered sample values — that's
+                // why every WhatsApp promotion arrived as
+                // "...The Test Shop team" regardless of the merchant's
+                // actual shop name. Keys here must match the names in
+                // the template body exactly. If a new named placeholder
+                // is added to the boilerplate it must also be added
+                // here. SMS interpolation in the fallback branch below
+                // already does this correctly via local replaceAll.
+                const waResp = await twilioClient.messages.create({
+                  to: waTo,
+                  from: CUSTOMER_WA_SID,
+                  contentSid: waSid,
+                  statusCallback: MESSAGE_STATUS_CALLBACK_URL,
+                  contentVariables: JSON.stringify({
+                    customerName: cust.name,
+                    shopName: shopName,
+                    ...productVariables,
+                  }),
+                });
+                if (!waResp?.sid) {
+                  throw new Error(
+                    "Twilio accepted the request without returning a message ID. " +
+                      "You were not charged.",
+                  );
+                }
+                await waitForMessageDelivery(waResp.sid, "WhatsApp");
+                sentViaWA = true;
+                succeeded++;
+                totalCost += unitWA;
+                await storeWhatsAppCheck(num, true);
+                await recordSend(
+                  merchantId,
+                  custId,
+                  num,
+                  unitWA,
+                  "whatsapp",
+                  isProductPromotion
+                    ? `${productVariables.productName} — ${productVariables.productPrice}`
+                    : smsRaw,
+                  waResp?.sid ?? null,
+                );
+              } catch (err) {
+                // PAS-WA-01: preserve Twilio detail when present, and
+                // fall back to a SpazaOne-friendly message when it's
+                // missing. Persisted under the promotion so support
+                // can see why each recipient failed.
+                const norm = normalizeTwilioError(err, "whatsapp");
+                // A synchronous Twilio failure can mean bad credentials,
+                // template configuration, rate limiting, or networking. None
+                // proves that the recipient lacks WhatsApp, so do not poison
+                // the 30-day capability cache here. Delivery callbacks are the
+                // appropriate source for recipient-level capability failures.
+                waErrorWasFallback = norm.fallbackUsed;
+                lastErrorMessage = norm.pasellaMessage;
+                await recordFailure(promotionId, custId, num, norm);
+                console.warn(
+                  `[WA] ${custId} failed: ${norm.pasellaMessage}` +
+                    (norm.providerMoreInfo
+                      ? ` (more: ${norm.providerMoreInfo})`
+                      : ""),
+                );
+              }
+            } else {
+              // Test mode
               sentViaWA = true;
               succeeded++;
               totalCost += unitWA;
               await storeWhatsAppCheck(num, true);
-              await recordSend(
-                merchantId,
-                custId,
-                num,
-                unitWA,
-                "whatsapp",
-                smsRaw,
-                waResp?.sid ?? null,
-              );
-            } catch (err) {
-              await storeWhatsAppCheck(num, false);
-              // PAS-WA-01: preserve Twilio detail when present, and
-              // fall back to a Pasella-friendly message when it's
-              // missing. Persisted under the promotion so support
-              // can see why each recipient failed.
-              const norm = normalizeTwilioError(err, "whatsapp");
-              waErrorWasFallback = norm.fallbackUsed;
-              lastErrorMessage = norm.pasellaMessage;
-              await recordFailure(promotionId, custId, num, norm);
-              console.warn(
-                `[WA] ${custId} failed: ${norm.pasellaMessage}` +
-                  (norm.providerMoreInfo
-                    ? ` (more: ${norm.providerMoreInfo})`
-                    : ""),
-              );
+              console.log(`[TEST] WA ${custId} @ R${unitWA}`);
             }
-          } else {
-            // Test mode
-            sentViaWA = true;
-            succeeded++;
-            totalCost += unitWA;
-            await storeWhatsAppCheck(num, true);
-            console.log(`[TEST] WA ${custId} @ R${unitWA}`);
           }
-        }
 
-        // SMS fallback
-        if (!sentViaWA && promo.sendSMS) {
-          // Only count an SMS attempt when WA was not already counted
-          // — otherwise a single recipient with both channels enabled
-          // would inflate `attempted`. The WA branch above only
-          // increments `attempted` when it actually called the SDK.
-          if (!promo.sendWhatsApp || (!needsCheck && !hasWhatsApp)) {
-            attempted++;
-          }
-          const smsBody = smsRaw
-            .replaceAll("{{customerName}}", cust.name)
-            .replaceAll("{{shopName}}", shopName);
-          const smsSegments = calculateSmsSegments(smsBody);
-          const smsCost = Math.round(unitSMS * smsSegments * 100) / 100;
-          console.log(
-            `[SMS] ${custId} ➡️ trying SMS @ R${unitSMS} × ${smsSegments} = R${smsCost}`,
-          );
-          if (!promo.testMode) {
-            // PAS-WA-01: wrap the SMS send in its own try/catch so a
-            // provider failure here doesn't fall through to the
-            // outer per-customer catch (which used to swallow it
-            // with a generic console.error and no persistence).
-            try {
-              const smsResp = await twilioClient.messages.create({
-                to: smsTo,
-                from: SMS_NUMBER,
-                body: smsBody,
-              });
-              succeeded++;
-              totalCost += smsCost;
-              await recordSend(
-                merchantId,
-                custId,
-                num,
-                smsCost,
-                "sms",
-                smsBody,
-                smsResp?.sid ?? null,
+          // SMS fallback
+          if (!sentViaWA && promo.sendSMS) {
+            // Only count an SMS attempt when WA was not already counted
+            // — otherwise a single recipient with both channels enabled
+            // would inflate `attempted`. The WA branch above only
+            // increments `attempted` when it actually called the SDK.
+            if (!promo.sendWhatsApp || !shouldAttemptWhatsApp) {
+              attempted++;
+            }
+            const smsBody = smsRaw
+              .replaceAll("{{customerName}}", cust.name)
+              .replaceAll("{{shopName}}", shopName)
+              .replaceAll(
+                "{{productName}}",
+                productVariables.productName || "this product",
+              )
+              .replaceAll(
+                "{{productPrice}}",
+                productVariables.productPrice || "the advertised price",
               );
-            } catch (smsErr) {
-              failed++;
-              const norm = normalizeTwilioError(smsErr, "sms");
-              lastErrorMessage = norm.pasellaMessage;
-              await recordFailure(promotionId, custId, num, norm);
-              console.warn(
-                `[SMS] ${custId} failed: ${norm.pasellaMessage}` +
-                  (norm.providerMoreInfo
-                    ? ` (more: ${norm.providerMoreInfo})`
-                    : ""),
+            const smsSegments = calculateSmsSegments(smsBody);
+            const smsCost = Math.round(unitSMS * smsSegments * 100) / 100;
+            console.log(
+              `[SMS] ${custId} ➡️ trying SMS @ R${unitSMS} × ${smsSegments} = R${smsCost}`,
+            );
+            if (!promo.testMode) {
+              // PAS-WA-01: wrap the SMS send in its own try/catch so a
+              // provider failure here doesn't fall through to the
+              // outer per-customer catch (which used to swallow it
+              // with a generic console.error and no persistence).
+              try {
+                const smsResp = await twilioClient.messages.create({
+                  to: smsTo,
+                  from: SMS_NUMBER,
+                  body: smsBody,
+                  statusCallback: MESSAGE_STATUS_CALLBACK_URL,
+                });
+                if (!smsResp?.sid) {
+                  throw new Error(
+                    "Twilio accepted the SMS without returning a message ID. " +
+                      "You were not charged.",
+                  );
+                }
+                await waitForMessageDelivery(smsResp.sid, "SMS");
+                succeeded++;
+                totalCost += smsCost;
+                await recordSend(
+                  merchantId,
+                  custId,
+                  num,
+                  smsCost,
+                  "sms",
+                  smsBody,
+                  smsResp?.sid ?? null,
+                );
+              } catch (smsErr) {
+                failed++;
+                const norm = normalizeTwilioError(smsErr, "sms");
+                lastErrorMessage = norm.pasellaMessage;
+                await recordFailure(promotionId, custId, num, norm);
+                console.warn(
+                  `[SMS] ${custId} failed: ${norm.pasellaMessage}` +
+                    (norm.providerMoreInfo
+                      ? ` (more: ${norm.providerMoreInfo})`
+                      : ""),
+                );
+              }
+            } else {
+              totalCost += smsCost;
+              console.log(
+                `[TEST] SMS ${custId} @ R${unitSMS} × ${smsSegments} = R${smsCost}`,
+                smsBody,
               );
             }
-          } else {
-            totalCost += smsCost;
-            console.log(
-              `[TEST] SMS ${custId} @ R${unitSMS} × ${smsSegments} = R${smsCost}`,
-              smsBody,
+          } else if (
+            !sentViaWA &&
+            promo.sendWhatsApp &&
+            shouldAttemptWhatsApp
+          ) {
+            // WhatsApp was the only channel and it failed (no SMS
+            // fallback configured). Count it as a failed recipient so
+            // the terminal status reflects the truth.
+            failed++;
+            // The failure record itself was already written in the
+            // WA catch above. `waErrorWasFallback` is read only to
+            // document why we don't double-write here.
+            void waErrorWasFallback;
+          }
+        } catch (e) {
+          // PAS-WA-01: outer catch used to log-and-forget. Persist a
+          // generic failure so the recipient at least shows up in the
+          // failures list with the SpazaOne fallback message.
+          failed++;
+          const norm = normalizeTwilioError(e, "whatsapp");
+          lastErrorMessage = norm.pasellaMessage;
+          try {
+            await recordFailure(promotionId, custId, "", norm);
+          } catch (persistErr) {
+            console.error(
+              `Failed to persist failure record for ${custId}:`,
+              persistErr,
             );
           }
-        } else if (
-          !sentViaWA &&
-          promo.sendWhatsApp &&
-          (needsCheck || hasWhatsApp)
-        ) {
-          // WhatsApp was the only channel and it failed (no SMS
-          // fallback configured). Count it as a failed recipient so
-          // the terminal status reflects the truth.
-          failed++;
-          // The failure record itself was already written in the
-          // WA catch above. `waErrorWasFallback` is read only to
-          // document why we don't double-write here.
-          void waErrorWasFallback;
+          console.error(`Error sending to ${custId}:`, e);
         }
-      } catch (e) {
-        // PAS-WA-01: outer catch used to log-and-forget. Persist a
-        // generic failure so the recipient at least shows up in the
-        // failures list with the Pasella fallback message.
-        failed++;
-        const norm = normalizeTwilioError(e, "whatsapp");
-        lastErrorMessage = norm.pasellaMessage;
-        try {
-          await recordFailure(promotionId, custId, "", norm);
-        } catch (persistErr) {
-          console.error(
-            `Failed to persist failure record for ${custId}:`,
-            persistErr,
-          );
-        }
-        console.error(`Error sending to ${custId}:`, e);
       }
-    }
 
-    // PAS-WA-01: choose a terminal status that reflects what actually
-    // happened. `complete` is reserved for "every attempted send
-    // succeeded"; mixed outcomes become `partial`; total wipeout
-    // becomes `failed`. Existing UI that only branches on
-    // `'saved' | 'processing' | other` keeps working (everything else
-    // still renders green) but the field is now diagnosable from
-    // Firestore and from the promotion detail page going forward.
-    let terminalStatus: "complete" | "partial" | "failed";
-    if (attempted === 0 || failed === 0) {
-      terminalStatus = "complete";
-    } else if (succeeded === 0) {
-      terminalStatus = "failed";
-    } else {
-      terminalStatus = "partial";
-    }
+      // PAS-WA-01: choose a terminal status that reflects what actually
+      // happened. `complete` is reserved for "every attempted send
+      // succeeded"; mixed outcomes become `partial`; total wipeout
+      // becomes `failed`. Existing UI that only branches on
+      // `'saved' | 'processing' | other` keeps working (everything else
+      // still renders green) but the field is now diagnosable from
+      // Firestore and from the promotion detail page going forward.
+      let terminalStatus: "complete" | "partial" | "failed";
+      if (attempted === 0 || succeeded === 0) {
+        terminalStatus = "failed";
+      } else if (failed === 0) {
+        terminalStatus = "complete";
+      } else {
+        terminalStatus = "partial";
+      }
 
-    console.log(
-      `[PROMO] ${promotionId} ${terminalStatus}, totalCost=R${totalCost}, attempted=${attempted}, succeeded=${succeeded}, failed=${failed}`,
-    );
-    await promoRef.update({
-      status: terminalStatus,
-      completedAt: FieldValue.serverTimestamp(),
-      actualCost: totalCost,
-      attemptedCount: attempted,
-      succeededCount: succeeded,
-      failedCount: failed,
-      lastErrorMessage: lastErrorMessage,
-    });
+      console.log(
+        `[PROMO] ${promotionId} ${terminalStatus}, totalCost=R${totalCost}, attempted=${attempted}, succeeded=${succeeded}, failed=${failed}`,
+      );
+      await promoRef.update({
+        status: terminalStatus,
+        completedAt: FieldValue.serverTimestamp(),
+        actualCost: totalCost,
+        attemptedCount: attempted,
+        succeededCount: succeeded,
+        failedCount: failed,
+        lastErrorMessage: lastErrorMessage,
+      });
 
-    return { success: true };
-  },
-);
+      return { success: true };
+    },
+  );

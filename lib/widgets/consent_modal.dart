@@ -21,9 +21,9 @@ import '../services/telemetry_service.dart';
 ///     (see `analytics_event.dart`). The toggle is visible and pre-checked
 ///     -- the user can untick it before saving, or change it later via
 ///     Settings -> Privacy.
-///   * Session replay defaults OFF. Replay is screen recording and sits
-///     closer to POPIA s26 special PI; it stays opt-in. "Accept all" is the
-///     one-tap path to enable it.
+///   * Session replay is disabled in this release. The installed PostHog SDK
+///     cannot honour a separate replay choice at runtime, so product analytics
+///     never implies screen recording.
 ///   * The user cannot dismiss the modal without making a choice (no
 ///     barrier-tap to close, system back is intercepted by [PopScope]).
 ///   * "Reject all" is exposed as a top-right text link with equal
@@ -79,13 +79,11 @@ enum _PostAuthConsentAction { customize }
 
 Future<void> _recordConsentDecision({
   required bool analytics,
-  required bool replay,
   required bool crash,
   required String surface,
 }) async {
   await ConsentService.instance.recordDecision(
     analytics: analytics,
-    replay: replay,
     crash: crash,
   );
   await CrashService.instance.applyConsent(ConsentService.instance.state);
@@ -94,7 +92,7 @@ Future<void> _recordConsentDecision({
   await TelemetryService.instance.capture(
     ConsentDecided(
       analytics: analytics,
-      replay: replay,
+      replay: false,
       crash: crash,
       surface: surface,
     ),
@@ -103,7 +101,6 @@ Future<void> _recordConsentDecision({
 
 class _ConsentModalState extends State<ConsentModal> {
   late bool _analytics;
-  late bool _replay;
   late bool _crash;
   bool _saving = false;
 
@@ -112,7 +109,6 @@ class _ConsentModalState extends State<ConsentModal> {
     super.initState();
     final initial = ConsentService.instance.state;
     _analytics = initial.analytics; // true  on first run (default-on)
-    _replay = initial.replay; // false on first run (opt-in only)
     _crash = initial.crash; // true  on first run
   }
 
@@ -122,7 +118,6 @@ class _ConsentModalState extends State<ConsentModal> {
 
     await _recordConsentDecision(
       analytics: _analytics,
-      replay: _replay,
       crash: _crash,
       surface: widget.surface,
     );
@@ -134,7 +129,6 @@ class _ConsentModalState extends State<ConsentModal> {
   Future<void> _rejectAll() async {
     setState(() {
       _analytics = false;
-      _replay = false;
       _crash = false;
     });
     await _save();
@@ -143,7 +137,6 @@ class _ConsentModalState extends State<ConsentModal> {
   Future<void> _acceptAll() async {
     setState(() {
       _analytics = true;
-      _replay = true;
       _crash = true;
     });
     await _save();
@@ -208,7 +201,7 @@ class _ConsentModalState extends State<ConsentModal> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Pick what Pasella can collect. You can change this '
+                  'Pick what SpazaOne can collect. You can change this '
                   'anytime in Settings → Privacy.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -222,8 +215,8 @@ class _ConsentModalState extends State<ConsentModal> {
                   icon: Icons.bug_report_outlined,
                   title: 'Crash reports',
                   description:
-                      'Help us fix bugs when something breaks. No personal '
-                      'data is sent.',
+                      'Technical crash details may include your account ID '
+                      'and device information.',
                   value: _crash,
                   onChanged: _saving ? null : (v) => setState(() => _crash = v),
                 ),
@@ -232,27 +225,11 @@ class _ConsentModalState extends State<ConsentModal> {
                   icon: Icons.insights_outlined,
                   title: 'Usage insights',
                   description:
-                      'Anonymous stats about which features get used. No '
-                      'messages, no contacts.',
+                      'Feature usage linked to your SpazaOne account. No '
+                      'message contents or contact details.',
                   value: _analytics,
-                  onChanged: _saving
-                      ? null
-                      : (v) => setState(() {
-                            _analytics = v;
-                            if (!v) _replay = false;
-                          }),
-                ),
-                const SizedBox(height: 10),
-                _ConsentOptionCard(
-                  icon: Icons.smart_display_outlined,
-                  title: 'Screen replays',
-                  description:
-                      'Blurred recordings of your screens so we can debug '
-                      'rough edges. Needs usage insights on.',
-                  value: _replay && _analytics,
-                  onChanged: (_saving || !_analytics)
-                      ? null
-                      : (v) => setState(() => _replay = v),
+                  onChanged:
+                      _saving ? null : (v) => setState(() => _analytics = v),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -309,14 +286,12 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
 
   Future<void> _save({
     required bool analytics,
-    required bool replay,
     required bool crash,
   }) async {
     if (_saving) return;
     setState(() => _saving = true);
     await _recordConsentDecision(
       analytics: analytics,
-      replay: replay,
       crash: crash,
       surface: 'post_auth_sheet',
     );
@@ -364,7 +339,7 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Choose what Pasella can collect. You can change this anytime '
+              'Choose what SpazaOne can collect. You can change this anytime '
               'in Settings → Privacy.',
               style: TextStyle(
                 fontSize: 13.5,
@@ -374,9 +349,8 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
             ),
             const SizedBox(height: 18),
             FilledButton(
-              onPressed: _saving
-                  ? null
-                  : () => _save(analytics: true, replay: false, crash: true),
+              onPressed:
+                  _saving ? null : () => _save(analytics: true, crash: true),
               style: FilledButton.styleFrom(
                 backgroundColor: kPrimaryColor,
                 foregroundColor: Colors.white,
@@ -392,9 +366,8 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
             ),
             const SizedBox(height: 8),
             OutlinedButton(
-              onPressed: _saving
-                  ? null
-                  : () => _save(analytics: false, replay: false, crash: true),
+              onPressed:
+                  _saving ? null : () => _save(analytics: false, crash: true),
               style: OutlinedButton.styleFrom(
                 foregroundColor: kSecondaryAccent,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -436,8 +409,7 @@ class _ConsentOptionCard extends StatelessWidget {
   final String description;
   final bool value;
 
-  /// Null when the option is disabled (saving, or analytics-gating for
-  /// replay). The whole card visually dims when disabled.
+  /// Null when the option is disabled. The whole card visually dims.
   final ValueChanged<bool>? onChanged;
 
   @override

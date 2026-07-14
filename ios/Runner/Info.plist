@@ -16,7 +16,7 @@
 	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
 	<false/>
 	<key>CFBundleDisplayName</key>
-	<string>Pasella</string>
+	<string>SpazaOne</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,7 +24,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>pasella</string>
+	<string>SpazaOne</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -58,13 +58,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Pasella needs camera access so you can take photos of your products to share and sell.</string>
+	<string>SpazaOne needs camera access so you can take photos of your products to share and sell.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Pasella uses your contacts so you can send notifications, orders and promotions to your customers. With your consent, Pasella securely stores the selected contact details on our servers so you can reach them later.</string>
+	<string>SpazaOne uses your contacts so you can send notifications, orders and promotions to your customers. With your consent, SpazaOne securely stores the selected contact details on our servers so you can reach them later.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Pasella saves the photos you take so they appear in your photo library.</string>
+	<string>SpazaOne saves the photos you take so they appear in your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Pasella needs photo library access so you can select existing product photos to share with customers.</string>
+	<string>SpazaOne needs photo library access so you can select existing product photos to share with customers.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

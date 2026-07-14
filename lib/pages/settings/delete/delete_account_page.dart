@@ -53,7 +53,8 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
       if (!mounted) return;
       navigatedAway = true;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Your Pasella account has been deleted.')),
+        const SnackBar(
+            content: Text('Your SpazaOne account has been deleted.')),
       );
       Navigator.of(context)
           .pushNamedAndRemoveUntil(LoginPage.id, (route) => false);
@@ -69,7 +70,8 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
       if (!mounted) return;
       _errorMessage = 'Something went wrong, please try again.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to delete account. Please try again.')),
+        const SnackBar(
+            content: Text('Failed to delete account. Please try again.')),
       );
     } finally {
       if (!navigatedAway && mounted) {
@@ -98,9 +100,15 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 12),
-                const _BulletPoint(text: 'Remove your shop, products, sales and customer history.'),
-                const _BulletPoint(text: 'Delete all stored media, promotions and wallet records associated with your account.'),
-                const _BulletPoint(text: 'Sign you out of Pasella and prevent reuse of this account.'),
+                const _BulletPoint(
+                    text:
+                        'Remove your shop, products, sales and customer history.'),
+                const _BulletPoint(
+                    text:
+                        'Delete all stored media, promotions and wallet records associated with your account.'),
+                const _BulletPoint(
+                    text:
+                        'Sign you out of SpazaOne and prevent reuse of this account.'),
                 const SizedBox(height: 24),
                 Text(
                   'To confirm, type DELETE below and tap the button. You may be asked to verify your phone number or password again for security.',
@@ -129,7 +137,8 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: !_isLoading && _isConfirmed ? _handleDelete : null,
+                    onPressed:
+                        !_isLoading && _isConfirmed ? _handleDelete : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red.shade600,
                       foregroundColor: Colors.white,

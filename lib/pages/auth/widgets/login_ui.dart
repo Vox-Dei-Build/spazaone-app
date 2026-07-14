@@ -83,15 +83,14 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                       children: [
                         CustomButton(
                           title: 'Login',
-                          onTap:
-                              isLoading
-                                  ? () {}
-                                  : () {
-                                    if (authViewModel.formKey.currentState!
-                                        .validate()) {
-                                      authViewModel.handleLogin(context);
-                                    }
-                                  },
+                          onTap: isLoading
+                              ? () {}
+                              : () {
+                                  if (authViewModel.formKey.currentState!
+                                      .validate()) {
+                                    authViewModel.handleLogin(context);
+                                  }
+                                },
                           color: Colors.green,
                           icon: Icons.login,
                           fontSize: SizeConfig.textMultiplier * 2,
@@ -112,7 +111,7 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                 // Previously a second green "Register" CustomButton sat
                 // directly under "Login", which looked like a competing
                 // submit for the same phone field and caused wrong-CTA
-                // taps. A thin divider + "New to Pasella?" label + a
+                // taps. A thin divider + "New to SpazaOne?" label + a
                 // text link demotes registration to a clearly secondary
                 // action while keeping it easy to find on a phone screen.
                 Row(
@@ -123,7 +122,7 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                         horizontal: SizeConfig.imageSizeMultiplier * 3,
                       ),
                       child: Text(
-                        'New to Pasella?',
+                        'New to SpazaOne?',
                         style: TextStyle(
                           fontSize: SizeConfig.textMultiplier * 1.6,
                           color: Colors.grey[600],

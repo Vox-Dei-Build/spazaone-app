@@ -66,7 +66,7 @@
 
 
     <application
-        android:label="Pasella"
+        android:label="SpazaOne"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

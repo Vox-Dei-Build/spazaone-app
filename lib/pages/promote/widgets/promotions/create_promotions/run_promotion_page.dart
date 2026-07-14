@@ -255,7 +255,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     // popped — leaving the merchant with no idea whether anything
     // failed. The view-model now returns a structured result with
     // a message that is always populated (provider detail when
-    // present, Pasella fallback otherwise).
+    // present, SpazaOne fallback otherwise).
     final result = await Provider.of<PromotionsViewModel>(
       context,
       listen: false,
@@ -342,10 +342,9 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       final step1Valid =
           selectedTemplateId != null && (sendWhatsApp || sendSMS);
       final step2Valid = vm.selectedCustomerIds.isNotEmpty;
-      final canProceed =
-          currentStep == RunPromotionStep.templateAndDetails
-              ? step1Valid
-              : step2Valid;
+      final canProceed = currentStep == RunPromotionStep.templateAndDetails
+          ? step1Valid
+          : step2Valid;
 
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -354,14 +353,13 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
             OutlinedButton(onPressed: previousStep, child: const Text('Back')),
           ElevatedButton(
             onPressed: (sending || !canProceed) ? null : nextStep,
-            child:
-                sending
-                    ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                    : const Text('Next'),
+            child: sending
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Next'),
           ),
         ],
       );
@@ -378,14 +376,13 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           OutlinedButton(onPressed: previousStep, child: const Text('Back')),
           ElevatedButton(
             onPressed: sending ? null : _savePromotion,
-            child:
-                sending
-                    ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                    : const Text('Save Promotion'),
+            child: sending
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save Promotion'),
           ),
         ],
       );
@@ -459,8 +456,8 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
               }
             });
           },
-          onCustomerToggle:
-              (id) => setState(() => vm.toggleCustomerSelection(id)),
+          onCustomerToggle: (id) =>
+              setState(() => vm.toggleCustomerSelection(id)),
         );
 
       case RunPromotionStep.reviewAndPricing:
@@ -478,6 +475,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           sendSMS: sendSMS,
           totalCost: vm.totalPrice,
           breakdown: vm.promoBreakdown,
+          linkedProduct: linkedProduct,
         );
     }
   }
@@ -485,8 +483,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   @override
   Widget build(BuildContext context) {
     final vm = Provider.of<PromotionsViewModel>(context);
-    final hasProgress =
-        !_completed &&
+    final hasProgress = !_completed &&
         (currentStep != RunPromotionStep.templateAndDetails ||
             selectedTemplateId != null ||
             linkedProduct != null ||
@@ -508,25 +505,24 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       },
       child: Scaffold(
         appBar: const CustomAppBar(title: 'Run Promotion'),
-        body:
-            vm.loadingTemplates
-                ? const Center(child: CircularProgressIndicator())
-                : calculating
+        body: vm.loadingTemplates
+            ? const Center(child: CircularProgressIndicator())
+            : calculating
                 ? const Center(child: CircularProgressIndicator())
                 : Padding(
-                  padding: LayoutConstants.padding10Horizontal,
-                  child: Column(
-                    children: [
-                      WizardStepper(
-                        steps: const ['Template', 'Customers', 'Review'],
-                        currentIndex: currentStep.index,
-                      ),
-                      Expanded(child: _buildStepContent()),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      _buildNavigationButtons(),
-                    ],
+                    padding: LayoutConstants.padding10Horizontal,
+                    child: Column(
+                      children: [
+                        WizardStepper(
+                          steps: const ['Template', 'Customers', 'Review'],
+                          currentIndex: currentStep.index,
+                        ),
+                        Expanded(child: _buildStepContent()),
+                        SizedBox(height: SizeConfig.heightMultiplier * 2),
+                        _buildNavigationButtons(),
+                      ],
+                    ),
                   ),
-                ),
       ),
     );
   }

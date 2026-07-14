@@ -1,8 +1,8 @@
 export const DEFAULT_CATALOG_READY_SMS =
-  "Pasella: Order from {{shop_name}} on WhatsApp: {{ordering_url}}. Send CATALOG or type what you need. Reply STOP to opt out.";
+  "SpazaOne: Order from {{shop_name}} on WhatsApp: {{ordering_url}}. Send CATALOG or type what you need. Reply STOP to opt out.";
 
 export const DEFAULT_CATALOG_EMPTY_SMS =
-  "Pasella: Try {{shop_name}} on WhatsApp: {{ordering_url}}. No products? Ask {{merchant_name}} to add them in Pasella. Reply STOP to opt out.";
+  "SpazaOne: Try {{shop_name}} on WhatsApp: {{ordering_url}}. No products? Ask {{merchant_name}} to add them in SpazaOne. Reply STOP to opt out.";
 
 export interface OrderingCampaignSmsVariables {
   merchantName: string;

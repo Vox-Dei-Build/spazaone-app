@@ -181,10 +181,9 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     final now = Timestamp.now();
 
     // Apply boilerplate (Hi/From) before extracting variables so defaults are included
-    final whatsappContent =
-        includeWhatsApp
-            ? forceBoilerplate(_whatsappContentController.text)
-            : '';
+    final whatsappContent = includeWhatsApp
+        ? forceBoilerplate(_whatsappContentController.text)
+        : '';
     final smsContent = _smsContentController.text;
 
     final variables = <String>{};
@@ -206,10 +205,9 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         if (includeWhatsApp)
           'whatsapp': {
             'templateContent': whatsappContent,
-            'mediaUrl':
-                _mediaUrlController.text.trim().isEmpty
-                    ? null
-                    : _mediaUrlController.text.trim(),
+            'mediaUrl': _mediaUrlController.text.trim().isEmpty
+                ? null
+                : _mediaUrlController.text.trim(),
             'buttons': [],
             'approved': false,
             'submittedAt': now,
@@ -238,15 +236,14 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         // [context] threw "Null check operator used on a null value" from
         // [State.context] when the merchant tapped a button after this
         // wizard had been replaced from the navigator (i.e. unmounted).
-        final displayName =
-            _templateNameController.text.trim().isEmpty
-                ? (_sanitizedName.isEmpty ? 'your template' : _sanitizedName)
-                : _templateNameController.text.trim();
+        final displayName = _templateNameController.text.trim().isEmpty
+            ? (_sanitizedName.isEmpty ? 'your template' : _sanitizedName)
+            : _templateNameController.text.trim();
         _submitted = true;
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder:
-                (_) => TemplateSubmittedSuccessPage(displayName: displayName),
+            builder: (_) =>
+                TemplateSubmittedSuccessPage(displayName: displayName),
           ),
         );
       }
@@ -344,8 +341,8 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
           mediaUrlController: _mediaUrlController,
           photoUtil: _photoUtil,
           uploadingImage: uploadingImage,
-          onImageUploadingChanged:
-              (val) => setState(() => uploadingImage = val),
+          onImageUploadingChanged: (val) =>
+              setState(() => uploadingImage = val),
           whatsappPrice: _whatsappPrice,
           smsPricePerSegment: _smsPricePerSegment,
           smsSegments: _smsSegments,
@@ -380,44 +377,76 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     final contentValid =
         (!includeWhatsApp || whatsappFilled) && (!includeSMS || smsFilled);
 
-    final canProceed =
-        currentStep == CreateTemplateStep.basicInfo
-            ? nameValid
-            : currentStep == CreateTemplateStep.content
+    final canProceed = currentStep == CreateTemplateStep.basicInfo
+        ? nameValid
+        : currentStep == CreateTemplateStep.content
             ? contentValid
             : true;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        if (currentStep != CreateTemplateStep.basicInfo)
-          OutlinedButton(onPressed: previousStep, child: const Text('Back'))
-        else
-          const SizedBox.shrink(),
-        ElevatedButton(
-          onPressed:
-              saving || !canProceed
-                  ? null
-                  : () {
-                    if (currentStep == CreateTemplateStep.basicInfo) {
-                      if (!_formKey.currentState!.validate()) return;
-                      nextStep();
-                    } else if (currentStep == CreateTemplateStep.content) {
-                      nextStep();
-                    } else {
-                      _saveTemplate();
-                    }
-                  },
-          child:
-              saving
-                  ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                  : Text(isLast ? 'Save & Submit' : 'Next'),
-        ),
-      ],
+    final blockedMessage =
+        currentStep == CreateTemplateStep.content && !contentValid
+            ? 'Write your promotion message above to continue.'
+            : null;
+
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (blockedMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                blockedMessage,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (currentStep != CreateTemplateStep.basicInfo)
+                OutlinedButton(
+                  onPressed: previousStep,
+                  child: const Text('Back'),
+                )
+              else
+                const SizedBox.shrink(),
+              ElevatedButton(
+                onPressed: saving || !canProceed
+                    ? null
+                    : () {
+                        if (currentStep == CreateTemplateStep.basicInfo) {
+                          if (!_formKey.currentState!.validate()) return;
+                          nextStep();
+                        } else if (currentStep == CreateTemplateStep.content) {
+                          nextStep();
+                        } else {
+                          _saveTemplate();
+                        }
+                      },
+                child: saving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        isLast
+                            ? 'Save & Submit'
+                            : currentStep == CreateTemplateStep.content
+                                ? 'Review message'
+                                : 'Next',
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

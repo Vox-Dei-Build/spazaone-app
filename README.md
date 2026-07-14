@@ -1,4 +1,11 @@
-# Pasella Ledger
+# SpazaOne
+
+SpazaOne puts a merchant's whole shop in their pocket: customers, balances,
+orders, stock, sales and promotions in one mobile app.
+
+The Dart package, bundle identifiers and backend integration names retain the
+legacy `pasella` identifier so existing installations and integrations continue
+to update safely.
 
 ### Project Structure
 
@@ -77,7 +84,7 @@ Additional notes on the in-app wallet, order payment options, and payment provid
 
 ### Releases
 
-Pasella ships from `main` directly, tag-driven, no release branches.
+SpazaOne ships from `main` directly, tag-driven, no release branches.
 See [`docs/releases.md`](docs/releases.md) for the full ritual,
 trigger semantics, required env vars, and recovery playbook.
 

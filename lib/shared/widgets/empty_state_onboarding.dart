@@ -46,7 +46,7 @@ class EmptyStateOnboarding extends StatelessWidget {
     this.onCtaTap,
     this.ctaIcon = Icons.add,
     this.tutorialKey,
-    this.tutorialTitle = 'How to use Pasella',
+    this.tutorialTitle = 'How to use SpazaOne',
   }) : super(key: key);
 
   @override

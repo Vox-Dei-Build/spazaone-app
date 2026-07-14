@@ -76,7 +76,7 @@ class EntityTab extends StatefulWidget {
     this.listHeader,
     this.showGrowthNudge,
     this.tutorialKey,
-    this.tutorialTitle = 'How to use Pasella',
+    this.tutorialTitle = 'How to use SpazaOne',
     Key? key,
   }) : super(key: key);
 
@@ -192,67 +192,62 @@ class _EntityTabState extends State<EntityTab> {
         .doc(currentUserId)
         .snapshots()
         .map((snapshot) {
-          if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
-            return <Map<String, dynamic>>[];
-          }
-          return (snapshot.data()?['unreadMessages'] as List<dynamic>)
-              .map((msg) => msg as Map<String, dynamic>)
-              .toList();
-        });
+      if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
+        return <Map<String, dynamic>>[];
+      }
+      return (snapshot.data()?['unreadMessages'] as List<dynamic>)
+          .map((msg) => msg as Map<String, dynamic>)
+          .toList();
+    });
 
-    return Rx.combineLatest2<
-      QuerySnapshot,
-      List<Map<String, dynamic>>,
-      List<CustomerWithTransactions>
-    >(
+    return Rx.combineLatest2<QuerySnapshot, List<Map<String, dynamic>>,
+        List<CustomerWithTransactions>>(
       customersStream,
       unreadMessagesStream,
       (customerSnapshot, unreadMessages) =>
           customerSnapshot.docs.map((customerDoc) {
-            final customerData = customerDoc.data() as Map<String, dynamic>;
-            final double balance =
-                (customerData['balance'] as num?)?.toDouble() ?? 0.0;
+        final customerData = customerDoc.data() as Map<String, dynamic>;
+        final double balance =
+            (customerData['balance'] as num?)?.toDouble() ?? 0.0;
 
-            // 🔵 Chat unread per customer (existing)
-            // V1 truth-surface: only count inbound customer messages toward
-            // the unread badge — outbound bot mirrors share the same array
-            // but should not ring the bell. Entries flagged `isRead: true`
-            // by `markMessagesAsRead` must also be excluded so the badge
-            // actually clears after the merchant opens the chat.
-            final chatUnread =
-                unreadMessages
-                    .where(
-                      (msg) =>
-                          msg['customerNumber'] == customerData['number'] &&
-                          (msg['direction'] == null ||
-                              msg['direction'].toString().toLowerCase() ==
-                                  'inbound') &&
-                          msg['isRead'] != true,
-                    )
-                    .length;
+        // 🔵 Chat unread per customer (existing)
+        // V1 truth-surface: only count inbound customer messages toward
+        // the unread badge — outbound bot mirrors share the same array
+        // but should not ring the bell. Entries flagged `isRead: true`
+        // by `markMessagesAsRead` must also be excluded so the badge
+        // actually clears after the merchant opens the chat.
+        final chatUnread = unreadMessages
+            .where(
+              (msg) =>
+                  msg['customerNumber'] == customerData['number'] &&
+                  (msg['direction'] == null ||
+                      msg['direction'].toString().toLowerCase() == 'inbound') &&
+                  msg['isRead'] != true,
+            )
+            .length;
 
-            // 🟠 Orders unread per customer (NEW)
-            final int ordersUnread =
-                (customerData['ordersUnreadCount'] as int?) ?? 0;
+        // 🟠 Orders unread per customer (NEW)
+        final int ordersUnread =
+            (customerData['ordersUnreadCount'] as int?) ?? 0;
 
-            // ✅ Single badge shows combined unread (messages + orders)
-            final int combinedUnread = chatUnread + ordersUnread;
+        // ✅ Single badge shows combined unread (messages + orders)
+        final int combinedUnread = chatUnread + ordersUnread;
 
-            return CustomerWithTransactions(
-              customer: Customer.fromMap({
-                'id': customerDoc.id,
-                'name': formatStringToCamelCase(customerData['name']),
-                'number': customerData['number'],
-                'category': customerData['category'],
-                'lastTransaction': customerData['lastTransaction'],
-                'balance': balance,
-                'isNPA': balance < 0,
-                'profileImageUrl': customerData['profileImageUrl'],
-              }),
-              transactions: [],
-              unreadCount: combinedUnread, // 👈 now includes orders
-            );
-          }).toList(),
+        return CustomerWithTransactions(
+          customer: Customer.fromMap({
+            'id': customerDoc.id,
+            'name': formatStringToCamelCase(customerData['name']),
+            'number': customerData['number'],
+            'category': customerData['category'],
+            'lastTransaction': customerData['lastTransaction'],
+            'balance': balance,
+            'isNPA': balance < 0,
+            'profileImageUrl': customerData['profileImageUrl'],
+          }),
+          transactions: [],
+          unreadCount: combinedUnread, // 👈 now includes orders
+        );
+      }).toList(),
     );
   }
 
@@ -318,7 +313,7 @@ class _EntityTabState extends State<EntityTab> {
                           coachmarkKey: 'add_first_customer',
                           title: 'Start with one customer',
                           message:
-                              'Save one real customer. Pasella opens their Pay Later screen next.',
+                              'Save one real customer. SpazaOne opens their Pay Later screen next.',
                           icon: Icons.person_add_alt_1_outlined,
                           enabled: widget.category == 'Customer',
                           child: ElevatedButton.icon(
@@ -355,11 +350,10 @@ class _EntityTabState extends State<EntityTab> {
                                   onPressed: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
-                                        builder:
-                                            (_) => LoomVideoPage(
-                                              loomUrl: url,
-                                              title: widget.tutorialTitle,
-                                            ),
+                                        builder: (_) => LoomVideoPage(
+                                          loomUrl: url,
+                                          title: widget.tutorialTitle,
+                                        ),
                                       ),
                                     );
                                   },
@@ -399,30 +393,28 @@ class _EntityTabState extends State<EntityTab> {
             // even on a 200-customer ledger. Already-known numbers are
             // skipped inside the cache, making this safe to call on
             // every stream tick.
-            final numbers =
-                allEntities
-                    .map((e) => e.customer.number)
-                    .whereType<String>()
-                    .where((n) => n.isNotEmpty)
-                    .toSet();
+            final numbers = allEntities
+                .map((e) => e.customer.number)
+                .whereType<String>()
+                .where((n) => n.isNotEmpty)
+                .toSet();
             if (numbers.isNotEmpty) {
               // ignore: unawaited_futures
               WhatsAppCapabilityCache.instance.primeFor(numbers);
             }
 
-            List<CustomerWithTransactions> filteredEntities = dataModel
-                .applyFilters(allEntities);
+            List<CustomerWithTransactions> filteredEntities =
+                dataModel.applyFilters(allEntities);
 
             String? searchTerm = widget.searchTextNotifier.value?.toLowerCase();
             final hasSearchTerm =
                 searchTerm != null && searchTerm.trim().isNotEmpty;
             if (searchTerm != null && searchTerm.isNotEmpty) {
-              filteredEntities =
-                  filteredEntities.where((entity) {
-                    return entity.customer.name.toLowerCase().contains(
+              filteredEntities = filteredEntities.where((entity) {
+                return entity.customer.name.toLowerCase().contains(
                       searchTerm,
                     );
-                  }).toList();
+              }).toList();
             }
 
             if (filteredEntities.isEmpty) {
@@ -474,9 +466,7 @@ class _EntityTabState extends State<EntityTab> {
                         if (entityWithTransactions.customer.lastTransaction !=
                                 null &&
                             entityWithTransactions
-                                .customer
-                                .lastTransaction!
-                                .isNotEmpty) {
+                                .customer.lastTransaction!.isNotEmpty) {
                           lastTransaction = LedgerTransaction.fromMap(
                             entityWithTransactions.customer.lastTransaction!,
                           );
@@ -488,29 +478,27 @@ class _EntityTabState extends State<EntityTab> {
                           profileImageUrl:
                               entityWithTransactions.customer.profileImageUrl,
                           balance: balance,
-                          amount:
-                              lastTransaction != null
-                                  ? lastTransaction.amount.toDouble()
-                                  : 0,
+                          amount: lastTransaction != null
+                              ? lastTransaction.amount.toDouble()
+                              : 0,
                           remarks:
                               lastTransaction?.remarks ?? 'No transactions yet',
                           status: lastTransaction?.status ?? 'DUE',
                           type: lastTransaction?.type ?? 'Credit',
-                          date:
-                              lastTransaction?.date != null
-                                  ? DateFormat(
-                                    'y MMM d, h:mm a',
-                                  ).format(lastTransaction!.date)
-                                  : '',
+                          date: lastTransaction?.date != null
+                              ? DateFormat(
+                                  'y MMM d, h:mm a',
+                                ).format(lastTransaction!.date)
+                              : '',
                           selectedCustomerId:
                               entityWithTransactions.customer.id,
                           isNPA: entityWithTransactions.customer.isNPA,
                           number: entityWithTransactions.customer.number,
                           unreadCount: entityWithTransactions.unreadCount,
-                          hasWhatsApp: WhatsAppCapabilityCache.instance
-                              .capabilityFor(
-                                entityWithTransactions.customer.number,
-                              ),
+                          hasWhatsApp:
+                              WhatsAppCapabilityCache.instance.capabilityFor(
+                            entityWithTransactions.customer.number,
+                          ),
                         );
                       }),
                       const SizedBox(height: 112),

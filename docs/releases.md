@@ -1,9 +1,17 @@
 # Releases
 
-Pasella ships from `main` directly, tag-driven, no release branches. This
+SpazaOne ships from `main` directly, tag-driven, no release branches. This
 file is the canonical reference for shipping a build to the stores. If
 anything here disagrees with `codemagic.yaml`, the YAML wins and this
 file is wrong.
+
+## Brand and technical identity
+
+SpazaOne is the customer-facing app name. The Dart package name, Android
+application ID, Apple bundle ID, Firebase project ID, CodeMagic credential
+group names and backend identifiers intentionally retain their legacy
+`pasella` values. Changing those identifiers would create a different app or
+break existing release infrastructure rather than update the installed app.
 
 ## TL;DR
 
