@@ -7,7 +7,7 @@ import 'package:pasella/shared/widgets/wallet_balance_pill.dart';
 /// Top-of-page header.
 ///
 /// Layout, left → right:
-///   1. Brand (logo + "Pasella")
+///   1. Brand (logo + "SpazaOne")
 ///   2. Page-scoped actions: optional search, optional `actionWidget`
 ///   3. Account/value: wallet balance pill (always visible, with breathing
 ///      room so its rounded shape doesn't visually merge with adjacent icons)
@@ -65,7 +65,7 @@ class PageHeader extends StatelessWidget {
           ),
           SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
           Text(
-            'Pasella',
+            'SpazaOne',
             style: TextStyle(
               fontSize: SizeConfig.textMultiplier * 2.6,
               fontWeight: FontWeight.bold,

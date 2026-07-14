@@ -208,7 +208,7 @@ class _ConsentModalState extends State<ConsentModal> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Pick what Pasella can collect. You can change this '
+                  'Pick what SpazaOne can collect. You can change this '
                   'anytime in Settings → Privacy.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -364,7 +364,7 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Choose what Pasella can collect. You can change this anytime '
+              'Choose what SpazaOne can collect. You can change this anytime '
               'in Settings → Privacy.',
               style: TextStyle(
                 fontSize: 13.5,

@@ -64,7 +64,7 @@ class ChannelCapabilityBadge extends StatelessWidget {
       icon = Icons.phone_outlined;
       color = Colors.grey.shade600;
       label = 'Phone';
-      tooltip = 'WhatsApp status not yet checked. Pasella tries WhatsApp '
+      tooltip = 'WhatsApp status not yet checked. SpazaOne tries WhatsApp '
           'first and falls back to SMS automatically.';
       isFontAwesome = false;
     }
@@ -77,8 +77,7 @@ class ChannelCapabilityBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withOpacity(0.10),
         border: Border.all(color: color.withOpacity(0.45), width: 0.8),
-        borderRadius:
-            BorderRadius.circular(SizeConfig.imageSizeMultiplier * 2),
+        borderRadius: BorderRadius.circular(SizeConfig.imageSizeMultiplier * 2),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

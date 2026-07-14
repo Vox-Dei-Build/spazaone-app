@@ -79,7 +79,7 @@ class MessagingNotificationService {
         const templateParams = {
           customerName,
           amount,
-          shopName: shopName || "Pasella",
+          shopName: shopName || "SpazaOne",
           balance: formattedBalance,
         };
 

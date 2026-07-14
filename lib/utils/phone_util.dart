@@ -27,7 +27,7 @@ Future<T?> firestoreExceptionHandler<T>(
 /// Keep this honest: until international support ships, the user has
 /// to know SA-only is a real product constraint, not a bug.
 const String kSAOnlyPhoneMessage =
-    'Pasella currently supports SA mobile numbers only (e.g. 0821234567 or +27821234567).';
+    'SpazaOne currently supports SA mobile numbers only (e.g. 0821234567 or +27821234567).';
 
 // Local 10-digit SA mobile, e.g. 0821234567
 final RegExp _saLocalRegex = RegExp(r'^0[6-9][0-9]{8}$');

@@ -16,6 +16,16 @@ import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart
 import 'package:pasella/widgets/consent_modal.dart';
 import 'package:provider/provider.dart';
 
+@visibleForTesting
+bool shouldShowSpazaOneRebrandNotice({
+  required DateTime? accountCreatedAt,
+  DateTime? now,
+}) {
+  if (accountCreatedAt == null) return true;
+  return (now ?? DateTime.now()).difference(accountCreatedAt) >=
+      const Duration(hours: 1);
+}
+
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
 
@@ -28,6 +38,7 @@ class Dashboard extends StatefulWidget {
 class _DashboardState extends State<Dashboard> {
   bool _introScheduled = false;
   bool _firstRunSurfacesScheduled = false;
+  bool _rebrandNoticeScheduled = false;
   bool _activationIntentProcessing = false;
 
   /// First-run surfaces are sequenced here once deferred auth consent is on:
@@ -46,7 +57,42 @@ class _DashboardState extends State<Dashboard> {
       if (!mounted) return;
     }
 
+    await _showRebrandNoticeIfNeeded(userId);
+    if (!mounted) return;
     await _showOnboardingIntroIfNeeded(userId);
+  }
+
+  Future<void> _showRebrandNoticeIfNeeded(String userId) async {
+    if (_rebrandNoticeScheduled || userId.isEmpty) return;
+    _rebrandNoticeScheduled = true;
+
+    final box = Hive.box('appBox');
+    final seenKey = 'spazaone_rebrand_notice_seen:$userId';
+    final seen = box.get(seenKey, defaultValue: false) as bool;
+    if (seen) return;
+
+    final accountCreatedAt =
+        FirebaseAuth.instance.currentUser?.metadata.creationTime;
+    if (!shouldShowSpazaOneRebrandNotice(
+      accountCreatedAt: accountCreatedAt,
+    )) {
+      await box.put(seenKey, true);
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _SpazaOneRebrandNotice(),
+    );
+
+    await box.put(seenKey, true);
   }
 
   Future<void> _showOnboardingIntroIfNeeded(String userId) async {
@@ -73,27 +119,26 @@ class _DashboardState extends State<Dashboard> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      builder:
-          (_) => MerchantOnboardingIntro(
-            onOpenCustomers: () {
-              if (!mounted) return;
-              context.read<AppModel>().updateCurrentIndex(0);
-              Navigator.of(context).pushNamed(AddContactPage.id);
-            },
-            onOpenProducts: () {
-              if (!mounted) return;
-              // PAS-UX-19: pre-select the Products tab so popping
-              // NewProductPage lands the merchant on their catalogue,
-              // then push the add-product form directly. The previous
-              // behaviour only switched tabs, which dropped a fresh
-              // merchant on the empty-state screen and required an
-              // extra tap to reach the form the CTA had just promised.
-              context.read<AppModel>().updateCurrentIndex(1);
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
-            },
-          ),
+      builder: (_) => MerchantOnboardingIntro(
+        onOpenCustomers: () {
+          if (!mounted) return;
+          context.read<AppModel>().updateCurrentIndex(0);
+          Navigator.of(context).pushNamed(AddContactPage.id);
+        },
+        onOpenProducts: () {
+          if (!mounted) return;
+          // PAS-UX-19: pre-select the Products tab so popping
+          // NewProductPage lands the merchant on their catalogue,
+          // then push the add-product form directly. The previous
+          // behaviour only switched tabs, which dropped a fresh
+          // merchant on the empty-state screen and required an
+          // extra tap to reach the form the CTA had just promised.
+          context.read<AppModel>().updateCurrentIndex(1);
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
+        },
+      ),
     );
 
     // Persist only after the sheet was actually presented and dismissed.
@@ -164,13 +209,12 @@ class _DashboardState extends State<Dashboard> {
       return;
     }
 
-    final doc =
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .collection('customers')
-            .doc(customerId)
-            .get();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('customers')
+        .doc(customerId)
+        .get();
 
     if (!mounted) return;
 
@@ -190,15 +234,13 @@ class _DashboardState extends State<Dashboard> {
     context.read<AppModel>().updateCurrentIndex(0);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) => AddCreditScreen(
-              customerName: customerName,
-              customerId: customerId,
-              mobileNumber:
-                  mobileNumber == null || mobileNumber.isEmpty
-                      ? null
-                      : mobileNumber,
-            ),
+        builder: (_) => AddCreditScreen(
+          customerName: customerName,
+          customerId: customerId,
+          mobileNumber: mobileNumber == null || mobileNumber.isEmpty
+              ? null
+              : mobileNumber,
+        ),
       ),
     );
   }
@@ -274,8 +316,8 @@ class _DashboardState extends State<Dashboard> {
                 ),
                 child: NavigationBar(
                   selectedIndex: value.currentIndex,
-                  onDestinationSelected:
-                      (index) => value.handleNavigation(context, index),
+                  onDestinationSelected: (index) =>
+                      value.handleNavigation(context, index),
                   destinations: [
                     NavigationDestination(
                       icon: Icon(
@@ -375,6 +417,84 @@ class _AccountSetupProgress extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SpazaOneRebrandNotice extends StatelessWidget {
+  const _SpazaOneRebrandNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          28,
+          24,
+          24 + MediaQuery.paddingOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3C4),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: const Icon(
+                Icons.shopping_cart_outlined,
+                color: Color(0xFFFFB300),
+                size: 42,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Pasella is now SpazaOne',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Same app. Same account. All your customers, balances, products '
+              'and sales are right where you left them.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: Colors.grey.shade700,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Only the name has changed.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.green.shade800,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: const Text('Continue to SpazaOne'),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -80,11 +80,9 @@ class ContentStep extends StatelessWidget {
             labelText: 'Message',
             border: OutlineInputBorder(),
           ),
-          validator:
-              (val) =>
-                  val == null || val.isEmpty || val.trim().isEmpty
-                      ? 'Message Body is required'
-                      : null,
+          validator: (val) => val == null || val.isEmpty || val.trim().isEmpty
+              ? 'Message Body is required'
+              : null,
         ),
         const SizedBox(height: 8),
         const Text(
@@ -95,7 +93,7 @@ class ContentStep extends StatelessWidget {
         // avoid rendering "The  team" in the preview.
         Text(
           shopName.trim().isEmpty
-              ? 'The Pasella team'
+              ? 'The SpazaOne team'
               : 'The ${shopName.trim()} team',
           style: const TextStyle(fontStyle: FontStyle.italic),
         ),
@@ -139,8 +137,8 @@ class ContentStep extends StatelessWidget {
             height: 100,
             width: 100,
             fit: BoxFit.cover,
-            errorBuilder:
-                (_, __, ___) => const Icon(Icons.broken_image, size: 80),
+            errorBuilder: (_, __, ___) =>
+                const Icon(Icons.broken_image, size: 80),
           ),
         );
       } else {
@@ -175,14 +173,13 @@ class ContentStep extends StatelessWidget {
               child: _mediaDisplay(),
             ),
             IconButton(
-              icon:
-                  uploadingImage
-                      ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                      : const Icon(Icons.upload),
+              icon: uploadingImage
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.upload),
               onPressed: uploadingImage ? null : _handleImageUpload,
             ),
           ],

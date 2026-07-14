@@ -158,7 +158,7 @@ function buildResult(
   if (!e164) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "Pasella ordering WhatsApp number is not configured.",
+      "SpazaOne ordering WhatsApp number is not configured.",
     );
   }
   const text = `shop ${code}`;

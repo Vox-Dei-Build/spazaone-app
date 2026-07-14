@@ -36,7 +36,7 @@ class SubscriptionPage extends StatelessWidget {
                     ),
                     bulletPoints: const [
                       'Ad Free',
-                      'Unlimited SMS from Pasella',
+                      'Unlimited SMS from SpazaOne',
                       'Unlimited Business Accounts',
                       'Priority Customer Support',
                     ],

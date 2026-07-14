@@ -362,7 +362,7 @@ class _OrderingLinkPanel extends StatelessWidget {
             ),
             children: [
               _DetailRow(
-                label: 'Pasella WhatsApp',
+                label: 'SpazaOne WhatsApp',
                 value: pasellaWhatsappNumber,
               ),
               _DetailRow(label: 'Manual fallback', value: fallbackText),

@@ -9,7 +9,7 @@ export type UrgentUpdateCopy = {
   body: string;
 };
 
-const DEFAULT_TITLE = "Urgent: update Pasella today";
+const DEFAULT_TITLE = "Urgent: update SpazaOne today";
 const DEFAULT_BODY =
   "Don't miss customer messages. Update to {version} now to keep " +
   "WhatsApp, SMS and conversations working reliably.";

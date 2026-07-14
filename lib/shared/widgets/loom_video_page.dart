@@ -38,7 +38,7 @@ class _LoomVideoPageState extends State<LoomVideoPage> {
 
     return Scaffold(
       appBar: CustomAppBar(
-        title: widget.title.isNotEmpty ? widget.title : 'How to use Pasella',
+        title: widget.title.isNotEmpty ? widget.title : 'How to use SpazaOne',
       ),
       body: Padding(
         padding: LayoutConstants.padding10Horizontal,

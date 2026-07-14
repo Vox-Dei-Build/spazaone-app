@@ -101,30 +101,26 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
 
     final isChecking = _connectionState == _ConnectionState.checking;
     final isOnline = _connectionState == _ConnectionState.online;
-    final IconData icon =
-        isChecking
-            ? Icons.cloud_sync_outlined
-            : isOnline
+    final IconData icon = isChecking
+        ? Icons.cloud_sync_outlined
+        : isOnline
             ? Icons.cloud_done_outlined
             : Icons.cloud_off_outlined;
-    final Color color =
-        isChecking
-            ? Colors.orange.shade700
-            : isOnline
+    final Color color = isChecking
+        ? Colors.orange.shade700
+        : isOnline
             ? Colors.green
             : Colors.red;
-    final String label =
-        isChecking
-            ? 'Checking connection'
-            : isOnline
+    final String label = isChecking
+        ? 'Checking connection'
+        : isOnline
             ? 'Online and synced'
             : 'Offline or unable to sync';
-    final String tooltip =
-        isChecking
-            ? 'Checking whether Pasella can reach the cloud.'
-            : isOnline
+    final String tooltip = isChecking
+        ? 'Checking whether SpazaOne can reach the cloud.'
+        : isOnline
             ? 'Online — changes can sync to the cloud.'
-            : 'Offline — changes stay on this device until Pasella can reach the cloud.';
+            : 'Offline — changes stay on this device until SpazaOne can reach the cloud.';
 
     return Tooltip(
       message: tooltip,

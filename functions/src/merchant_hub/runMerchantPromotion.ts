@@ -275,7 +275,7 @@ export const runMerchantPromotion = functions.https.onCall(
 
     // Fetch shop name
     const usrSnap = await db.collection("users").doc(merchantId).get();
-    const shopName = usrSnap.data()?.shopName ?? "Pasella";
+    const shopName = usrSnap.data()?.shopName ?? "SpazaOne";
 
     // Pricing via Remote Config
     const pricing = await DynamicPricingService.initialize();

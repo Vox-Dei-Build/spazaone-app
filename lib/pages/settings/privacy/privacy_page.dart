@@ -91,8 +91,7 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
 
   @override
   Widget build(BuildContext context) {
-    final dirty =
-        _analytics != widget.state.analytics ||
+    final dirty = _analytics != widget.state.analytics ||
         _replay != widget.state.replay ||
         _crash != widget.state.crash;
 
@@ -102,7 +101,7 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Choose what data Pasella may collect to keep the app stable and '
+            'Choose what data SpazaOne may collect to keep the app stable and '
             'understand how merchants use it. Save to apply your changes.',
           ),
           const SizedBox(height: 12),
@@ -120,10 +119,9 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
               'Anonymous usage events. No message contents, no contacts.',
             ),
             value: _analytics,
-            onChanged:
-                _saving
-                    ? null
-                    : (v) => setState(() {
+            onChanged: _saving
+                ? null
+                : (v) => setState(() {
                       _analytics = v;
                       // Replay is meaningless without analytics.
                       if (!v) _replay = false;
@@ -136,10 +134,9 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
               'and images are blurred. Requires product analytics.',
             ),
             value: _replay && _analytics,
-            onChanged:
-                (_saving || !_analytics)
-                    ? null
-                    : (v) => setState(() => _replay = v),
+            onChanged: (_saving || !_analytics)
+                ? null
+                : (v) => setState(() => _replay = v),
           ),
           const SizedBox(height: 24),
           FilledButton(
