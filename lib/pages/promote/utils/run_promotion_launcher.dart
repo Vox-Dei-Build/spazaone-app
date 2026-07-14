@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
-import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_promotion_page.dart';
 import 'package:pasella/utils/auth_util.dart';
 
 /// PAS-UX-09: single source of truth for launching the Run Promotion
@@ -70,6 +70,7 @@ class RunPromotionLauncher {
     required PromotionsViewModel viewModel,
     VoidCallback? onGoToTemplates,
     String? initialTemplateId,
+    LinkedProductRef? initialProduct,
   }) async {
     // PAS-UX-14: anonymous gate at the screen edge. Promote is one
     // of three sensitive surfaces flagged by the audit (along with
@@ -80,64 +81,26 @@ class RunPromotionLauncher {
     if (!passed) return;
     if (!context.mounted) return;
 
-    if (!hasApprovedTemplate(viewModel.templates)) {
-      await _showNoApprovedDialog(
-        context,
-        onGoToTemplates: onGoToTemplates,
+    final product = initialProduct ??
+        await ProductPickerSheet.show(context, whatsappOnly: true);
+    if (!context.mounted || product == null) return;
+    if (product.whatsappListed != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'List this product for WhatsApp orders before promoting it.',
+          ),
+        ),
       );
       return;
     }
 
-    final wizardResult = await Navigator.of(context).push<TemplateSubmitResult>(
+    await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => RunPromotionPage(
-          initialTemplateId: initialTemplateId,
-        ),
+        builder: (_) => ProductPromotionPage(product: product),
       ),
     );
     if (!context.mounted) return;
     await viewModel.fetchPromotionsReports();
-
-    // If, while the wizard was open, the merchant created a new
-    // template and chose "View pending templates", the wizard pops
-    // with [TemplateSubmitResult.viewPending]. Route them to the
-    // Templates surface so the action means what it says — without
-    // this, the two terminal buttons on the success page collapsed
-    // to the same outcome (the bug PAS-UX flagged for release).
-    if (wizardResult == TemplateSubmitResult.viewPending &&
-        onGoToTemplates != null) {
-      onGoToTemplates();
-    }
-  }
-
-  static Future<void> _showNoApprovedDialog(
-    BuildContext context, {
-    VoidCallback? onGoToTemplates,
-  }) {
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('No approved templates'),
-        content: const Text(
-          'You need at least one approved template before you can run '
-          'a promotion. Head to the Templates tab to create or submit '
-          'one.',
-        ),
-        actions: [
-          if (onGoToTemplates != null)
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                onGoToTemplates();
-              },
-              child: const Text('Go to Templates'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
   }
 }

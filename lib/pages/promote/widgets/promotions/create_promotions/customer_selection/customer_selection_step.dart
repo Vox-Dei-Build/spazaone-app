@@ -38,6 +38,9 @@ class CustomerSelectionStep extends StatelessWidget {
   /// do a live check before charging, but we surface this here so
   /// the merchant knows some of these may not actually receive.
   final int unknownWhatsAppCount;
+  final String heading;
+  final String allCustomersLabel;
+  final String? recommendationText;
 
   const CustomerSelectionStep({
     Key? key,
@@ -51,6 +54,9 @@ class CustomerSelectionStep extends StatelessWidget {
     this.sendSMS = false,
     this.hiddenNotWhatsAppCount = 0,
     this.unknownWhatsAppCount = 0,
+    this.heading = '👥 Select Customers',
+    this.allCustomersLabel = 'All Customers',
+    this.recommendationText,
   }) : super(key: key);
 
   /// PAS-WA-03: build the channel-aware banner copy. Returns null
@@ -99,10 +105,40 @@ class CustomerSelectionStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text("👥 Select Customers",
+        Text(heading,
             style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: SizeConfig.textMultiplier * 2)),
+        if (recommendationText != null)
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: SizeConfig.imageSizeMultiplier * 2,
+              vertical: SizeConfig.heightMultiplier * 0.5,
+            ),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.08),
+                border: Border.all(
+                  color: Colors.green.withValues(alpha: 0.35),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, size: 18, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      recommendationText!,
+                      style: const TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         if (channelBanner != null)
           Padding(
             padding: EdgeInsets.symmetric(
@@ -163,7 +199,7 @@ class CustomerSelectionStep extends StatelessWidget {
             controlAffinity: ListTileControlAffinity.leading,
             value: allCustomers,
             onChanged: (_) => onAllCustomersChanged(!allCustomers),
-            title: Text("All Customers",
+            title: Text(allCustomersLabel,
                 style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: SizeConfig.textMultiplier * 2))),

@@ -30,10 +30,9 @@ class MerchantSetupActions {
   final VoidCallback onOpenOrderingLink;
   final VoidCallback onOpenBanking;
 
-  /// Opens the Marketing → Templates surface. The old handler pointed
-  /// at Marketing → Promotions and merchants got bounced through the
-  /// "no approved templates" dialog on their way to what the CTA had
-  /// promised.
+  /// Opens Marketing so Pasella can prepare the reusable product-promotion
+  /// message automatically. The callback name is retained for source
+  /// compatibility with older call sites.
   final VoidCallback onCreateTemplate;
 }
 
@@ -956,17 +955,17 @@ List<_SetupStep> _buildSteps(
       done: s.hasApprovedTemplate,
       icon: Icons.campaign_outlined,
       rowTitle: s.hasApprovedTemplate
-          ? 'Promotion template approved'
-          : 'Create a promotion template',
+          ? 'WhatsApp promotions ready'
+          : 'Prepare WhatsApp promotions',
       rowBody: s.hasApprovedTemplate
           ? 'Marketing messages are ready when you need them.'
           : s.hasProducts
-              ? 'Submit a WhatsApp template. Approval usually takes a few hours.'
+              ? 'Pasella prepares the reusable message and handles Meta approval.'
               : 'Available after a product exists.',
-      actionTitle: 'Create a promotion template',
+      actionTitle: 'Prepare WhatsApp promotions',
       actionBody:
-          'Submit a WhatsApp template so you can run promotions once approved.',
-      actionLabel: s.hasProducts ? 'Create template' : null,
+          'Pasella creates and submits the reusable product message for you.',
+      actionLabel: s.hasProducts ? 'Open Marketing' : null,
       action: s.hasProducts ? a.onCreateTemplate : null,
     ),
   ];

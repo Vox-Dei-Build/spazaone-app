@@ -51,6 +51,18 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
     return _byNormalizedNumber.containsKey(normalized);
   }
 
+  /// Update a number immediately after Pasella has completed a successful
+  /// WhatsApp send. The backend persists the same result in Firestore, while
+  /// this keeps already-mounted customer lists from showing a stale SMS badge
+  /// until the next app restart.
+  void markWhatsAppCapable(String? rawNumber) {
+    if (rawNumber == null || rawNumber.isEmpty) return;
+    final normalized = normalizePhoneNumber(rawNumber);
+    if (normalized.isEmpty || _byNormalizedNumber[normalized] == true) return;
+    _byNormalizedNumber[normalized] = true;
+    notifyListeners();
+  }
+
   /// Bulk-load capability for the supplied raw numbers. Already-cached
   /// numbers are skipped, so calling this every time the customer
   /// stream emits is cheap. Triggers a single `notifyListeners()` at
@@ -73,7 +85,8 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
 
     try {
       for (var i = 0; i < list.length; i += _chunkSize) {
-        final end = (i + _chunkSize > list.length) ? list.length : i + _chunkSize;
+        final end =
+            (i + _chunkSize > list.length) ? list.length : i + _chunkSize;
         final chunk = list.sublist(i, end);
         final snap = await FirebaseFirestore.instance
             .collection('successfulWhatsAppNumbers')
@@ -110,6 +123,20 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
     } finally {
       _inFlight.removeAll(normalized);
     }
+  }
+
+  /// Drop and reload channel results after a mixed WhatsApp/SMS promotion.
+  /// The final delivery callbacks are authoritative; this avoids marking an
+  /// SMS fallback recipient as WhatsApp-capable in an already-mounted list.
+  Future<void> refreshFor(Iterable<String?> rawNumbers) async {
+    final normalized = <String>{};
+    for (final raw in rawNumbers) {
+      if (raw == null || raw.isEmpty) continue;
+      final value = normalizePhoneNumber(raw);
+      if (value.isNotEmpty) normalized.add(value);
+    }
+    _byNormalizedNumber.removeWhere((key, _) => normalized.contains(key));
+    await primeFor(rawNumbers);
   }
 
   /// Test/debug-only reset hook.

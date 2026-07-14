@@ -4,7 +4,6 @@ import 'package:pasella/pages/promote/widgets/templates/create_template/force_bo
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:path/path.dart' as path;
 import 'package:pasella/utils/currency_util.dart';
 
 class ContentStep extends StatelessWidget {
@@ -13,7 +12,10 @@ class ContentStep extends StatelessWidget {
   final TextEditingController whatsappContentController;
   final TextEditingController smsContentController;
   final TextEditingController mediaUrlController;
-  final PhotoUploadUtil photoUtil;
+
+  /// Nullable so the message editor can be rendered in isolation (for
+  /// previews/tests). The production template flow always supplies it.
+  final PhotoUploadUtil? photoUtil;
   final bool uploadingImage;
   final Function(bool) onImageUploadingChanged;
   final double? whatsappPrice;
@@ -49,7 +51,10 @@ class ContentStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      padding: const EdgeInsets.only(top: 8, bottom: 12),
       children: [
+        const _TemplatePurposeNotice(),
+        SizedBox(height: SizeConfig.heightMultiplier * 2),
         _buildMessageAppEditor(context),
         SizedBox(height: SizeConfig.heightMultiplier * 1),
         Divider(color: Colors.grey, thickness: SizeConfig.heightMultiplier * 0),
@@ -62,6 +67,21 @@ class ContentStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          'Write the message customers will receive',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Keep it reusable. You will choose the customers and attach a '
+          'product after WhatsApp approves this template.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        SizedBox(height: SizeConfig.heightMultiplier * 1.5),
         const Text(
           'Hello [Customer Name],',
           style: TextStyle(fontStyle: FontStyle.italic),
@@ -69,7 +89,9 @@ class ContentStep extends StatelessWidget {
         SizedBox(height: SizeConfig.heightMultiplier * 1),
         TextFormField(
           controller: whatsappContentController,
+          minLines: 4,
           maxLines: 6,
+          textCapitalization: TextCapitalization.sentences,
           onChanged: (val) {
             onSmsPricingUpdate(val);
             if (includeSMS) {
@@ -77,14 +99,17 @@ class ContentStep extends StatelessWidget {
             }
           },
           decoration: const InputDecoration(
-            labelText: 'Message',
+            labelText: 'Promotion message *',
+            hintText: 'Example: Fresh bread is available today. Reply '
+                'CATALOG to view our products and place an order.',
+            helperText: 'Type your offer here to unlock the next step.',
+            helperMaxLines: 2,
+            alignLabelWithHint: true,
             border: OutlineInputBorder(),
           ),
-          validator:
-              (val) =>
-                  val == null || val.isEmpty || val.trim().isEmpty
-                      ? 'Message Body is required'
-                      : null,
+          validator: (val) => val == null || val.isEmpty || val.trim().isEmpty
+              ? 'Message Body is required'
+              : null,
         ),
         const SizedBox(height: 8),
         const Text(
@@ -106,18 +131,21 @@ class ContentStep extends StatelessWidget {
   }
 
   Widget _buildMediaSection(BuildContext context) {
-    Future<void> _handleImageUpload() async {
+    Future<void> handleImageUpload() async {
+      final uploader = photoUtil;
+      if (uploader == null) return;
       onImageUploadingChanged(true);
-      await photoUtil.handleImagePick(context, (file) async {
+      await uploader.handleImagePick(context, (file) async {
         if (file != null) {
-          final compressedFile = await photoUtil.compressImage(file);
+          final compressedFile = await uploader.compressImage(file);
           if (compressedFile != null) {
             final uploadPath =
-                'whatsapp_media/${path.basename(compressedFile.path)}';
-            final url = await photoUtil.uploadImage(compressedFile, uploadPath);
+                'whatsapp_media/${compressedFile.uri.pathSegments.last}';
+            final url = await uploader.uploadImage(compressedFile, uploadPath);
             if (url != null) {
               mediaUrlController.text = url;
             } else {
+              if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Failed to upload image. Try again.'),
@@ -130,7 +158,7 @@ class ContentStep extends StatelessWidget {
       });
     }
 
-    Widget _mediaDisplay() {
+    Widget mediaDisplay() {
       if (mediaUrlController.text.isNotEmpty) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(8),
@@ -139,8 +167,8 @@ class ContentStep extends StatelessWidget {
             height: 100,
             width: 100,
             fit: BoxFit.cover,
-            errorBuilder:
-                (_, __, ___) => const Icon(Icons.broken_image, size: 80),
+            errorBuilder: (_, __, ___) =>
+                const Icon(Icons.broken_image, size: 80),
           ),
         );
       } else {
@@ -162,8 +190,16 @@ class ContentStep extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '📷 Media (Whatsapp)',
+          'Optional WhatsApp image',
           style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'This image becomes part of the approved template. A product can '
+          'still be attached later when you run the promotion.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
         ),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
         Row(
@@ -171,19 +207,18 @@ class ContentStep extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             GestureDetector(
-              onTap: uploadingImage ? null : _handleImageUpload,
-              child: _mediaDisplay(),
+              onTap: uploadingImage ? null : handleImageUpload,
+              child: mediaDisplay(),
             ),
             IconButton(
-              icon:
-                  uploadingImage
-                      ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                      : const Icon(Icons.upload),
-              onPressed: uploadingImage ? null : _handleImageUpload,
+              icon: uploadingImage
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.upload),
+              onPressed: uploadingImage ? null : handleImageUpload,
             ),
           ],
         ),
@@ -213,7 +248,7 @@ class ContentStep extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Estimated Cost of Template',
+              'Estimated delivery cost per customer',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -283,6 +318,42 @@ class ContentStep extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Explains the boundary that confused the release customer: this step creates
+/// an approved reusable message; recipients and products belong to the later
+/// Run Promotion flow.
+class _TemplatePurposeNotice extends StatelessWidget {
+  const _TemplatePurposeNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Step 1 of 2: create a reusable message for WhatsApp approval. '
+              'After approval, run a promotion to attach a stock product and '
+              'choose who receives it.',
+            ),
+          ),
+        ],
       ),
     );
   }

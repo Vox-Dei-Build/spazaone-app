@@ -8,6 +8,8 @@ import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 
+const productPromotionTemplateKind = 'product_promotion_v1';
+
 class PromotionsViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   late final StreamSubscription<User?> _authSubscription;
@@ -75,9 +77,23 @@ class PromotionsViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> _templates = [];
   List<Map<String, dynamic>> get templates => _templates;
 
+  /// The single Pasella-owned template used by the product-first promotion
+  /// flow. User-authored templates remain in Firestore for backwards
+  /// compatibility but are not part of the everyday merchant journey.
+  Map<String, dynamic>? get productPromotionTemplate {
+    for (final template in _templates) {
+      if (template['systemManaged'] == true &&
+          template['templateKind'] == productPromotionTemplateKind) {
+        return template;
+      }
+    }
+    return null;
+  }
+
   bool _loadingTemplates = false;
   bool get loadingTemplates => _loadingTemplates;
   String shopName = '';
+  String merchantMobileNumber = '';
 
   Map<String, dynamic> promoBreakdown = {};
 
@@ -105,6 +121,7 @@ class PromotionsViewModel extends ChangeNotifier {
     _templates = [];
     promotionsReports = [];
     shopName = '';
+    merchantMobileNumber = '';
     _loadingTemplates = false;
     loadingPromotions = false;
     _loadingWhatsAppCapability = false;
@@ -142,6 +159,34 @@ class PromotionsViewModel extends ChangeNotifier {
     ]);
   }
 
+  /// Ensures Pasella's reusable product-promotion template exists and has
+  /// been submitted for WhatsApp approval. The callable is idempotent, so it
+  /// is safe to invoke whenever Marketing or a product-level Promote action
+  /// opens. Returns the refreshed merchant binding document when available.
+  Future<Map<String, dynamic>?> ensureProductPromotionTemplate({
+    bool retry = false,
+  }) async {
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) return null;
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'ensureProductPromotionTemplate',
+      );
+      await callable.call({'retry': retry});
+      await fetchTemplates(merchantId: merchantId);
+      return productPromotionTemplate;
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint(
+        'ensureProductPromotionTemplate callable failure: ${e.code} ${e.message}',
+      );
+      await fetchTemplates(merchantId: merchantId);
+      return productPromotionTemplate;
+    } catch (e) {
+      debugPrint('ensureProductPromotionTemplate failed: $e');
+      return productPromotionTemplate;
+    }
+  }
+
   // initialize pricing, e.g.:
   Future<void> initializePricing() async {
     final pricingService = await DynamicPricingService.initialize();
@@ -173,14 +218,21 @@ class PromotionsViewModel extends ChangeNotifier {
     final scopedMerchantId = merchantId ?? _prepareMerchantScope();
     if (scopedMerchantId == null) {
       shopName = '';
+      merchantMobileNumber = '';
       notifyListeners();
       return;
     }
 
     try {
-      final resolvedShopName = await fetchShopNameForUser(scopedMerchantId);
+      final snapshot =
+          await _firestore.collection('users').doc(scopedMerchantId).get();
+      final data = snapshot.data();
       if (!_isStillCurrentMerchant(scopedMerchantId)) return;
-      shopName = resolvedShopName ?? '';
+      shopName = data?['shopName']?.toString().trim() ?? '';
+      merchantMobileNumber =
+          data?['mobileNumber']?.toString().trim().isNotEmpty == true
+              ? data!['mobileNumber'].toString().trim()
+              : FirebaseAuth.instance.currentUser?.phoneNumber?.trim() ?? '';
       notifyListeners();
     } catch (e) {
       debugPrint('Failed to fetch shop name: $e');
@@ -191,6 +243,7 @@ class PromotionsViewModel extends ChangeNotifier {
     String docID,
     Map<String, dynamic> template,
   ) async {
+    if (template['systemManaged'] == true) return false;
     final merchantId = _prepareMerchantScope();
     if (merchantId == null) return false;
 
@@ -207,6 +260,9 @@ class PromotionsViewModel extends ChangeNotifier {
           templateData == null ||
           templateData['userId'] != merchantId) {
         throw StateError('Template does not belong to the current merchant.');
+      }
+      if (templateData['systemManaged'] == true) {
+        throw StateError('Pasella-managed templates cannot be deleted.');
       }
 
       // Delete from Twilio via Cloud Function
@@ -329,6 +385,12 @@ class PromotionsViewModel extends ChangeNotifier {
   /// full numbered-customer list.
   void selectAllFromEligible(List<Map<String, dynamic>> eligible) {
     selectedCustomerIds = eligible.map((c) => c['id'] as String).toList();
+    calculatePrice();
+    notifyListeners();
+  }
+
+  void selectCustomerIds(Iterable<String> ids) {
+    selectedCustomerIds = ids.toSet().toList();
     calculatePrice();
     notifyListeners();
   }
@@ -464,6 +526,68 @@ class PromotionsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Rule-based V1 recommendation: customers with ledger activity in the
+  /// last 90 days. If the merchant has no recent activity data, all eligible
+  /// customers are returned so the default never becomes an empty dead end.
+  static List<Map<String, dynamic>> recommendedCustomers(
+    List<Map<String, dynamic>> eligible, {
+    DateTime? now,
+  }) {
+    final reference = now ?? DateTime.now();
+    final cutoff = reference.subtract(const Duration(days: 90));
+    final recent = eligible.where((customer) {
+      final last = customer['lastTransaction'];
+      if (last is! Map) return false;
+      final rawDate = last['date'];
+      final date = rawDate is Timestamp ? rawDate.toDate() : null;
+      return date != null && !date.isBefore(cutoff);
+    }).toList();
+    return recent.isEmpty ? List.of(eligible) : recent;
+  }
+
+  /// A maximum estimate for the automatic product flow. Known WhatsApp
+  /// recipients use the approved card, known non-WhatsApp recipients use SMS,
+  /// and unknown numbers are priced at the more expensive of the two because
+  /// the backend checks WhatsApp first and falls back without user input.
+  Map<String, dynamic> estimateProductPromotion({
+    required String smsContent,
+  }) {
+    final whatsappUnit = whatsappPrice ?? 0.0;
+    final smsUnit = smsPricePerSegment ?? 0.0;
+    final smsSegments = calculateSmsSegments(smsContent);
+    final smsRecipientCost = smsUnit * smsSegments;
+    var whatsappCount = 0;
+    var smsCount = 0;
+    var unknownCount = 0;
+
+    for (final id in selectedCustomerIds) {
+      final capability = whatsAppCapableById[id];
+      if (capability == true) {
+        whatsappCount++;
+      } else if (capability == false) {
+        smsCount++;
+      } else {
+        unknownCount++;
+      }
+    }
+
+    final unknownUnit =
+        whatsappUnit > smsRecipientCost ? whatsappUnit : smsRecipientCost;
+    final total = whatsappCount * whatsappUnit +
+        smsCount * smsRecipientCost +
+        unknownCount * unknownUnit;
+    return {
+      'total': total,
+      'whatsappCount': whatsappCount,
+      'whatsappUnit': whatsappUnit,
+      'smsCount': smsCount,
+      'smsUnit': smsUnit,
+      'smsSegments': smsSegments,
+      'unknownCount': unknownCount,
+      'unknownUnit': unknownUnit,
+    };
+  }
+
   int calculateSmsSegments(String text) {
     return SMSPricingUtil.calculateSegments(text);
   }
@@ -546,10 +670,9 @@ class PromotionsViewModel extends ChangeNotifier {
     // PAS-UX-rel #5: optional product link. We store both the id
     // (canonical pointer back to `users/{uid}/products/{id}`) and a
     // denormalized snapshot of the fields the UI needs to render the
-    // linked-product chip on saved promotions. The snapshot is what
-    // keeps the saved promo from silently breaking if the merchant
-    // later edits or deletes the product. Backend doesn't need to
-    // know about this field — it's UI metadata only.
+    // linked-product chip on saved promotions. The backend reloads the
+    // canonical product by this id before sending, while the snapshot keeps
+    // historical promotion cards readable if the product is later edited.
     Map<String, dynamic>? linkedProduct,
   }) async {
     final merchantId = _prepareMerchantScope();

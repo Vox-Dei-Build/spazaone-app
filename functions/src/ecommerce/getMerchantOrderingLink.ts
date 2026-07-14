@@ -10,13 +10,63 @@ interface OrderingLinkData {
   action?: "get" | "regenerate" | "revoke";
 }
 
-interface OrderingLinkResult {
+export interface OrderingLinkResult {
   code: string;
   pasellaWhatsappNumber: string;
   orderingUrl: string;
   fallbackText: string;
   created: boolean;
   regenerated: boolean;
+}
+
+/**
+ * Returns the merchant's active ordering link, creating one when necessary.
+ *
+ * Product promotions call this server-side so merchants never have to visit
+ * Settings before the "Order on WhatsApp" button can work.
+ */
+export async function ensureMerchantOrderingLink(
+  merchantId: string,
+): Promise<OrderingLinkResult> {
+  const merchantRef = db.collection("users").doc(merchantId);
+  const merchantSnap = await merchantRef.get();
+  if (!merchantSnap.exists) {
+    throw new functions.https.HttpsError(
+      "not-found",
+      "Merchant profile was not found.",
+    );
+  }
+
+  const existing = merchantSnap.get("whatsappOrdering") as
+    | { code?: string; status?: string }
+    | undefined;
+  if (existing?.code && existing.status === "active") {
+    return buildResult(existing.code, {
+      created: false,
+      regenerated: false,
+    });
+  }
+
+  const code = await createUniqueCode(merchantId);
+  const result = buildResult(code, {
+    created: true,
+    regenerated: false,
+  });
+  await merchantRef.set(
+    {
+      whatsappOrdering: {
+        code,
+        status: "active",
+        pasellaWhatsappNumber: result.pasellaWhatsappNumber,
+        orderingUrl: result.orderingUrl,
+        fallbackText: result.fallbackText,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    },
+    { merge: true },
+  );
+  return result;
 }
 
 export const getMerchantOrderingLink = functions.https.onCall(
@@ -173,7 +223,7 @@ function buildResult(
   };
 }
 
-function configuredPasellaWhatsappNumber(): string {
+export function configuredPasellaWhatsappNumber(): string {
   const cfg = functions.config();
   return (
     cfg.ordering?.whatsapp_number ||

@@ -19,19 +19,22 @@ class LinkedProductRef {
   final String name;
   final double? sellingPrice;
   final String? imageUrl;
+  final bool? whatsappListed;
 
   const LinkedProductRef({
     required this.id,
     required this.name,
     this.sellingPrice,
     this.imageUrl,
+    this.whatsappListed,
   });
 
   Map<String, dynamic> toMap() => {
         'id': id,
-        'name': name,
+        'name': name.trim(),
         'sellingPrice': sellingPrice,
         'imageUrl': imageUrl,
+        if (whatsappListed != null) 'whatsappListed': whatsappListed,
       };
 
   static LinkedProductRef? fromMap(Map<String, dynamic>? map) {
@@ -41,9 +44,10 @@ class LinkedProductRef {
     if (id is! String || name is! String) return null;
     return LinkedProductRef(
       id: id,
-      name: name,
+      name: name.trim(),
       sellingPrice: (map['sellingPrice'] as num?)?.toDouble(),
       imageUrl: map['imageUrl'] as String?,
+      whatsappListed: map['whatsappListed'] as bool?,
     );
   }
 }
@@ -61,12 +65,18 @@ class ProductPickerSheet extends StatefulWidget {
   /// indicator on the matching row so the merchant can see what
   /// they previously chose.
   final String? currentlyLinkedProductId;
+  final bool whatsappOnly;
 
-  const ProductPickerSheet({super.key, this.currentlyLinkedProductId});
+  const ProductPickerSheet({
+    super.key,
+    this.currentlyLinkedProductId,
+    this.whatsappOnly = false,
+  });
 
   static Future<LinkedProductRef?> show(
     BuildContext context, {
     String? currentlyLinkedProductId,
+    bool whatsappOnly = false,
   }) {
     return showModalBottomSheet<LinkedProductRef>(
       context: context,
@@ -76,6 +86,7 @@ class ProductPickerSheet extends StatefulWidget {
       ),
       builder: (_) => ProductPickerSheet(
         currentlyLinkedProductId: currentlyLinkedProductId,
+        whatsappOnly: whatsappOnly,
       ),
     );
   }
@@ -137,12 +148,21 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
   }
 
   List<Map<String, dynamic>> get _filtered {
-    if (_query.trim().isEmpty) return _products;
+    final available = widget.whatsappOnly
+        ? _products.where(_isWhatsAppListed).toList()
+        : _products;
+    if (_query.trim().isEmpty) return available;
     final q = _query.trim().toLowerCase();
-    return _products.where((p) {
+    return available.where((p) {
       final name = (p['name'] ?? '').toString().toLowerCase();
       return name.contains(q);
     }).toList();
+  }
+
+  bool _isWhatsAppListed(Map<String, dynamic> product) {
+    return product['whatsappListed'] == true ||
+        product['whatsappEnabled'] == true ||
+        product['availableOnWhatsApp'] == true;
   }
 
   @override
@@ -175,14 +195,16 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
               ),
               SizedBox(height: SizeConfig.heightMultiplier * 1.5),
               Text(
-                'Link a product',
+                widget.whatsappOnly ? 'Choose a product' : 'Link a product',
                 style: theme.textTheme.titleLarge
                     ?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               Text(
-                'Pick the product this promotion is about. Its name and '
-                'image will be attached to the saved promotion.',
+                widget.whatsappOnly
+                    ? 'Only products ready for WhatsApp orders are shown.'
+                    : 'Pick the product this promotion is about. Its name and '
+                        'image will be attached to the saved promotion.',
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.disabledColor),
               ),
@@ -250,9 +272,16 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
 
     final list = _filtered;
     if (list.isEmpty) {
+      final hasQuery = _query.trim().isNotEmpty;
       return Center(
         child: Text(
-          'No products match "$_query".',
+          hasQuery
+              ? 'No products match "$_query".'
+              : widget.whatsappOnly
+                  ? 'No products are ready for WhatsApp orders yet.\n'
+                      'Open a product and turn on WhatsApp ordering first.'
+                  : 'No products are available.',
+          textAlign: TextAlign.center,
           style:
               theme.textTheme.bodyMedium?.copyWith(color: theme.disabledColor),
         ),
@@ -268,6 +297,7 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
         final name = (p['name'] ?? 'Untitled').toString();
         final price = (p['sellingPrice'] as num?)?.toDouble();
         final image = p['image'] as String?;
+        final whatsappListed = _isWhatsAppListed(p);
         final isSelected = id == widget.currentlyLinkedProductId;
 
         return ListTile(
@@ -278,11 +308,24 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
             style: theme.textTheme.bodyLarge
                 ?.copyWith(fontWeight: FontWeight.w600),
           ),
-          subtitle: price != null
-              ? Text(CurrencyUtil.format(price))
-              : Text('No price set',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.disabledColor)),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                price != null ? CurrencyUtil.format(price) : 'No price set',
+              ),
+              Text(
+                whatsappListed
+                    ? 'Available in WhatsApp catalogue'
+                    : 'Not listed for WhatsApp orders',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: whatsappListed
+                      ? Colors.green.shade700
+                      : Colors.orange.shade800,
+                ),
+              ),
+            ],
+          ),
           trailing: isSelected
               ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
               : const Icon(Icons.chevron_right),
@@ -292,6 +335,7 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
               name: name,
               sellingPrice: price,
               imageUrl: image,
+              whatsappListed: whatsappListed,
             ));
           },
         );

@@ -87,8 +87,8 @@ const _customerAndProduct = MerchantSetupState(
   loading: false,
 );
 
-/// Everything but templates. Used to verify that when the template
-/// step becomes the next-actionable step, the panel promotes it.
+/// Everything but automatic promotion setup. Used to verify that when the
+/// step becomes the next action, the panel routes into Marketing.
 const _allButTemplate = MerchantSetupState(
   hasCustomers: true,
   hasProducts: true,
@@ -176,17 +176,15 @@ void main() {
     );
 
     testWidgets(
-      'all but template done → next-action panel promotes template with '
-      '"Create template" CTA (not "Open Marketing")',
+      'all but promotion setup done → next action opens Marketing',
       (tester) async {
         await _pumpCardWith(tester, _allButTemplate);
 
-        expect(find.text('Create a promotion template'), findsOneWidget);
+        expect(find.text('Prepare WhatsApp promotions'), findsOneWidget);
         expect(
-          find.widgetWithText(ElevatedButton, 'Create template'),
+          find.widgetWithText(ElevatedButton, 'Open Marketing'),
           findsOneWidget,
         );
-        expect(find.text('Open Marketing'), findsNothing);
       },
     );
   });
@@ -300,7 +298,7 @@ void main() {
     });
 
     testWidgets(
-      'template step fires onCreateTemplate when promoted to next action',
+      'promotion setup step opens Marketing through the retained callback',
       (tester) async {
         var templateTapped = false;
         var promoTapped = false;
@@ -316,8 +314,7 @@ void main() {
           ),
         );
 
-        await tester
-            .tap(find.widgetWithText(ElevatedButton, 'Create template'));
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Open Marketing'));
         await tester.pump();
 
         expect(templateTapped, isTrue);

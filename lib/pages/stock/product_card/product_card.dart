@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
+import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
+import 'package:provider/provider.dart';
 
 class ProductCard extends StatelessWidget {
   final Product product;
@@ -12,6 +16,20 @@ class ProductCard extends StatelessWidget {
 
   const ProductCard({Key? key, required this.product, required this.docID})
       : super(key: key);
+
+  Future<void> _promote(BuildContext context) {
+    return RunPromotionLauncher.launch(
+      context,
+      viewModel: context.read<PromotionsViewModel>(),
+      initialProduct: LinkedProductRef(
+        id: docID,
+        name: product.name ?? 'Product',
+        sellingPrice: product.sellingPrice,
+        imageUrl: product.image,
+        whatsappListed: product.whatsappListed,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +104,25 @@ class ProductCard extends StatelessWidget {
                             listed: product.whatsappListed,
                           ),
                         ),
+                        if (product.whatsappListed)
+                          Positioned(
+                            left: SizeConfig.imageSizeMultiplier * 1,
+                            bottom: SizeConfig.heightMultiplier * 0.6,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _promote(context),
+                              icon:
+                                  const Icon(Icons.campaign_outlined, size: 15),
+                              label: const Text('Promote'),
+                              style: ElevatedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
+                                textStyle: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
