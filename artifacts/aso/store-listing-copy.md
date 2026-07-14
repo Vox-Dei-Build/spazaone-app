@@ -45,8 +45,8 @@ Your account and business records stay right where they are. This update also ad
 ### URLs
 
 - Marketing URL: `https://spazaone.com`
-- Privacy policy URL: keep the current public Google Doc until `https://spazaone.com/privacy-policy` is live
-- Support URL: pending a working SpazaOne support/contact page
+- Privacy policy URL: `https://spazaone.com/privacy-policy` (use after the website route is deployed and verified)
+- Support URL: `https://spazaone.com/support` (use after the website route is deployed and verified)
 
 ### App Review note
 
@@ -96,8 +96,9 @@ Your account and business records stay right where they are. This update also ad
 ### URLs
 
 - Website: `https://spazaone.com`
-- Privacy policy: keep the current public Google Doc until `https://spazaone.com/privacy-policy` is live
-- Support: pending a working SpazaOne support/contact page
+- Privacy policy: `https://spazaone.com/privacy-policy` (use after the website route is deployed and verified)
+- Account deletion: `https://spazaone.com/delete-account` (use after the website route is deployed and verified)
+- Support: `https://spazaone.com/support` (use after the website route is deployed and verified)
 
 ### Full description
 

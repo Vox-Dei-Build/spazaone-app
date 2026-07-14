@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../constants/app_urls.dart';
 import '../../../services/analytics_event.dart';
 import '../../../services/consent_service.dart';
 import '../../../services/crash_service.dart';
@@ -45,7 +47,6 @@ class _PrivacyBody extends StatefulWidget {
 
 class _PrivacyBodyState extends State<_PrivacyBody> {
   late bool _analytics = widget.state.analytics;
-  late bool _replay = widget.state.replay;
   late bool _crash = widget.state.crash;
   bool _saving = false;
 
@@ -57,7 +58,6 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
     // the value we last saved -- which means the change came from outside.
     if (oldWidget.state != widget.state && !_saving) {
       _analytics = widget.state.analytics;
-      _replay = widget.state.replay;
       _crash = widget.state.crash;
     }
   }
@@ -68,7 +68,6 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
 
     await ConsentService.instance.recordDecision(
       analytics: _analytics,
-      replay: _replay,
       crash: _crash,
     );
     await CrashService.instance.applyConsent(ConsentService.instance.state);
@@ -76,7 +75,7 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
     await TelemetryService.instance.capture(
       ConsentDecided(
         analytics: _analytics,
-        replay: _replay,
+        replay: false,
         crash: _crash,
         surface: 'settings_privacy',
       ),
@@ -91,9 +90,8 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
 
   @override
   Widget build(BuildContext context) {
-    final dirty = _analytics != widget.state.analytics ||
-        _replay != widget.state.replay ||
-        _crash != widget.state.crash;
+    final dirty =
+        _analytics != widget.state.analytics || _crash != widget.state.crash;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -116,32 +114,33 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
           SwitchListTile(
             title: const Text('Product analytics'),
             subtitle: const Text(
-              'Anonymous usage events. No message contents, no contacts.',
+              'Usage events linked to your SpazaOne account. No message '
+              'contents or contact details.',
             ),
             value: _analytics,
-            onChanged: _saving
-                ? null
-                : (v) => setState(() {
-                      _analytics = v;
-                      // Replay is meaningless without analytics.
-                      if (!v) _replay = false;
-                    }),
-          ),
-          SwitchListTile(
-            title: const Text('Session replay'),
-            subtitle: const Text(
-              'Masked recordings of your screens to debug rough edges. All text '
-              'and images are blurred. Requires product analytics.',
-            ),
-            value: _replay && _analytics,
-            onChanged: (_saving || !_analytics)
-                ? null
-                : (v) => setState(() => _replay = v),
+            onChanged: _saving ? null : (v) => setState(() => _analytics = v),
           ),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: (_saving || !dirty) ? null : _save,
             child: Text(_saving ? 'Saving...' : 'Save'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () async {
+              final uri = Uri.parse(AppUrls.privacyPolicy);
+              final opened = await launchUrl(
+                uri,
+                mode: LaunchMode.externalApplication,
+              );
+              if (!opened && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Could not open privacy policy')),
+                );
+              }
+            },
+            child: const Text('Read the SpazaOne Privacy Policy'),
           ),
           if (widget.state.decidedAt != null) ...[
             const SizedBox(height: 12),
