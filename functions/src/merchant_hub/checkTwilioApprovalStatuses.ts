@@ -3,6 +3,46 @@ import axios from "axios";
 import * as admin from "firebase-admin";
 import { AndroidConfig } from "firebase-admin/messaging";
 
+async function notifyMerchant(args: {
+  merchantId: string;
+  status: string;
+  templateId: string;
+  notification: { title: string; body: string };
+  route: string;
+}): Promise<void> {
+  if (!args.merchantId.trim()) return;
+  const merchantDoc = await db.collection("users").doc(args.merchantId).get();
+  const token = merchantDoc.data()?.fcmToken;
+  if (!token) {
+    console.warn(`⚠️ No FCM token for merchant ${args.merchantId}`);
+    return;
+  }
+
+  const androidConfig: AndroidConfig = {
+    priority: "high",
+    notification: {
+      channelId: "default_channel",
+      sound: "default",
+    },
+  };
+
+  try {
+    const sendRes = await admin.messaging().send({
+      notification: args.notification,
+      android: androidConfig,
+      data: {
+        status: args.status,
+        templateId: args.templateId,
+        route: args.route,
+      },
+      token,
+    });
+    console.log("📲 Notification sent:", sendRes);
+  } catch (err) {
+    console.error("❌ Failed to send FCM:", err);
+  }
+}
+
 /**
  * Scheduled Cloud Function that checks the approval status of WhatsApp templates
  * submitted to Twilio and updates Firestore accordingly. If a template is approved
@@ -77,61 +117,83 @@ exports.checkTwilioApprovalStatuses = functions.pubsub
           await doc.ref.update(update);
           console.log(`🔄 Updated ${sid} → ${status}`);
 
-          // 🔔 Push notification logic
-          const merchantDoc = await db
-            .collection("users")
-            .doc(merchantId)
-            .get();
-          const token = merchantDoc.data()?.fcmToken;
+          const isProductPromotion =
+            data.systemManaged === true &&
+            data.templateKind === "product_promotion_v1";
+          const notification = isProductPromotion
+            ? {
+                title:
+                  status === "approved"
+                    ? "WhatsApp promotions are ready 🎉"
+                    : "WhatsApp promotion setup needs attention",
+                body:
+                  status === "approved"
+                    ? "Choose a product and customers whenever you are ready to send."
+                    : `SpazaOne could not finish setup. ${wa.rejection_reason || "Open Marketing to try again."}`,
+              }
+            : {
+                title:
+                  status === "approved"
+                    ? "WhatsApp Template Approved 🎉"
+                    : "WhatsApp Template Rejected ❌",
+                body:
+                  status === "approved"
+                    ? `Your template "${data.name}" is now ready to go live!`
+                    : `Your template "${data.name}" was rejected. Reason: ${wa.rejection_reason || "Not provided."}`,
+              };
 
-          if (!token) {
-            console.warn(`⚠️ No FCM token for merchant ${merchantId}`);
+          if (isProductPromotion && data.systemScope === "global") {
+            const bindings = await db
+              .collection("messagingTemplates")
+              .where("systemSourceTemplateId", "==", doc.id)
+              .get();
+            for (let start = 0; start < bindings.docs.length; start += 450) {
+              const batch = db.batch();
+              for (const binding of bindings.docs.slice(start, start + 450)) {
+                batch.update(binding.ref, {
+                  "channels.whatsapp.approvalStatus": status,
+                  "channels.whatsapp.approved": status === "approved",
+                  "channels.whatsapp.twilioTemplateId": sid,
+                  "channels.whatsapp.rejectionReason":
+                    status === "rejected"
+                      ? wa.rejection_reason || "Not provided."
+                      : admin.firestore.FieldValue.delete(),
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+              }
+              await batch.commit();
+            }
+
+            await Promise.all(
+              bindings.docs.map((binding) =>
+                notifyMerchant({
+                  merchantId: String(binding.data().userId || ""),
+                  status,
+                  templateId: binding.id,
+                  notification,
+                  route:
+                    status === "approved"
+                      ? "/promotionsPage?tab=promotions&action=run"
+                      : "/promotionsPage?tab=promotions",
+                }),
+              ),
+            );
             return;
           }
 
-          const notification = {
-            title:
-              status === "approved"
-                ? "WhatsApp Template Approved 🎉"
-                : "WhatsApp Template Rejected ❌",
-            body:
-              status === "approved"
-                ? `Your template "${data.name}" is now ready to go live!`
-                : `Your template "${data.name}" was rejected. Reason: ${wa.rejection_reason || "Not provided."}`,
-          };
-
-          const androidConfig: AndroidConfig = {
-            priority: "high",
-            notification: {
-              channelId: "default_channel", // ✅ Correct key for channel ID
-              sound: "default",
-            },
-          };
-
-          const payload = {
+          await notifyMerchant({
+            merchantId,
+            status,
+            templateId: doc.id,
             notification,
-            android: androidConfig,
-            data: {
-              status,
-              templateId: doc.id,
-              // Deep-link target consumed by the Flutter client. Approved →
-              // jump to the Run Promotion flow so the merchant can use the
-              // template immediately. Rejected → land on the template's
-              // detail page so they can read the reason and resubmit.
-              route:
-                status === "approved"
-                  ? "/promotionsPage?tab=promotions&action=run"
-                  : `/promotionsPage?tab=templates&templateId=${doc.id}`,
-            },
-            token,
-          };
-
-          try {
-            const sendRes = await admin.messaging().send(payload);
-            console.log("📲 Notification sent:", sendRes);
-          } catch (err) {
-            console.error("❌ Failed to send FCM:", err);
-          }
+            route: isProductPromotion
+              ? status === "approved"
+                ? "/promotionsPage?tab=promotions&action=run"
+                : "/promotionsPage?tab=promotions"
+              : status === "approved"
+                ? "/promotionsPage?tab=promotions&action=run"
+                : `/promotionsPage?tab=templates&templateId=${doc.id}`,
+          });
         }
       } catch (err) {
         console.error(`❌ Failed to fetch status for ${sid}:`, err);

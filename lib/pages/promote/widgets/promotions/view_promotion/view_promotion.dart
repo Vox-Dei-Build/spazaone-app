@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
@@ -10,6 +11,7 @@ import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_p
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 /// PAS-UX-18: a promotion is in a terminal state once the backend has
 /// written one of `complete`, `partial` or `failed`. `saved` is
@@ -53,7 +55,7 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
     // PAS-WA-01: show the merchant what happened. The previous code
     // awaited a `Future<void>` and popped without feedback even when
     // every recipient failed. We now read the structured result and
-    // surface either the provider error or the Pasella fallback.
+    // surface either the provider error or the SpazaOne fallback.
     final result = await widget.viewModel.sendSavedPromotion(promoId);
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -84,6 +86,19 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
     final vm = widget.viewModel;
     vm.clearCustomerSelection();
     if (!mounted) return;
+    final linkedValue = widget.promo['linkedProduct'];
+    final linkedProduct = linkedValue is Map<String, dynamic>
+        ? LinkedProductRef.fromMap(linkedValue)
+        : null;
+    if (linkedProduct != null) {
+      await RunPromotionLauncher.launch(
+        context,
+        viewModel: vm,
+        initialProduct: linkedProduct,
+      );
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -277,6 +292,24 @@ class _LinkedProductChip extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (ref.sellingPrice != null)
+                  Text(
+                    CurrencyUtil.format(ref.sellingPrice!),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                if (ref.whatsappListed != null)
+                  Text(
+                    ref.whatsappListed == true
+                        ? 'Available in WhatsApp catalogue'
+                        : 'Not listed for WhatsApp orders',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: ref.whatsappListed == true
+                          ? Colors.green.shade700
+                          : Colors.orange.shade800,
+                    ),
+                  ),
               ],
             ),
           ),

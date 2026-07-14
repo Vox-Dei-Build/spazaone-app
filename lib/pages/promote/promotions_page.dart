@@ -6,11 +6,7 @@ import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotion_tab_item.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
-import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
-import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 import 'package:pasella/pages/promote/widgets/promotions_page_header.dart';
-import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
-import 'package:pasella/pages/promote/widgets/templates/view_template/template_detail_page.dart';
 import 'package:provider/provider.dart';
 
 class PromotionsPage extends StatefulWidget {
@@ -47,50 +43,14 @@ class _PromotionsPageState extends State<PromotionsPage>
       TabItem(
         title: 'Promotions',
         content: const PromotionsTab(),
-        fabLabel: 'Run Promotion',
+        fabLabel: 'Promote a product',
         fabIcon: Icons.campaign_outlined,
         onTap: (ctx, vm) async {
-          // PAS-UX-09: routed through RunPromotionLauncher so the
-          // approval check, dialog, and post-return refresh stay in
-          // one place. The launcher already handles the no-approved
-          // dialog, so the FAB callback no longer needs the
-          // duplicate guard that lived in _buildFloatingActionButton.
           await RunPromotionLauncher.launch(
             ctx,
             viewModel: vm,
-            onGoToTemplates: () => _tabController.animateTo(1),
           );
           _tabController.animateTo(0);
-        },
-      ),
-      TabItem(
-        title: 'Templates',
-        content: const TemplatesTab(),
-        fabLabel: 'Create Template',
-        fabIcon: Icons.library_books_outlined,
-        onTap: (ctx, vm) async {
-          final result =
-              await Navigator.of(ctx).push<TemplateSubmitResult>(
-                  MaterialPageRoute(
-            builder: (_) => CreateTemplatePage(viewModel: vm),
-          ));
-          if (!mounted) return;
-          // The two outcomes are distinct: "Done" returns the merchant
-          // to the Templates tab they launched from; "View pending
-          // templates" also lands on Templates (same tab) but we
-          // explicitly switch so the contract is honoured even if a
-          // future caller pushes from elsewhere.
-          if (result == TemplateSubmitResult.viewPending) {
-            _tabController.animateTo(1);
-          } else {
-            _tabController.animateTo(1);
-          }
-          if (result != null) {
-            // Success / "what happens next" UX is now handled inside the
-            // create flow via TemplateSubmittedSuccessPage. We only need to
-            // refresh the list here.
-            await vm.loadTemplatesData();
-          }
         },
       ),
     ];
@@ -100,7 +60,9 @@ class _PromotionsPageState extends State<PromotionsPage>
 
     // initial load for tab 0
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PromotionsViewModel>().loadInitialData().then((_) {
+      final vm = context.read<PromotionsViewModel>();
+      vm.loadInitialData().then((_) async {
+        await vm.ensureProductPromotionTemplate();
         if (mounted) _handlePendingIntent();
       });
     });
@@ -112,40 +74,14 @@ class _PromotionsPageState extends State<PromotionsPage>
     final intent = PromoteIntentBus.instance.consume();
     if (intent == null || !mounted) return;
 
-    // Switch to the requested tab first so the UI is on-screen by the time
-    // any follow-up navigation happens.
-    final wantsTemplates = intent.tab == 'templates';
-    _tabController.animateTo(wantsTemplates ? 1 : 0);
+    _tabController.animateTo(0);
 
     final vm = context.read<PromotionsViewModel>();
 
-    // Open a specific template's detail page if requested.
-    if (intent.templateId != null) {
-      final template = vm.templates.firstWhere(
-        (t) => t['id'] == intent.templateId,
-        orElse: () => <String, dynamic>{},
-      );
-      if (template.isNotEmpty && mounted) {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => TemplateDetailPage(
-            viewModel: vm,
-            template: template,
-            shopName: vm.shopName,
-            whatsappPrice: vm.whatsappPrice,
-            smsPricePerSegment: vm.smsPricePerSegment,
-          ),
-        ));
-        return;
-      }
-    }
-
-    // Auto-trigger the Run Promotion flow if requested (and viable).
-    if (intent.action == 'run' && !wantsTemplates && mounted) {
-      // PAS-UX-09: launcher owns the approval check + push + refresh.
+    if (intent.action == 'run' && mounted) {
       await RunPromotionLauncher.launch(
         context,
         viewModel: vm,
-        onGoToTemplates: () => _tabController.animateTo(1),
       );
     }
   }
@@ -156,13 +92,7 @@ class _PromotionsPageState extends State<PromotionsPage>
         _tabController.index != _previousTabIndex) {
       final vm = context.read<PromotionsViewModel>();
 
-      if (_tabController.index == 0) {
-        // Promotions tab
-        vm.loadInitialData();
-      } else {
-        // Templates tab
-        vm.loadTemplatesData();
-      }
+      vm.loadInitialData();
 
       _previousTabIndex = _tabController.index;
     }
@@ -190,11 +120,7 @@ class _PromotionsPageState extends State<PromotionsPage>
     // reads; we deliberately stop short of a Firestore stream
     // refactor because the audit (#3c) recommended the targeted
     // refresh first.
-    if (_tabController.index == 0) {
-      vm.loadInitialData();
-    } else {
-      vm.loadTemplatesData();
-    }
+    vm.loadInitialData().then((_) => vm.ensureProductPromotionTemplate());
   }
 
   @override
@@ -211,8 +137,7 @@ class _PromotionsPageState extends State<PromotionsPage>
         final current = _tabs[_tabController.index];
 
         return Scaffold(
-          floatingActionButton:
-              _buildFloatingActionButton(viewModel, current),
+          floatingActionButton: _buildFloatingActionButton(viewModel, current),
           body: SafeArea(
             child: Padding(
               padding: LayoutConstants.padding10Horizontal,
@@ -221,18 +146,6 @@ class _PromotionsPageState extends State<PromotionsPage>
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   const PromotionsPageHeader(),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  TabBar(
-                    controller: _tabController,
-                    labelStyle: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.8,
-                    ),
-                    unselectedLabelStyle: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.8,
-                    ),
-                    tabs: _tabs
-                        .map((t) => Tab(text: t.title))
-                        .toList(growable: false),
-                  ),
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,

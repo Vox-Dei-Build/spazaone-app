@@ -1,6 +1,7 @@
-import { functions, db } from "../config/main";
+import { functions } from "../config/main";
 import axios, { AxiosError } from "axios";
 import { firestore } from "firebase-admin";
+import { configuredPasellaWhatsappNumber } from "../ecommerce/getMerchantOrderingLink";
 
 /**
  * Parse named placeholders from a template body in first-appearance order,
@@ -110,131 +111,206 @@ function buildProviderTemplateName(
   return scopedName.slice(0, 512).replace(/_+$/g, "");
 }
 
+function productPromotionImageUrl(): string {
+  const project = process.env.GCLOUD_PROJECT || "pasella-ledger";
+  return (
+    `https://us-central1-${project}.cloudfunctions.net/` +
+    "productPromotionImage/{{productImagePath}}"
+  );
+}
+
+function productPromotionOrderUrl(): string {
+  const project = process.env.GCLOUD_PROJECT || "pasella-ledger";
+  return (
+    `https://us-central1-${project}.cloudfunctions.net/` +
+    "productPromotionOrder/{{orderCode}}"
+  );
+}
+
 /**
- * Submits a newly created WhatsApp template to Twilio's Content API for approval.
- * Automatically triggers when a new template is created in Firestore under messagingTemplates.
+ * Creates a Twilio Content resource and submits it to WhatsApp for approval.
+ * Shared by the legacy user-authored Firestore trigger and the new idempotent
+ * product-promotion provisioner.
  */
-exports.submitWhatsAppTemplate = functions.firestore
+export async function submitWhatsAppTemplateDocument(
+  templateRef: firestore.DocumentReference,
+  templateData: firestore.DocumentData,
+  templateId: string,
+): Promise<void> {
+  const whatsapp = templateData?.channels?.whatsapp;
+  if (!whatsapp) {
+    console.log("No WhatsApp content found, skipping Twilio submission.");
+    return;
+  }
+
+  const merchantId =
+    typeof templateData?.userId === "string" ? templateData.userId.trim() : "";
+  if (!merchantId) {
+    console.error(`Template ${templateId} is missing userId; not submitting.`);
+    await templateRef.update({
+      "channels.whatsapp.approvalStatus": "submission_failed",
+      "channels.whatsapp.submissionError": "Missing merchant userId",
+    });
+    return;
+  }
+
+  const rawContent = whatsapp.templateContent?.trim();
+  const mediaUrl = whatsapp.mediaUrl?.trim();
+  if (!rawContent) {
+    console.log("No content provided in WhatsApp template.");
+    return;
+  }
+
+  // Keep named placeholders as-is, but ensure we don't end on a variable
+  const content = ensureNonVariableEnding(rawContent);
+  const parsed = parseNamedVariables(content);
+  const isProductPromotion =
+    templateData?.systemManaged === true &&
+    templateData?.templateKind === "product_promotion_v1";
+  const variables: Record<string, string> = {
+    ...parsed.variables,
+    ...(isProductPromotion && {
+      productImagePath: "sample/sample.png",
+      orderCode: "ABC123",
+    }),
+  };
+
+  // Soft warnings (log only)
+  for (const w of validateWhatsAppBody(content)) {
+    console.warn(`[WA template warning] ${w}`);
+  }
+
+  const twilioAuth = {
+    username: functions.config().twilio.sid,
+    password: functions.config().twilio.token,
+  };
+
+  const textTypes = {
+    "twilio/text": { body: content },
+    ...(mediaUrl && {
+      "twilio/media": { body: content, media: [mediaUrl] },
+    }),
+  };
+  const orderingNumberDigits = configuredPasellaWhatsappNumber().replace(
+    /\D/g,
+    "",
+  );
+  if (isProductPromotion && !orderingNumberDigits) {
+    await templateRef.update({
+      "channels.whatsapp.approvalStatus": "submission_failed",
+      "channels.whatsapp.submissionError":
+        "SpazaOne ordering WhatsApp number is not configured.",
+    });
+    return;
+  }
+  const productTypes = {
+    "twilio/text": { body: content },
+    "twilio/card": {
+      title: content,
+      subtitle: "Reply STOP to opt out.",
+      media: [productPromotionImageUrl()],
+      actions: [
+        {
+          type: "URL",
+          title: "Order on WhatsApp",
+          url: productPromotionOrderUrl(),
+        },
+      ],
+    },
+  };
+
+  const createPayload: any = {
+    friendly_name: buildProviderTemplateName(
+      templateData.providerNameSeed || templateData.name,
+      merchantId,
+      templateId,
+    ),
+    language: "en",
+    channel: "whatsapp",
+    types: isProductPromotion ? productTypes : textTypes,
+    ...(Object.keys(variables).length > 0 && { variables }),
+  };
+
+  let approvalPayload: any;
+  try {
+    const createRes = await axios.post(
+      "https://content.twilio.com/v1/Content",
+      createPayload,
+      {
+        auth: twilioAuth,
+      },
+    );
+
+    const sid = createRes.data.sid;
+    console.log("✅ Template created:", sid);
+
+    approvalPayload = {
+      name: createPayload.friendly_name,
+      category: "MARKETING",
+    };
+
+    if (!isProductPromotion && parsed.examplesMatrix.length) {
+      approvalPayload.components = [
+        {
+          type: "BODY",
+          example: { body_text: parsed.examplesMatrix },
+        },
+      ];
+    }
+
+    const approvalRes = await axios.post(
+      `https://content.twilio.com/v1/Content/${sid}/ApprovalRequests/whatsapp`,
+      approvalPayload,
+      { auth: twilioAuth },
+    );
+
+    console.log("✅ WhatsApp approval submitted:", approvalRes.data);
+
+    await templateRef.update({
+      "channels.whatsapp.providerTemplateName": createPayload.friendly_name,
+      "channels.whatsapp.twilioTemplateId": sid,
+      "channels.whatsapp.approvalStatus": "submitted",
+      "channels.whatsapp.submissionError": firestore.FieldValue.delete(),
+      "channels.whatsapp.submittedAt": firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error: any) {
+    const err = error as AxiosError;
+    console.error(
+      "❌ Template creation or approval failed:",
+      err.response?.data || err.message,
+    );
+    console.error(
+      "Payloads:",
+      JSON.stringify({ createPayload, approvalPayload }, null, 2),
+    );
+
+    await templateRef.update({
+      "channels.whatsapp.approvalStatus": "submission_failed",
+      "channels.whatsapp.submissionError": JSON.stringify(
+        err.response?.data || err.message,
+      ),
+    });
+  }
+}
+
+/**
+ * Submits a newly created merchant-authored WhatsApp template to Twilio.
+ * System templates are submitted synchronously by their callable provisioner
+ * so retries can be controlled without creating duplicate provider content.
+ */
+export const submitWhatsAppTemplate = functions.firestore
   .document("messagingTemplates/{templateId}")
   .onCreate(async (snap: firestore.DocumentSnapshot, context) => {
     const templateData = snap.data();
-    const templateId = context.params.templateId;
-
-    const whatsapp = templateData?.channels?.whatsapp;
-    if (!whatsapp) {
-      console.log("No WhatsApp content found, skipping Twilio submission.");
+    if (
+      templateData?.systemManaged === true ||
+      templateData?.submissionManagedBy === "product_promotion_provisioner"
+    ) {
       return;
     }
-
-    const merchantId =
-      typeof templateData?.userId === "string"
-        ? templateData.userId.trim()
-        : "";
-    if (!merchantId) {
-      console.error(
-        `Template ${templateId} is missing userId; not submitting.`,
-      );
-      await snap.ref.update({
-        "channels.whatsapp.approvalStatus": "submission_failed",
-        "channels.whatsapp.submissionError": "Missing merchant userId",
-      });
-      return;
-    }
-
-    const rawContent = whatsapp.templateContent?.trim();
-    const mediaUrl = whatsapp.mediaUrl?.trim();
-    if (!rawContent) {
-      console.log("No content provided in WhatsApp template.");
-      return;
-    }
-
-    // Keep named placeholders as-is, but ensure we don't end on a variable
-    const content = ensureNonVariableEnding(rawContent);
-    const { variables, examplesMatrix } = parseNamedVariables(content);
-
-    // Soft warnings (log only)
-    for (const w of validateWhatsAppBody(content)) {
-      console.warn(`[WA template warning] ${w}`);
-    }
-
-    const twilioAuth = {
-      username: functions.config().twilio.sid,
-      password: functions.config().twilio.token,
-    };
-
-    const createPayload: any = {
-      friendly_name: buildProviderTemplateName(
-        templateData.name,
-        merchantId,
-        templateId,
-      ),
-      language: "en",
-      channel: "whatsapp",
-      types: {
-        "twilio/text": { body: content },
-        ...(mediaUrl && {
-          "twilio/media": { body: content, media: [mediaUrl] },
-        }),
-      },
-      ...(Object.keys(variables).length > 0 && { variables }),
-    };
-
-    let approvalPayload: any;
-    try {
-      const createRes = await axios.post(
-        "https://content.twilio.com/v1/Content",
-        createPayload,
-        {
-          auth: twilioAuth,
-        },
-      );
-
-      const sid = createRes.data.sid;
-      console.log("✅ Template created:", sid);
-
-      approvalPayload = {
-        name: createPayload.friendly_name,
-        category: "MARKETING",
-      };
-
-      if (examplesMatrix.length) {
-        approvalPayload.components = [
-          { type: "BODY", example: { body_text: examplesMatrix } },
-        ];
-      }
-
-      const approvalRes = await axios.post(
-        `https://content.twilio.com/v1/Content/${sid}/ApprovalRequests/whatsapp`,
-        approvalPayload,
-        { auth: twilioAuth },
-      );
-
-      console.log("✅ WhatsApp approval submitted:", approvalRes.data);
-
-      await db.collection("messagingTemplates").doc(templateId).update({
-        "channels.whatsapp.providerTemplateName": createPayload.friendly_name,
-        "channels.whatsapp.twilioTemplateId": sid,
-        "channels.whatsapp.approvalStatus": "submitted",
-      });
-    } catch (error: any) {
-      const err = error as AxiosError;
-      console.error(
-        "❌ Template creation or approval failed:",
-        err.response?.data || err.message,
-      );
-      console.error(
-        "Payloads:",
-        JSON.stringify({ createPayload, approvalPayload }, null, 2),
-      );
-
-      await db
-        .collection("messagingTemplates")
-        .doc(templateId)
-        .update({
-          "channels.whatsapp.approvalStatus": "submission_failed",
-          "channels.whatsapp.submissionError": JSON.stringify(
-            err.response?.data || err.message,
-          ),
-        });
-    }
+    await submitWhatsAppTemplateDocument(
+      snap.ref,
+      templateData || {},
+      context.params.templateId,
+    );
   });
