@@ -29,9 +29,7 @@ class MarketingOverview extends StatelessWidget {
           elevation: 1.5,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
-            side: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
-            ),
+            side: const BorderSide(color: Color(0xFFE0E5E1)),
           ),
           child: Column(
             children: [
@@ -97,7 +95,7 @@ class _CampaignHero extends StatelessWidget {
             height: 150,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.07),
+              color: kPrimaryColor.withValues(alpha: 0.05),
             ),
           ),
         ),
@@ -109,7 +107,7 @@ class _CampaignHero extends StatelessWidget {
             height: 108,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kSecondaryColor.withValues(alpha: 0.09),
+              color: kSecondaryColor.withValues(alpha: 0.12),
             ),
           ),
         ),
@@ -118,7 +116,7 @@ class _CampaignHero extends StatelessWidget {
           padding: const EdgeInsets.all(LayoutConstants.spaceLg),
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF237F42), Color(0xFF105C30)],
+              colors: [Color(0xFFFAFBF8), Color(0xFFF3F5F1)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -132,7 +130,7 @@ class _CampaignHero extends StatelessWidget {
                   vertical: LayoutConstants.spaceXs,
                 ),
                 decoration: BoxDecoration(
-                  color: kSecondaryColor,
+                  color: kSecondaryColor.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -148,7 +146,7 @@ class _CampaignHero extends StatelessWidget {
               Text(
                 'Choose what to promote',
                 style: theme.textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
+                  color: kTertiaryColor,
                   fontWeight: FontWeight.w800,
                   height: 1.1,
                 ),
@@ -158,7 +156,7 @@ class _CampaignHero extends StatelessWidget {
                 'SpazaOne writes the message and automatically sends it on '
                 'WhatsApp or SMS.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: theme.colorScheme.onSurfaceVariant,
                   height: 1.35,
                 ),
               ),
@@ -170,8 +168,8 @@ class _CampaignHero extends StatelessWidget {
                   minimumSize: const Size.fromHeight(
                     LayoutConstants.minTouchTarget,
                   ),
-                  backgroundColor: Colors.white,
-                  foregroundColor: kPrimaryColor,
+                  backgroundColor: kPrimaryColor,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),

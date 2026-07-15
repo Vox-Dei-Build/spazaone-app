@@ -123,9 +123,7 @@ class _PromotionsTabState extends State<PromotionsTab> {
             elevation: 0.5,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
-              ),
+              side: const BorderSide(color: Color(0xFFE0E5E1)),
             ),
             child: InkWell(
               borderRadius: BorderRadius.circular(14),
