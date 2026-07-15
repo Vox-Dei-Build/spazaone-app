@@ -30,13 +30,18 @@ void main() {
       ),
     );
 
-    expect(find.text('Promote a product'), findsOneWidget);
-    expect(find.text('No message writing or channel setup.'), findsOneWidget);
+    expect(find.text('QUICK CAMPAIGN'), findsOneWidget);
+    expect(find.text('Choose what to promote'), findsOneWidget);
+    expect(
+      find.textContaining('automatically sends it on WhatsApp or SMS'),
+      findsOneWidget,
+    );
     expect(find.text('1'), findsOneWidget);
-    expect(find.text('Choose product'), findsNWidgets(2));
-    expect(find.text('Pick customers'), findsOneWidget);
-    expect(find.text('Review & send'), findsOneWidget);
-    expect(find.text('Campaign history'), findsOneWidget);
+    expect(find.text('Choose a product'), findsOneWidget);
+    expect(find.text('Product'), findsOneWidget);
+    expect(find.text('Customers'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
+    expect(find.text('Your campaigns'), findsOneWidget);
     expect(find.text('Templates'), findsNothing);
     expect(find.text('Create Template'), findsNothing);
 
