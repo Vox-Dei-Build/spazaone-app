@@ -105,10 +105,13 @@ dependency_overrides:
   # that supports Dart 3.7.
   url_launcher_android: '>=6.3.16 <6.3.21'
 
-flutter_icons:
+flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/ic_launcher.png"
+  adaptive_icon_background: "#211E2F"
+  adaptive_icon_foreground: "assets/images/ic_launcher_foreground.png"
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
