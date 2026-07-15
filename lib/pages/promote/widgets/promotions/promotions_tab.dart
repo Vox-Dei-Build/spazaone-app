@@ -43,13 +43,10 @@ class _PromotionsTabState extends State<PromotionsTab> {
     }
 
     if (promos.isEmpty) {
-      // PAS-AUTH-03: align with Stock-style empty state. Primary CTA is
-      // intentionally omitted — the parent `PromotionsPage` already
-      // owns a "Run Promotion" FAB that runs the approved-templates
-      // gate; a second button here would have to duplicate that
-      // predicate (the exact mistake PAS-UX-09 was fixing). Tutorial
-      // link uses the existing TUTORIAL_RUN_PROMOTIONS Remote Config
-      // entry.
+      // PAS-AUTH-03: align with Stock-style empty state. The host owns the
+      // primary product CTA, so the history area does not add a competing
+      // start for the same journey. The tutorial link uses the existing
+      // TUTORIAL_RUN_PROMOTIONS Remote Config entry.
       return RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(

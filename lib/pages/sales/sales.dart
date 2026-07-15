@@ -7,6 +7,7 @@ import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
+import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
@@ -16,13 +17,8 @@ import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
-import 'package:pasella/pages/promote/widgets/templates/templates_tab.dart';
-import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
-import 'package:pasella/pages/promote/widgets/templates/create_template/template_submitted_success_page.dart';
 
 enum SalesViewType { cash, online }
-
-enum MarketingViewType { promotions, templates }
 
 class SalesPage extends StatefulWidget {
   const SalesPage({Key? key}) : super(key: key);
@@ -49,7 +45,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   // instance via context.read in build().
 
   SalesViewType _selectedSalesView = SalesViewType.cash;
-  MarketingViewType _selectedMarketingView = MarketingViewType.promotions;
+  bool _marketingLoaded = false;
 
   @override
   void initState() {
@@ -57,36 +53,42 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     final intent = SalesIntentBus.instance.take();
     final initialMainIndex = intent == null ? 0 : 1;
 
-    if (intent != null) {
-      _selectedMarketingView =
-          intent.marketingView == SalesIntentMarketingView.templates
-              ? MarketingViewType.templates
-              : MarketingViewType.promotions;
-    }
-
     _mainController = TabController(
       length: 2,
       vsync: this,
       initialIndex: initialMainIndex,
     )..addListener(() {
-      if (mounted) setState(() {});
-    });
+        if (!mounted) return;
+        setState(() {});
+        if (!_mainController.indexIsChanging && _mainController.index == 1) {
+          _loadMarketing();
+        }
+      });
 
     _salesVM = SalesViewModel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_mainController.index == 1) {
-        final promoVM = context.read<PromotionsViewModel>();
-        if (_selectedMarketingView == MarketingViewType.promotions) {
-          promoVM.fetchPromotionsReports();
-        } else {
-          promoVM.loadTemplatesData();
-        }
+        _loadMarketing();
         return;
       }
       // Ensure cash list has fresh data immediately on first show.
       _salesVM.updateSelectedDate(_selectedDay ?? DateTime.now());
     });
+  }
+
+  void _loadMarketing() {
+    if (_marketingLoaded || !mounted) return;
+    _marketingLoaded = true;
+    final promoVM = context.read<PromotionsViewModel>();
+    promoVM.loadInitialData().then((_) {
+      if (!mounted) return null;
+      return promoVM.ensureProductPromotionTemplate();
+    });
+  }
+
+  Future<void> _openProductPromotion(PromotionsViewModel promoVM) async {
+    await RunPromotionLauncher.launch(context, viewModel: promoVM);
   }
 
   @override
@@ -135,14 +137,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       animation: salesVM,
       builder: (context, _) {
         return Scaffold(
-          floatingActionButton: _buildFAB(salesVM, promoVM),
+          floatingActionButton: _buildFAB(salesVM),
           body: SafeArea(
             child: Padding(
               padding: LayoutConstants.padding10Horizontal,
               child: Column(
                 children: [
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  const SalesPageHeader(),
+                  SalesPageHeader(
+                    showMarketingHelp: _mainController.index == 1,
+                  ),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   TabBar(
                     controller: _mainController,
@@ -165,22 +169,20 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                   style: ButtonStyle(
                                     backgroundColor:
                                         WidgetStateProperty.resolveWith<Color?>(
-                                          (states) =>
-                                              states.contains(
-                                                    WidgetState.selected,
-                                                  )
-                                                  ? Colors.green
-                                                  : Colors.white,
-                                        ),
+                                      (states) => states.contains(
+                                        WidgetState.selected,
+                                      )
+                                          ? Colors.green
+                                          : Colors.white,
+                                    ),
                                     foregroundColor:
                                         WidgetStateProperty.resolveWith<Color?>(
-                                          (states) =>
-                                              states.contains(
-                                                    WidgetState.selected,
-                                                  )
-                                                  ? Colors.white
-                                                  : Colors.black87,
-                                        ),
+                                      (states) => states.contains(
+                                        WidgetState.selected,
+                                      )
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -281,143 +283,60 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                             SizedBox(height: SizeConfig.heightMultiplier * 1.0),
 
                             Expanded(
-                              child:
-                                  _selectedSalesView == SalesViewType.cash
-                                      ? SafeArea(
-                                        top: false,
-                                        left: false,
-                                        right: false,
-                                        bottom: true,
-                                        child: SalesList(
-                                          viewModel: salesVM,
-                                          // PAS-AUTH-03: wire the FAB
-                                          // action into the empty-state
-                                          // CTA so a new merchant lands
-                                          // on a one-tap path to their
-                                          // first sale.
-                                          onAddSale: () {
-                                            TelemetryService.instance.capture(
-                                              const SaleStarted(
-                                                entryPoint: 'empty_state',
+                              child: _selectedSalesView == SalesViewType.cash
+                                  ? SafeArea(
+                                      top: false,
+                                      left: false,
+                                      right: false,
+                                      bottom: true,
+                                      child: SalesList(
+                                        viewModel: salesVM,
+                                        // PAS-AUTH-03: wire the FAB
+                                        // action into the empty-state
+                                        // CTA so a new merchant lands
+                                        // on a one-tap path to their
+                                        // first sale.
+                                        onAddSale: () {
+                                          TelemetryService.instance.capture(
+                                            const SaleStarted(
+                                              entryPoint: 'empty_state',
+                                            ),
+                                          );
+                                          Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => AddSale(
+                                                salesViewModel: salesVM,
                                               ),
-                                            );
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder:
-                                                    (_) => AddSale(
-                                                      salesViewModel: salesVM,
-                                                    ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      )
-                                      : SafeArea(
-                                        top: false,
-                                        left: false,
-                                        right: false,
-                                        bottom: true,
-                                        child: OnlineSalesList(
-                                          key: ValueKey<String>(
-                                            '${_selectedDay?.toIso8601String() ?? ''}|'
-                                            '${_startDate?.toIso8601String() ?? ''}|'
-                                            '${_endDate?.toIso8601String() ?? ''}',
-                                          ),
-                                          selectedDay: _selectedDay,
-                                          startDate: _startDate,
-                                          endDate: _endDate,
-                                          // If Online list scrolls, add a similar bottom padding prop there too.
-                                        ),
+                                            ),
+                                          );
+                                        },
                                       ),
+                                    )
+                                  : SafeArea(
+                                      top: false,
+                                      left: false,
+                                      right: false,
+                                      bottom: true,
+                                      child: OnlineSalesList(
+                                        key: ValueKey<String>(
+                                          '${_selectedDay?.toIso8601String() ?? ''}|'
+                                          '${_startDate?.toIso8601String() ?? ''}|'
+                                          '${_endDate?.toIso8601String() ?? ''}',
+                                        ),
+                                        selectedDay: _selectedDay,
+                                        startDate: _startDate,
+                                        endDate: _endDate,
+                                        // If Online list scrolls, add a similar bottom padding prop there too.
+                                      ),
+                                    ),
                             ),
                           ],
                         ),
 
                         // --- MARKETING ---
-                        Column(
-                          children: [
-                            const SizedBox(height: 16),
-                            Theme(
-                              data: Theme.of(context).copyWith(
-                                segmentedButtonTheme: SegmentedButtonThemeData(
-                                  style: ButtonStyle(
-                                    backgroundColor:
-                                        WidgetStateProperty.resolveWith<Color?>(
-                                          (states) =>
-                                              states.contains(
-                                                    WidgetState.selected,
-                                                  )
-                                                  ? Colors.green
-                                                  : Colors.white,
-                                        ),
-                                    foregroundColor:
-                                        WidgetStateProperty.resolveWith<Color?>(
-                                          (states) =>
-                                              states.contains(
-                                                    WidgetState.selected,
-                                                  )
-                                                  ? Colors.white
-                                                  : Colors.black87,
-                                        ),
-                                  ),
-                                ),
-                              ),
-                              child: SegmentedButton<MarketingViewType>(
-                                segments: [
-                                  ButtonSegment(
-                                    value: MarketingViewType.promotions,
-                                    label: Text(
-                                      'Promotions',
-                                      style: TextStyle(
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 1.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    icon: Icon(
-                                      Icons.campaign_outlined,
-                                      size: SizeConfig.textMultiplier * 1.5,
-                                    ),
-                                  ),
-                                  ButtonSegment(
-                                    value: MarketingViewType.templates,
-                                    label: Text(
-                                      'Templates',
-                                      style: TextStyle(
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 1.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    icon: Icon(
-                                      Icons.library_books_outlined,
-                                      size: SizeConfig.textMultiplier * 1.5,
-                                    ),
-                                  ),
-                                ],
-                                selected: {_selectedMarketingView},
-                                onSelectionChanged: (val) {
-                                  setState(() {
-                                    _selectedMarketingView = val.first;
-                                  });
-                                  if (_selectedMarketingView ==
-                                      MarketingViewType.promotions) {
-                                    promoVM.fetchPromotionsReports();
-                                  } else {
-                                    promoVM.loadTemplatesData();
-                                  }
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Expanded(
-                              child:
-                                  _selectedMarketingView ==
-                                          MarketingViewType.promotions
-                                      ? const PromotionsTab()
-                                      : const TemplatesTab(),
-                            ),
-                          ],
+                        MarketingOverview(
+                          onChooseProduct: () => _openProductPromotion(promoVM),
+                          campaignHistory: const PromotionsTab(),
                         ),
                       ],
                     ),
@@ -431,7 +350,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget? _buildFAB(SalesViewModel salesVM, PromotionsViewModel promoVM) {
+  Widget? _buildFAB(SalesViewModel salesVM) {
     if (_mainController.index == 0) {
       if (_selectedSalesView == SalesViewType.cash &&
           salesVM.cachedSales.isEmpty) {
@@ -439,85 +358,28 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       }
       return _selectedSalesView == SalesViewType.cash
           ? FloatingActionButton.extended(
-            heroTag: 'sales-cash-fab',
-            onPressed: () {
-              TelemetryService.instance.capture(
-                const SaleStarted(entryPoint: 'fab'),
-              );
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => AddSale(salesViewModel: salesVM),
-                ),
-              );
-            },
-            icon: const Icon(Icons.add_outlined, color: Colors.white),
-            label: const Text(
-              'Record Sale',
-              style: TextStyle(color: Colors.white),
-            ),
-          )
+              heroTag: 'sales-cash-fab',
+              onPressed: () {
+                TelemetryService.instance.capture(
+                  const SaleStarted(entryPoint: 'fab'),
+                );
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AddSale(salesViewModel: salesVM),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add_outlined, color: Colors.white),
+              label: const Text(
+                'Record Sale',
+                style: TextStyle(color: Colors.white),
+              ),
+            )
           : null;
-    } else {
-      return _selectedMarketingView == MarketingViewType.promotions
-          ? FloatingActionButton.extended(
-            heroTag: 'sales-marketing-promo-fab',
-            onPressed: () async {
-              // PAS-UX-09: previously this FAB ran a third
-              // copy of the "any approved templates?" predicate
-              // that had drifted from the canonical reader —
-              // it checked `whatsapp.approved == true` and missed
-              // the `approvalStatus == 'approved'` string used by
-              // every template created since that field was
-              // introduced, so on this surface the dialog would
-              // fire even when the merchant had usable templates.
-              // Routed through RunPromotionLauncher so the truth
-              // check, dialog and post-return refresh stay in
-              // one place.
-              await RunPromotionLauncher.launch(
-                context,
-                viewModel: promoVM,
-                onGoToTemplates: () {
-                  setState(
-                    () => _selectedMarketingView = MarketingViewType.templates,
-                  );
-                  promoVM.loadTemplatesData();
-                },
-              );
-            },
-            icon: const Icon(Icons.campaign_outlined, color: Colors.white),
-            label: const Text(
-              'Run Promotion',
-              style: TextStyle(color: Colors.white),
-            ),
-          )
-          : FloatingActionButton.extended(
-            heroTag: 'sales-marketing-template-fab',
-            onPressed: () async {
-              final result = await Navigator.of(
-                context,
-              ).push<TemplateSubmitResult>(
-                MaterialPageRoute(
-                  builder: (_) => CreateTemplatePage(viewModel: promoVM),
-                ),
-              );
-              if (!mounted) return;
-              // Both outcomes succeed the same way (refresh the list).
-              // The Sales surface has no Templates tab to route to, so
-              // "View pending templates" can't be honoured strictly
-              // from here — refreshing is the best we can do without
-              // pushing the user into an unrelated page they didn't
-              // ask to be in.
-              if (result != null) {
-                await promoVM.loadTemplatesData();
-              }
-            },
-            icon: const Icon(Icons.library_books_outlined, color: Colors.white),
-            label: const Text(
-              'Create Template',
-              style: TextStyle(color: Colors.white),
-            ),
-          );
     }
+    // Marketing owns a prominent inline product CTA. Keeping a second FAB
+    // would create two competing starts for the same simple journey.
+    return null;
   }
 }
 

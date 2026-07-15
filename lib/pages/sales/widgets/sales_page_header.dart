@@ -5,7 +5,9 @@ import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
 
 class SalesPageHeader extends StatelessWidget {
-  const SalesPageHeader({super.key});
+  const SalesPageHeader({super.key, this.showMarketingHelp = false});
+
+  final bool showMarketingHelp;
 
   @override
   Widget build(BuildContext context) {
@@ -18,19 +20,22 @@ class SalesPageHeader extends StatelessWidget {
         ),
         onPressed: () {
           final url = TutorialConfig.getTutorialUrl(
-            TutorialConfig.TUTORIAL_CAPTURE_SALES,
+            showMarketingHelp
+                ? TutorialConfig.TUTORIAL_RUN_PROMOTIONS
+                : TutorialConfig.TUTORIAL_CAPTURE_SALES,
           );
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder:
-                  (context) => LoomVideoPage(
-                    loomUrl: url,
-                    title: 'How to Capture Sales',
-                  ),
+              builder: (context) => LoomVideoPage(
+                loomUrl: url,
+                title: showMarketingHelp
+                    ? 'How to Run Promotions'
+                    : 'How to Capture Sales',
+              ),
             ),
           );
         },
-        tooltip: 'Sales help',
+        tooltip: showMarketingHelp ? 'Marketing help' : 'Sales help',
       ),
     );
   }

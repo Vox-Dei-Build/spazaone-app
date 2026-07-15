@@ -7,10 +7,46 @@ import 'package:pasella/pages/promote/widgets/promotions/create_promotions/produ
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/steps/content_step.dart';
+import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/services/whatsapp_capability_cache.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
 
 void main() {
+  testWidgets('Sales marketing leads with one product-first action',
+      (tester) async {
+    var chooseProductTaps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 390,
+            height: 760,
+            child: MarketingOverview(
+              onChooseProduct: () => chooseProductTaps++,
+              campaignHistory: const Text('Previous campaigns appear here'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Promote a product'), findsOneWidget);
+    expect(find.text('No message writing or channel setup.'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Choose product'), findsNWidgets(2));
+    expect(find.text('Pick customers'), findsOneWidget);
+    expect(find.text('Review & send'), findsOneWidget);
+    expect(find.text('Campaign history'), findsOneWidget);
+    expect(find.text('Templates'), findsNothing);
+    expect(find.text('Create Template'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('marketing-choose-product')));
+    await tester.pump();
+
+    expect(chooseProductTaps, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('template content explains how to continue and attach products',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 568));
