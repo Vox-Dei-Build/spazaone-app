@@ -167,6 +167,7 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
                     estimatedCost: vm.totalPrice,
                     customers: vm.customers,
                     selectedCustomerIds: vm.selectedCustomerIds.toSet(),
+                    mediaUrl: vm.currentMediaUrl,
                   ),
                 ),
                 if (status == 'saved' || _isTerminalStatus(status))

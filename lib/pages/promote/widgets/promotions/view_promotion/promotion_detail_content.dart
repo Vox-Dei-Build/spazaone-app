@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
@@ -63,6 +64,7 @@ class PromotionDetailContent extends StatelessWidget {
     required this.estimatedCost,
     required this.customers,
     required this.selectedCustomerIds,
+    this.mediaUrl,
   });
 
   final Map<String, dynamic> promo;
@@ -71,6 +73,7 @@ class PromotionDetailContent extends StatelessWidget {
   final double estimatedCost;
   final List<Map<String, dynamic>> customers;
   final Set<String> selectedCustomerIds;
+  final String? mediaUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +86,13 @@ class PromotionDetailContent extends StatelessWidget {
       shopName: shopName,
       product: product,
     );
+    final exampleRecipient = _firstRecipientName(
+      customers,
+      selectedCustomerIds,
+    );
+    final exampleMessage = exampleRecipient == null
+        ? message
+        : message.replaceAll('[Customer Name]', exampleRecipient);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -112,8 +122,12 @@ class PromotionDetailContent extends StatelessWidget {
           ),
           const SizedBox(height: LayoutConstants.spaceMd),
           _MessageSection(
-            message: message,
+            message: exampleMessage,
+            whatsappEnabled: promo['sendWhatsApp'] as bool? ?? false,
             smsEnabled: promo['sendSMS'] as bool? ?? false,
+            imageUrl: _previewMediaUrl(product, mediaUrl),
+            showOrderButton: product != null,
+            exampleRecipient: exampleRecipient,
           ),
           const SizedBox(height: LayoutConstants.spaceMd),
           _RecipientsSection(
@@ -129,6 +143,30 @@ class PromotionDetailContent extends StatelessWidget {
 LinkedProductRef? _linkedProduct(Object? value) {
   if (value is! Map) return null;
   return LinkedProductRef.fromMap(Map<String, dynamic>.from(value));
+}
+
+String? _firstRecipientName(
+  List<Map<String, dynamic>> customers,
+  Set<String> selectedCustomerIds,
+) {
+  for (final customer in customers) {
+    if (!selectedCustomerIds.contains(customer['id'])) continue;
+    final name = (customer['name'] as String?)?.trim();
+    if (name != null && name.isNotEmpty) return name;
+  }
+  return null;
+}
+
+String? _previewMediaUrl(LinkedProductRef? product, String? templateMediaUrl) {
+  final productImage = product?.imageUrl?.trim();
+  if (productImage != null && productImage.isNotEmpty) return productImage;
+  final templateImage = templateMediaUrl?.trim();
+  if (templateImage == null ||
+      templateImage.isEmpty ||
+      templateImage.contains('{{')) {
+    return null;
+  }
+  return templateImage;
 }
 
 class _StatusHero extends StatelessWidget {
@@ -520,31 +558,60 @@ class _ChannelChip extends StatelessWidget {
 }
 
 class _MessageSection extends StatelessWidget {
-  const _MessageSection({required this.message, required this.smsEnabled});
+  const _MessageSection({
+    required this.message,
+    required this.whatsappEnabled,
+    required this.smsEnabled,
+    required this.imageUrl,
+    required this.showOrderButton,
+    required this.exampleRecipient,
+  });
 
   final String message;
+  final bool whatsappEnabled;
   final bool smsEnabled;
+  final String? imageUrl;
+  final bool showOrderButton;
+  final String? exampleRecipient;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return _DetailCard(
-      title: 'Message',
-      icon: Icons.chat_outlined,
+      title: whatsappEnabled ? 'WhatsApp preview' : 'Message',
+      icon: whatsappEnabled
+          ? Icons.chat_bubble_outline_rounded
+          : Icons.chat_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.all(LayoutConstants.spaceMd),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5F7F5),
-              borderRadius: BorderRadius.circular(12),
+          if (exampleRecipient != null) ...[
+            Text(
+              'Example for $exampleRecipient',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
-            child: Text(
-              message,
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+            const SizedBox(height: LayoutConstants.spaceSm),
+          ],
+          if (whatsappEnabled)
+            _WhatsAppCardPreview(
+              message: message,
+              imageUrl: imageUrl,
+              showOrderButton: showOrderButton,
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(LayoutConstants.spaceMd),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F7F5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                message,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+              ),
             ),
-          ),
           if (smsEnabled) ...[
             const SizedBox(height: LayoutConstants.spaceSm),
             Text(
@@ -555,6 +622,103 @@ class _MessageSection extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _WhatsAppCardPreview extends StatelessWidget {
+  const _WhatsAppCardPreview({
+    required this.message,
+    required this.imageUrl,
+    required this.showOrderButton,
+  });
+
+  final String message;
+  final String? imageUrl;
+  final bool showOrderButton;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(LayoutConstants.spaceMd),
+      decoration: BoxDecoration(
+        color: WaBrandColour.chatBackground,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: 0.94,
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (imageUrl != null)
+                  Image.network(
+                    imageUrl!,
+                    height: 150,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                  child: Text(
+                    message,
+                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 10, bottom: 6),
+                  child: Text(
+                    '12:00',
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: WaBrandColour.time,
+                    ),
+                  ),
+                ),
+                if (showOrderButton) ...[
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.shopping_bag_outlined,
+                          size: 18,
+                          color: WaBrandColour.tealGreenLighter,
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          'Order on WhatsApp',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: WaBrandColour.tealGreenLighter,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

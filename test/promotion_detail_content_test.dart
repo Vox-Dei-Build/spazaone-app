@@ -89,7 +89,9 @@ void main() {
     expect(find.text('Campaign cost'), findsOneWidget);
     expect(find.text('R1,50'), findsOneWidget);
     expect(find.text('SMS fallback'), findsOneWidget);
-    expect(find.text('Message'), findsOneWidget);
+    expect(find.text('WhatsApp preview'), findsOneWidget);
+    expect(find.text('Example for Tsepo'), findsOneWidget);
+    expect(find.text('Order on WhatsApp'), findsOneWidget);
     expect(
       find.text('Cows from Koekie Food Security is now available.'),
       findsOneWidget,
