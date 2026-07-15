@@ -1,6 +1,5 @@
 import UIKit
 import Flutter
-import Firebase
 import FirebaseAuth
 import FirebaseMessaging
 // Branch plugin handles app delegate callbacks internally.
@@ -11,10 +10,14 @@ import FirebaseMessaging
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    FirebaseApp.configure()
+    // Firebase App Check installs its provider factory during plugin
+    // registration. Let FlutterFire configure the default Firebase app after
+    // this point so it never captures DeviceCheck before Dart selects the
+    // debug provider (simulators) or App Attest (release builds). Calling
+    // FirebaseApp.configure() here would configure the default app twice.
+    GeneratedPluginRegistrant.register(with: self)
     UNUserNotificationCenter.current().delegate = self
     application.registerForRemoteNotifications()
-    GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
