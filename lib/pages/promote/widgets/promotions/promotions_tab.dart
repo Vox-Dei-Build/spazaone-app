@@ -43,13 +43,10 @@ class _PromotionsTabState extends State<PromotionsTab> {
     }
 
     if (promos.isEmpty) {
-      // PAS-AUTH-03: align with Stock-style empty state. Primary CTA is
-      // intentionally omitted — the parent `PromotionsPage` already
-      // owns a "Run Promotion" FAB that runs the approved-templates
-      // gate; a second button here would have to duplicate that
-      // predicate (the exact mistake PAS-UX-09 was fixing). Tutorial
-      // link uses the existing TUTORIAL_RUN_PROMOTIONS Remote Config
-      // entry.
+      // PAS-AUTH-03: align with Stock-style empty state. The host owns the
+      // primary product CTA, so the history area does not add a competing
+      // start for the same journey. The tutorial link uses the existing
+      // TUTORIAL_RUN_PROMOTIONS Remote Config entry.
       return RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(
@@ -78,7 +75,7 @@ class _PromotionsTabState extends State<PromotionsTab> {
         itemBuilder: (ctx, i) {
           final promo = promos[i];
           final created = (promo['createdAt'] as Timestamp).toDate();
-          final date = DateFormat('MMM dd, yyyy').format(created);
+          final date = DateFormat('d MMM yyyy').format(created);
           final status =
               sanitizeMalformedUtf16(promo['status'] as String? ?? '');
           // PAS-UX-11: 'saved' is the audit's saved-but-unsent state.
@@ -88,11 +85,10 @@ class _PromotionsTabState extends State<PromotionsTab> {
           // to come back and pay+send. Without an explicit affordance
           // they were getting lost in the list.
           final isPendingSend = status == 'saved';
-          final statusColor = isPendingSend
-              ? Colors.blue
-              : status == 'processing'
-                  ? Colors.orange
-                  : Colors.green;
+          final statusLabel = status.isEmpty
+              ? 'Unknown'
+              : '${status[0].toUpperCase()}${status.substring(1)}';
+          final statusStyle = _promotionStatusStyle(status);
 
           // PAS-UX-18: terminal promotions (complete/partial/failed)
           // get an inline "Run again" affordance so the merchant
@@ -111,8 +107,6 @@ class _PromotionsTabState extends State<PromotionsTab> {
           );
 
           final channels = template['channels'] as Map<String, dynamic>? ?? {};
-          final total = promos.length;
-          final displayIndex = total - i;
           final linkedProductValue = promo['linkedProduct'];
           final linkedProduct = linkedProductValue is Map<String, dynamic>
               ? LinkedProductRef.fromMap(linkedProductValue)
@@ -122,14 +116,17 @@ class _PromotionsTabState extends State<PromotionsTab> {
           );
           final mediaUrl =
               linkedProduct?.imageUrl ?? channels['whatsapp']?['mediaUrl'];
+          final theme = Theme.of(context);
 
           return Card(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 4,
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            elevation: 0.5,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: Color(0xFFE0E5E1)),
+            ),
             child: InkWell(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               onTap: () {
                 Navigator.push(
                   context,
@@ -140,33 +137,40 @@ class _PromotionsTabState extends State<PromotionsTab> {
                 );
               },
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     if (mediaUrl != null && mediaUrl.isNotEmpty)
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                         child: Image.network(
                           mediaUrl,
-                          height: 80,
-                          width: 80,
+                          height: 68,
+                          width: 68,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              const Icon(Icons.broken_image, size: 80),
+                          errorBuilder: (_, __, ___) => Container(
+                            height: 68,
+                            width: 68,
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            child: const Icon(Icons.broken_image_outlined),
+                          ),
                         ),
                       )
                     else
                       Container(
-                        height: 80,
-                        width: 80,
+                        height: 68,
+                        width: 68,
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(12),
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.description,
-                            size: 40, color: Colors.grey),
+                        child: Icon(
+                          Icons.campaign_outlined,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 4),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,154 +179,62 @@ class _PromotionsTabState extends State<PromotionsTab> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  sanitizeMalformedUtf16(
-                                      'Promotion $displayIndex: $name'),
-                                  style: TextStyle(
-                                    fontSize: SizeConfig.textMultiplier * 1.8,
-                                    fontWeight: FontWeight.bold,
+                                  name,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              // PAS-UX-11: pending-send chip. Inline
-                              // 'Send now' is intentionally a tap on
-                              // the whole card (which already opens
-                              // the detail page where the existing
-                              // WalletAffordabilityFooter handles the
-                              // pay+send flow). A second tap target
-                              // here would have to duplicate the
-                              // affordability check, which the audit
-                              // explicitly warned against.
-                              if (isPendingSend)
-                                Flexible(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.shade50,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: Colors.blue.shade200,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.schedule_send,
-                                            size: 12,
-                                            color: Colors.blue.shade700),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            'Pending send',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.blue.shade700,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
                             ],
                           ),
-                          SizedBox(height: SizeConfig.heightMultiplier * 0.3),
-                          RichText(
-                            text: TextSpan(
-                              style: TextStyle(
-                                fontSize: SizeConfig.textMultiplier * 1.5,
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodyLarge!
-                                    .color,
+                          const SizedBox(height: 7),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 5,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              _PromotionStatusPill(
+                                label: sanitizeMalformedUtf16(statusLabel),
+                                style: statusStyle,
                               ),
-                              children: [
-                                const TextSpan(text: "Status: "),
-                                TextSpan(
-                                  text: status.isNotEmpty
-                                      ? sanitizeMalformedUtf16(
-                                          '${status[0].toUpperCase()}${status.substring(1)}',
-                                        )
-                                      : status,
-                                  style: TextStyle(color: statusColor),
+                              Text(
+                                date,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                          SizedBox(height: SizeConfig.heightMultiplier * 0.2),
-                          Text(
-                            "Date: $date",
-                            style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.5,
-                            ),
-                          ),
-                          if (linkedProduct != null) ...[
-                            SizedBox(height: SizeConfig.heightMultiplier * 0.3),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.inventory_2_outlined,
-                                  size: 14,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    linkedProduct.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: SizeConfig.textMultiplier * 1.4,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
                           if (isPendingSend) ...[
-                            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
-                            Row(
-                              children: [
-                                Icon(Icons.send,
-                                    size: 14, color: Colors.blue.shade700),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Tap to review and send',
-                                  style: TextStyle(
-                                    fontSize: SizeConfig.textMultiplier * 1.4,
-                                    color: Colors.blue.shade700,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(height: 6),
+                            Text(
+                              'Tap to review and send',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: statusStyle.foreground,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ],
                           if (isTerminal) ...[
-                            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
-                            // Use a constrained OutlinedButton rather
-                            // than a full-width one — the card row is
-                            // already crowded with the thumbnail and
-                            // title, and we want the affordance
-                            // present but not louder than the
-                            // primary "tap card to view detail"
-                            // interaction.
+                            const SizedBox(height: 4),
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
+                              child: TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
+                                    horizontal: 4,
                                   ),
-                                  minimumSize: const Size(48, 48),
+                                  minimumSize: const Size(44, 36),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                 ),
                                 onPressed: () {
                                   // Clear any selection that may
@@ -349,11 +261,9 @@ class _PromotionsTabState extends State<PromotionsTab> {
                                     ),
                                   );
                                 },
-                                icon: const Icon(Icons.replay, size: 16),
-                                label: const Text(
-                                  'Run again',
-                                  style: TextStyle(fontSize: 12.5),
-                                ),
+                                icon:
+                                    const Icon(Icons.replay_rounded, size: 17),
+                                label: const Text('Run again'),
                               ),
                             ),
                           ],
@@ -369,4 +279,86 @@ class _PromotionsTabState extends State<PromotionsTab> {
       ),
     );
   }
+}
+
+class _PromotionStatusPill extends StatelessWidget {
+  const _PromotionStatusPill({required this.label, required this.style});
+
+  final String label;
+  final _PromotionStatusStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: style.background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(style.icon, size: 12, color: style.foreground),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: style.foreground,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromotionStatusStyle {
+  const _PromotionStatusStyle({
+    required this.foreground,
+    required this.background,
+    required this.icon,
+  });
+
+  final Color foreground;
+  final Color background;
+  final IconData icon;
+}
+
+_PromotionStatusStyle _promotionStatusStyle(String status) {
+  if (status == 'complete' || status == 'sent') {
+    return _PromotionStatusStyle(
+      foreground: Colors.green.shade800,
+      background: Colors.green.shade50,
+      icon: Icons.check_circle_outline_rounded,
+    );
+  }
+  if (status == 'failed') {
+    return _PromotionStatusStyle(
+      foreground: Colors.red.shade800,
+      background: Colors.red.shade50,
+      icon: Icons.error_outline_rounded,
+    );
+  }
+  if (status == 'partial' || status == 'processing') {
+    return _PromotionStatusStyle(
+      foreground: Colors.orange.shade900,
+      background: Colors.orange.shade50,
+      icon: status == 'processing'
+          ? Icons.sync_rounded
+          : Icons.info_outline_rounded,
+    );
+  }
+  if (status == 'saved') {
+    return _PromotionStatusStyle(
+      foreground: Colors.blue.shade800,
+      background: Colors.blue.shade50,
+      icon: Icons.schedule_send_outlined,
+    );
+  }
+  return _PromotionStatusStyle(
+    foreground: Colors.grey.shade800,
+    background: Colors.grey.shade200,
+    icon: Icons.help_outline_rounded,
+  );
 }

@@ -58,17 +58,14 @@ class PageHeader extends StatelessWidget {
       child: Row(
         children: [
           // ── Brand ────────────────────────────────────────────────
-          Icon(
-            Icons.shopping_cart_outlined,
-            color: Colors.orangeAccent,
-            size: SizeConfig.imageSizeMultiplier * 8,
-          ),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
-          Text(
-            'SpazaOne',
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 2.6,
-              fontWeight: FontWeight.bold,
+          SizedBox(
+            width: SizeConfig.imageSizeMultiplier * 34,
+            height: SizeConfig.imageSizeMultiplier * 8,
+            child: Image.asset(
+              'assets/images/spazaone_logo_horizontal.png',
+              fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
+              semanticLabel: 'SpazaOne',
             ),
           ),
 

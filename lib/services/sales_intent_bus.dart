@@ -1,7 +1,7 @@
 /// Process-singleton "pending intent" bus for the Sales page.
 ///
-/// The Sales page hosts two top-level tabs (Sales, Marketing) and each
-/// tab has two segmented views. When another surface — e.g. the
+/// The Sales page hosts two top-level tabs (Sales, Marketing). When another
+/// surface — e.g. the
 /// merchant setup card — wants to route the merchant to a specific
 /// view of Sales, it stashes an intent here and switches the bottom
 /// navigation index to Sales. `SalesPage.initState` then takes the
@@ -15,11 +15,12 @@
 /// swap between them without relearning the API.
 library;
 
-/// The marketing sub-view to open on Sales.
+/// The legacy marketing destination requested by a caller.
 ///
-/// Only marketing routing needs to differentiate between segments —
-/// nothing currently routes to a specific Sales view, so no similar
-/// enum exists for the Sales tab.
+/// Sales now has one product-first Marketing overview, so both values land on
+/// the same screen. Keeping the values preserves compatibility with older
+/// entry points while advanced template management moves out of the everyday
+/// campaign journey.
 enum SalesIntentMarketingView { promotions, templates }
 
 /// A single request to open a specific view of Sales.
