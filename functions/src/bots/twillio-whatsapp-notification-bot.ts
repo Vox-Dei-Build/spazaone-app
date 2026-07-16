@@ -3,6 +3,7 @@ import { db, functions } from "../config/main";
 import { authenticateFirebaseRequest } from "../security/requestAuth";
 import { formatPhoneNumber } from "../utils/phoneUtils";
 import { normalizeTwilioError } from "../utils/twilioError";
+import { assertStoreAccess, requireStoreId } from "../stores/storeAccess";
 
 type TwilioAction = "send" | "status" | "messages" | "media";
 type TwilioChannel = "whatsapp" | "sms";
@@ -86,10 +87,19 @@ export const sendTwilioMessage = functions
       return;
     }
 
-    const merchantId = await authenticateFirebaseRequest(req, res, {
+    const authenticatedUid = await authenticateFirebaseRequest(req, res, {
       requireAppCheck: true,
     });
-    if (!merchantId) return;
+    if (!authenticatedUid) return;
+
+    let merchantId: string;
+    try {
+      merchantId = requireStoreId(req.body?.storeId ?? authenticatedUid);
+      await assertStoreAccess(authenticatedUid, merchantId);
+    } catch (error) {
+      res.status(403).json({ success: false, error: "Access denied." });
+      return;
+    }
 
     const accountSid = env("TWILIO_ACCOUNT_SID", "TWILIO_SID");
     const authToken = env("TWILIO_AUTH_TOKEN", "TWILIO_TOKEN");

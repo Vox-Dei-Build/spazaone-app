@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
+import 'package:pasella/config/function_endpoints.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_app_badger_plus/flutter_app_badger_plus.dart';
 import 'package:pasella/services/botpress_service.dart';
@@ -10,7 +11,7 @@ import 'package:pasella/utils/phone_util.dart';
 
 class ConnectManagementViewModel {
   final String customerId;
-  final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
+  final String currentUserId = StoreSession.instance.storeId;
 
   final _controller = StreamController<List<Map<String, dynamic>>>.broadcast();
   Stream<List<Map<String, dynamic>>> streamMessages() {
@@ -358,8 +359,7 @@ class ConnectManagementViewModel {
     if (customerNumber == null) return;
     try {
       await SecureFunctionClient().post(
-        Uri.parse(
-            'https://us-central1-pasella-ledger.cloudfunctions.net/markMessagesAsRead'),
+        FunctionEndpoints.https('markMessagesAsRead'),
         {
           'merchantId': currentUserId,
           'customerNumber': customerNumber,

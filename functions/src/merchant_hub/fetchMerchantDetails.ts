@@ -1,6 +1,8 @@
-import { normalizePhoneNumber } from "..";
+import { createHash } from "crypto";
+import { formatPhoneNumber, normalizePhoneNumber } from "../utils/phoneUtils";
 import { functions, db } from "../config/main";
 import { requireBotRequest } from "../security/requestAuth";
+import { resolveBotStore } from "../stores/botStoreSelection";
 
 /**
  * HTTP GET Function to fetch the most recent merchant details based on the phone number.
@@ -40,11 +42,77 @@ exports.fetchMerchantDetails = functions
       res.status(400).send("The phone number must be provided.");
       return;
     }
-    const normalizedNumber = normalizePhoneNumber(
-      rawNumber.replace("whatsapp:", ""),
-    );
-    console.log(`Normalized incoming number for matching: ${normalizedNumber}`);
+    const rawPhone = rawNumber.replace("whatsapp:", "");
+    const e164Number = formatPhoneNumber(rawPhone);
+    const normalizedNumber = normalizePhoneNumber(rawPhone);
+    if (!e164Number) {
+      res.status(400).send("A valid South African phone number is required.");
+      return;
+    }
+    console.log("Resolving merchant phone", {
+      phoneLast4: normalizedNumber.slice(-4),
+    });
     try {
+      // Multi-store operators are mapped by a one-way phone hash. If an
+      // operator belongs to several stores the bot must ask which store they
+      // mean instead of silently performing an action in an arbitrary shop.
+      const hash = createHash("sha256").update(e164Number).digest("hex");
+      const access = await db
+        .collection("operatorPhoneLookup")
+        .doc(hash)
+        .collection("stores")
+        .where("status", "==", "active")
+        .get();
+      const requestedStoreId = String(req.query.storeId ?? "").trim();
+      const requestedChoice = String(req.query.storeChoice ?? "").trim();
+      const availableStores = access.docs.map((doc) => ({
+        merchantId: doc.id,
+        shopName: String(doc.data().storeName ?? "Store"),
+        role: String(doc.data().role ?? "operator"),
+      }));
+      const resolution = resolveBotStore(
+        availableStores,
+        requestedStoreId,
+        requestedChoice,
+      );
+
+      if (resolution.kind === "forbidden") {
+        res.status(403).send("Operator does not have access to that store.");
+        return;
+      }
+      if (resolution.kind === "selection-required") {
+        res.status(200).send({
+          requiresStoreSelection: true,
+          prompt: "Which store would you like to use?",
+          stores: resolution.stores.map((store, index) => ({
+            ...store,
+            choice: String(index + 1),
+          })),
+        });
+        return;
+      }
+      if (resolution.kind === "selected") {
+        const selected = resolution.store;
+        const selectedStore = await db
+          .doc(`users/${selected.merchantId}`)
+          .get();
+        if (!selectedStore.exists) {
+          res.status(404).send("Selected store was not found.");
+          return;
+        }
+        const merchant = selectedStore.data() ?? {};
+        res.status(200).send({
+          merchantDetails: {
+            merchantId: selected.merchantId,
+            merchantName: merchant.name || "Unknown Merchant",
+            shopName: merchant.shopName || selected.shopName,
+            merchantNumber: merchant.mobileNumber || "Unknown",
+            operatorRole: selected.role,
+          },
+        });
+        return;
+      }
+
       // Query users (merchants) based on the phone number
       const usersRef = db.collection("users");
       const userSnapshot = await usersRef

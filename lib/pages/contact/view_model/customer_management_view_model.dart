@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
@@ -27,7 +27,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
   final String customerId;
   final String? mobileNumber;
   final CustomerBalanceSummaryProvider customerBalanceSummaryProvider;
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final String userId = StoreSession.instance.storeId;
   List<Map<String, dynamic>> transactions = [];
   File? _profileImage;
   String? _profileImageUrl;
@@ -411,7 +411,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
   Future<void> _sendReminder(BuildContext context) async {
     sendingReminderNotifier.value = true;
 
-    final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final String userId = StoreSession.instance.storeId;
     double netBalance =
         customerBalanceSummaryProvider.customerBalanceSummary.netBalance;
 

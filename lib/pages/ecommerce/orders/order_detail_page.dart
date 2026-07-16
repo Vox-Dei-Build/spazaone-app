@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/actions_block.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/actions_dock.dart';
@@ -144,8 +144,8 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     //    dropped seconds later with no UI signal. We now await the
     //    explicit result and surface the final send/charge state on
     //    the same snackbar surface.
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null && result.sendIntent) {
+    final uid = StoreSession.instance.storeId;
+    if (uid.isNotEmpty && result.sendIntent) {
       final msgSvc = await OrderStatusMessagingService.create();
       final driver = (order['driver'] is Map)
           ? Map<String, dynamic>.from(order['driver'] as Map)
@@ -1032,9 +1032,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                               ),
                               child: ProductsSectionEnhanced(
                                 items: items,
-                                fallbackUserId:
-                                    FirebaseAuth.instance.currentUser?.uid ??
-                                        '',
+                                fallbackUserId: StoreSession.instance.storeId,
                               ),
                             ),
                           ],

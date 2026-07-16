@@ -12,6 +12,10 @@ TwilioProxyClient proxyReturning(http.Response response) {
     idTokenProvider: () async => 'firebase-id-token',
     appCheckTokenProvider: () async => 'firebase-app-check-token',
     httpClient: MockClient((_) async => response),
+    endpoint: Uri.parse(
+      'https://us-central1-demo-project.cloudfunctions.net/sendTwilioMessage',
+    ),
+    storeIdProvider: () => 'store-a',
   );
 }
 

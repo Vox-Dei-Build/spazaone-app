@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
@@ -10,7 +10,7 @@ import 'package:pasella/utils/show_toast.dart';
 
 class TransactionViewModel extends ChangeNotifier {
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final String userId = StoreSession.instance.storeId;
   final TextEditingController amountController = TextEditingController();
   final TextEditingController remarksController = TextEditingController();
   final TextEditingController searchController = TextEditingController();

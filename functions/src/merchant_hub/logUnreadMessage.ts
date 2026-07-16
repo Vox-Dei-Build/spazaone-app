@@ -3,6 +3,10 @@ import { AndroidConfig } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
 import { requireBotRequest } from "../security/requestAuth";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
+import {
+  readStoreNotificationTokens,
+  removeInvalidStoreNotificationTokens,
+} from "../notifications/storeNotificationTokens";
 
 type NotificationCustomer = {
   id: string;
@@ -304,22 +308,9 @@ export const logUnreadMessage = functions
         return;
       }
 
-      const latestMerchantDoc = await merchantRef.get();
-      const latestMerchantData = latestMerchantDoc.data() ?? {};
-      const tokens = new Set<string>();
-      const legacyToken = latestMerchantData.fcmToken;
-      if (typeof legacyToken === "string" && legacyToken.trim()) {
-        tokens.add(legacyToken.trim());
-      }
-      if (Array.isArray(latestMerchantData.fcmTokens)) {
-        for (const token of latestMerchantData.fcmTokens) {
-          if (typeof token === "string" && token.trim()) {
-            tokens.add(token.trim());
-          }
-        }
-      }
+      const tokens = await readStoreNotificationTokens(merchantId);
 
-      if (tokens.size === 0) {
+      if (tokens.length === 0) {
         console.log("Merchant FCM tokens not found.");
         res
           .status(200)
@@ -351,13 +342,13 @@ export const logUnreadMessage = functions
           notificationCustomer,
           customerNumber,
         ),
-        tokens: [...tokens],
+        tokens,
       };
 
       try {
         const response = await admin.messaging().sendEachForMulticast(payload);
         console.log(
-          `✅ Push notification sent successfully to ${response.successCount}/${tokens.size} token(s).`,
+          `✅ Push notification sent successfully to ${response.successCount}/${tokens.length} token(s).`,
         );
 
         const invalidTokens: string[] = [];
@@ -373,13 +364,7 @@ export const logUnreadMessage = functions
         });
 
         if (invalidTokens.length > 0) {
-          const tokenCleanup: Record<string, unknown> = {
-            fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
-          };
-          if (invalidTokens.includes(legacyToken)) {
-            tokenCleanup.fcmToken = admin.firestore.FieldValue.delete();
-          }
-          await merchantRef.update(tokenCleanup);
+          await removeInvalidStoreNotificationTokens(merchantId, invalidTokens);
           console.log(
             `[logUnreadMessage] removed ${invalidTokens.length} invalid FCM token(s) for ${merchantId}`,
           );

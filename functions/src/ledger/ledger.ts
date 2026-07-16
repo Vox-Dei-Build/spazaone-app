@@ -1,4 +1,5 @@
 import { functions, db } from "../config/main";
+import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 /**
  * Calculates and updates the balance for a user based on transactions.
@@ -28,7 +29,8 @@ exports.calculateUserBalance = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const userId = context.auth.uid;
+  const userId = String(data?.storeId ?? context.auth.uid).trim();
+  await assertCallableStoreAccess(context, userId);
   const startDate = data?.startDate ? new Date(data.startDate) : new Date(2000);
   const endDate = data?.endDate ? new Date(data.endDate) : new Date(); // default to now if missing
 

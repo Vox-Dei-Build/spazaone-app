@@ -1,7 +1,10 @@
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import type { Bucket, File } from "@google-cloud/storage";
+import { createHash } from "crypto";
 import { functions, db } from "../config/main";
+import { formatPhoneNumber } from "../utils/phoneUtils";
 
 const BATCH_DELETE_LIMIT = 300;
 const RECENT_LOGIN_MAX_AGE_SECONDS = 5 * 60;
@@ -14,7 +17,10 @@ function resolveBucket(): Bucket | null {
   try {
     return getStorage().bucket();
   } catch (error) {
-    console.warn("Storage bucket not configured, skipping object cleanup.", error);
+    console.warn(
+      "Storage bucket not configured, skipping object cleanup.",
+      error,
+    );
     return null;
   }
 }
@@ -57,35 +63,138 @@ export const deleteUserAccount = functions
       );
     }
 
-    const storagePaths = new Set<string>();
+    const memberships = await db
+      .collection("operators")
+      .doc(uid)
+      .collection("stores")
+      .get();
+    const ownedStoreIds = new Set(
+      memberships.docs
+        .filter(
+          (doc) =>
+            doc.data().role === "owner" && doc.data().status !== "disabled",
+        )
+        .map((doc) => doc.id),
+    );
+    const ownedStoreMetadata = await db
+      .collection("stores")
+      .where("ownerUid", "==", uid)
+      .get();
+    ownedStoreMetadata.docs.forEach((store) => ownedStoreIds.add(store.id));
 
-    await deleteCollectionWhere("messagingTemplates", "userId", uid, (doc) => {
-      const data = doc.data();
-      const url = data?.channels?.whatsapp?.mediaUrl as string | undefined;
-      const path = extractStoragePath(url);
-      if (path) storagePaths.add(path);
-    });
-
-    await deleteCollectionWhere("promotions", "merchantId", uid);
-    await deleteCollectionWhere("payoutRequests", "merchantId", uid);
-    await deleteCollectionWhere("paymentReferences", "merchantId", uid);
-
-    const notificationsRef = db.collection("notifications").doc(uid);
-    if ((await notificationsRef.get()).exists) {
-      await admin.firestore().recursiveDelete(notificationsRef);
+    // A legacy account may not have adopted its membership metadata yet.
+    const legacyUser = await db.doc(`users/${uid}`).get();
+    const legacyStore = await db.doc(`stores/${uid}`).get();
+    if (
+      legacyUser.exists &&
+      (!legacyStore.exists || legacyStore.data()?.ownerUid === uid)
+    ) {
+      ownedStoreIds.add(uid);
     }
 
-    const userRef = db.collection("users").doc(uid);
-    if ((await userRef.get()).exists) {
-      await admin.firestore().recursiveDelete(userRef);
+    // Do all ownership checks before the first destructive write. Deleting an
+    // owner while another active operator depends on the store would orphan
+    // access and make recovery much harder than a deliberate transfer flow.
+    for (const storeId of ownedStoreIds) {
+      const activeOperators = await db
+        .collection(`stores/${storeId}/operators`)
+        .where("status", "==", "active")
+        .get();
+      if (activeOperators.docs.some((member) => member.id !== uid)) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "STORE_HAS_OTHER_OPERATORS: Remove all other operators before deleting this account.",
+        );
+      }
+    }
+
+    const storagePaths = new Set<string>();
+    for (const storeId of ownedStoreIds) {
+      await deleteCollectionWhere(
+        "messagingTemplates",
+        "userId",
+        storeId,
+        (doc) => {
+          const data = doc.data();
+          const url = data?.channels?.whatsapp?.mediaUrl as string | undefined;
+          const path = extractStoragePath(url);
+          if (path) storagePaths.add(path);
+        },
+      );
+      await deleteCollectionWhere("promotions", "merchantId", storeId);
+      await deleteCollectionWhere("payoutRequests", "merchantId", storeId);
+      await deleteCollectionWhere("paymentReferences", "merchantId", storeId);
+
+      for (const root of ["notifications", "users"] as const) {
+        const ref = db.collection(root).doc(storeId);
+        if ((await ref.get()).exists) {
+          await admin.firestore().recursiveDelete(ref);
+        }
+      }
+      await deleteStoreMetadata(storeId);
+    }
+
+    // Operator-only memberships are revoked without touching the stores.
+    for (const membership of memberships.docs) {
+      if (!ownedStoreIds.has(membership.id)) {
+        const storeMembershipRef = db.doc(
+          `stores/${membership.id}/operators/${uid}`,
+        );
+        const storeMembership = await storeMembershipRef.get();
+        const tokenData = storeMembership.data() ?? membership.data();
+        const tokenList = Array.isArray(tokenData.fcmTokens)
+          ? tokenData.fcmTokens
+          : [];
+        const tokens = [tokenData.fcmToken, ...tokenList]
+          .filter((value): value is string => typeof value === "string")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        const batch = db.batch();
+        batch.delete(membership.ref);
+        batch.delete(storeMembershipRef);
+        if (tokens.length) {
+          const legacyStoreRef = db.doc(`users/${membership.id}`);
+          const legacyStore = await legacyStoreRef.get();
+          const legacyScalar = String(legacyStore.data()?.fcmToken ?? "");
+          batch.set(
+            legacyStoreRef,
+            {
+              fcmTokens: FieldValue.arrayRemove(...tokens),
+              ...(tokens.includes(legacyScalar)
+                ? { fcmToken: FieldValue.delete() }
+                : {}),
+            },
+            { merge: true },
+          );
+        }
+        await batch.commit();
+      }
+    }
+
+    const operatorRef = db.doc(`operators/${uid}`);
+    if ((await operatorRef.get()).exists) {
+      await admin.firestore().recursiveDelete(operatorRef);
+    }
+
+    const authUser = await admin.auth().getUser(uid);
+    const phone = formatPhoneNumber(authUser.phoneNumber ?? "");
+    if (phone) {
+      for (const root of ["operatorPhoneLookup", "operatorInvites"] as const) {
+        const ref = db.doc(`${root}/${hashPhone(phone)}`);
+        if ((await ref.get()).exists) {
+          await admin.firestore().recursiveDelete(ref);
+        }
+      }
     }
 
     const bucket = resolveBucket();
     if (bucket) {
-      await deleteStoragePrefix(bucket, `products/${uid}/`);
-      await deleteStoragePrefix(bucket, `profile_images/${uid}/`);
-      await deleteStoragePrefix(bucket, `whatsapp_media/${uid}/`);
-      await deleteStoragePrefix(bucket, `users/${uid}/`);
+      for (const storeId of ownedStoreIds) {
+        await deleteStoragePrefix(bucket, `products/${storeId}/`);
+        await deleteStoragePrefix(bucket, `profile_images/${storeId}/`);
+        await deleteStoragePrefix(bucket, `whatsapp_media/${storeId}/`);
+        await deleteStoragePrefix(bucket, `users/${storeId}/`);
+      }
       await deleteSpecificFiles(bucket, Array.from(storagePaths));
     }
 
@@ -93,6 +202,21 @@ export const deleteUserAccount = functions
 
     return { success: true };
   });
+
+function hashPhone(phone: string): string {
+  return createHash("sha256").update(phone).digest("hex");
+}
+
+async function deleteStoreMetadata(storeId: string): Promise<void> {
+  const storeRef = db.doc(`stores/${storeId}`);
+  const members = await storeRef.collection("operators").get();
+  for (const member of members.docs) {
+    await db.doc(`operators/${member.id}/stores/${storeId}`).delete();
+  }
+  if ((await storeRef.get()).exists) {
+    await admin.firestore().recursiveDelete(storeRef);
+  }
+}
 
 async function deleteCollectionWhere(
   collectionPath: string,
@@ -129,13 +253,19 @@ async function deleteCollectionWhere(
   return totalDeleted;
 }
 
-async function deleteStoragePrefix(bucket: Bucket, prefix: string): Promise<void> {
+async function deleteStoragePrefix(
+  bucket: Bucket,
+  prefix: string,
+): Promise<void> {
   if (!prefix) return;
   const [files] = await bucket.getFiles({ prefix });
   await deleteStorageFiles(files);
 }
 
-async function deleteSpecificFiles(bucket: Bucket, paths: string[]): Promise<void> {
+async function deleteSpecificFiles(
+  bucket: Bucket,
+  paths: string[],
+): Promise<void> {
   if (!paths.length) return;
   const files = paths.map((p) => bucket.file(p));
   await deleteStorageFiles(files);

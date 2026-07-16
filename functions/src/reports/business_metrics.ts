@@ -1,7 +1,9 @@
 import { DocumentData } from "firebase-admin/firestore";
 import { functions, db } from "../config/main";
+import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 type ReportData = {
+  storeId?: string;
   startDate?: string;
   endDate?: string;
   period?: number;
@@ -38,7 +40,8 @@ exports.generateCashflowImpactReport = functions.https.onCall(
         );
       }
 
-      const currentUserId = context.auth.uid;
+      const currentUserId = String(data.storeId ?? context.auth.uid).trim();
+      await assertCallableStoreAccess(context, currentUserId);
 
       const [customerSize, customersWithNPAs] = await Promise.all([
         getTotalCustomers(currentUserId),
@@ -85,7 +88,8 @@ exports.generateReport = functions.https.onCall(
         );
       }
 
-      const currentUserId = context.auth.uid;
+      const currentUserId = String(data.storeId ?? context.auth.uid).trim();
+      await assertCallableStoreAccess(context, currentUserId);
 
       const [customerSize, customersWithNPAs] = await Promise.all([
         getTotalCustomers(currentUserId),

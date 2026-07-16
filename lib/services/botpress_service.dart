@@ -2,15 +2,15 @@ import 'dart:convert';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:pasella/services/store_session.dart';
+import 'package:pasella/config/function_endpoints.dart';
 
 class BotpressService {
   BotpressService._() : _http = http.Client();
 
   final http.Client _http;
 
-  static final Uri _endpoint = Uri.parse(
-    'https://us-central1-pasella-ledger.cloudfunctions.net/getBotpressMessages',
-  );
+  static Uri get _endpoint => FunctionEndpoints.https('getBotpressMessages');
 
   static Future<BotpressService> create() async {
     return BotpressService._();
@@ -218,7 +218,10 @@ class BotpressService {
         'X-Firebase-AppCheck': appCheckToken,
         'Content-Type': 'application/json',
       },
-      body: jsonEncode({'customerId': customerId}),
+      body: jsonEncode({
+        'customerId': customerId,
+        'storeId': StoreSession.instance.storeId,
+      }),
     );
     if (response.statusCode != 200) {
       throw StateError('Conversation proxy returned ${response.statusCode}.');

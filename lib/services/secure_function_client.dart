@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:pasella/services/store_session.dart';
 
 class SecureFunctionClient {
   SecureFunctionClient({http.Client? httpClient})
@@ -31,7 +32,11 @@ class SecureFunctionClient {
         'X-Firebase-AppCheck': appCheckToken,
         'Content-Type': 'application/json',
       },
-      body: jsonEncode(payload),
+      body: jsonEncode({
+        ...payload,
+        if (!payload.containsKey('storeId'))
+          'storeId': StoreSession.instance.storeId,
+      }),
     );
   }
 }

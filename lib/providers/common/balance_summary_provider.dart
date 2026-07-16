@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/models/common/balance_summary_model.dart';
+import 'package:pasella/services/store_session.dart';
 
 class BalanceSummaryProvider with ChangeNotifier {
+  BalanceSummaryProvider() {
+    _activeStoreId = StoreSession.instance.storeId;
+    StoreSession.instance.addListener(_onStoreChanged);
+  }
+
+  String _activeStoreId = '';
   BalanceSummary _balanceSummary = BalanceSummary(
     netBalance: 0.0,
     paymentCount: 0,
@@ -14,6 +21,23 @@ class BalanceSummaryProvider with ChangeNotifier {
   );
 
   BalanceSummary get balanceSummary => _balanceSummary;
+
+  void _onStoreChanged() {
+    final storeId = StoreSession.instance.storeId;
+    if (storeId == _activeStoreId) return;
+    _activeStoreId = storeId;
+    _balanceSummary = BalanceSummary(
+      netBalance: 0.0,
+      paymentCount: 0,
+      paymentAmount: 0.0,
+      creditCount: 0,
+      creditAmount: 0.0,
+      totalCustomers: 0,
+      owingNumberOfCustomers: 0,
+    );
+    _isLedgerLoading = false;
+    notifyListeners();
+  }
 
   void updateCustomDateRange(
       BuildContext context, DateTime start, DateTime end) {
@@ -29,6 +53,7 @@ class BalanceSummaryProvider with ChangeNotifier {
     }
 
     final parameters = {
+      'storeId': StoreSession.instance.storeId,
       if (startDate != null) 'startDate': startDate.toIso8601String(),
       if (endDate != null) 'endDate': endDate.toIso8601String(),
     };
@@ -85,5 +110,11 @@ class BalanceSummaryProvider with ChangeNotifier {
         notifyListeners();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    StoreSession.instance.removeListener(_onStoreChanged);
+    super.dispose();
   }
 }

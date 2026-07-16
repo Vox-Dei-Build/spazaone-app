@@ -87,6 +87,8 @@ export * from "./ecommerce/getShopContextBotHttp";
 export * from "./ecommerce/getMerchantOrderingLink";
 export * from "./ecommerce/getMerchantCatalogBotHttp";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
+/* ---- Multi-store access ---- */
+export * from "./stores/storeManagement";
 /* import { fixProductsContentType } from './utils/fix-content-type'
 
 export const fixPrefixContentTypeImpl = functions.runWith({ timeoutSeconds: 540, memory: '1GB' })

@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
@@ -171,7 +171,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => saving = true);
 
-    final userId = FirebaseAuth.instance.currentUser?.uid ?? "";
+    final userId = StoreSession.instance.storeId;
     if (userId.isEmpty) {
       debugPrint("Cannot save template without a signed-in merchant.");
       if (mounted) setState(() => saving = false);
@@ -323,7 +323,7 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
         return BasicInfoStep(
           displayNameController: _templateNameController,
           sanitize: _sanitizeTemplateName,
-          userId: FirebaseAuth.instance.currentUser?.uid ?? '',
+          userId: StoreSession.instance.storeId,
           onSanitizedChanged: (sanitized, isDuplicate) {
             setState(() {
               _sanitizedName = sanitized;

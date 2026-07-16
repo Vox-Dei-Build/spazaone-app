@@ -12,16 +12,10 @@
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
+import { assertStoreAccess } from "../stores/storeAccess";
 
 async function assertCallerIsMerchantAdmin(uid: string, merchantId: string) {
-  // Project model: merchants are stored under users/{merchantId}.
-  // Authorization: the caller must be the same user as the merchantId.
-  if (uid !== merchantId) {
-    throw new functions.https.HttpsError(
-      "permission-denied",
-      "Not authorized for this merchant.",
-    );
-  }
+  await assertStoreAccess(uid, merchantId);
   return true;
 }
 

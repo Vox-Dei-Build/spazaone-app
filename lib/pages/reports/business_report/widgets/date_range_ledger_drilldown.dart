@@ -19,7 +19,7 @@
 // customers) this is fine; see remaining-risks in the lane handover.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
@@ -86,8 +86,8 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
   }
 
   Future<List<_CustomerRangeRollup>> _load() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || uid.isEmpty) return [];
+    final uid = StoreSession.instance.storeId;
+    if (uid.isEmpty) return [];
 
     final firestore = FirebaseFirestore.instance;
     final customersRef =

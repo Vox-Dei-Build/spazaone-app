@@ -1,5 +1,6 @@
 import { functions } from "../config/main";
 import * as admin from "firebase-admin";
+import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 exports.addPayment = functions.https.onCall(async (data, context) => {
   // Ensure the user is authenticated
@@ -19,6 +20,7 @@ exports.addPayment = functions.https.onCall(async (data, context) => {
       "Required fields are missing.",
     );
   }
+  await assertCallableStoreAccess(context, currentUserId);
 
   const customerRef = admin
     .firestore()

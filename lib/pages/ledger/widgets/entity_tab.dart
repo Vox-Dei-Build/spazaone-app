@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/constants.dart';
@@ -110,7 +110,7 @@ class _EntityTabState extends State<EntityTab> {
   }
 
   /* Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
-    final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final String currentUserId = StoreSession.instance.storeId;
 
     if (currentUserId.isEmpty) {
       return Stream.value([]);
@@ -175,7 +175,7 @@ class _EntityTabState extends State<EntityTab> {
  */
 
   Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
-    final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final String currentUserId = StoreSession.instance.storeId;
     if (currentUserId.isEmpty) return Stream.value([]);
 
     Query query = FirebaseFirestore.instance
@@ -254,7 +254,7 @@ class _EntityTabState extends State<EntityTab> {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final currentUserId = StoreSession.instance.storeId;
     final dataModel = context.watch<AppModel>();
     return Scaffold(
       body: Padding(

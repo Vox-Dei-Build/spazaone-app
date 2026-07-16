@@ -12,6 +12,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/config/firebase_options.dart';
+import 'package:pasella/config/firebase_environment.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
@@ -47,6 +48,7 @@ import 'pages/promote/promotions_page.dart';
 import 'pages/promote/view_model/promotions_view_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'services/merchant_heartbeat.dart';
+import 'services/store_session.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -246,7 +248,7 @@ Future<void> _openCustomerFromMessageNotification(
 
     final customerCollection = FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
+        .doc(StoreSession.instance.storeId)
         .collection('customers');
 
     if (customerId != null) {
@@ -416,7 +418,9 @@ Future<void> setupMerchantHeartbeatBootHook() async {
 
     if (stale || changed) {
       try {
-        await MerchantHeartbeat.instance.send(merchantId: user.uid);
+        await MerchantHeartbeat.instance.send(
+          merchantId: StoreSession.instance.storeId,
+        );
         await box.put('hb_version', currentVersion);
         await box.put('hb_build', currentBuild);
         await box.put('hb_last_ms', nowMs);
@@ -427,7 +431,7 @@ Future<void> setupMerchantHeartbeatBootHook() async {
           e,
           st,
           reason: 'merchant heartbeat failed',
-          context: {'merchant_id': user.uid},
+          context: {'merchant_id': StoreSession.instance.storeId},
         );
       }
     }
@@ -488,18 +492,23 @@ Future<void> _initializeCoreServices() async {
 
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+      options: FirebaseEnvironment.options(
+        DefaultFirebaseOptions.currentPlatform,
+      ),
     );
   }
+  await FirebaseEnvironment.connect();
 
   // Both production apps are registered in Firebase App Check. Keep global
   // Firebase services in monitoring mode while older releases age out; new
   // security-sensitive HTTP functions verify these tokens immediately.
-  await FirebaseAppCheck.instance.activate(
-    androidProvider:
-        kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-    appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
-  );
+  if (!FirebaseEnvironment.useEmulators) {
+    await FirebaseAppCheck.instance.activate(
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+    );
+  }
 
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
@@ -771,9 +780,12 @@ class _MyAppState extends State<MyApp> {
 
   void _handleAuthChange(User? user) {
     if (user == null) {
+      StoreSession.instance.clear();
       _permissionCheckScheduled = false;
       return;
     }
+    final storeBootstrap = StoreSession.instance.bootstrap();
+    unawaited(storeBootstrap);
     if (_permissionCheckScheduled) return;
     _permissionCheckScheduled = true;
 
@@ -781,6 +793,7 @@ class _MyAppState extends State<MyApp> {
     // OS prompt itself is only requested for `notDetermined` users.
     Future<void>.delayed(const Duration(milliseconds: 900), () async {
       if (!mounted || FirebaseAuth.instance.currentUser == null) return;
+      await storeBootstrap;
       final appContext = navigatorKey.currentContext;
       if (appContext == null) {
         _permissionCheckScheduled = false;
@@ -809,6 +822,9 @@ class _MyAppState extends State<MyApp> {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => AppModel()),
+        ChangeNotifierProvider<StoreSession>.value(
+          value: StoreSession.instance,
+        ),
         ChangeNotifierProvider(create: (context) => WalletBalanceProvider()),
         ChangeNotifierProvider(create: (context) => BalanceSummaryProvider()),
         ChangeNotifierProvider(

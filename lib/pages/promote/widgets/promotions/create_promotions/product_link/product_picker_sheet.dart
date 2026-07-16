@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -109,8 +109,8 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
   }
 
   Future<void> _loadProducts() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
+    final uid = StoreSession.instance.storeId;
+    if (uid.isEmpty) {
       setState(() {
         _loading = false;
         _error = 'Not signed in.';

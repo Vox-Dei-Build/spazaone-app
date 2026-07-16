@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
@@ -72,7 +73,8 @@ class _BusinessNamePageState extends State<BusinessNamePage> {
       return;
     }
     try {
-      final existing = await fetchShopNameForUser(user.uid);
+      final existing =
+          await fetchShopNameForUser(StoreSession.instance.storeId);
       _initialValue = (existing ?? '').trim();
       _controller.text = _initialValue;
     } catch (e, st) {
@@ -101,7 +103,10 @@ class _BusinessNamePageState extends State<BusinessNamePage> {
 
     setState(() => _saving = true);
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(StoreSession.instance.storeId)
+          .set(
         {'shopName': newValue},
         SetOptions(merge: true),
       );

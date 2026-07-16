@@ -12,7 +12,7 @@ export const getOrderById = functions.https.onCall(async (data, context) => {
         "merchantId and orderId are required",
       );
     }
-    if (!authorizeCallableMerchantOrBot(context, merchantId)) {
+    if (!(await authorizeCallableMerchantOrBot(context, merchantId))) {
       throw new functions.https.HttpsError(
         "permission-denied",
         "Access denied",

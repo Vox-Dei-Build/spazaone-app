@@ -39,7 +39,7 @@ export const getMerchantSales = functions.https.onCall(
           "merchantId is required",
         );
       }
-      if (!authorizeCallableMerchantOrBot(context, merchantId)) {
+      if (!(await authorizeCallableMerchantOrBot(context, merchantId))) {
         throw new functions.https.HttpsError(
           "permission-denied",
           "Access denied",

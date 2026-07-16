@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/wallet/banking_detail_model.dart';
@@ -61,7 +62,7 @@ class WalletViewModel extends ChangeNotifier {
   final TextEditingController reference = TextEditingController();
 
   String? editingDocumentId;
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final String userId = StoreSession.instance.storeId;
   bool _disposed = false;
 
   // State Notifiers

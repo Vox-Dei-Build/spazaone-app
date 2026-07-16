@@ -13,6 +13,14 @@ class FeatureFlags {
   static bool enableTopUpPaystack = true;
   static bool enableMoveFunds = false;
 
+  /// Multi-store/operator release switch. Default false supports a controlled
+  /// pilot and gives operations an immediate client-side rollback lever.
+  static bool enableMultiStoreOperators = false;
+  static const bool _forceMultiStoreForEmulator = bool.fromEnvironment(
+    'ENABLE_MULTI_STORE_OPERATORS',
+    defaultValue: false,
+  );
+
   /// PAS-UX-22: number-first onboarding flow.
   ///
   /// When true, the app launches into `/phoneEntryPage` and routes new vs
@@ -84,6 +92,11 @@ class FeatureFlags {
       'FEATURE_MOVE_FUNDS_ENABLED',
       defaultValue: false,
     );
+    enableMultiStoreOperators = _forceMultiStoreForEmulator ||
+        rc.getBool(
+          'FEATURE_MULTI_STORE_OPERATORS_ENABLED',
+          defaultValue: false,
+        );
 
     // PAS-UX-22: default false so a missing / failed Remote Config fetch
     // leaves us on the legacy two-screen flow.

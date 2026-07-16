@@ -1,6 +1,7 @@
 // functions/src/merchant_hub/runMerchantPromotion.ts
 
 import { functions, db } from "../config/main";
+import { assertCallableStoreAccess } from "../stores/storeAccess";
 import twilio from "twilio";
 import { FieldValue } from "firebase-admin/firestore";
 import { DynamicPricingService } from "../services/dynamic_pricing_service";
@@ -50,17 +51,66 @@ function calculateSmsSegments(text: string): number {
   return Math.ceil(content.length / multipartSegmentLength);
 }
 
-const {
-  sid: ACCOUNT_SID,
-  token: AUTH_TOKEN,
-  customer_messaging_service_sid: CUSTOMER_WA_SID,
-  number: SMS_NUMBER,
-} = functions.config().twilio;
+type TwilioClient = ReturnType<typeof twilio>;
 
-// initialize once
-const twilioClient = twilio(ACCOUNT_SID, AUTH_TOKEN);
-const MESSAGE_STATUS_CALLBACK_URL =
-  "https://us-central1-pasella-ledger.cloudfunctions.net/messageStatusCallback";
+interface TwilioRuntime {
+  client: TwilioClient;
+  customerMessagingServiceSid: string;
+  smsNumber: string;
+  statusCallbackUrl: string;
+}
+
+let cachedTwilioRuntime: TwilioRuntime | undefined;
+
+/**
+ * Resolve provider credentials only when a real send is attempted. Reading
+ * functions.config() at module load prevents the Functions emulator (and any
+ * isolated staging project without production secrets) from discovering the
+ * function bundle at all.
+ */
+function getTwilioRuntime(): TwilioRuntime {
+  if (cachedTwilioRuntime) return cachedTwilioRuntime;
+
+  const config = (functions.config().twilio ?? {}) as Record<string, unknown>;
+  const accountSid = String(
+    process.env.TWILIO_ACCOUNT_SID ?? config.sid ?? "",
+  ).trim();
+  const authToken = String(
+    process.env.TWILIO_AUTH_TOKEN ?? config.token ?? "",
+  ).trim();
+  const customerMessagingServiceSid = String(
+    process.env.TWILIO_CUSTOMER_MESSAGING_SERVICE_SID ??
+      config.customer_messaging_service_sid ??
+      "",
+  ).trim();
+  const smsNumber = String(
+    process.env.TWILIO_SMS_NUMBER ?? config.number ?? "",
+  ).trim();
+
+  if (
+    !accountSid ||
+    !authToken ||
+    !customerMessagingServiceSid ||
+    !smsNumber
+  ) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Messaging provider credentials are not configured for this environment.",
+    );
+  }
+
+  const projectId = process.env.GCLOUD_PROJECT || "pasella-ledger";
+  cachedTwilioRuntime = {
+    client: twilio(accountSid, authToken),
+    customerMessagingServiceSid,
+    smsNumber,
+    statusCallbackUrl:
+      process.env.MESSAGE_STATUS_CALLBACK_URL ||
+      `https://us-central1-${projectId}.cloudfunctions.net/messageStatusCallback`,
+  };
+  return cachedTwilioRuntime;
+}
+
 const DELIVERY_POLL_INTERVAL_MS = 1000;
 const DELIVERY_CONFIRMATION_TIMEOUT_MS = 20000;
 const FAILED_DELIVERY_STATUSES = new Set(["failed", "undelivered", "canceled"]);
@@ -78,6 +128,7 @@ const wait = (milliseconds: number): Promise<void> =>
  * refunded idempotently by messageStatusCallback.
  */
 async function waitForMessageDelivery(
+  twilioClient: TwilioClient,
   messageSid: string,
   channel: "WhatsApp" | "SMS",
 ): Promise<void> {
@@ -301,7 +352,7 @@ export const runMerchantPromotion = functions
   .runWith({ timeoutSeconds: 540 })
   .https.onCall(
     async (
-      data: { promotionId?: string },
+      data: { promotionId?: string; storeId?: string },
       context: functions.https.CallableContext,
     ): Promise<{ success: boolean }> => {
       if (!context.auth) {
@@ -310,7 +361,8 @@ export const runMerchantPromotion = functions
           "Must be signed in",
         );
       }
-      const merchantId = context.auth.uid;
+      const merchantId = String(data.storeId ?? context.auth.uid).trim();
+      await assertCallableStoreAccess(context, merchantId);
       const promotionId = data.promotionId;
       if (!promotionId) {
         throw new functions.https.HttpsError(
@@ -538,11 +590,12 @@ export const runMerchantPromotion = functions
                 // is added to the boilerplate it must also be added
                 // here. SMS interpolation in the fallback branch below
                 // already does this correctly via local replaceAll.
-                const waResp = await twilioClient.messages.create({
+                const twilioRuntime = getTwilioRuntime();
+                const waResp = await twilioRuntime.client.messages.create({
                   to: waTo,
-                  from: CUSTOMER_WA_SID,
+                  from: twilioRuntime.customerMessagingServiceSid,
                   contentSid: waSid,
-                  statusCallback: MESSAGE_STATUS_CALLBACK_URL,
+                  statusCallback: twilioRuntime.statusCallbackUrl,
                   contentVariables: JSON.stringify({
                     customerName: cust.name,
                     shopName: shopName,
@@ -555,7 +608,11 @@ export const runMerchantPromotion = functions
                       "You were not charged.",
                   );
                 }
-                await waitForMessageDelivery(waResp.sid, "WhatsApp");
+                await waitForMessageDelivery(
+                  twilioRuntime.client,
+                  waResp.sid,
+                  "WhatsApp",
+                );
                 sentViaWA = true;
                 succeeded++;
                 totalCost += unitWA;
@@ -633,11 +690,12 @@ export const runMerchantPromotion = functions
               // outer per-customer catch (which used to swallow it
               // with a generic console.error and no persistence).
               try {
-                const smsResp = await twilioClient.messages.create({
+                const twilioRuntime = getTwilioRuntime();
+                const smsResp = await twilioRuntime.client.messages.create({
                   to: smsTo,
-                  from: SMS_NUMBER,
+                  from: twilioRuntime.smsNumber,
                   body: smsBody,
-                  statusCallback: MESSAGE_STATUS_CALLBACK_URL,
+                  statusCallback: twilioRuntime.statusCallbackUrl,
                 });
                 if (!smsResp?.sid) {
                   throw new Error(
@@ -645,7 +703,11 @@ export const runMerchantPromotion = functions
                       "You were not charged.",
                   );
                 }
-                await waitForMessageDelivery(smsResp.sid, "SMS");
+                await waitForMessageDelivery(
+                  twilioRuntime.client,
+                  smsResp.sid,
+                  "SMS",
+                );
                 succeeded++;
                 totalCost += smsCost;
                 await recordSend(

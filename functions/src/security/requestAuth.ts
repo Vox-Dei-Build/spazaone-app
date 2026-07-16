@@ -1,6 +1,6 @@
 import * as admin from "firebase-admin";
 import { timingSafeEqual } from "crypto";
-import { functions } from "../config/main";
+import { db, functions } from "../config/main";
 
 type HttpRequest = functions.https.Request;
 type HttpResponse = functions.Response;
@@ -83,8 +83,24 @@ export const authenticateFirebaseRequest = async (
   return uid;
 };
 
-export const authorizeCallableMerchantOrBot = (
+export const authorizeCallableMerchantOrBot = async (
   context: functions.https.CallableContext,
   merchantId: string,
-): boolean =>
-  context.auth?.uid === merchantId || verifyBotRequest(context.rawRequest);
+): Promise<boolean> => {
+  if (verifyBotRequest(context.rawRequest)) return true;
+  const uid = context.auth?.uid;
+  if (!uid) return false;
+
+  // Legacy releases use the auth uid as the merchant/store id.
+  if (uid === merchantId) return true;
+
+  const membership = await db
+    .doc(`stores/${merchantId}/operators/${uid}`)
+    .get();
+  const role = membership.data()?.role;
+  return (
+    membership.exists &&
+    membership.data()?.status === "active" &&
+    ["owner", "admin", "operator"].includes(role)
+  );
+};

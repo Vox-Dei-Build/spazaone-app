@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 
 Future<T?> firestoreExceptionHandler<T>(
     Future<T?> Function() action, String errorMessage) async {
@@ -115,9 +116,7 @@ Future<String?> fetchAndFormatPhoneNumberForWhatsApp(
 
 Future<String> fetchShopName() async {
   if (FirebaseAuth.instance.currentUser != null) {
-    return (await fetchShopNameForUser(
-            FirebaseAuth.instance.currentUser!.uid)) ??
-        "";
+    return (await fetchShopNameForUser(StoreSession.instance.storeId)) ?? "";
   }
   return "";
 }

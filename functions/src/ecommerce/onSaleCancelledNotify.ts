@@ -1,6 +1,7 @@
 // functions/src/triggers/onSaleCancelledNotify.ts
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
+import { readStoreNotificationTokens } from "../notifications/storeNotificationTokens";
 
 /**
  * getMerchantFcmTokens
@@ -19,20 +20,7 @@ import * as admin from "firebase-admin";
 export async function getMerchantFcmTokens(
   merchantId: string,
 ): Promise<string[]> {
-  const u = await db.collection("users").doc(merchantId).get();
-  const fromDoc = (u.get("fcmTokens") as string[]) || [];
-
-  const devSnap = await db
-    .collection("users")
-    .doc(merchantId)
-    .collection("devices")
-    .where("active", "==", true)
-    .get();
-  const fromDevices = devSnap.docs
-    .map((d) => String(d.get("fcmToken") || ""))
-    .filter(Boolean);
-
-  return Array.from(new Set([...fromDoc, ...fromDevices]));
+  return readStoreNotificationTokens(merchantId);
 }
 
 /**

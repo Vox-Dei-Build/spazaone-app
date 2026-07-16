@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/widgets/payment_response_screen.dart';
 import 'package:pasella/services/analytics_event.dart';
@@ -21,7 +21,7 @@ class PaystackFormScreen extends StatefulWidget {
 class _PaystackFormScreenState extends State<PaystackFormScreen> {
   final TextEditingController amountController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
-  final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final String currentUserId = StoreSession.instance.storeId;
   bool isLoading = false;
 
   @override
@@ -89,13 +89,12 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder:
-                (context) => PaymentResponseScreen(
-                  isSuccess: false,
-                  message: "Transaction failed. Please try again.",
-                  amount: amount,
-                  reference: "—",
-                ),
+            builder: (context) => PaymentResponseScreen(
+              isSuccess: false,
+              message: "Transaction failed. Please try again.",
+              amount: amount,
+              reference: "—",
+            ),
           ),
         );
         return;
@@ -105,12 +104,11 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
       final success = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
-          builder:
-              (context) => PaystackWebView(
-                url: init.authorizationUrl,
-                reference: init.reference, // ✅ use real reference from Paystack
-                amount: amount,
-              ),
+          builder: (context) => PaystackWebView(
+            url: init.authorizationUrl,
+            reference: init.reference, // ✅ use real reference from Paystack
+            amount: amount,
+          ),
         ),
       );
 
@@ -123,14 +121,13 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder:
-                (context) => PaymentResponseScreen(
-                  isSuccess: true,
-                  message:
-                      "Your payment was captured. Your balance will update shortly.",
-                  amount: amount,
-                  reference: init.reference,
-                ),
+            builder: (context) => PaymentResponseScreen(
+              isSuccess: true,
+              message:
+                  "Your payment was captured. Your balance will update shortly.",
+              amount: amount,
+              reference: init.reference,
+            ),
           ),
         );
       } else {
@@ -163,13 +160,12 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder:
-              (context) => PaymentResponseScreen(
-                isSuccess: false,
-                message: "Transaction failed. Please try again.",
-                amount: double.tryParse(amountController.text.trim()) ?? 0,
-                reference: "—",
-              ),
+          builder: (context) => PaymentResponseScreen(
+            isSuccess: false,
+            message: "Transaction failed. Please try again.",
+            amount: double.tryParse(amountController.text.trim()) ?? 0,
+            reference: "—",
+          ),
         ),
       );
     }
@@ -193,11 +189,9 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
               ),
               maxLength: 20,
               controller: amountController,
-              validator:
-                  (value) =>
-                      (value == null || value.isEmpty)
-                          ? 'This field is required'
-                          : null,
+              validator: (value) => (value == null || value.isEmpty)
+                  ? 'This field is required'
+                  : null,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 1.5),
             CustomTextField(
@@ -206,11 +200,9 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
               label: 'Enter Email *',
               textInputType: TextInputType.emailAddress,
               controller: emailController,
-              validator:
-                  (value) =>
-                      (value == null || value.isEmpty)
-                          ? 'This field is required'
-                          : null,
+              validator: (value) => (value == null || value.isEmpty)
+                  ? 'This field is required'
+                  : null,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             Center(
@@ -218,12 +210,11 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
                 alignment: Alignment.center,
                 children: [
                   CustomButton(
-                    onTap:
-                        isLoading
-                            ? () => ()
-                            : () {
-                              _startTransaction(); // fire & forget
-                            },
+                    onTap: isLoading
+                        ? () => ()
+                        : () {
+                            _startTransaction(); // fire & forget
+                          },
                     margin: const EdgeInsets.fromLTRB(10, 0, 10, 10.0),
                     title: 'Proceed to Paystack',
                   ),
