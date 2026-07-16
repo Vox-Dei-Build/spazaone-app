@@ -3,7 +3,7 @@ description: SpazaOne helps South African merchants manage customers, balances, 
 
 publish_to: "none"
 
-version: 4.3.0+73
+version: 4.3.1+74
 
 environment:
   sdk: ">=3.0.5 <4.0.0"
@@ -109,7 +109,7 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/ic_launcher.png"
-  adaptive_icon_background: "#211E2F"
+  adaptive_icon_background: "#FBFAF6"
   adaptive_icon_foreground: "assets/images/ic_launcher_foreground.png"
   remove_alpha_ios: true
 
