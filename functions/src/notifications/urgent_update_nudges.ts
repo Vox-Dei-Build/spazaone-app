@@ -5,13 +5,16 @@ import { db, functions } from "../config/main";
 import {
   canSendUrgentUpdateNudge,
   isBuildBelowTarget,
+  isTargetPlatform,
+  MerchantAppPlatform,
   readFcmTokens,
   urgentUpdateCopy,
 } from "./urgent_update_nudge_policy";
 
 const CONFIG_PATH = "systemConfig/urgentUpdateNudges";
-const DEFAULT_TARGET_BUILD = 70;
-const DEFAULT_TARGET_VERSION = "4.1.6";
+const DEFAULT_TARGET_BUILD = 74;
+const DEFAULT_TARGET_VERSION = "4.3.1";
+const DEFAULT_TARGET_PLATFORMS: MerchantAppPlatform[] = ["android"];
 const DEFAULT_MAX_PER_RUN = 500;
 const DEFAULT_MAX_SENDS = 3;
 // The scheduler runs once per day. Keep this below 24 hours so normal
@@ -27,6 +30,7 @@ type CampaignConfig = {
   dryRun?: boolean;
   targetBuild?: number;
   targetVersion?: string;
+  platforms?: unknown;
   maxPerRun?: number;
   maxSendsPerUser?: number;
   cooldownHours?: number;
@@ -44,6 +48,7 @@ type CampaignResult =
   | "sent"
   | "dry_run"
   | "not_outdated"
+  | "platform_excluded"
   | "capped"
   | "no_token"
   | "failed";
@@ -74,6 +79,7 @@ export const sendUrgentUpdateNudges = functions
       1000000,
     );
     const targetVersion = cleanVersion(rawConfig.targetVersion);
+    const targetPlatforms = cleanTargetPlatforms(rawConfig.platforms);
     const maxPerRun = boundedInt(
       rawConfig.maxPerRun,
       DEFAULT_MAX_PER_RUN,
@@ -109,6 +115,7 @@ export const sendUrgentUpdateNudges = functions
       sent: 0,
       dry_run: 0,
       not_outdated: 0,
+      platform_excluded: 0,
       capped: 0,
       no_token: 0,
       failed: 0,
@@ -119,6 +126,7 @@ export const sendUrgentUpdateNudges = functions
         userRef: candidate.ref,
         targetBuild,
         targetVersion,
+        targetPlatforms,
         maxSends,
         cooldownMs: cooldownHours * ONE_HOUR_MS,
         now,
@@ -131,6 +139,7 @@ export const sendUrgentUpdateNudges = functions
     await configRef.collection("runs").add({
       targetBuild,
       targetVersion,
+      targetPlatforms,
       dryRun,
       evaluated: users.size,
       ...counts,
@@ -139,6 +148,7 @@ export const sendUrgentUpdateNudges = functions
     console.log("[urgent-update] completed", {
       targetBuild,
       targetVersion,
+      targetPlatforms,
       dryRun,
       evaluated: users.size,
       ...counts,
@@ -150,6 +160,7 @@ async function processCandidate({
   userRef,
   targetBuild,
   targetVersion,
+  targetPlatforms,
   maxSends,
   cooldownMs,
   now,
@@ -159,6 +170,7 @@ async function processCandidate({
   userRef: FirebaseFirestore.DocumentReference;
   targetBuild: number;
   targetVersion: string;
+  targetPlatforms: readonly MerchantAppPlatform[];
   maxSends: number;
   cooldownMs: number;
   now: Timestamp;
@@ -171,6 +183,10 @@ async function processCandidate({
   const data = (latest.data() ?? {}) as Record<string, unknown>;
   if (!isBuildBelowTarget(data.buildNumber, targetBuild)) {
     return "not_outdated";
+  }
+
+  if (!isTargetPlatform(data.platform, targetPlatforms)) {
+    return "platform_excluded";
   }
 
   const tokens = readFcmTokens(data);
@@ -195,7 +211,7 @@ async function processCandidate({
 
   if (dryRun) return "dry_run";
 
-  const platform = data.platform === "ios" ? "ios" : "android";
+  const platform = data.platform;
   const collapseId = `urgent-update-${targetBuild}`;
   const message: MulticastMessage = {
     tokens,
@@ -306,6 +322,17 @@ function cleanVersion(value: unknown): string {
   if (typeof value !== "string") return DEFAULT_TARGET_VERSION;
   const cleaned = value.trim().slice(0, 32);
   return /^\d+\.\d+\.\d+$/.test(cleaned) ? cleaned : DEFAULT_TARGET_VERSION;
+}
+
+function cleanTargetPlatforms(value: unknown): MerchantAppPlatform[] {
+  if (!Array.isArray(value)) return [...DEFAULT_TARGET_PLATFORMS];
+  const platforms = new Set<MerchantAppPlatform>();
+  for (const platform of value) {
+    if (platform === "android" || platform === "ios") {
+      platforms.add(platform);
+    }
+  }
+  return platforms.size ? [...platforms] : [...DEFAULT_TARGET_PLATFORMS];
 }
 
 function errorCode(error: unknown): string {

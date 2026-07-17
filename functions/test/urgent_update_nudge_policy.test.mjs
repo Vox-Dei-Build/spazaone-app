@@ -5,17 +5,25 @@ import policy from "../lib/notifications/urgent_update_nudge_policy.js";
 const {
   canSendUrgentUpdateNudge,
   isBuildBelowTarget,
+  isTargetPlatform,
   readFcmTokens,
   urgentUpdateCopy,
 } = policy;
 
 test("targets only known positive builds below the release", () => {
-  assert.equal(isBuildBelowTarget(69, 70), true);
-  assert.equal(isBuildBelowTarget(70, 70), false);
-  assert.equal(isBuildBelowTarget(71, 70), false);
-  assert.equal(isBuildBelowTarget(0, 70), false);
-  assert.equal(isBuildBelowTarget(undefined, 70), false);
-  assert.equal(isBuildBelowTarget("69", 70), false);
+  assert.equal(isBuildBelowTarget(73, 74), true);
+  assert.equal(isBuildBelowTarget(74, 74), false);
+  assert.equal(isBuildBelowTarget(75, 74), false);
+  assert.equal(isBuildBelowTarget(0, 74), false);
+  assert.equal(isBuildBelowTarget(undefined, 74), false);
+  assert.equal(isBuildBelowTarget("73", 74), false);
+});
+
+test("targets only explicitly allowed app platforms", () => {
+  assert.equal(isTargetPlatform("android", ["android"]), true);
+  assert.equal(isTargetPlatform("ios", ["android"]), false);
+  assert.equal(isTargetPlatform("ios", ["android", "ios"]), true);
+  assert.equal(isTargetPlatform(undefined, ["android"]), false);
 });
 
 test("resets caps for a new target release", () => {
@@ -72,8 +80,8 @@ test("deduplicates legacy and multi-device tokens", () => {
 });
 
 test("produces compelling compact copy with the target version", () => {
-  const copy = urgentUpdateCopy("4.1.6");
+  const copy = urgentUpdateCopy("4.3.1");
   assert.equal(copy.title, "Urgent: update SpazaOne today");
-  assert.match(copy.body, /Update to 4\.1\.6 now/);
+  assert.match(copy.body, /Update to 4\.3\.1 now/);
   assert.match(copy.body, /WhatsApp, SMS and conversations/);
 });

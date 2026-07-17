@@ -9,6 +9,8 @@ export type UrgentUpdateCopy = {
   body: string;
 };
 
+export type MerchantAppPlatform = "android" | "ios";
+
 const DEFAULT_TITLE = "Urgent: update SpazaOne today";
 const DEFAULT_BODY =
   "Don't miss customer messages. Update to {version} now to keep " +
@@ -25,6 +27,17 @@ export function isBuildBelowTarget(
     Number.isInteger(buildNumber) &&
     buildNumber > 0 &&
     buildNumber < targetBuild
+  );
+}
+
+/** Only target devices whose heartbeat reports an explicitly allowed platform. */
+export function isTargetPlatform(
+  platform: unknown,
+  targetPlatforms: readonly MerchantAppPlatform[],
+): platform is MerchantAppPlatform {
+  return (
+    (platform === "android" || platform === "ios") &&
+    targetPlatforms.includes(platform)
   );
 }
 

@@ -10,13 +10,14 @@ The function reads `systemConfig/urgentUpdateNudges`:
 {
   "enabled": true,
   "dryRun": true,
-  "targetBuild": 70,
-  "targetVersion": "4.1.6",
+  "targetBuild": 74,
+  "targetVersion": "4.3.1",
+  "platforms": ["android"],
   "maxPerRun": 500,
   "maxSendsPerUser": 3,
   "cooldownHours": 23,
-  "title": "Urgent: update Pasella today",
-  "body": "Don't miss customer messages. Update to {version} now to keep WhatsApp, SMS and conversations working reliably."
+  "title": "Pasella is now SpazaOne 🎉",
+  "body": "Same app. Same account. A fresh new look. Update now and keep your whole shop in your pocket."
 }
 ```
 
@@ -29,7 +30,8 @@ Safe rollout:
 4. Set `dryRun: false`. The next 08:00 run sends the campaign.
 5. Set `enabled: false` after the intended campaign window.
 
-Each recipient is re-read immediately before send. Build `70` or newer is
-skipped, reminders collapse by target build, invalid tokens are removed, and
+Each recipient is re-read immediately before send. Build `74` or newer is
+skipped, devices outside the configured platforms are excluded, reminders
+collapse by target build, invalid tokens are removed, and
 the maximum of three daily reminders resets only when a newer target build is
 configured.
