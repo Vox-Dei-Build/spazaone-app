@@ -14,9 +14,11 @@ const safeSecretEquals = (
   provided: string | undefined,
   expected: string | undefined,
 ): boolean => {
-  if (!provided || !expected) return false;
-  const left = Buffer.from(provided);
-  const right = Buffer.from(expected);
+  const normalizedProvided = provided?.trim();
+  const normalizedExpected = expected?.trim();
+  if (!normalizedProvided || !normalizedExpected) return false;
+  const left = Buffer.from(normalizedProvided);
+  const right = Buffer.from(normalizedExpected);
   return left.length === right.length && timingSafeEqual(left, right);
 };
 

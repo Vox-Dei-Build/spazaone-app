@@ -7,7 +7,7 @@
     "build:watch": "tsc --watch",
     "test:urgent-update": "npm run build && node --test test/urgent_update_nudge_policy.test.mjs",
     "test:rules": "node --test test/multistore_rules.test.mjs",
-    "test:security": "npm run build && node --test test/paystack_security.test.mjs test/bot_store_selection.test.mjs",
+    "test:security": "npm run build && node --test test/paystack_security.test.mjs test/bot_store_selection.test.mjs test/request_auth.test.mjs",
     "test:bot-http": "node --test --test-concurrency=1 test/bot_http.integration.test.mjs",
     "test:stores": "npm run build && node --test --test-concurrency=1 test/store_management.integration.test.mjs",
     "test:migration": "node --test --test-concurrency=1 test/migration.integration.test.mjs",
@@ -17,7 +17,8 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "multistore:migrate": "node scripts/migrate-multistore.mjs"
+    "multistore:migrate": "node scripts/migrate-multistore.mjs",
+    "multistore:smoke-rules": "node scripts/smoke-production-rules.mjs"
   },
   "engines": {
     "node": "20"
