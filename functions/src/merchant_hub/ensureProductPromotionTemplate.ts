@@ -2,6 +2,7 @@ import { firestore } from "firebase-admin";
 import { db, functions } from "../config/main";
 import { ensureMerchantOrderingLink } from "../ecommerce/getMerchantOrderingLink";
 import { submitWhatsAppTemplateDocument } from "./submitWhatsAppTemplate";
+import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 export const PRODUCT_PROMOTION_TEMPLATE_KIND = "product_promotion_v1";
 export const PRODUCT_PROMOTION_BODY =
@@ -12,7 +13,7 @@ export const GLOBAL_PRODUCT_PROMOTION_TEMPLATE_ID =
   "system_product_promotion_v1_global";
 const PRODUCT_PROMOTION_PROVIDER_NAME = "spazaone_product_promotion_v1";
 
-type EnsureRequest = { retry?: boolean } | undefined;
+type EnsureRequest = { retry?: boolean; storeId?: string } | undefined;
 
 function templateDocumentId(merchantId: string): string {
   return `system_product_promotion_v1_${merchantId}`;
@@ -57,13 +58,14 @@ function configuredProductPromotionContentSid(): string | null {
  */
 export const ensureProductPromotionTemplate = functions.https.onCall(
   async (data: EnsureRequest, context) => {
-    const merchantId = context.auth?.uid;
-    if (!merchantId) {
+    if (!context.auth) {
       throw new functions.https.HttpsError(
         "unauthenticated",
         "Sign in before preparing WhatsApp promotions.",
       );
     }
+    const merchantId = String(data?.storeId ?? context.auth.uid).trim();
+    await assertCallableStoreAccess(context, merchantId);
 
     // The card button needs an active shop code. Create it silently when this
     // is the merchant's first WhatsApp selling action.

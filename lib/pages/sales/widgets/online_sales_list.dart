@@ -2,6 +2,8 @@
 import 'dart:convert';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
+import 'package:pasella/config/function_endpoints.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -137,12 +139,10 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
   }
 
   Future<List<LedgerSale>> _fetch() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) throw Exception('Not signed in');
+    final uid = StoreSession.instance.storeId;
+    if (uid.isEmpty) throw Exception('Not signed in');
 
-    final url = Uri.parse(
-      'https://us-central1-pasella-ledger.cloudfunctions.net/getOnlineSalesFromLedger',
-    );
+    final url = FunctionEndpoints.https('getOnlineSalesFromLedger');
 
     String? appCheck;
     try {

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/template_service.dart';
@@ -43,10 +43,9 @@ class SMSMessages {
     String messageText, {
     String? merchantId,
   }) async {
-    final resolvedMerchantId =
-        (merchantId?.trim().isNotEmpty ?? false)
-            ? merchantId!.trim()
-            : FirebaseAuth.instance.currentUser?.uid;
+    final resolvedMerchantId = (merchantId?.trim().isNotEmpty ?? false)
+        ? merchantId!.trim()
+        : StoreSession.instance.storeId;
 
     if (!_remoteConfigLoaded) {
       await loadTemplates(merchantId: resolvedMerchantId);
@@ -60,8 +59,8 @@ class SMSMessages {
       (keyword) => messageText.toLowerCase().contains(keyword.toLowerCase()),
     );
 
-    final merchantTemplateMatch = TemplateService()
-        .isMatchWithMerchantTemplates(messageText);
+    final merchantTemplateMatch =
+        TemplateService().isMatchWithMerchantTemplates(messageText);
 
     return keywordMatch || merchantTemplateMatch;
   }

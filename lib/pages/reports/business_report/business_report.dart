@@ -1,4 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
@@ -35,7 +35,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
   @override
   void initState() {
     super.initState();
-    var currentUser = FirebaseAuth.instance.currentUser?.uid ?? '';
+    var currentUser = StoreSession.instance.storeId;
 
     BalanceSummaryProvider balanceSummaryProvider =
         Provider.of<BalanceSummaryProvider>(context, listen: false);

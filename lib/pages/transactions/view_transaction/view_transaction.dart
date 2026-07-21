@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/pages/transactions/edit_transaction/edit_transaction.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/string_utils.dart';
@@ -38,7 +38,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   }
 
   Future<DocumentSnapshot> loadTransactionDetails() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = StoreSession.instance.storeId;
     // If uid is null, this will still return a future and be handled in builder
     return FirebaseFirestore.instance
         .collection('users')
@@ -194,7 +194,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     double hm,
     double im,
   ) {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final uid = StoreSession.instance.storeId;
     return ListTile(
       title: Text(
         'Products',

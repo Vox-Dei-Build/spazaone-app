@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 
 class OrderRepository {
   OrderRepository._();
@@ -24,8 +24,8 @@ class OrderRepository {
 
   /// Live order stream from Firestore with light normalization
   static Stream<Map<String, dynamic>> orderStream({required String orderId}) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || uid.isEmpty) return const Stream.empty();
+    final uid = StoreSession.instance.storeId;
+    if (uid.isEmpty) return const Stream.empty();
 
     final doc = FirebaseFirestore.instance
         .collection('users')

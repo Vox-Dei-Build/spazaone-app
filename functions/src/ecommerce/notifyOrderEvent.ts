@@ -2,6 +2,10 @@ import { functions, db } from "../config/main";
 import { AndroidConfig, MulticastMessage } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
 import { sendMerchantOrderSmsFallback } from "../utils/merchantOrderSmsFallback";
+import {
+  readStoreNotificationTokens,
+  removeInvalidStoreNotificationTokens,
+} from "../notifications/storeNotificationTokens";
 
 /** Shape of an order notification record stored in Firestore. */
 interface OrderNotificationData {
@@ -46,8 +50,8 @@ async function writeNotificationRecord(
  */
 // eslint-disable-next-line valid-jsdoc, require-jsdoc
 async function notifyOrderEventHandler(
-  req: import("firebase-functions").https.Request,
-  res: import("firebase-functions").Response,
+  req: import("firebase-functions/v1").https.Request,
+  res: import("firebase-functions/v1").Response,
 ): Promise<void> {
   try {
     if (req.method !== "POST") {
@@ -109,15 +113,7 @@ async function notifyOrderEventHandler(
       return;
     }
 
-    const merchantData = merchantSnap.data() || {};
-    let tokens: string[] = [];
-    if (Array.isArray(merchantData.fcmTokens)) {
-      tokens = (merchantData.fcmTokens as unknown[]).filter(
-        Boolean,
-      ) as string[];
-    } else if (merchantData.fcmToken) {
-      tokens = [merchantData.fcmToken as string];
-    }
+    const tokens = await readStoreNotificationTokens(merchantId);
 
     // 1) Create unread notification record
     const notifData: OrderNotificationData = {
@@ -238,12 +234,7 @@ async function notifyOrderEventHandler(
             .map(({ t }) => t);
 
           if (badTokens.length) {
-            await merchantRef.set(
-              {
-                fcmTokens: admin.firestore.FieldValue.arrayRemove(...badTokens),
-              },
-              { merge: true },
-            );
+            await removeInvalidStoreNotificationTokens(merchantId, badTokens);
           }
         }
       } catch (error: unknown) {
@@ -306,8 +297,8 @@ export const notifyOrderEvent = functions.https.onRequest(
  */
 export const markOrdersAsRead = functions.https.onRequest(
   async (
-    req: import("firebase-functions").https.Request,
-    res: import("firebase-functions").Response,
+    req: import("firebase-functions/v1").https.Request,
+    res: import("firebase-functions/v1").Response,
   ): Promise<void> => {
     try {
       if (req.method !== "POST") {

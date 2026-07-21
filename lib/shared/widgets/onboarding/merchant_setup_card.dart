@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -997,7 +998,9 @@ class MerchantSetupCardForCurrentUser extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = authOverride ?? FirebaseAuth.instance;
-    final userId = auth.currentUser?.uid ?? '';
+    final userId = authOverride == null
+        ? StoreSession.instance.storeId
+        : auth.currentUser?.uid ?? '';
     if (userId.isEmpty) return const SizedBox.shrink();
     return MerchantSetupCard(userId: userId, actions: actions);
   }

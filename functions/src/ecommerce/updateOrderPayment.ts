@@ -170,7 +170,7 @@ export const updateOrderPayment = functions.https.onCall(
           "merchantId, orderId, paymentAction are required",
         );
       }
-      if (!authorizeCallableMerchantOrBot(context, merchantId)) {
+      if (!(await authorizeCallableMerchantOrBot(context, merchantId))) {
         throw new functions.https.HttpsError(
           "permission-denied",
           "Access denied",

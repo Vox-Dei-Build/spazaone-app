@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/models/stock/product_model.dart';
 
 class GlobalSearchViewModel extends ChangeNotifier {
@@ -15,8 +15,7 @@ class GlobalSearchViewModel extends ChangeNotifier {
   StreamSubscription<QuerySnapshot>? _subscription;
   bool _disposed = false;
 
-  GlobalSearchViewModel()
-      : userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  GlobalSearchViewModel() : userId = StoreSession.instance.storeId;
 
   void updateSearchQuery(String query,
       {bool isGroupSearch = false, String? groupName}) {

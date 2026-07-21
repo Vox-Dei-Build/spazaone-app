@@ -1,5 +1,6 @@
 import { functions, db } from "../config/main";
 import axios, { AxiosError } from "axios";
+import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 async function resolveOwnedTwilioTemplateId(
   uid: string,
@@ -108,8 +109,11 @@ export const deleteTwilioTemplate = functions.https.onCall(
         ? data.twilioTemplateId.trim()
         : "";
 
+    const merchantId = String(data?.storeId ?? context.auth.uid).trim();
+    await assertCallableStoreAccess(context, merchantId, ["owner", "admin"]);
+
     const twilioTemplateId = await resolveOwnedTwilioTemplateId(
-      context.auth.uid,
+      merchantId,
       templateId,
       requestedTwilioTemplateId,
     );

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:pasella/services/secure_function_client.dart';
+import 'package:pasella/config/function_endpoints.dart';
 
 class PaystackInitResult {
   final String authorizationUrl;
@@ -11,10 +12,6 @@ class PaystackInitResult {
 }
 
 class PaystackService {
-  // Keep your deployed region/project here:
-  static const String _initUrl =
-      "https://us-central1-pasella-ledger.cloudfunctions.net/createPaystackTransaction";
-
   /// Core initializer. `purpose` must be 'topup' or 'sale'.
   static Future<PaystackInitResult?> _initialize({
     required String merchantId,
@@ -43,7 +40,7 @@ class PaystackService {
       };
 
       final response = await SecureFunctionClient().post(
-        Uri.parse(_initUrl),
+        FunctionEndpoints.https('createPaystackTransaction'),
         body,
       );
 

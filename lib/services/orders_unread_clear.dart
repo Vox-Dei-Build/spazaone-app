@@ -1,6 +1,7 @@
 // lib/services/orders_unread_clear.dart
 import 'package:flutter/foundation.dart';
 import 'package:pasella/services/secure_function_client.dart';
+import 'package:pasella/config/function_endpoints.dart';
 
 class OrdersUnreadClearService {
   static Future<void> clearForCustomer({
@@ -8,9 +9,7 @@ class OrdersUnreadClearService {
     required String customerId,
   }) async {
     try {
-      final uri = Uri.parse(
-        'https://us-central1-pasella-ledger.cloudfunctions.net/markCustomerOrdersAsRead',
-      );
+      final uri = FunctionEndpoints.https('markCustomerOrdersAsRead');
       final resp = await SecureFunctionClient().post(
         uri,
         {'merchantId': merchantId, 'customerId': customerId},

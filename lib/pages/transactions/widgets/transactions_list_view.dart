@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/pages/transactions/view_transaction/view_transaction.dart';
 import 'package:pasella/pages/transactions/widgets/product_name_cache.dart';
@@ -36,7 +36,7 @@ class _TransactionsListViewState extends State<TransactionsListView> {
   void initState() {
     super.initState();
     _productNameCache = ProductNameCache(
-      userId: FirebaseAuth.instance.currentUser?.uid ?? '',
+      userId: StoreSession.instance.storeId,
     );
     // Kick off the first batched resolve for whatever we already have.
     _productNameCache.resolveFromTransactions(widget.transactions);

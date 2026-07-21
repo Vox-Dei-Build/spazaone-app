@@ -12,7 +12,7 @@
  *   (optional) &concurrency=10  -> parallel updates (default 10)
  */
 
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 
@@ -102,8 +102,7 @@ export const fixProductsContentType = functions
         ).toLowerCase();
 
         // Update only if needed
-        const needs =
-          current !== targetType || current === "application/octet-stream";
+        const needs = current !== targetType;
         if (!needs) {
           return {
             file: name,

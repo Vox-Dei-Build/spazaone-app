@@ -30,7 +30,7 @@
 
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/models/sales/order_model.dart';
@@ -153,7 +153,8 @@ class OrdersController extends ChangeNotifier {
       counts[OrderFilterGroup.all] = counts[OrderFilterGroup.all]! + 1;
       final s = computeStatus(o);
       if (s == OrderStatus.pending) {
-        counts[OrderFilterGroup.pending] = counts[OrderFilterGroup.pending]! + 1;
+        counts[OrderFilterGroup.pending] =
+            counts[OrderFilterGroup.pending]! + 1;
       }
       if (s == OrderStatus.bnplPending ||
           s == OrderStatus.bnplOutstanding ||
@@ -169,8 +170,7 @@ class OrdersController extends ChangeNotifier {
   }
 
   /// Sum of `total` over the currently-filtered list.
-  double get filteredTotal =>
-      filtered.fold<double>(0.0, (a, b) => a + b.total);
+  double get filteredTotal => filtered.fold<double>(0.0, (a, b) => a + b.total);
 
   /// Count of the currently-filtered list — exposed separately so
   /// `Selector` consumers can rebuild on count without also rebuilding
@@ -186,8 +186,8 @@ class OrdersController extends ChangeNotifier {
       _error = null;
       notifyListeners();
       try {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid == null) throw Exception('Not signed in');
+        final uid = StoreSession.instance.storeId;
+        if (uid.isEmpty) throw Exception('Not signed in');
         final fetched = await _repo.fetchCustomerOrders(
           merchantId: uid,
           customerId: _customerId,
@@ -214,9 +214,7 @@ class OrdersController extends ChangeNotifier {
 
   void setFilter(OrdersFilter f) {
     if (identical(f, _filter)) return;
-    if (f.group != null &&
-        _filter.group != null &&
-        f.group == _filter.group) {
+    if (f.group != null && _filter.group != null && f.group == _filter.group) {
       return;
     }
     if (f.specific != null && _filter.specific == f.specific) return;

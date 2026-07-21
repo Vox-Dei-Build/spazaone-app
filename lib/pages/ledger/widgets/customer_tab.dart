@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:pasella/config/size_config.dart';
@@ -91,7 +91,7 @@ class _CustomerTabState extends State<CustomerTab> {
   ///  - the [_showGrowthNudge] notifier that gates
   ///    [CustomerGrowthNudge] rendering inside [EntityTab].
   void _bindSetupStream() {
-    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final userId = StoreSession.instance.storeId;
     if (userId == _watchedUserId && _setupStateSub != null) return;
 
     _setupStateSub?.cancel();

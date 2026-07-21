@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/phone_util.dart';
@@ -17,6 +18,7 @@ class PromotionsViewModel extends ChangeNotifier {
 
   PromotionsViewModel() {
     _activeMerchantId = userId;
+    StoreSession.instance.addListener(_onStoreChanged);
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
       final nextMerchantId = user?.uid.trim() ?? '';
       if (nextMerchantId == _activeMerchantId) return;
@@ -26,7 +28,15 @@ class PromotionsViewModel extends ChangeNotifier {
     });
   }
 
-  String get userId => FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
+  void _onStoreChanged() {
+    final nextMerchantId = userId;
+    if (nextMerchantId == _activeMerchantId) return;
+    _activeMerchantId = nextMerchantId;
+    _clearMerchantScopedState();
+    notifyListeners();
+  }
+
+  String get userId => StoreSession.instance.storeId;
 
   double? whatsappPrice;
   double? smsPricePerSegment;
@@ -172,7 +182,7 @@ class PromotionsViewModel extends ChangeNotifier {
       final callable = FirebaseFunctions.instance.httpsCallable(
         'ensureProductPromotionTemplate',
       );
-      await callable.call({'retry': retry});
+      await callable.call({'retry': retry, 'storeId': merchantId});
       await fetchTemplates(merchantId: merchantId);
       return productPromotionTemplate;
     } on FirebaseFunctionsException catch (e) {
@@ -274,6 +284,7 @@ class PromotionsViewModel extends ChangeNotifier {
 
       if (twilioTemplateId != null) {
         await callable.call({
+          'storeId': merchantId,
           'templateId': docID,
           'twilioTemplateId': twilioTemplateId,
         });
@@ -725,11 +736,22 @@ class PromotionsViewModel extends ChangeNotifier {
     // result so callers can show a snackbar/banner with either the
     // provider error preserved by the backend or the SpazaOne-side
     // fallback when the provider gave us nothing.
+    final merchantId = _prepareMerchantScope();
+    if (merchantId == null) {
+      return SendPromotionResult.failed(
+        message: 'Select a store before sending this promotion.',
+        failedCount: 0,
+        succeededCount: 0,
+      );
+    }
     try {
       final callable = FirebaseFunctions.instance.httpsCallable(
         'runMerchantPromotion',
       );
-      final res = await callable.call({'promotionId': promoId});
+      final res = await callable.call({
+        'promotionId': promoId,
+        'storeId': merchantId,
+      });
       final data = (res.data as Map?) ?? const {};
       if (data['success'] == true) {
         // Refresh reports so we can read back the terminal status
@@ -910,6 +932,7 @@ class PromotionsViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    StoreSession.instance.removeListener(_onStoreChanged);
     _authSubscription.cancel();
     super.dispose();
   }

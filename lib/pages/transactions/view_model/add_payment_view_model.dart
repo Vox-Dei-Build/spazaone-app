@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
@@ -46,7 +46,7 @@ class AddPaymentViewModel extends TransactionViewModel {
 
     final amountEntered = double.tryParse(amountController.text);
     final remarks = remarksController.text;
-    final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final String currentUserId = StoreSession.instance.storeId;
 
     if (amountEntered == null || amountEntered <= 0) {
       showSnackbar(context, 'Please check the amount entered.', Colors.red);

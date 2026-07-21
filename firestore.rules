@@ -1,0 +1,145 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isStoreMember(storeId) {
+      return signedIn() && (
+        request.auth.uid == storeId ||
+        (
+          exists(/databases/$(database)/documents/stores/$(storeId)/operators/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/stores/$(storeId)/operators/$(request.auth.uid)).data.status == 'active'
+        )
+      );
+    }
+
+    function isStoreManager(storeId) {
+      return isStoreMember(storeId) && (
+        request.auth.uid == storeId ||
+        get(/databases/$(database)/documents/stores/$(storeId)/operators/$(request.auth.uid)).data.role in ['owner', 'admin']
+      );
+    }
+
+    function ownsExisting(data) {
+      return data.userId is string && isStoreMember(data.userId);
+    }
+
+    function ownsIncoming(data) {
+      return data.userId is string && isStoreMember(data.userId);
+    }
+
+    function merchantOwnsExisting(data) {
+      return data.merchantId is string && isStoreMember(data.merchantId);
+    }
+
+    function merchantOwnsIncoming(data) {
+      return data.merchantId is string && isStoreMember(data.merchantId);
+    }
+
+    // Root merchant profiles remain readable during the legacy phone-login
+    // transition. Customer, ledger, product and wallet subcollections are
+    // tenant-scoped immediately. Remove the public root read after all
+    // supported app versions use the App-Check-protected lookup endpoint.
+    match /users/{storeId} {
+      allow read: if true;
+      allow create, update, delete: if isStoreMember(storeId);
+
+      match /{document=**} {
+        allow read, write: if isStoreMember(storeId);
+      }
+    }
+
+    // Build 4.3.1+74 uses a collection-group query for overdue transactions
+    // without a tenant field in the query. Keep authenticated reads working
+    // during the upgrade window so deploying these rules cannot break the
+    // released reporting screen. Build 4.4 scopes this report beneath the
+    // selected store; remove this compatibility match once 4.3 is outside the
+    // supported-version window. Writes remain governed by the store-scoped
+    // /users/{storeId}/... rule above.
+    match /{path=**}/transactions/{transactionId} {
+      allow read: if signedIn();
+    }
+
+    match /stores/{storeId} {
+      allow read: if isStoreMember(storeId);
+      allow write: if false; // Cloud Functions Admin SDK only.
+
+      match /operators/{uid} {
+        allow read: if isStoreMember(storeId);
+        allow create, delete: if false;
+        allow update: if signedIn() &&
+          request.auth.uid == uid &&
+          resource.data.status == 'active' &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['fcmToken', 'fcmTokens', 'notificationUpdatedAt']);
+      }
+    }
+
+    match /operators/{uid}/stores/{storeId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /notifications/{storeId}/{document=**} {
+      allow read, write: if isStoreMember(storeId);
+    }
+
+    match /operatorInvites/{phoneHash}/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /operatorPhoneLookup/{phoneHash}/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /messagingTemplates/{templateId} {
+      allow read: if signedIn() && (
+        resource.data.systemManaged == true || ownsExisting(resource.data)
+      );
+      allow create: if signedIn() && ownsIncoming(request.resource.data);
+      allow update: if signedIn() &&
+        ownsExisting(resource.data) &&
+        ownsIncoming(request.resource.data);
+      allow delete: if signedIn() && ownsExisting(resource.data);
+    }
+
+    match /promotions/{promotionId} {
+      allow read, delete: if signedIn() && merchantOwnsExisting(resource.data);
+      allow create: if signedIn() && merchantOwnsIncoming(request.resource.data);
+      allow update: if signedIn() &&
+        merchantOwnsExisting(resource.data) &&
+        merchantOwnsIncoming(request.resource.data);
+    }
+
+    match /payoutRequests/{requestId} {
+      allow read, delete: if signedIn() && merchantOwnsExisting(resource.data);
+      allow create: if signedIn() && merchantOwnsIncoming(request.resource.data);
+      allow update: if signedIn() &&
+        merchantOwnsExisting(resource.data) &&
+        merchantOwnsIncoming(request.resource.data);
+    }
+
+    match /paymentReferences/{referenceId} {
+      allow read, delete: if signedIn() && merchantOwnsExisting(resource.data);
+      allow create: if signedIn() && merchantOwnsIncoming(request.resource.data);
+      allow update: if signedIn() &&
+        merchantOwnsExisting(resource.data) &&
+        merchantOwnsIncoming(request.resource.data);
+    }
+
+    // Capability cache contains phone-number delivery capability but no
+    // customer ledger data. Keep authenticated compatibility until it moves
+    // behind a callable; unauthenticated access is denied.
+    match /successfulWhatsAppNumbers/{numberId} {
+      allow read, write: if signedIn();
+    }
+
+    // All remaining top-level operational collections are server-only.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

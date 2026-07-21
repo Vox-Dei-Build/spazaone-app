@@ -15,6 +15,7 @@ import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
 import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart';
 import 'package:pasella/widgets/consent_modal.dart';
 import 'package:provider/provider.dart';
+import 'package:pasella/services/store_session.dart';
 
 @visibleForTesting
 bool shouldShowSpazaOneRebrandNotice({
@@ -248,9 +249,9 @@ class _DashboardState extends State<Dashboard> {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+    final userId = StoreSession.instance.storeId;
 
-    if (userId == null) {
+    if (userId.isEmpty) {
       return Scaffold(
         body: Center(
           child: Text(

@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
@@ -58,7 +58,7 @@ class EditTransactionViewModel extends TransactionViewModel {
       // Load existing transaction details and populate the fields
       var transactionDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(FirebaseAuth.instance.currentUser?.uid)
+          .doc(StoreSession.instance.storeId)
           .collection('customers')
           .doc(customerId)
           .collection('transactions')
@@ -82,7 +82,7 @@ class EditTransactionViewModel extends TransactionViewModel {
             for (var productId in productsInTransaction.keys) {
               var productSnapshot = await FirebaseFirestore.instance
                   .collection('users')
-                  .doc(FirebaseAuth.instance.currentUser?.uid)
+                  .doc(StoreSession.instance.storeId)
                   .collection('products')
                   .doc(productId)
                   .get();
@@ -117,7 +117,7 @@ class EditTransactionViewModel extends TransactionViewModel {
 
     final amountEntered = double.tryParse(amountController.text);
     final remarks = remarksController.text;
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final currentUserId = StoreSession.instance.storeId;
 
     if (amountEntered == null || amountEntered <= 0) {
       showSnackbar(context, 'Please check the amount entered.', Colors.red);
@@ -293,7 +293,7 @@ class EditTransactionViewModel extends TransactionViewModel {
   Future<void> deleteTransaction(BuildContext context) async {
     if (isLoading) return;
     setLoading(true);
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final currentUserId = StoreSession.instance.storeId;
     if (currentUserId.isEmpty) {
       showSnackbar(context, 'No user is logged in!', Colors.red);
       setLoading(false);

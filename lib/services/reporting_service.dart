@@ -341,20 +341,29 @@ class ReportingService {
   Future<List<String>> fetchCustomersWithNPAs(
       String currentUserId, DateTime startDate, DateTime endDate) async {
     try {
-      // Fetch 'Credit' transactions within the given date range with a 'DUE' status
-      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-          .collectionGroup('transactions')
-          .where('date', isGreaterThanOrEqualTo: startDate)
-          .where('date', isLessThanOrEqualTo: endDate)
-          .where('type', isEqualTo: 'Credit')
-          .where('status', isEqualTo: 'DUE')
+      // Keep the query beneath the selected store. The previous global
+      // collection-group query crossed every merchant namespace and cannot be
+      // authorized by tenant-scoped Firestore rules.
+      final customerSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .collection('customers')
           .get();
+      final npaCustomerIds = <String>[];
 
-      // Extract customer IDs from the filtered documents
-      List<String> npaCustomerIds = querySnapshot.docs
-          .map((doc) => doc.reference.parent.parent!.id)
-          .toSet()
-          .toList();
+      for (final customer in customerSnapshot.docs) {
+        final dueCredits = await customer.reference
+            .collection('transactions')
+            .where('date', isGreaterThanOrEqualTo: startDate)
+            .where('date', isLessThanOrEqualTo: endDate)
+            .where('type', isEqualTo: 'Credit')
+            .where('status', isEqualTo: 'DUE')
+            .limit(1)
+            .get();
+        if (dueCredits.docs.isNotEmpty) {
+          npaCustomerIds.add(customer.id);
+        }
+      }
 
       // Check if the list is empty before using whereIn filter
       if (npaCustomerIds.isEmpty) {

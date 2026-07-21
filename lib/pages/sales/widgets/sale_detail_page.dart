@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
@@ -48,7 +48,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
   Future<Map<String, Map<String, dynamic>>> _fetchProducts(
       List<String> productIds) async {
     if (productIds.isEmpty) return const {};
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final uid = StoreSession.instance.storeId;
     if (uid.isEmpty) return const {};
 
     final col = FirebaseFirestore.instance
@@ -67,8 +67,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
           ? i + chunkSize
           : productIds.length;
       final chunk = productIds.sublist(i, end);
-      final snap =
-          await col.where(FieldPath.documentId, whereIn: chunk).get();
+      final snap = await col.where(FieldPath.documentId, whereIn: chunk).get();
       for (final doc in snap.docs) {
         result[doc.id] = doc.data();
       }
@@ -189,16 +188,15 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                     return const Padding(
                                       padding: EdgeInsets.all(8),
                                       child: Center(
-                                          child:
-                                              CircularProgressIndicator()),
+                                          child: CircularProgressIndicator()),
                                     );
                                   }
                                   final products = snapshot.data ?? const {};
                                   return Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
-                                    children: sale.products.entries
-                                        .map((entry) {
+                                    children:
+                                        sale.products.entries.map((entry) {
                                       final productId = entry.key;
                                       final quantity = entry.value;
                                       final productData = products[productId];
@@ -206,9 +204,8 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                         return Text(
                                             'Unknown product with ID: $productId');
                                       }
-                                      final productName =
-                                          productData['name'] ??
-                                              'Unnamed product';
+                                      final productName = productData['name'] ??
+                                          'Unnamed product';
                                       final sellingPrice =
                                           productData['sellingPrice'];
 
@@ -223,9 +220,9 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                               BorderRadius.circular(10),
                                         ),
                                         child: Padding(
-                                          padding: EdgeInsets.all(SizeConfig
-                                                  .imageSizeMultiplier *
-                                              2),
+                                          padding: EdgeInsets.all(
+                                              SizeConfig.imageSizeMultiplier *
+                                                  2),
                                           child: Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
@@ -253,8 +250,8 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                                                 .textMultiplier *
                                                             2,
                                                       ),
-                                                      overflow: TextOverflow
-                                                          .ellipsis,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                                 ],
@@ -278,8 +275,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                                               Text(
                                                 'Selling Price: ${CurrencyUtil.format(sellingPrice)}',
                                                 style: TextStyle(
-                                                  fontStyle:
-                                                      FontStyle.italic,
+                                                  fontStyle: FontStyle.italic,
                                                   fontSize: SizeConfig
                                                           .textMultiplier *
                                                       1.8,

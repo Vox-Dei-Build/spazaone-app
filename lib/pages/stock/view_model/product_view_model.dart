@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
@@ -13,7 +13,7 @@ import 'package:pasella/utils/show_toast.dart';
 
 class ProductViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final String userId = StoreSession.instance.storeId;
   bool isLoading = false;
   bool _disposed = false; // Track whether the ViewModel is disposed
   String? imageUrl;
@@ -56,12 +56,11 @@ class ProductViewModel extends ChangeNotifier {
 
   Future<void> _fetchProductGroups() async {
     try {
-      final querySnapshot =
-          await _firestore
-              .collection('users')
-              .doc(userId)
-              .collection('productGroups')
-              .get();
+      final querySnapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('productGroups')
+          .get();
 
       final userGroups =
           querySnapshot.docs.map((doc) => doc['name'] as String).toList();
@@ -157,20 +156,19 @@ class ProductViewModel extends ChangeNotifier {
       // onboarding funnel ('signup -> first product -> first
       // customer -> first sale -> first message') is measurable
       // end-to-end. Buckets are coarse and contain no merchant PII.
-      final event =
-          (docID == null)
-              ? ProductCreated(
-                group: product.group,
-                sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
-                costPriceBucket: amountBucketZAR(product.cost ?? 0),
-                hasImage: (product.image ?? '').isNotEmpty,
-              )
-              : ProductUpdated(
-                group: product.group,
-                sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
-                costPriceBucket: amountBucketZAR(product.cost ?? 0),
-                hasImage: (product.image ?? '').isNotEmpty,
-              );
+      final event = (docID == null)
+          ? ProductCreated(
+              group: product.group,
+              sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
+              costPriceBucket: amountBucketZAR(product.cost ?? 0),
+              hasImage: (product.image ?? '').isNotEmpty,
+            )
+          : ProductUpdated(
+              group: product.group,
+              sellingPriceBucket: amountBucketZAR(product.sellingPrice ?? 0),
+              costPriceBucket: amountBucketZAR(product.cost ?? 0),
+              hasImage: (product.image ?? '').isNotEmpty,
+            );
       // Fire-and-forget: telemetry must never block the UI.
       // ignore: unawaited_futures
       TelemetryService.instance.capture(event);
@@ -202,13 +200,12 @@ class ProductViewModel extends ChangeNotifier {
       // it without an extra round-trip after the doc is gone.
       String? groupBeforeDelete;
       try {
-        final snap =
-            await _firestore
-                .collection('users')
-                .doc(userId)
-                .collection('products')
-                .doc(docID)
-                .get();
+        final snap = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('products')
+            .doc(docID)
+            .get();
         groupBeforeDelete = snap.data()?['group'] as String?;
       } catch (_) {
         // If the read fails the analytics event still fires without

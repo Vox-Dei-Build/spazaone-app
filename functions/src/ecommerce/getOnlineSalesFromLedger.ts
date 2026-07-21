@@ -2,6 +2,7 @@
 import { db, functions } from "../config/main";
 import { FieldPath } from "firebase-admin/firestore";
 import { authenticateFirebaseRequest } from "../security/requestAuth";
+import { assertStoreAccess } from "../stores/storeAccess";
 
 type AnyMap = { [k: string]: any };
 
@@ -125,10 +126,14 @@ export const getOnlineSalesFromLedger = functions.https.onRequest(
         res.status(400).json({ error: "merchantId is required" });
         return;
       }
-      const authenticatedUid = await authenticateFirebaseRequest(req, res, {
-        expectedUid: merchantId,
-      });
+      const authenticatedUid = await authenticateFirebaseRequest(req, res);
       if (!authenticatedUid) return;
+      try {
+        await assertStoreAccess(authenticatedUid, merchantId);
+      } catch (error) {
+        res.status(403).json({ error: "Access denied." });
+        return;
+      }
 
       const ledgerCol = db
         .collection("users")

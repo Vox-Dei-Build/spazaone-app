@@ -2,12 +2,14 @@ import * as admin from "firebase-admin";
 import { randomBytes } from "crypto";
 import { db, functions } from "../config/main";
 import { formatPhoneNumber } from "../utils/phoneUtils";
+import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const CODE_LENGTH = 6;
 
 interface OrderingLinkData {
   action?: "get" | "regenerate" | "revoke";
+  storeId?: string;
 }
 
 export interface OrderingLinkResult {
@@ -74,13 +76,14 @@ export const getMerchantOrderingLink = functions.https.onCall(
     data: OrderingLinkData | undefined,
     context,
   ): Promise<OrderingLinkResult | { revoked: true }> => {
-    const merchantId = context.auth?.uid;
-    if (!merchantId) {
+    if (!context.auth) {
       throw new functions.https.HttpsError(
         "unauthenticated",
         "Sign in before creating an ordering link.",
       );
     }
+    const merchantId = String(data?.storeId ?? context.auth.uid).trim();
+    await assertCallableStoreAccess(context, merchantId);
 
     const action = data?.action ?? "get";
     const merchantRef = db.collection("users").doc(merchantId);

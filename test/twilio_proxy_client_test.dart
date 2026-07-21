@@ -6,6 +6,9 @@ import 'package:http/testing.dart';
 import 'package:pasella/services/twilio_proxy_client.dart';
 
 void main() {
+  final endpoint = Uri.parse(
+    'https://us-central1-demo-project.cloudfunctions.net/sendTwilioMessage',
+  );
   test('proxy sends authenticated JSON without exposing Twilio credentials',
       () async {
     late http.Request captured;
@@ -16,6 +19,8 @@ void main() {
         captured = request;
         return http.Response('{"success":true,"sid":"SM123"}', 201);
       }),
+      endpoint: endpoint,
+      storeIdProvider: () => 'store-a',
     );
 
     final response = await client.post({
@@ -26,7 +31,7 @@ void main() {
     });
 
     expect(response.statusCode, 201);
-    expect(captured.url, TwilioProxyClient.endpoint);
+    expect(captured.url, endpoint);
     expect(captured.headers['authorization'], 'Bearer firebase-id-token');
     expect(
       captured.headers['x-firebase-appcheck'],
@@ -42,6 +47,8 @@ void main() {
       idTokenProvider: () async => null,
       appCheckTokenProvider: () async => 'firebase-app-check-token',
       httpClient: MockClient((_) async => http.Response('', 500)),
+      endpoint: endpoint,
+      storeIdProvider: () => 'store-a',
     );
 
     expect(
@@ -55,6 +62,8 @@ void main() {
       idTokenProvider: () async => 'firebase-id-token',
       appCheckTokenProvider: () async => null,
       httpClient: MockClient((_) async => http.Response('', 500)),
+      endpoint: endpoint,
+      storeIdProvider: () => 'store-a',
     );
 
     expect(
@@ -75,6 +84,8 @@ void main() {
         captured = request;
         return http.Response('{"success":true,"sid":"SM123"}', 201);
       }),
+      endpoint: endpoint,
+      storeIdProvider: () => 'store-a',
     );
 
     final response = await client.post({'action': 'send'});
@@ -99,6 +110,8 @@ void main() {
         if (captured.length == 1) return http.Response('', 401);
         return http.Response('{"success":true,"sid":"SM123"}', 201);
       }),
+      endpoint: endpoint,
+      storeIdProvider: () => 'store-a',
     );
 
     final response = await client.post({'action': 'send'});

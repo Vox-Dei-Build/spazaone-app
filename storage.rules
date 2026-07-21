@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isStoreMember(storeId) {
+      return signedIn() && (
+        request.auth.uid == storeId ||
+        (
+          firestore.exists(/databases/(default)/documents/stores/$(storeId)/operators/$(request.auth.uid)) &&
+          firestore.get(/databases/(default)/documents/stores/$(storeId)/operators/$(request.auth.uid)).data.status == 'active'
+        )
+      );
+    }
+
+    match /products/{storeId}/{fileName} {
+      allow read: if true;
+      allow write: if isStoreMember(storeId);
+    }
+
+    match /profile_images/{storeId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if isStoreMember(storeId);
+    }
+
+    match /whatsapp_media/{storeId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if isStoreMember(storeId);
+    }
+
+    // Compatibility for the previous unscoped template-media path. Remove
+    // after the minimum supported app build includes store-scoped uploads.
+    match /whatsapp_media/{legacyFileName} {
+      allow read, write: if signedIn();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

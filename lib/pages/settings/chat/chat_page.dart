@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -36,7 +36,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> fetchUserDetails() async {
-    final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final String userId = StoreSession.instance.storeId;
     shopName = await fetchShopNameForUser(userId) ?? '';
     mobileNumber = await fetchNumberForUser(userId) ?? '';
     name = await fetchNameForUser(userId) ?? '';

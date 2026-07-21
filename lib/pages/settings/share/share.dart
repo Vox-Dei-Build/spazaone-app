@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -22,7 +22,7 @@ class SharePage extends StatefulWidget {
 }
 
 class _SharePageState extends State<SharePage> {
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  String get userId => StoreSession.instance.storeId;
 
   bool _loading = true;
   bool _regenerating = false;
@@ -80,7 +80,10 @@ class _SharePageState extends State<SharePage> {
       final callable = FirebaseFunctions.instance.httpsCallable(
         'getMerchantOrderingLink',
       );
-      final result = await callable.call(<String, dynamic>{'action': action});
+      final result = await callable.call(<String, dynamic>{
+        'action': action,
+        'storeId': userId,
+      });
       final data = Map<String, dynamic>.from(result.data as Map);
       final created = data['created'] == true;
       final regenerated = data['regenerated'] == true;

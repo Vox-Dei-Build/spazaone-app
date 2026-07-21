@@ -18,7 +18,7 @@ export const getCustomerOrders = functions
           "merchantId and customerId are required",
         );
       }
-      if (!authorizeCallableMerchantOrBot(context, merchantId)) {
+      if (!(await authorizeCallableMerchantOrBot(context, merchantId))) {
         throw new functions.https.HttpsError(
           "permission-denied",
           "Access denied",

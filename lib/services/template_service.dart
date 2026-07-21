@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 
 class TemplateService {
   static final TemplateService _instance = TemplateService._internal();
@@ -14,12 +14,11 @@ class TemplateService {
     String? merchantId,
     bool force = false,
   }) async {
-    final resolvedMerchantId =
-        (merchantId?.trim().isNotEmpty ?? false)
-            ? merchantId!.trim()
-            : FirebaseAuth.instance.currentUser?.uid;
+    final resolvedMerchantId = (merchantId?.trim().isNotEmpty ?? false)
+        ? merchantId!.trim()
+        : StoreSession.instance.storeId;
 
-    if (resolvedMerchantId == null || resolvedMerchantId.isEmpty) {
+    if (resolvedMerchantId.isEmpty) {
       _templates = [];
       _loadedMerchantId = null;
       _hasLoadedTemplates = true;
@@ -32,19 +31,17 @@ class TemplateService {
       return;
     }
 
-    final snapshot =
-        await FirebaseFirestore.instance
-            .collection('messagingTemplates')
-            .where('userId', isEqualTo: resolvedMerchantId)
-            .where('active', isEqualTo: true)
-            .get();
+    final snapshot = await FirebaseFirestore.instance
+        .collection('messagingTemplates')
+        .where('userId', isEqualTo: resolvedMerchantId)
+        .where('active', isEqualTo: true)
+        .get();
 
-    _templates =
-        snapshot.docs.map((doc) {
-          final data = doc.data();
-          data['id'] = doc.id;
-          return data;
-        }).toList();
+    _templates = snapshot.docs.map((doc) {
+      final data = doc.data();
+      data['id'] = doc.id;
+      return data;
+    }).toList();
     _loadedMerchantId = resolvedMerchantId;
     _hasLoadedTemplates = true;
   }

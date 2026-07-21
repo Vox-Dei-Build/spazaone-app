@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'dart:io';
@@ -25,7 +25,7 @@ import 'package:pasella/utils/sms_pricing_util.dart';
 class AddContactViewModel extends ChangeNotifier {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController numberController = TextEditingController();
-  final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  final String currentUserId = StoreSession.instance.storeId;
   bool _isLoading = false;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   DynamicPricingService? pricingService;

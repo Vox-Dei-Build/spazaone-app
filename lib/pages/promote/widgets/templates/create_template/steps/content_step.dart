@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
@@ -140,7 +141,8 @@ class ContentStep extends StatelessWidget {
           final compressedFile = await uploader.compressImage(file);
           if (compressedFile != null) {
             final uploadPath =
-                'whatsapp_media/${compressedFile.uri.pathSegments.last}';
+                'whatsapp_media/${StoreSession.instance.storeId}/'
+                '${compressedFile.uri.pathSegments.last}';
             final url = await uploader.uploadImage(compressedFile, uploadPath);
             if (url != null) {
               mediaUrlController.text = url;

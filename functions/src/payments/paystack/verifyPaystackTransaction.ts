@@ -1,220 +1,196 @@
-// functions/src/http/verifyPaystackTransaction.ts
+// Paystack webhook: validates the provider signature and uses only metadata
+// returned by Paystack's verification API before crediting a store.
 import { functions, db } from "../../config/main";
 import * as admin from "firebase-admin";
 import axios from "axios";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import { centsFromRands, verifyPaystackSignature } from "./paystackSecurity";
+import { requireStoreId } from "../../stores/storeAccess";
 
-/**
- * Paystack webhook (recommended path: /verifyPaystackTransaction).
- * Expects JSON body from Paystack. Handles only `charge.success`.
- *
- * Behavior:
- * - Verifies with Paystack /transaction/verify/:reference
- * - Uses provider-reported `fees` if present; else falls back to local formula
- * - Marks sale paid (purpose='sale'), writes ledger, increments wallet.salesVirtualBalance
- * - Idempotent by (provider, reference)
- */
+type PaymentPurpose = "sale" | "topup";
+
 export const verifyPaystackTransaction = functions.https.onRequest(
   async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+
     try {
       dotenv.config({ path: path.join(process.cwd(), ".env.local") });
       dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-      const PAYSTACK_SECRET_KEY =
+      const secret =
         process.env.PAYSTACK_SECRET_KEY ||
         process.env.PAYSTACK_TEST_SECRET_KEY ||
         (functions.config().paystack?.secret as string | undefined);
-
-      if (!PAYSTACK_SECRET_KEY) {
+      if (!secret) {
         res.status(500).json({ error: "Missing PAYSTACK_SECRET_KEY" });
         return;
       }
 
-      const { event, data } = req.body || {};
-      if (event !== "charge.success") {
-        res.status(400).json({ error: "Unsupported event" });
+      const rawBody =
+        req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+      if (
+        !verifyPaystackSignature(
+          rawBody,
+          req.get("x-paystack-signature"),
+          secret,
+        )
+      ) {
+        console.warn("[paystack] rejected webhook with invalid signature");
+        res.status(401).json({ error: "Invalid webhook signature" });
         return;
       }
 
-      const reference: string | undefined = data?.reference;
-      const meta = data?.metadata || {};
-      const purpose = (meta?.purpose || "").toLowerCase(); // 'sale' | 'topup'
-      const merchantId: string | undefined = meta?.merchantId;
-      const saleId: string | undefined = meta?.saleId || undefined;
-
-      if (!reference || !merchantId || !purpose) {
-        res.status(400).json({ error: "Missing transaction details" });
+      if (req.body?.event !== "charge.success") {
+        // Acknowledge valid events that this endpoint does not process so the
+        // provider does not retry them indefinitely.
+        res.status(200).json({ ignored: true });
         return;
       }
 
-      // Cross-check with Paystack
+      const reference = String(req.body?.data?.reference ?? "").trim();
+      if (!reference) {
+        res.status(400).json({ error: "Missing transaction reference" });
+        return;
+      }
+
       const verify = await axios.get(
-        `https://api.paystack.co/transaction/verify/${reference}`,
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
         {
-          headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+          headers: { Authorization: `Bearer ${secret}` },
           timeout: 15000,
         },
       );
-
-      const v = verify?.data?.data || {};
-      const success = verify?.data?.status && v?.status === "success";
-      if (!success) {
+      const transaction = verify?.data?.data ?? {};
+      if (
+        verify?.data?.status !== true ||
+        transaction.status !== "success" ||
+        String(transaction.reference ?? "") !== reference
+      ) {
         res.status(400).json({ error: "Transaction not successful" });
         return;
       }
-
-      // Amounts
-      const amount = Number(v?.amount || 0) / 100; // ZAR
-      const VAT = 0.15;
-
-      // Prefer provider-reported fee, else compute
-      let feeInclVat = Number.isFinite(v?.fees) ? Number(v.fees) / 100 : NaN;
-
-      // Derive method used from channel (card/qr/eft/ussd/etc.)
-      const channel = String(v?.channel || "").toLowerCase();
-      let methodUsed: "local_card" | "eft" | "international" = "local_card";
-      if (channel === "eft") methodUsed = "eft";
-      // (International vs local can't be perfectly inferred; assume 'local_card' for ZAR unless you add extra checks.)
-
-      if (!Number.isFinite(feeInclVat)) {
-        // Fallback fee calc
-        const R1 = 1.0;
-        const pct = methodUsed === "eft" ? 0.02 : 0.029; // 'international' -> 0.031 if you add detection
-        const flat = methodUsed === "eft" ? 0 : R1;
-        const exVat = amount * pct + flat;
-        feeInclVat = exVat * (1 + VAT);
+      if (String(transaction.currency ?? "").toUpperCase() !== "ZAR") {
+        res.status(400).json({ error: "Unsupported transaction currency" });
+        return;
       }
 
-      const feeExVat = feeInclVat / (1 + VAT);
+      // Security boundary: never trust metadata from the webhook request.
+      // Paystack's independently verified transaction is the source of truth.
+      const metadata = transaction.metadata ?? {};
+      const merchantId = requireStoreId(metadata.merchantId);
+      const purpose = String(
+        metadata.purpose ?? "",
+      ).toLowerCase() as PaymentPurpose;
+      const saleId = String(metadata.saleId ?? "").trim();
+      if (!(["sale", "topup"] as string[]).includes(purpose)) {
+        res.status(400).json({ error: "Unknown payment purpose" });
+        return;
+      }
+
+      const amountCents = Number(transaction.amount);
+      if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+        res.status(400).json({ error: "Invalid transaction amount" });
+        return;
+      }
+      const amount = amountCents / 100;
+      const feeCents = Number(transaction.fees);
+      const channel = String(transaction.channel ?? "").toLowerCase();
+      const methodUsed: "local_card" | "eft" =
+        channel === "eft" ? "eft" : "local_card";
+      const feeInclVat = Number.isFinite(feeCents)
+        ? feeCents / 100
+        : (amount * (methodUsed === "eft" ? 0.02 : 0.029) +
+            (methodUsed === "eft" ? 0 : 1)) *
+          1.15;
+      const feeExVat = feeInclVat / 1.15;
       const netToMerchant = amount - feeInclVat;
-
-      // Idempotency guard
-      const processedRef = db
-        .collection("payments")
-        .doc("paystack")
-        .collection("processed")
-        .doc(reference);
-      const processedSnap = await processedRef.get();
-      if (processedSnap.exists) {
-        res.status(200).json({ success: true, deduped: true });
+      if (!Number.isFinite(netToMerchant) || netToMerchant <= 0) {
+        res.status(400).json({ error: "Invalid transaction fees" });
         return;
       }
 
+      const processedRef = db.doc(`payments/paystack/processed/${reference}`);
+      const walletRef = db.doc(`users/${merchantId}/wallet/current`);
       const now = admin.firestore.FieldValue.serverTimestamp();
+      let deduped = false;
 
-      if (purpose === "sale") {
-        if (!saleId) {
-          res.status(400).json({ error: "Missing saleId for sale payment" });
+      await db.runTransaction(async (tx) => {
+        const processed = await tx.get(processedRef);
+        if (processed.exists) {
+          deduped = true;
           return;
         }
 
-        const saleRef = db
-          .collection("users")
-          .doc(merchantId)
-          .collection("sales")
-          .doc(saleId);
-        const walletRef = db
-          .collection("users")
-          .doc(merchantId)
-          .collection("wallet")
-          .doc("current");
+        if (purpose === "sale") {
+          if (!saleId) throw new Error("MISSING_SALE_ID");
+          const saleRef = db.doc(`users/${merchantId}/sales/${saleId}`);
+          const sale = await tx.get(saleRef);
+          if (!sale.exists) throw new Error("SALE_NOT_FOUND");
+          const saleData = sale.data() ?? {};
+          const expectedCents = centsFromRands(
+            saleData.amount ?? saleData.total ?? 0,
+          );
+          if (expectedCents !== amountCents) throw new Error("AMOUNT_MISMATCH");
 
-        const saleSnap = await saleRef.get();
-        if (!saleSnap.exists) {
-          res.status(404).json({ error: "Sale not found" });
-          return;
-        }
+          const alreadyPaid = [saleData.paymentStatus, saleData.status]
+            .map((value) => String(value ?? "").toLowerCase())
+            .includes("paid");
+          if (
+            alreadyPaid &&
+            String(saleData.paymentReference ?? "") !== reference
+          ) {
+            throw new Error("SALE_ALREADY_PAID");
+          }
 
-        const alreadyPaid =
-          String(saleSnap.get("paymentStatus") || "").toLowerCase() ===
-            "paid" ||
-          String(saleSnap.get("status") || "").toLowerCase() === "paid";
-
-        const batch = db.batch();
-
-        if (!alreadyPaid) {
-          batch.update(saleRef, {
-            paymentMethod: "Online",
-            paymentStatus: "paid",
-            status: "paid",
-            paymentReference: reference,
-            paidAt: now,
-            updatedAt: now,
-            channelUsed: channel,
-            methodUsed,
+          if (!alreadyPaid) {
+            tx.update(saleRef, {
+              paymentMethod: "Online",
+              paymentStatus: "paid",
+              status: "paid",
+              paymentReference: reference,
+              paidAt: now,
+              updatedAt: now,
+              channelUsed: channel,
+              methodUsed,
+            });
+            tx.set(
+              walletRef,
+              {
+                salesVirtualBalance:
+                  admin.firestore.FieldValue.increment(netToMerchant),
+                updatedAt: now,
+              },
+              { merge: true },
+            );
+          }
+          tx.set(db.doc(`users/${merchantId}/salesLedger/${reference}`), {
+            saleId,
+            reference,
+            amount,
+            feeInclVat,
+            feeExVat,
+            netAmount: netToMerchant,
+            currency: "ZAR",
+            provider: "paystack",
+            channel,
+            method: methodUsed,
+            createdAt: now,
           });
-        }
-
-        const ledgerRef = db
-          .collection("users")
-          .doc(merchantId)
-          .collection("salesLedger")
-          .doc(reference);
-        batch.set(ledgerRef, {
-          saleId,
-          reference,
-          amount, // customer paid
-          feeInclVat, // provider fee incl VAT
-          feeExVat, // derived
-          netAmount: netToMerchant,
-          currency: "ZAR",
-          provider: "paystack",
-          channel: channel,
-          method: methodUsed,
-          createdAt: now,
-        });
-
-        batch.set(
-          walletRef,
-          {
-            salesVirtualBalance:
-              admin.firestore.FieldValue.increment(netToMerchant),
-            updatedAt: now,
-          },
-          { merge: true },
-        );
-
-        batch.set(processedRef, {
-          provider: "paystack",
-          purpose: "sale",
-          merchantId,
-          saleId,
-          reference,
-          amount,
-          feeInclVat,
-          netAmount: netToMerchant,
-          method: methodUsed,
-          channel,
-          createdAt: now,
-        });
-
-        await batch.commit();
-        res.status(200).json({ success: true });
-        return;
-      }
-
-      if (purpose === "topup") {
-        const walletRef = db
-          .collection("users")
-          .doc(merchantId)
-          .collection("wallet")
-          .doc("current");
-        const txRef = db
-          .collection("users")
-          .doc(merchantId)
-          .collection("topUpTransactions")
-          .doc(reference);
-
-        await db.runTransaction(async (t) => {
-          const w = await t.get(walletRef);
-          const current = (w.data()?.virtualBalance || 0) as number;
-          t.set(
+        } else {
+          tx.set(
             walletRef,
-            { virtualBalance: current + netToMerchant, updatedAt: now },
+            {
+              virtualBalance:
+                admin.firestore.FieldValue.increment(netToMerchant),
+              updatedAt: now,
+            },
             { merge: true },
           );
-          t.set(txRef, {
+          tx.set(db.doc(`users/${merchantId}/topUpTransactions/${reference}`), {
             reference,
             amount,
             feeInclVat,
@@ -227,27 +203,41 @@ export const verifyPaystackTransaction = functions.https.onRequest(
             method: methodUsed,
             createdAt: now,
           });
-          t.set(processedRef, {
-            provider: "paystack",
-            purpose: "topup",
-            merchantId,
-            reference,
-            amount,
-            feeInclVat,
-            netAmount: netToMerchant,
-            method: methodUsed,
-            channel,
-            createdAt: now,
-          });
-        });
+        }
 
-        res.status(200).json({ success: true });
+        tx.create(processedRef, {
+          provider: "paystack",
+          purpose,
+          merchantId,
+          ...(purpose === "sale" ? { saleId } : {}),
+          reference,
+          amount,
+          feeInclVat,
+          netAmount: netToMerchant,
+          method: methodUsed,
+          channel,
+          verifiedMetadata: true,
+          createdAt: now,
+        });
+      });
+
+      res
+        .status(200)
+        .json({ success: true, ...(deduped ? { deduped: true } : {}) });
+    } catch (error: any) {
+      const code = String(error?.message ?? "");
+      const known: Record<string, [number, string]> = {
+        MISSING_SALE_ID: [400, "Missing saleId for sale payment"],
+        SALE_NOT_FOUND: [404, "Sale not found"],
+        AMOUNT_MISMATCH: [409, "Paid amount does not match sale"],
+        SALE_ALREADY_PAID: [409, "Sale is already paid"],
+      };
+      const mapped = known[code];
+      if (mapped) {
+        res.status(mapped[0]).json({ error: mapped[1] });
         return;
       }
-
-      res.status(400).json({ error: "Unknown purpose" });
-    } catch (err: any) {
-      console.error("verifyPaystackTransaction error:", err?.message || err);
+      console.error("verifyPaystackTransaction error:", code || error);
       res.status(500).json({ error: "Transaction verification failed" });
     }
   },

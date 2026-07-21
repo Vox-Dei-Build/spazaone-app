@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/foundation.dart';
 
 /// A lightweight global provider for the merchant's spendable wallet balance.
@@ -17,6 +18,7 @@ class WalletBalanceProvider extends ChangeNotifier {
   WalletBalanceProvider({FirebaseAuth? auth, FirebaseFirestore? firestore})
       : _auth = auth ?? FirebaseAuth.instance,
         _firestore = firestore ?? FirebaseFirestore.instance {
+    StoreSession.instance.addListener(_onStoreChanged);
     _authSub = _auth.authStateChanges().listen(_onAuthChanged);
     // Kick off immediately if a user is already signed in at construction.
     _onAuthChanged(_auth.currentUser);
@@ -27,6 +29,8 @@ class WalletBalanceProvider extends ChangeNotifier {
 
   StreamSubscription<User?>? _authSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _walletSub;
+  User? _currentUser;
+  String _boundStoreId = '';
 
   double _virtualBalance = 0.0;
   double _salesVirtualBalance = 0.0;
@@ -49,10 +53,24 @@ class WalletBalanceProvider extends ChangeNotifier {
   bool canAfford(double cost) => _virtualBalance >= cost;
 
   void _onAuthChanged(User? user) {
+    _currentUser = user;
+    _subscribeToActiveStore();
+  }
+
+  void _onStoreChanged() {
+    if (_currentUser != null &&
+        StoreSession.instance.storeId != _boundStoreId) {
+      _subscribeToActiveStore();
+    }
+  }
+
+  void _subscribeToActiveStore() {
     _walletSub?.cancel();
     _walletSub = null;
+    final user = _currentUser;
 
     if (user == null) {
+      _boundStoreId = '';
       _virtualBalance = 0.0;
       _salesVirtualBalance = 0.0;
       _isLoading = false;
@@ -65,9 +83,13 @@ class WalletBalanceProvider extends ChangeNotifier {
     _hasError = false;
     notifyListeners();
 
+    final storeId = StoreSession.instance.storeId;
+    _boundStoreId = storeId;
+    _virtualBalance = 0.0;
+    _salesVirtualBalance = 0.0;
     _walletSub = _firestore
         .collection('users')
-        .doc(user.uid)
+        .doc(storeId)
         .collection('wallet')
         .doc('current')
         .snapshots()
@@ -92,6 +114,7 @@ class WalletBalanceProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    StoreSession.instance.removeListener(_onStoreChanged);
     _authSub?.cancel();
     _walletSub?.cancel();
     super.dispose();

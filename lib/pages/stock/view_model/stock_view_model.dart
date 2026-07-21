@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/models/stock/product_group_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
@@ -17,7 +17,7 @@ class StockViewModel with ChangeNotifier {
   String? errorMessage;
   List<Product> products = [];
 
-  StockViewModel() : userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  StockViewModel() : userId = StoreSession.instance.storeId;
 
   Future<void> loadProducts() async {
     try {

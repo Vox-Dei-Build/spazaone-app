@@ -54,7 +54,8 @@ exports.scheduledLowStockCheck = functions.pubsub
               }
 
               try {
-                await admin.messaging().sendToTopic(userId, {
+                await admin.messaging().send({
+                  topic: userId,
                   notification: {
                     title: `Low Stock Alert for ${product.name}`,
                     body: `${product.name} has only ${product.quantity} items left.`,

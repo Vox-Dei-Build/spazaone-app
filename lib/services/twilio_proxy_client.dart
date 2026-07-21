@@ -3,22 +3,25 @@ import 'dart:convert';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:pasella/services/store_session.dart';
+import 'package:pasella/config/function_endpoints.dart';
 
 typedef IdTokenProvider = Future<String?> Function();
 typedef AppCheckTokenProvider = Future<String?> Function();
 typedef RetryDelay = Future<void> Function(Duration duration);
+typedef StoreIdProvider = String Function();
 
 class TwilioProxyClient {
-  static final Uri endpoint = Uri.parse(
-    'https://us-central1-pasella-ledger.cloudfunctions.net/sendTwilioMessage',
-  );
+  static Uri get endpoint => FunctionEndpoints.https('sendTwilioMessage');
 
+  final Uri _endpoint;
   final http.Client _httpClient;
   final IdTokenProvider _idTokenProvider;
   final AppCheckTokenProvider _appCheckTokenProvider;
   final IdTokenProvider _refreshedIdTokenProvider;
   final AppCheckTokenProvider _refreshedAppCheckTokenProvider;
   final RetryDelay _retryDelay;
+  final StoreIdProvider _storeIdProvider;
 
   TwilioProxyClient({
     http.Client? httpClient,
@@ -27,7 +30,12 @@ class TwilioProxyClient {
     IdTokenProvider? refreshedIdTokenProvider,
     AppCheckTokenProvider? refreshedAppCheckTokenProvider,
     RetryDelay? retryDelay,
+    Uri? endpoint,
+    StoreIdProvider? storeIdProvider,
   })  : _httpClient = httpClient ?? http.Client(),
+        _endpoint = endpoint ?? TwilioProxyClient.endpoint,
+        _storeIdProvider =
+            storeIdProvider ?? (() => StoreSession.instance.storeId),
         _idTokenProvider = idTokenProvider ??
             (() async {
               final user = FirebaseAuth.instance.currentUser;
@@ -94,13 +102,16 @@ class TwilioProxyClient {
     _ProxyTokens tokens,
   ) {
     return _httpClient.post(
-      endpoint,
+      _endpoint,
       headers: {
         'Authorization': 'Bearer ${tokens.idToken}',
         'X-Firebase-AppCheck': tokens.appCheckToken,
         'Content-Type': 'application/json',
       },
-      body: jsonEncode(payload),
+      body: jsonEncode({
+        ...payload,
+        if (!payload.containsKey('storeId')) 'storeId': _storeIdProvider(),
+      }),
     );
   }
 }

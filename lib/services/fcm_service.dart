@@ -1,8 +1,9 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class FCMService {
@@ -76,24 +77,13 @@ class FCMService {
 
     // Check if the token is not null
     if (newToken != null) {
-      // Obtain the user ID from Firebase Authentication
-      String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-
-      // If the user is not logged in, you might want to handle this case differently
-      if (userId.isEmpty) {
+      if (StoreSession.instance.storeId.isEmpty) {
         print('User is not logged in. Cannot store FCM token.');
         return;
       }
 
       try {
-        // Keep the legacy scalar for older functions and an array for
-        // multi-device delivery. arrayUnion is idempotent.
-        await FirebaseFirestore.instance.collection('users').doc(userId).set({
-          'fcmToken': newToken,
-          'fcmTokens': FieldValue.arrayUnion([newToken]),
-        }, SetOptions(merge: true)).then((_) {
-          print('FCM Token updated in Firestore for user $userId');
-        });
+        await _writeTokenToAssignedStores(newToken);
       } catch (error, stack) {
         // Non-fatal: the next launch retries token registration.
         await CrashService.instance.recordNonFatal(
@@ -109,20 +99,17 @@ class FCMService {
 
   void listenToTokenRefresh(context) {
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-      print("New FCM Token: $newToken");
+      // Never print device tokens; they are credentials for a notification
+      // destination and should not enter logs or crash reports.
+      print('FCM token refreshed.');
       updateTokenOnServer(newToken, context);
     });
   }
 
   Future<void> updateTokenOnServer(String newToken, context) async {
     try {
-      String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-      if (userId.isNotEmpty) {
-        // Keep both token representations in sync for old and new functions.
-        await FirebaseFirestore.instance.collection('users').doc(userId).set({
-          'fcmToken': newToken,
-          'fcmTokens': FieldValue.arrayUnion([newToken]),
-        }, SetOptions(merge: true));
+      if (StoreSession.instance.storeId.isNotEmpty) {
+        await _writeTokenToAssignedStores(newToken);
         if (context is BuildContext && context.mounted) {
           showSnackbar(context, 'Notification settings updated successfully :)',
               Colors.green);
@@ -136,6 +123,49 @@ class FCMService {
       );
       if (context is BuildContext && context.mounted) {
         showErrorSnackBar(context, "Failed to update notification settings.");
+      }
+    }
+  }
+
+  Future<void> _writeTokenToAssignedStores(String token) async {
+    final activeStoreId = StoreSession.instance.storeId;
+    final storeIds = <String>{
+      if (activeStoreId.isNotEmpty) activeStoreId,
+      ...StoreSession.instance.stores
+          .map((membership) => membership.storeId)
+          .where((storeId) => storeId.isNotEmpty),
+    };
+
+    for (final storeId in storeIds) {
+      // Keep the legacy scalar for older functions and an array for
+      // multi-device delivery. arrayUnion is idempotent.
+      await FirebaseFirestore.instance.collection('users').doc(storeId).set({
+        'fcmToken': token,
+        'fcmTokens': FieldValue.arrayUnion([token]),
+      }, SetOptions(merge: true));
+      await _writeMembershipToken(storeId, token);
+    }
+  }
+
+  Future<void> _writeMembershipToken(String storeId, String token) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('stores')
+          .doc(storeId)
+          .collection('operators')
+          .doc(uid)
+          .set({
+        'fcmToken': token,
+        'fcmTokens': FieldValue.arrayUnion([token]),
+        'notificationUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } on FirebaseException catch (error) {
+      // Legacy stores may not have v2 metadata yet; the root token write above
+      // remains valid until bootstrap or migration creates a membership.
+      if (error.code != 'permission-denied' && error.code != 'not-found') {
+        rethrow;
       }
     }
   }

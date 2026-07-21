@@ -11,6 +11,9 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/settings/widgets/setting_tile.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
+import 'package:pasella/pages/settings/stores/store_management_page.dart';
+import 'package:pasella/services/store_session.dart';
+import 'package:pasella/utils/feature_flags.dart';
 
 import '../../shared/widgets/custom_app_bar.dart';
 import 'share/share.dart';
@@ -38,6 +41,18 @@ class SettingsPage extends StatelessWidget {
                   Expanded(
                     child: ListView(
                       children: [
+                        if (FeatureFlags.enableMultiStoreOperators)
+                          SettingTile(
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const StoreManagementPage(),
+                              ),
+                            ),
+                            icon: Icons.storefront_outlined,
+                            title: 'Stores & Operators',
+                            subTitle:
+                                'Current: ${context.watch<StoreSession>().activeStoreName}',
+                          ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(
                             context,

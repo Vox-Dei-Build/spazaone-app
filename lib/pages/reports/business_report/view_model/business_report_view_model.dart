@@ -53,6 +53,7 @@ class BusinessReportViewModel {
 
     final periodInDays = safeEnd.difference(safeStart).inDays;
     final payload = <String, dynamic>{
+      'storeId': currentUser,
       'currentUser': currentUser,
       'startDate': safeStart.toIso8601String(),
       'endDate': safeEnd.toIso8601String(),
@@ -163,6 +164,7 @@ class BusinessReportViewModel {
   Future<void> fetchAllTimeTotalCustomers() async {
     try {
       final HttpsCallableResult result = await _allTimeBalanceCallable.call({
+        'storeId': currentUser,
         'startDate': DateTime(2000, 1, 1).toIso8601String(),
         'endDate': DateTime.now().toIso8601String(),
       });

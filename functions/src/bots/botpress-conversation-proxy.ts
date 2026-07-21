@@ -2,6 +2,7 @@ import axios from "axios";
 import { db, functions } from "../config/main";
 import { authenticateFirebaseRequest } from "../security/requestAuth";
 import { formatPhoneNumber } from "../utils/phoneUtils";
+import { assertStoreAccess, requireStoreId } from "../stores/storeAccess";
 
 const BOTPRESS_HOST = "https://api.botpress.cloud";
 const DEFAULT_BOT_ID = "402deb8c-c6b2-45d3-85ce-d090b99e25b0";
@@ -35,10 +36,19 @@ export const getBotpressMessages = functions
       return;
     }
 
-    const merchantId = await authenticateFirebaseRequest(req, res, {
+    const authenticatedUid = await authenticateFirebaseRequest(req, res, {
       requireAppCheck: true,
     });
-    if (!merchantId) return;
+    if (!authenticatedUid) return;
+
+    let merchantId: string;
+    try {
+      merchantId = requireStoreId(req.body?.storeId ?? authenticatedUid);
+      await assertStoreAccess(authenticatedUid, merchantId);
+    } catch (error) {
+      res.status(403).json({ error: "Access denied." });
+      return;
+    }
 
     const customerId = String(req.body?.customerId ?? "").trim();
     if (!customerId) {
@@ -119,22 +129,23 @@ export const getBotpressMessages = functions
           ? responseData.messages
           : [];
         messages.push(
-          ...pageMessages.map(
-            (message: {
+          ...pageMessages.map((message) => {
+            const value = message as {
               id?: string;
               payload?: unknown;
               createdAt?: unknown;
               created_at?: unknown;
               direction?: unknown;
               tags?: unknown;
-            }) => ({
-              id: message.id,
-              payload: message.payload,
-              createdAt: message.createdAt ?? message.created_at,
-              direction: message.direction,
-              tags: message.tags,
-            }),
-          ),
+            };
+            return {
+              id: value.id,
+              payload: value.payload,
+              createdAt: value.createdAt ?? value.created_at,
+              direction: value.direction,
+              tags: value.tags,
+            };
+          }),
         );
         nextToken = responseData.meta?.nextToken;
         if (!nextToken) break;

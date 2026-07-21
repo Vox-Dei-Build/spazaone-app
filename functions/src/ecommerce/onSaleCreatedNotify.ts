@@ -35,6 +35,10 @@ import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
 import { AndroidConfig, MulticastMessage } from "firebase-admin/messaging";
 import { sendMerchantOrderSmsFallback } from "../utils/merchantOrderSmsFallback";
+import {
+  readStoreNotificationTokens,
+  removeInvalidStoreNotificationTokens,
+} from "../notifications/storeNotificationTokens";
 
 /**
  * Firestore onCreate trigger for users/{merchantId}/sales/{saleId}.
@@ -165,7 +169,7 @@ export const onSaleCreatedNotify = functions.firestore
     });
 
     // Step 4: FCM push to the merchant.
-    const tokens = await readMerchantTokens(merchantId);
+    const tokens = await readStoreNotificationTokens(merchantId);
     if (!tokens.length) {
       console.warn(
         `[onSaleCreatedNotify] no FCM tokens for merchant ${merchantId}`,
@@ -257,12 +261,7 @@ export const onSaleCreatedNotify = functions.firestore
           )
           .map(({ t }) => t);
         if (badTokens.length) {
-          await merchantRef.set(
-            {
-              fcmTokens: admin.firestore.FieldValue.arrayRemove(...badTokens),
-            },
-            { merge: true },
-          );
+          await removeInvalidStoreNotificationTokens(merchantId, badTokens);
         }
       }
     } catch (e: unknown) {
@@ -315,19 +314,6 @@ async function fetchCustomerName(
  * @param {string} merchantId Merchant Firestore user id.
  * @returns {Promise<string[]>} Array of non-empty FCM tokens.
  */
-async function readMerchantTokens(merchantId: string): Promise<string[]> {
-  const snap = await db.collection("users").doc(merchantId).get();
-  if (!snap.exists) return [];
-  const data = snap.data() || {};
-  let tokens: string[] = [];
-  if (Array.isArray(data.fcmTokens)) {
-    tokens = (data.fcmTokens as unknown[]).filter(Boolean) as string[];
-  } else if (data.fcmToken) {
-    tokens = [data.fcmToken as string];
-  }
-  return tokens;
-}
-
 /**
  * Derive a normalized paymentMethod from the sale doc.
  * checkoutCart writes `type` as "Cash" | "Online" | "BNPL".

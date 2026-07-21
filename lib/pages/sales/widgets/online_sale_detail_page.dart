@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
+import 'package:pasella/config/function_endpoints.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -22,8 +24,7 @@ class OnlineSaleDetailPage extends StatefulWidget {
 class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
   late Future<Map<String, dynamic>?> _future;
 
-  static const _endpoint =
-      'https://us-central1-pasella-ledger.cloudfunctions.net/getOnlineSalesFromLedger';
+  Uri get _endpoint => FunctionEndpoints.https('getOnlineSalesFromLedger');
 
   @override
   void initState() {
@@ -40,8 +41,8 @@ class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
   /// Tries a direct-filter call (if CF supports it), else falls back to
   /// fetching a page then filtering locally.
   Future<Map<String, dynamic>?> _fetchLedgerSale(String orderId) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) throw Exception('Not signed in');
+    final uid = StoreSession.instance.storeId;
+    if (uid.isEmpty) throw Exception('Not signed in');
 
     String? appCheck;
     String? idToken;
@@ -95,7 +96,7 @@ class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
     bool allow404 = false,
   }) async {
     final resp = await http.post(
-      Uri.parse(_endpoint),
+      _endpoint,
       headers: {
         'Content-Type': 'application/json',
         if (appCheck != null) 'X-Firebase-AppCheck': appCheck,
@@ -128,7 +129,7 @@ class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
     String? idToken,
   }) async {
     final resp = await http.post(
-      Uri.parse(_endpoint),
+      _endpoint,
       headers: {
         'Content-Type': 'application/json',
         if (appCheck != null) 'X-Firebase-AppCheck': appCheck,

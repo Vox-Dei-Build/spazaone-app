@@ -1,5 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:flutter/foundation.dart';
 
 /// PAS-UX-07 — Order action state semantics.
@@ -132,8 +132,8 @@ class PaymentService {
     required String action,
     Map<String, dynamic> extraData = const {},
   }) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || uid.isEmpty) {
+    final uid = StoreSession.instance.storeId;
+    if (uid.isEmpty) {
       return const OrderPaymentResult(
         status: OrderActionStatus.notAttempted,
         stateLabel: '',

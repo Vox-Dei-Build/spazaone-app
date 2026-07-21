@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/phone_util.dart';
 
 /// PAS-UX-09 follow-up: a soft-gate that ensures the merchant has a
@@ -56,7 +57,8 @@ class _BusinessNameGateState extends State<BusinessNameGate> {
     try {
       // `fetchShopNameForUser` already trims and treats empty as null
       // (PAS-UX-09 follow-up — see lib/utils/phone_util.dart).
-      final existing = await fetchShopNameForUser(user.uid);
+      final existing =
+          await fetchShopNameForUser(StoreSession.instance.storeId);
       if (!mounted) return;
       setState(() {
         _checking = false;

@@ -1,15 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/templates/sms_message.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  String get userId => StoreSession.instance.storeId;
 
   // Returns the current user's ID. If the user isn't logged in, it'll return an empty string.
-  String get currentUserId => _auth.currentUser?.uid ?? '';
+  String get currentUserId => StoreSession.instance.storeId;
 
   // Fetches the stream of customer data
   Stream<QuerySnapshot> getCustomersStream({required String category}) {
