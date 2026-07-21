@@ -1,6 +1,6 @@
 # Multi-store and multi-operator release runbook
 
-Release candidate: SpazaOne `4.4.0+75`
+Release candidate: SpazaOne `4.4.0+76`
 
 ## Release decision
 
@@ -51,7 +51,7 @@ credit.
 - Remote Config key: `FEATURE_MULTI_STORE_OPERATORS_ENABLED`.
 - Default: `false` in the app and local Remote Config defaults.
 - Keep it `false` through backend, rules, migration, bot, and internal-app QA.
-- For the pilot, distribute `4.4.0+75` only through the internal testing track
+- For the pilot, distribute `4.4.0+76` only through the internal testing track
   and use a Remote Config condition for that exact app version and platform.
   The current client does not implement a UID allowlist, so do not describe a
   global boolean as a named-user rollout.
@@ -260,7 +260,7 @@ functions:heartbeatMerchantApp
    into either customer bot. Execute the source QA in
    `docs/botpress_multistore_contract.md`; a dedicated operator bot can be
    piloted later after the backend is deployed.
-10. Distribute `4.4.0+75` to internal testers. Add a Remote Config condition
+10. Distribute `4.4.0+76` to internal testers. Add a Remote Config condition
     matching the exact `4.4.0` app version and platform, with default `false`
     and conditional value `true`. At this point only internal testers can
     receive that version, which makes the condition the pilot boundary. Do not
@@ -338,6 +338,6 @@ remove the transitional root-profile read in a follow-up security release.
 Build `4.3.1+74` also performs an authenticated collection-group read across
 all `transactions` subcollections for its overdue-credit report. The release
 rules temporarily preserve authenticated read compatibility for that query;
-writes remain store-scoped. Build `4.4.0+75` replaces the global query with
+writes remain store-scoped. Build `4.4.0+76` replaces the global query with
 selected-store queries. Remove the compatibility read after `4.3.1+74` is
 outside the supported-version window.
