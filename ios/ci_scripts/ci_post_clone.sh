@@ -9,7 +9,7 @@ set -eu
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
-REPOSITORY_ROOT="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/.." && pwd)}"
+REPOSITORY_ROOT="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/../.." && pwd)}"
 FLUTTER_ROOT="$HOME/flutter-3.29.2"
 
 if [ ! -x "$FLUTTER_ROOT/bin/flutter" ]; then
