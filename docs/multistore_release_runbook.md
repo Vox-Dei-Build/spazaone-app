@@ -176,11 +176,54 @@ local build/test toolchains are excluded from deployed production packages.
    Do not continue until the export reports success and a restore operator has
    verified the output prefix.
 
-4. Deploy Functions first, explicitly scoped:
+4. Deploy Functions first, explicitly scoped. Start with only the six additive
+   callables; no released app invokes these names yet:
 
    ```bash
-   firebase deploy --project pasella-ledger --only functions
+   firebase deploy --project pasella-ledger --only \
+     functions:bootstrapStoreAccess,\
+functions:createStore,\
+functions:inviteStoreOperator,\
+functions:listStoreOperators,\
+functions:cancelStoreOperatorInvite,\
+functions:removeStoreOperator
    ```
+
+   Smoke-test those callables while the feature flag remains off. Then deploy
+   only the existing functions whose store authorization, payment binding,
+   notification routing, or bot selection changed:
+
+   ```bash
+   firebase deploy --project pasella-ledger --only \
+     functions:addPayment,\
+functions:calculateUserBalance,\
+functions:generateCashflowImpactReport,\
+functions:generateReport,\
+functions:getBotpressMessages,\
+functions:sendTwilioMessage,\
+functions:getCustomerOrders,\
+functions:getMerchantOrderingLink,\
+functions:getMerchantSales,\
+functions:getOnlineSalesFromLedger,\
+functions:getOrderById,\
+functions:notifyOrderEvent,\
+functions:markOrdersAsRead,\
+functions:onSaleCancelledNotify,\
+functions:onSaleCreatedNotify,\
+functions:updateOrderPayment,\
+functions:deleteTwilioTemplate,\
+functions:ensureProductPromotionTemplate,\
+functions:fetchMerchantDetails,\
+functions:logUnreadMessage,\
+functions:runMerchantPromotion,\
+functions:createPaystackTransaction,\
+functions:verifyPaystackTransaction,\
+functions:deleteUserAccount,\
+functions:heartbeatMerchantApp
+   ```
+
+   Do not use `--only functions`: that would redeploy unrelated production
+   schedules, webhooks, and bots from the shared Functions bundle.
 
 5. Run a production **dry-run** and archive its JSON output:
 
