@@ -51,7 +51,13 @@ credit.
 - Remote Config key: `FEATURE_MULTI_STORE_OPERATORS_ENABLED`.
 - Default: `false` in the app and local Remote Config defaults.
 - Keep it `false` through backend, rules, migration, bot, and internal-app QA.
-- Enable only for the named pilot users first; expand after the 24-hour gates.
+- For the pilot, distribute `4.4.0+75` only through the internal testing track
+  and use a Remote Config condition for that exact app version and platform.
+  The current client does not implement a UID allowlist, so do not describe a
+  global boolean as a named-user rollout.
+- After pilot sign-off, promote the same tested binary through the store's
+  staged rollout. The version condition then enables the feature only for
+  users who receive `4.4.0`; old builds continue on the legacy path.
 - Turning it off returns app clients to their legacy UID store. Backend
   membership metadata remains additive and can be re-enabled later.
 
@@ -211,8 +217,11 @@ local build/test toolchains are excluded from deployed production packages.
    into either customer bot. Execute the source QA in
    `docs/botpress_multistore_contract.md`; a dedicated operator bot can be
    piloted later after the backend is deployed.
-10. Distribute `4.4.0+75` to internal testers. Enable the flag only for the
-    pilot cohort. Do not start percentage rollout until pilot QA is signed off.
+10. Distribute `4.4.0+75` to internal testers. Add a Remote Config condition
+    matching the exact `4.4.0` app version and platform, with default `false`
+    and conditional value `true`. At this point only internal testers can
+    receive that version, which makes the condition the pilot boundary. Do not
+    start store rollout until pilot QA is signed off.
 11. Roll out 5% → 25% → 100%, holding at least two hours at each early stage.
 
 ## Monitoring gates
@@ -282,3 +291,10 @@ legacy login builds query it before authentication. Nested financial and
 customer data is denied to unauthenticated clients. Replace that login lookup
 with an App Check-protected callable, force the minimum app version, and then
 remove the transitional root-profile read in a follow-up security release.
+
+Build `4.3.1+74` also performs an authenticated collection-group read across
+all `transactions` subcollections for its overdue-credit report. The release
+rules temporarily preserve authenticated read compatibility for that query;
+writes remain store-scoped. Build `4.4.0+75` replaces the global query with
+selected-store queries. Remove the compatibility read after `4.3.1+74` is
+outside the supported-version window.

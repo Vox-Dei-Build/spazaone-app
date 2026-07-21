@@ -6,7 +6,17 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  collectionGroup,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 import { getBytes, ref, uploadString } from "firebase/storage";
 
 let env;
@@ -37,8 +47,16 @@ beforeEach(async () => {
     await Promise.all([
       setDoc(doc(db, "users/storeA"), { shopName: "Alpha" }),
       setDoc(doc(db, "users/storeA/customers/customerA"), { balance: -10 }),
+      setDoc(
+        doc(db, "users/storeA/customers/customerA/transactions/transactionA"),
+        { status: "DUE", type: "Credit" },
+      ),
       setDoc(doc(db, "users/storeB"), { shopName: "Beta" }),
       setDoc(doc(db, "users/storeB/customers/customerB"), { balance: -20 }),
+      setDoc(
+        doc(db, "users/storeB/customers/customerB/transactions/transactionB"),
+        { status: "DUE", type: "Credit" },
+      ),
       setDoc(doc(db, "stores/storeA"), { name: "Alpha", ownerUid: "ownerA" }),
       setDoc(doc(db, "stores/storeA/operators/operator1"), {
         role: "operator",
@@ -47,6 +65,21 @@ beforeEach(async () => {
       setDoc(doc(db, "stores/storeB/operators/operator1"), {
         role: "operator",
         status: "disabled",
+      }),
+      setDoc(doc(db, "messagingTemplates/templateA"), {
+        userId: "storeA",
+        name: "Legacy template",
+      }),
+      setDoc(doc(db, "promotions/promotionA"), {
+        merchantId: "storeA",
+        status: "saved",
+      }),
+      setDoc(doc(db, "payoutRequests/payoutA"), {
+        merchantId: "storeA",
+        payoutStatus: "pending",
+      }),
+      setDoc(doc(db, "paymentReferences/referenceA"), {
+        merchantId: "storeA",
       }),
     ]);
   });
@@ -142,6 +175,64 @@ test("unauthenticated clients cannot read customer financial data", async () => 
   await assertFails(getDoc(doc(db, "users/storeA/customers/customerA")));
 });
 
+test("released app keeps its authenticated transaction collection-group report", async () => {
+  const legacyDb = env.authenticatedContext("storeA").firestore();
+  const dueCredits = query(
+    collectionGroup(legacyDb, "transactions"),
+    where("status", "==", "DUE"),
+  );
+  const snapshot = await assertSucceeds(getDocs(dueCredits));
+  assert.equal(snapshot.size, 2);
+
+  const unauthenticatedDb = env.unauthenticatedContext().firestore();
+  await assertFails(
+    getDocs(
+      query(
+        collectionGroup(unauthenticatedDb, "transactions"),
+        where("status", "==", "DUE"),
+      ),
+    ),
+  );
+});
+
+test("released app keeps its legacy root collection query shapes", async () => {
+  const publicDb = env.unauthenticatedContext().firestore();
+  const phoneLookup = query(
+    collection(publicDb, "users"),
+    where("shopName", "==", "Alpha"),
+  );
+  const phoneLookupSnapshot = await assertSucceeds(getDocs(phoneLookup));
+  assert.equal(phoneLookupSnapshot.size, 1);
+
+  const legacyDb = env.authenticatedContext("storeA").firestore();
+  await assertSucceeds(
+    updateDoc(doc(legacyDb, "users/storeA"), { shopName: "Alpha Updated" }),
+  );
+
+  for (const [collectionName, ownerField] of [
+    ["messagingTemplates", "userId"],
+    ["promotions", "merchantId"],
+    ["payoutRequests", "merchantId"],
+    ["paymentReferences", "merchantId"],
+  ]) {
+    const ownedQuery = query(
+      collection(legacyDb, collectionName),
+      where(ownerField, "==", "storeA"),
+    );
+    const ownedSnapshot = await assertSucceeds(getDocs(ownedQuery));
+    assert.equal(ownedSnapshot.size, 1, collectionName);
+  }
+
+  await assertSucceeds(
+    setDoc(doc(legacyDb, "successfulWhatsAppNumbers/27820000000"), {
+      reachable: true,
+    }),
+  );
+  await assertFails(
+    getDoc(doc(publicDb, "successfulWhatsAppNumbers/27820000000")),
+  );
+});
+
 test("storage writes are store scoped while product reads stay public", async () => {
   const operatorStorage = env.authenticatedContext("operator1").storage();
   await assertSucceeds(
@@ -158,5 +249,15 @@ test("storage writes are store scoped while product reads stay public", async ()
   assert.equal(Buffer.from(bytes).toString(), "alpha");
   await assertFails(
     getBytes(ref(publicStorage, "profile_images/storeA/customer.jpg")),
+  );
+
+  await assertSucceeds(
+    uploadString(
+      ref(operatorStorage, "profile_images/storeA/customer.jpg"),
+      "profile",
+    ),
+  );
+  await assertSucceeds(
+    uploadString(ref(operatorStorage, "whatsapp_media/legacy.jpg"), "media"),
   );
 });
