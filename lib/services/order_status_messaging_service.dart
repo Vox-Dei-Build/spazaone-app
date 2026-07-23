@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
+import 'package:pasella/services/campaign_credits_service.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/whatsapp_messaging_service.dart';
 import 'package:pasella/utils/phone_util.dart';
@@ -311,21 +312,11 @@ class OrderStatusMessagingService {
   }
 
   Future<void> _deductBalance(String merchantId, double cost) async {
-    final walletRef = _firestore
-        .collection('users')
-        .doc(merchantId)
-        .collection('wallet')
-        .doc('current');
-
-    await _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(walletRef);
-      if (!snapshot.exists) return;
-
-      final currentBalance = (snapshot['virtualBalance'] ?? 0).toDouble();
-      final newBalance = currentBalance - cost;
-
-      transaction.update(walletRef, {'virtualBalance': newBalance});
-    });
+    await CampaignCreditsService().debit(
+      storeId: merchantId,
+      amount: cost,
+      reason: 'order-status',
+    );
   }
 
   String _generateRenderedMessage(

@@ -59,6 +59,7 @@ export * from "./merchant_hub/productPromotionOrder";
 export * from "./merchant_hub/deleteTwilioTemplate";
 export * from "./merchant_hub/runMerchantPromotion";
 export * from "./services/deleteUserAccount";
+export * from "./wallet/campaignCredits";
 
 /* ---- Ecommerce ---- */
 export * from "./ecommerce/getProducts";

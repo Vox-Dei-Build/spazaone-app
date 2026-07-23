@@ -46,6 +46,10 @@ beforeEach(async () => {
     const db = context.firestore();
     await Promise.all([
       setDoc(doc(db, "users/storeA"), { shopName: "Alpha" }),
+      setDoc(doc(db, "users/storeA/wallet/current"), {
+        virtualBalance: 50,
+        salesVirtualBalance: 900,
+      }),
       setDoc(doc(db, "users/storeA/customers/customerA"), { balance: -10 }),
       setDoc(
         doc(db, "users/storeA/customers/customerA/transactions/transactionA"),
@@ -65,6 +69,18 @@ beforeEach(async () => {
       setDoc(doc(db, "stores/storeB/operators/operator1"), {
         role: "operator",
         status: "disabled",
+      }),
+      setDoc(doc(db, "stores/storeB/operators/operator2"), {
+        role: "operator",
+        status: "active",
+      }),
+      setDoc(doc(db, "campaignWalletBalances/storeA"), {
+        balance: 50,
+        shared: true,
+      }),
+      setDoc(doc(db, "campaignWalletAccess/storeA/members/operator2"), {
+        walletStoreId: "storeA",
+        storeIds: ["storeB"],
       }),
       setDoc(doc(db, "messagingTemplates/templateA"), {
         userId: "storeA",
@@ -116,6 +132,21 @@ test("operator cannot grant itself membership or inspect phone invites", async (
     }),
   );
   await assertFails(getDoc(doc(db, "operatorInvites/hash/stores/storeA")));
+});
+
+test("shared operator sees campaign balance but not canonical sales fields", async () => {
+  const db = env.authenticatedContext("operator2").firestore();
+  const projection = await assertSucceeds(
+    getDoc(doc(db, "campaignWalletBalances/storeA")),
+  );
+  assert.equal(projection.get("balance"), 50);
+  await assertFails(getDoc(doc(db, "users/storeA/wallet/current")));
+  await assertFails(
+    updateDoc(doc(db, "campaignWalletBalances/storeA"), { balance: 999 }),
+  );
+  await assertFails(
+    getDoc(doc(db, "campaignWalletAccess/storeA/members/operator2")),
+  );
 });
 
 test("operator can update only notification fields on its own membership", async () => {

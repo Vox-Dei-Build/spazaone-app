@@ -21,6 +21,13 @@ class FeatureFlags {
     defaultValue: false,
   );
 
+  /// Allows newly created stores to join the owner's campaign-credit wallet.
+  ///
+  /// This is an enrollment switch, not a destructive runtime kill switch:
+  /// stores already enrolled continue using their canonical wallet even when
+  /// this flag is later disabled, so funds can never appear to split.
+  static bool enableSharedCampaignCreditsEnrollment = false;
+
   /// PAS-UX-22: number-first onboarding flow.
   ///
   /// When true, the app launches into `/phoneEntryPage` and routes new vs
@@ -97,6 +104,10 @@ class FeatureFlags {
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED',
           defaultValue: false,
         );
+    enableSharedCampaignCreditsEnrollment = rc.getBool(
+      'FEATURE_SHARED_CAMPAIGN_CREDITS_ENROLLMENT_ENABLED',
+      defaultValue: false,
+    );
 
     // PAS-UX-22: default false so a missing / failed Remote Config fetch
     // leaves us on the legacy two-screen flow.

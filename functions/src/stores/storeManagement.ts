@@ -9,6 +9,7 @@ import {
   requireStoreId,
   StoreRole,
 } from "./storeAccess";
+import { isSharedCampaignCreditsEnrollmentAllowed } from "../wallet/campaignCredits";
 
 const INVITE_TTL_DAYS = 7;
 const MAX_STORES_PER_OPERATOR = 25;
@@ -22,6 +23,8 @@ type MembershipWrite = {
   phoneLast4: string;
   phoneHash?: string;
   fcmTokens?: string[];
+  campaignWalletStoreId?: string;
+  sharedCampaignCredits?: boolean;
   source: "legacy-adoption" | "direct-invite" | "claimed-invite" | "created";
 };
 
@@ -103,6 +106,20 @@ function setMembership(
       { merge: true },
     );
   }
+  if (value.sharedCampaignCredits && value.campaignWalletStoreId) {
+    batch.set(
+      db.doc(
+        `campaignWalletAccess/${value.campaignWalletStoreId}/members/${value.uid}`,
+      ),
+      {
+        uid: value.uid,
+        walletStoreId: value.campaignWalletStoreId,
+        storeIds: FieldValue.arrayUnion(value.storeId),
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+  }
 }
 
 async function loadMemberships(uid: string) {
@@ -113,13 +130,33 @@ async function loadMemberships(uid: string) {
     .where("status", "==", "active")
     .get();
 
+  const storeSnapshots = snapshot.empty
+    ? []
+    : await db.getAll(
+        ...snapshot.docs.map((doc) => db.doc(`stores/${doc.id}`)),
+      );
+  const storesById = new Map(
+    storeSnapshots.map((store) => [store.id, store.data() ?? {}]),
+  );
+
   return snapshot.docs
     .map((doc) => {
       const data = doc.data();
+      const store = storesById.get(doc.id) ?? {};
+      const configuredWalletStoreId = String(
+        store.campaignWalletStoreId ?? "",
+      ).trim();
+      const sharedCampaignCredits =
+        store.sharedCampaignCreditsEnabled === true &&
+        /^[A-Za-z0-9_-]{1,128}$/.test(configuredWalletStoreId);
       return {
         storeId: doc.id,
         storeName: String(data.storeName ?? "Store"),
         role: String(data.role ?? "operator"),
+        campaignWalletStoreId: sharedCampaignCredits
+          ? configuredWalletStoreId
+          : doc.id,
+        sharedCampaignCredits,
       };
     })
     .sort((a, b) => a.storeName.localeCompare(b.storeName));
@@ -190,11 +227,24 @@ async function claimPendingInvites(
   );
   if (remainingCapacity === 0) return 0;
   const claimable = valid.slice(0, remainingCapacity);
+  const stores = await db.getAll(
+    ...claimable.map((invite) => db.doc(`stores/${invite.id}`)),
+  );
+  const storesById = new Map(
+    stores.map((store) => [store.id, store.data() ?? {}]),
+  );
 
   const batch = db.batch();
   for (const invite of claimable) {
     const data = invite.data();
     const storeId = requireStoreId(invite.id);
+    const store = storesById.get(storeId) ?? {};
+    const campaignWalletStoreId = String(
+      store.campaignWalletStoreId ?? "",
+    ).trim();
+    const sharedCampaignCredits =
+      store.sharedCampaignCreditsEnabled === true &&
+      /^[A-Za-z0-9_-]{1,128}$/.test(campaignWalletStoreId);
     setMembership(batch, {
       storeId,
       uid,
@@ -203,6 +253,10 @@ async function claimPendingInvites(
       displayName,
       phoneLast4: phoneLast4(phone),
       phoneHash: phoneHash(phone),
+      campaignWalletStoreId: sharedCampaignCredits
+        ? campaignWalletStoreId
+        : undefined,
+      sharedCampaignCredits,
       source: "claimed-invite",
     });
     batch.set(
@@ -253,6 +307,8 @@ export const bootstrapStoreAccess = functions.https.onCall(
       stores: await loadMemberships(auth.uid),
       adoptedLegacyStore,
       claimedInvites,
+      sharedCampaignCreditsEnrollmentAllowed:
+        await isSharedCampaignCreditsEnrollmentAllowed(auth.uid),
     };
   },
 );
@@ -283,6 +339,48 @@ export const createStore = functions.https.onCall(async (data, context) => {
   const storeId = storeRef.id;
   const now = FieldValue.serverTimestamp();
   const batch = db.batch();
+  const shareCampaignCredits = data?.shareCampaignCredits === true;
+  if (
+    shareCampaignCredits &&
+    !(await isSharedCampaignCreditsEnrollmentAllowed(auth.uid))
+  ) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Shared campaign credits are not enabled for this account yet.",
+    );
+  }
+  const ownedStores = existing.filter(
+    (membership) => membership.role === "owner",
+  );
+  const canonicalMembership =
+    ownedStores.find((membership) => membership.sharedCampaignCredits) ??
+    ownedStores.find((membership) => membership.storeId === auth.uid) ??
+    ownedStores[0];
+  const sharedCampaignCredits =
+    shareCampaignCredits && canonicalMembership != null;
+  const campaignWalletStoreId = sharedCampaignCredits
+    ? canonicalMembership.campaignWalletStoreId
+    : storeId;
+
+  let campaignBalance = 0;
+  if (sharedCampaignCredits) {
+    const canonicalWallet = await db
+      .doc(`users/${campaignWalletStoreId}/wallet/current`)
+      .get();
+    if (!canonicalWallet.exists) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The existing campaign credit wallet is unavailable.",
+      );
+    }
+    campaignBalance = Number(canonicalWallet.data()?.virtualBalance ?? 0);
+    if (!Number.isFinite(campaignBalance)) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The existing campaign credit balance is invalid.",
+      );
+    }
+  }
 
   batch.set(storeRef, {
     name: storeName,
@@ -291,7 +389,38 @@ export const createStore = functions.https.onCall(async (data, context) => {
     legacyUserPath: `users/${storeId}`,
     schemaVersion: 2,
     createdAt: now,
+    ...(sharedCampaignCredits
+      ? {
+          sharedCampaignCreditsEnabled: true,
+          campaignWalletStoreId,
+          sharedCampaignCreditsEnrolledAt: now,
+          sharedCampaignCreditsSource: "store-creation",
+        }
+      : {}),
   });
+  if (sharedCampaignCredits) {
+    batch.set(
+      db.doc(`stores/${campaignWalletStoreId}`),
+      {
+        sharedCampaignCreditsEnabled: true,
+        campaignWalletStoreId,
+        sharedCampaignCreditsEnrolledAt: now,
+        sharedCampaignCreditsSource: "store-creation",
+      },
+      { merge: true },
+    );
+    batch.set(
+      db.doc(`campaignWalletBalances/${campaignWalletStoreId}`),
+      {
+        walletStoreId: campaignWalletStoreId,
+        balance: campaignBalance,
+        shared: true,
+        sourceStoreId: storeId,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+  }
   batch.set(db.doc(`users/${storeId}`), {
     name: operatorName,
     shopName: storeName,
@@ -323,10 +452,20 @@ export const createStore = functions.https.onCall(async (data, context) => {
     displayName: operatorName,
     phoneLast4: phoneLast4(phone),
     phoneHash: phone ? phoneHash(phone) : undefined,
+    campaignWalletStoreId: sharedCampaignCredits
+      ? campaignWalletStoreId
+      : undefined,
+    sharedCampaignCredits,
     source: "created",
   });
   await batch.commit();
-  return { storeId, storeName, role: "owner" };
+  return {
+    storeId,
+    storeName,
+    role: "owner",
+    campaignWalletStoreId,
+    sharedCampaignCredits,
+  };
 });
 
 export const inviteStoreOperator = functions.https.onCall(
@@ -354,6 +493,12 @@ export const inviteStoreOperator = functions.https.onCall(
     const storeName = String(
       store.data()?.name ?? legacy?.data()?.shopName ?? "Store",
     );
+    const campaignWalletStoreId = String(
+      store.data()?.campaignWalletStoreId ?? "",
+    ).trim();
+    const sharedCampaignCredits =
+      store.data()?.sharedCampaignCreditsEnabled === true &&
+      /^[A-Za-z0-9_-]{1,128}$/.test(campaignWalletStoreId);
 
     try {
       const target = await admin.auth().getUserByPhoneNumber(phone);
@@ -388,6 +533,10 @@ export const inviteStoreOperator = functions.https.onCall(
         displayName: target.displayName ?? "Operator",
         phoneLast4: phoneLast4(phone),
         phoneHash: phoneHash(phone),
+        campaignWalletStoreId: sharedCampaignCredits
+          ? campaignWalletStoreId
+          : undefined,
+        sharedCampaignCredits,
         source: "direct-invite",
       });
       batch.delete(
@@ -505,9 +654,10 @@ export const removeStoreOperator = functions.https.onCall(
         "Select another operator to remove.",
       );
     }
-    const target = await db
-      .doc(`stores/${storeId}/operators/${operatorUid}`)
-      .get();
+    const [target, store] = await Promise.all([
+      db.doc(`stores/${storeId}/operators/${operatorUid}`).get(),
+      db.doc(`stores/${storeId}`).get(),
+    ]);
     if (!target.exists) {
       throw new functions.https.HttpsError("not-found", "Operator not found.");
     }
@@ -537,6 +687,24 @@ export const removeStoreOperator = functions.https.onCall(
     batch.set(db.doc(`operators/${operatorUid}/stores/${storeId}`), disabled, {
       merge: true,
     });
+    const campaignWalletStoreId = String(
+      store.data()?.campaignWalletStoreId ?? "",
+    ).trim();
+    if (
+      store.data()?.sharedCampaignCreditsEnabled === true &&
+      /^[A-Za-z0-9_-]{1,128}$/.test(campaignWalletStoreId)
+    ) {
+      batch.set(
+        db.doc(
+          `campaignWalletAccess/${campaignWalletStoreId}/members/${operatorUid}`,
+        ),
+        {
+          storeIds: FieldValue.arrayRemove(storeId),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
     if (targetTokens.length) {
       const legacyStore = db.doc(`users/${storeId}`);
       const legacyData = (await legacyStore.get()).data() ?? {};

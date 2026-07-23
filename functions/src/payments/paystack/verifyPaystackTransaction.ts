@@ -5,8 +5,14 @@ import * as admin from "firebase-admin";
 import axios from "axios";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import { createHash } from "crypto";
 import { centsFromRands, verifyPaystackSignature } from "./paystackSecurity";
 import { requireStoreId } from "../../stores/storeAccess";
+import {
+  campaignWalletRef,
+  mutateCampaignCredits,
+  resolveCampaignWallet,
+} from "../../wallet/campaignCredits";
 
 type PaymentPurpose = "sale" | "topup";
 
@@ -114,7 +120,18 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       }
 
       const processedRef = db.doc(`payments/paystack/processed/${reference}`);
-      const walletRef = db.doc(`users/${merchantId}/wallet/current`);
+      const campaignWallet =
+        purpose === "topup"
+          ? await resolveCampaignWallet(merchantId)
+          : {
+              storeId: merchantId,
+              walletStoreId: merchantId,
+              shared: false,
+            };
+      const walletRef =
+        purpose === "sale"
+          ? db.doc(`users/${merchantId}/wallet/current`)
+          : campaignWalletRef(campaignWallet.walletStoreId);
       const now = admin.firestore.FieldValue.serverTimestamp();
       let deduped = false;
 
@@ -181,15 +198,19 @@ export const verifyPaystackTransaction = functions.https.onRequest(
             createdAt: now,
           });
         } else {
-          tx.set(
-            walletRef,
-            {
-              virtualBalance:
-                admin.firestore.FieldValue.increment(netToMerchant),
-              updatedAt: now,
+          await mutateCampaignCredits(tx, campaignWallet, netToMerchant, {
+            id: `paystack:${createHash("sha256")
+              .update(reference)
+              .digest("hex")}`,
+            kind: "paystack-topup",
+            initiatedBy: String(metadata.initiatedBy ?? "") || undefined,
+            metadata: {
+              reference,
+              amount,
+              feeInclVat,
+              method: methodUsed,
             },
-            { merge: true },
-          );
+          });
           tx.set(db.doc(`users/${merchantId}/topUpTransactions/${reference}`), {
             reference,
             amount,
@@ -209,6 +230,10 @@ export const verifyPaystackTransaction = functions.https.onRequest(
           provider: "paystack",
           purpose,
           merchantId,
+          walletStoreId:
+            purpose === "topup" ? campaignWallet.walletStoreId : merchantId,
+          sharedCampaignCredits:
+            purpose === "topup" ? campaignWallet.shared : false,
           ...(purpose === "sale" ? { saleId } : {}),
           reference,
           amount,

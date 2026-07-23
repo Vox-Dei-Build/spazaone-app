@@ -2,6 +2,15 @@
 
 import { functions, db } from "../config/main";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
+import {
+  CampaignReservation,
+  CampaignWalletContext,
+  mutateCampaignCredits,
+  recordCampaignReservationSpend,
+  reserveCampaignCredits,
+  resolveCampaignWallet,
+  settleCampaignReservation,
+} from "../wallet/campaignCredits";
 import twilio from "twilio";
 import { FieldValue } from "firebase-admin/firestore";
 import { DynamicPricingService } from "../services/dynamic_pricing_service";
@@ -87,12 +96,7 @@ function getTwilioRuntime(): TwilioRuntime {
     process.env.TWILIO_SMS_NUMBER ?? config.number ?? "",
   ).trim();
 
-  if (
-    !accountSid ||
-    !authToken ||
-    !customerMessagingServiceSid ||
-    !smsNumber
-  ) {
+  if (!accountSid || !authToken || !customerMessagingServiceSid || !smsNumber) {
     throw new functions.https.HttpsError(
       "failed-precondition",
       "Messaging provider credentials are not configured for this environment.",
@@ -241,7 +245,8 @@ async function storeWhatsAppCheck(
  * @return {Promise<void>} - Resolves when done.
  */
 async function recordSend(
-  merchantId: string,
+  walletContext: CampaignWalletContext,
+  reservation: CampaignReservation | null,
   customerId: string,
   phone: string,
   cost: number,
@@ -249,23 +254,27 @@ async function recordSend(
   logMsg: string,
   messageSid: string | null = null,
 ): Promise<void> {
-  const walletRef = db
-    .collection("users")
-    .doc(merchantId)
-    .collection("wallet")
-    .doc("current");
+  const merchantId = walletContext.storeId;
 
   const deliveryChargeRef = messageSid
     ? db.collection("messageDeliveryCharges").doc(messageSid)
     : null;
 
   await db.runTransaction(async (tx) => {
-    const snap = await tx.get(walletRef);
-    const bal = (snap.data()?.virtualBalance || 0) - cost;
-    tx.update(walletRef, { virtualBalance: bal });
+    if (reservation) {
+      await recordCampaignReservationSpend(tx, reservation, cost);
+    } else {
+      await mutateCampaignCredits(tx, walletContext, -cost, {
+        id: `message:${messageSid ?? db.collection("_ids").doc().id}`,
+        kind: "promotion-send",
+        metadata: { customerId, channel, messageSid },
+      });
+    }
     if (deliveryChargeRef) {
       tx.set(deliveryChargeRef, {
         merchantId,
+        walletStoreId: walletContext.walletStoreId,
+        sharedCampaignCredits: walletContext.shared,
         customerId,
         phone,
         channel,
@@ -363,6 +372,7 @@ export const runMerchantPromotion = functions
       }
       const merchantId = String(data.storeId ?? context.auth.uid).trim();
       await assertCallableStoreAccess(context, merchantId);
+      const campaignWallet = await resolveCampaignWallet(merchantId);
       const promotionId = data.promotionId;
       if (!promotionId) {
         throw new functions.https.HttpsError(
@@ -489,12 +499,6 @@ export const runMerchantPromotion = functions
         };
       }
 
-      // Mark processing
-      await promoRef.update({
-        status: "processing",
-        startedAt: FieldValue.serverTimestamp(),
-      });
-
       // Pricing via Remote Config
       const pricing = await DynamicPricingService.initialize();
       const unitWA = promo.sendWhatsApp ? pricing.whatsappPromotionPrice : 0;
@@ -510,6 +514,77 @@ export const runMerchantPromotion = functions
             user?.mobileNumber ?? context.auth.token.phone_number,
           )
         : (tpl.channels?.sms?.templateContent ?? "");
+      const customerIds = Array.isArray(promo.customerIds)
+        ? promo.customerIds.map((value) => String(value))
+        : [];
+      const customerSnapshots = customerIds.length
+        ? await db.getAll(
+            ...customerIds.map((customerId) =>
+              db.doc(`users/${merchantId}/customers/${customerId}`),
+            ),
+          )
+        : [];
+      const customersById = new Map(
+        customerSnapshots.map((customer) => [
+          customer.id,
+          customer.data() ?? {},
+        ]),
+      );
+      let reservationCeiling = 0;
+      let eligibleRecipientCount = 0;
+      for (const customerId of customerIds) {
+        const customer = customersById.get(customerId);
+        if (!customer?.number || !isValidSAPhoneNumber(customer.number)) {
+          continue;
+        }
+        eligibleRecipientCount++;
+        const smsBody = smsRaw
+          .replaceAll("{{customerName}}", String(customer.name ?? "Customer"))
+          .replaceAll("{{shopName}}", shopName)
+          .replaceAll(
+            "{{productName}}",
+            productVariables.productName || "this product",
+          )
+          .replaceAll(
+            "{{productPrice}}",
+            productVariables.productPrice || "the advertised price",
+          );
+        const smsCost =
+          Math.round(unitSMS * calculateSmsSegments(smsBody) * 100) / 100;
+        const maximumRecipientCost = Math.max(
+          promo.sendWhatsApp ? unitWA : 0,
+          promo.sendSMS ? smsCost : 0,
+        );
+        reservationCeiling += maximumRecipientCost;
+      }
+      reservationCeiling = Math.round(reservationCeiling * 100) / 100;
+      if (
+        !promo.testMode &&
+        eligibleRecipientCount > 0 &&
+        reservationCeiling <= 0
+      ) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Campaign pricing is unavailable. Try again later.",
+        );
+      }
+      const reservation = promo.testMode
+        ? null
+        : await reserveCampaignCredits(
+            campaignWallet,
+            promotionId,
+            reservationCeiling,
+            context.auth.uid,
+          );
+
+      // Mark processing only after the full worst-case cost has been reserved.
+      // Insufficient shared funds therefore fail before the first provider call.
+      await promoRef.update({
+        status: "processing",
+        startedAt: FieldValue.serverTimestamp(),
+        reservedCampaignCredits: reservationCeiling,
+        campaignWalletStoreId: campaignWallet.walletStoreId,
+      });
 
       // Send to each customer
       // PAS-WA-01: keep running tallies so we can write a terminal
@@ -520,15 +595,9 @@ export const runMerchantPromotion = functions
       let failed = 0;
       let lastErrorMessage: string | null = null;
 
-      for (const custId of promo.customerIds as string[]) {
+      for (const custId of customerIds) {
         try {
-          const cSnap = await db
-            .collection("users")
-            .doc(merchantId)
-            .collection("customers")
-            .doc(custId)
-            .get();
-          const cust = cSnap.data();
+          const cust = customersById.get(custId);
           if (!cust?.number) {
             console.log(`Skipping ${custId}: no number`);
             continue;
@@ -618,7 +687,8 @@ export const runMerchantPromotion = functions
                 totalCost += unitWA;
                 await storeWhatsAppCheck(num, true);
                 await recordSend(
-                  merchantId,
+                  campaignWallet,
+                  reservation,
                   custId,
                   num,
                   unitWA,
@@ -711,7 +781,8 @@ export const runMerchantPromotion = functions
                 succeeded++;
                 totalCost += smsCost;
                 await recordSend(
-                  merchantId,
+                  campaignWallet,
+                  reservation,
                   custId,
                   num,
                   smsCost,
@@ -769,6 +840,10 @@ export const runMerchantPromotion = functions
           }
           console.error(`Error sending to ${custId}:`, e);
         }
+      }
+
+      if (reservation) {
+        await settleCampaignReservation(reservation);
       }
 
       // PAS-WA-01: choose a terminal status that reflects what actually

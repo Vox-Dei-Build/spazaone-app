@@ -795,10 +795,12 @@ class PromotionsViewModel extends ChangeNotifier {
       // Preserve whatever the callable layer gave us, but always
       // provide a usable fallback so we never leave the merchant
       // staring at a silent failure.
-      final detail = (e.message != null && e.message!.trim().isNotEmpty)
-          ? e.message!
-          : 'Send failed (code: ${e.code}). No further detail returned — '
-              'retry, then contact support if it persists.';
+      final detail = e.message == 'INSUFFICIENT_CAMPAIGN_CREDITS'
+          ? 'Your campaign credits changed before sending. Top up and try again.'
+          : (e.message != null && e.message!.trim().isNotEmpty)
+              ? e.message!
+              : 'Send failed (code: ${e.code}). No further detail returned — '
+                  'retry, then contact support if it persists.';
       debugPrint('sendSavedPromotion callable failure: ${e.code} ${e.message}');
       return SendPromotionResult.failed(
         message: detail,

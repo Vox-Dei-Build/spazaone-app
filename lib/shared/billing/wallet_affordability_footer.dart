@@ -72,17 +72,19 @@ class WalletAffordabilityFooter extends StatelessWidget {
     final loading = wallet.isLoading;
     final canAfford = balance >= cost;
 
-    final statusText =
-        loading
-            ? 'Checking wallet…'
-            : 'You have ${CurrencyUtil.format(balance)} • '
-                'this costs ${CurrencyUtil.format(cost)}'
-                '${canAfford ? ' • ${CurrencyUtil.format(balance - cost)} after' : ''}';
+    final balanceLabel = wallet.sharedCampaignCredits
+        ? 'Shared campaign credits'
+        : 'Campaign credits';
+    final statusText = loading
+        ? 'Checking campaign credits…'
+        : '$balanceLabel: ${CurrencyUtil.format(balance)} • '
+            'this costs ${CurrencyUtil.format(cost)}'
+            '${canAfford ? ' • ${CurrencyUtil.format(balance - cost)} after' : ''}'
+            '${wallet.sharedCampaignCredits ? ' • Sending as ${wallet.activeStoreName}' : ''}';
 
-    final statusColor =
-        loading
-            ? Colors.black54
-            : (canAfford ? Colors.black87 : Colors.orange.shade800);
+    final statusColor = loading
+        ? Colors.black54
+        : (canAfford ? Colors.black87 : Colors.orange.shade800);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -117,17 +119,16 @@ class WalletAffordabilityFooter extends StatelessWidget {
             else if (canAfford)
               ElevatedButton.icon(
                 icon: Icon(confirmIcon ?? Icons.check),
-                label:
-                    busy
-                        ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                        : Text(confirmLabel),
+                label: busy
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(confirmLabel),
                 onPressed:
                     (busy || onConfirm == null) ? null : () => onConfirm!(),
               )

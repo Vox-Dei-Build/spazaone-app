@@ -7,9 +7,11 @@ import 'package:pasella/pages/wallet/tabs/top_up_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/wallet_utils.dart';
+import 'package:provider/provider.dart';
 
 enum WalletInitialTab { withdraw, topUp, account }
 
@@ -103,6 +105,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final campaignWallet = context.watch<WalletBalanceProvider>();
     // 🔥 Dynamically generate the tab views based on feature flags
     final List<Widget> tabViews = [];
     final List<Tab> tabLabels = [];
@@ -158,30 +161,36 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             _balanceCard(
-                              title: 'App Balance',
-                              amount: walletState.balance,
-                              description:
-                                  'Pays for SMS & WhatsApp sends from this app',
+                              title: campaignWallet.sharedCampaignCredits
+                                  ? 'Shared Campaign Credits'
+                                  : 'Campaign Credits',
+                              amount: campaignWallet.virtualBalance,
+                              description: campaignWallet.sharedCampaignCredits
+                                  ? 'Available in all linked stores · Pays for '
+                                      'SMS, WhatsApp and campaigns'
+                                  : 'Pays for SMS, WhatsApp and campaigns',
                               color: Colors.green,
                               icon: Icons.account_balance_wallet,
                               // PAS-UX-WTC: the whole card becomes a shortcut
                               // to the Top-Up tab. Urgent tint kicks in when
                               // balance is low so it's obvious which surface
                               // needs attention — no extra chrome on the card.
-                              onAction:
-                                  FeatureFlags.enableTopUp
-                                      ? () {
-                                        final i = _topUpTabIndex();
-                                        if (i != null)
-                                          _tabController.animateTo(i);
-                                      }
-                                      : null,
-                              actionIsUrgent: walletState.balance < 5.0,
+                              onAction: FeatureFlags.enableTopUp
+                                  ? () {
+                                      final i = _topUpTabIndex();
+                                      if (i != null)
+                                        _tabController.animateTo(i);
+                                    }
+                                  : null,
+                              actionIsUrgent:
+                                  campaignWallet.virtualBalance < 5.0,
                             ),
                             _balanceCard(
-                              title: 'Sales Balance',
+                              title:
+                                  '${campaignWallet.activeStoreName} Sales Balance',
                               amount: walletState.salesVirtualBalance,
-                              description: 'Available for withdrawal',
+                              description:
+                                  'Only for this store · Available for withdrawal',
                               color: Colors.blue,
                               icon: Icons.account_balance_wallet,
                             ),
@@ -431,10 +440,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder:
-                              (context) => FullRepaymentReportPage(
-                                walletState: walletState,
-                              ),
+                          builder: (context) => FullRepaymentReportPage(
+                            walletState: walletState,
+                          ),
                         ),
                       );
                     },

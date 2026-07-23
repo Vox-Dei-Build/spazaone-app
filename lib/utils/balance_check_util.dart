@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:provider/provider.dart';
 
 // snackbar_messages.dart
@@ -19,18 +20,12 @@ class BalanceCheckUtil {
     // 🔹 Fetch Merchant's Balance
     final firestore = FirebaseFirestore.instance;
 
-    DocumentSnapshot walletSnapshot = await firestore
-        .collection('users')
-        .doc(merchantId)
-        .collection('wallet')
-        .doc('current')
-        .get();
-
-    double balance = (walletSnapshot['virtualBalance'] ?? 0).toDouble();
+    final balance = await _campaignBalance(firestore, merchantId);
 
     if (balance >= messageCost) {
       return true; // ✅ Enough balance, proceed
     }
+    if (!context.mounted) return false;
 
     // 🔹 Show the top-up dialog
     bool shouldProceedWithMessage = await _showTopUpDialog(context);
@@ -42,16 +37,34 @@ class BalanceCheckUtil {
       String merchantId, double cost) async {
     final firestore = FirebaseFirestore.instance;
 
-    DocumentSnapshot walletSnapshot = await firestore
+    final balance = await _campaignBalance(firestore, merchantId);
+
+    return balance >= cost;
+  }
+
+  static Future<double> _campaignBalance(
+    FirebaseFirestore firestore,
+    String storeId,
+  ) async {
+    final session = StoreSession.instance;
+    if (session.usesSharedCampaignCreditsFor(storeId)) {
+      final walletStoreId = session.campaignWalletStoreIdFor(storeId);
+      final snapshot = await firestore
+          .collection('campaignWalletBalances')
+          .doc(walletStoreId)
+          .get();
+      final value = snapshot.data()?['balance'];
+      return value is num ? value.toDouble() : 0.0;
+    }
+
+    final snapshot = await firestore
         .collection('users')
-        .doc(merchantId)
+        .doc(storeId)
         .collection('wallet')
         .doc('current')
         .get();
-
-    double balance = (walletSnapshot['virtualBalance'] ?? 0).toDouble();
-
-    return balance >= cost;
+    final value = snapshot.data()?['virtualBalance'];
+    return value is num ? value.toDouble() : 0.0;
   }
 
   static Future<bool> _showTopUpDialog(BuildContext context) async {
@@ -82,8 +95,7 @@ class BalanceCheckUtil {
                   // PAS-UX-WTC: land on Top-Up directly so the merchant
                   // doesn't have to find the tab themselves.
                   Provider.of<AppModel>(context, listen: false)
-                      .goToBilling(context,
-                          initialTab: WalletInitialTab.topUp);
+                      .goToBilling(context, initialTab: WalletInitialTab.topUp);
                 },
               ),
             ],

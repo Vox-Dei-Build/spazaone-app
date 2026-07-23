@@ -65,6 +65,36 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
               textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(labelText: 'Your name'),
             ),
+            if (StoreSession.instance.canEnrollSharedCampaignCredits) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'One campaign balance, available in every linked '
+                        'store. Sales and withdrawals stay separate.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -89,7 +119,13 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
       await FCMService().handleToken();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${store.storeName} is ready.')),
+        SnackBar(
+          content: Text(
+            store.sharedCampaignCredits
+                ? '${store.storeName} is ready with shared campaign credits.'
+                : '${store.storeName} is ready.',
+          ),
+        ),
       );
       setState(_refreshOperators);
     } catch (error) {
@@ -270,7 +306,10 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                       if (value != null) _switchStore(value);
                     },
                     title: Text(store.storeName),
-                    subtitle: Text('${store.role.name} access'),
+                    subtitle: Text(
+                      '${store.role.name} access · '
+                      '${store.sharedCampaignCredits ? 'Shared campaign credits' : 'Separate campaign credits'}',
+                    ),
                     secondary: const Icon(Icons.storefront_outlined),
                   ),
                 ),

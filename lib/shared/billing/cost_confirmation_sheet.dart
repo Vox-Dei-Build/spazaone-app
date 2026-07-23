@@ -72,13 +72,12 @@ class CostConfirmationSheet extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder:
-          (_) => CostConfirmationSheet(
-            breakdown: breakdown,
-            confirmLabel: confirmLabel,
-            skipLabel: skipLabel,
-            showSkip: showSkip,
-          ),
+      builder: (_) => CostConfirmationSheet(
+        breakdown: breakdown,
+        confirmLabel: confirmLabel,
+        skipLabel: skipLabel,
+        showSkip: showSkip,
+      ),
     );
     return result ?? CostSheetOutcome.dismissed;
   }
@@ -180,9 +179,8 @@ class CostConfirmationSheet extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.close),
                   tooltip: 'Close',
-                  onPressed:
-                      () =>
-                          Navigator.of(context).pop(CostSheetOutcome.dismissed),
+                  onPressed: () =>
+                      Navigator.of(context).pop(CostSheetOutcome.dismissed),
                 ),
               ],
             ),
@@ -292,23 +290,31 @@ class CostConfirmationSheet extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
               decoration: BoxDecoration(
-                color:
-                    canAfford
-                        ? Colors.green.withValues(alpha: 0.08)
-                        : Colors.orange.withValues(alpha: 0.10),
+                color: canAfford
+                    ? Colors.green.withValues(alpha: 0.08)
+                    : Colors.orange.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 children: [
                   _balanceRow('Current balance', CurrencyUtil.format(balance)),
+                  if (wallet.sharedCampaignCredits) ...[
+                    SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                    _balanceRow(
+                      'Paid from',
+                      'Shared campaign credits',
+                      valueBold: true,
+                    ),
+                    SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                    _balanceRow('Sending as', wallet.activeStoreName),
+                  ],
                   SizedBox(height: SizeConfig.heightMultiplier * 0.5),
                   _balanceRow(
                     'Balance after',
                     canAfford ? CurrencyUtil.format(after) : 'Top up to send',
-                    valueColor:
-                        canAfford
-                            ? Colors.green.shade800
-                            : Colors.orange.shade800,
+                    valueColor: canAfford
+                        ? Colors.green.shade800
+                        : Colors.orange.shade800,
                     valueBold: true,
                   ),
                 ],
@@ -338,9 +344,8 @@ class CostConfirmationSheet extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed:
-                          () =>
-                              Navigator.of(context).pop(CostSheetOutcome.send),
+                      onPressed: () =>
+                          Navigator.of(context).pop(CostSheetOutcome.send),
                       child: Padding(
                         padding: EdgeInsets.symmetric(
                           vertical: SizeConfig.heightMultiplier * 1.2,
@@ -354,10 +359,9 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
-                        onPressed:
-                            () => Navigator.of(
-                              context,
-                            ).pop(CostSheetOutcome.skip),
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(CostSheetOutcome.skip),
                         child: Padding(
                           padding: EdgeInsets.symmetric(
                             vertical: SizeConfig.heightMultiplier * 1.2,
@@ -396,10 +400,9 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton(
-                        onPressed:
-                            () => Navigator.of(
-                              context,
-                            ).pop(CostSheetOutcome.skip),
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(CostSheetOutcome.skip),
                         child: Padding(
                           padding: EdgeInsets.symmetric(
                             vertical: SizeConfig.heightMultiplier * 1.2,

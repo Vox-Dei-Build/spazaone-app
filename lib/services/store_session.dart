@@ -22,11 +22,22 @@ class StoreMembership {
     required this.storeId,
     required this.storeName,
     required this.role,
+    this.campaignWalletStoreId,
+    this.sharedCampaignCredits = false,
   });
 
   final String storeId;
   final String storeName;
   final StoreRole role;
+  final String? campaignWalletStoreId;
+  final bool sharedCampaignCredits;
+
+  String get resolvedCampaignWalletStoreId {
+    final configured = campaignWalletStoreId?.trim() ?? '';
+    return sharedCampaignCredits && configured.isNotEmpty
+        ? configured
+        : storeId;
+  }
 
   bool get canManageOperators =>
       role == StoreRole.owner || role == StoreRole.admin;
@@ -38,6 +49,8 @@ class StoreMembership {
           ? data['storeName'].toString().trim()
           : 'Store',
       role: _parseRole(data['role']),
+      campaignWalletStoreId: data['campaignWalletStoreId']?.toString().trim(),
+      sharedCampaignCredits: data['sharedCampaignCredits'] == true,
     );
   }
 }
@@ -59,10 +72,14 @@ class StoreSession extends ChangeNotifier {
   String? _activeStoreId;
   bool _loading = false;
   Object? _lastError;
+  bool _sharedCampaignCreditsEnrollmentAllowed = false;
 
   List<StoreMembership> get stores => List.unmodifiable(_stores);
   bool get loading => _loading;
   Object? get lastError => _lastError;
+  bool get canEnrollSharedCampaignCredits =>
+      FeatureFlags.enableSharedCampaignCreditsEnrollment &&
+      _sharedCampaignCreditsEnrollmentAllowed;
 
   String get storeId => _activeStoreId ?? _auth.currentUser?.uid.trim() ?? '';
 
@@ -76,6 +93,23 @@ class StoreSession extends ChangeNotifier {
 
   String get activeStoreName => activeStore?.storeName ?? 'My Store';
   bool get canManageOperators => activeStore?.canManageOperators ?? true;
+  bool get usesSharedCampaignCredits =>
+      activeStore?.sharedCampaignCredits ?? false;
+  String get campaignWalletStoreId =>
+      activeStore?.resolvedCampaignWalletStoreId ?? storeId;
+
+  StoreMembership? membershipForStore(String id) {
+    for (final store in _stores) {
+      if (store.storeId == id) return store;
+    }
+    return null;
+  }
+
+  String campaignWalletStoreIdFor(String id) =>
+      membershipForStore(id)?.resolvedCampaignWalletStoreId ?? id;
+
+  bool usesSharedCampaignCreditsFor(String id) =>
+      membershipForStore(id)?.sharedCampaignCredits ?? false;
 
   Future<void> bootstrap() async {
     final user = _auth.currentUser;
@@ -94,6 +128,7 @@ class StoreSession extends ChangeNotifier {
       ];
       _loading = false;
       _lastError = null;
+      _sharedCampaignCreditsEnrollmentAllowed = false;
       notifyListeners();
       return;
     }
@@ -108,6 +143,8 @@ class StoreSession extends ChangeNotifier {
           .call<Map<Object?, Object?>>()
           .timeout(const Duration(seconds: 12));
       final payload = result.data;
+      _sharedCampaignCreditsEnrollmentAllowed =
+          payload['sharedCampaignCreditsEnrollmentAllowed'] == true;
       final rawStores = payload['stores'] as List? ?? const [];
       final parsed = rawStores
           .whereType<Map>()
@@ -137,6 +174,7 @@ class StoreSession extends ChangeNotifier {
       await _saveActiveStore(user.uid, selected);
     } catch (error) {
       _lastError = error;
+      _sharedCampaignCreditsEnrollmentAllowed = false;
       _activeStoreId ??= user.uid;
       if (_stores.isEmpty) {
         _stores = [
@@ -172,6 +210,7 @@ class StoreSession extends ChangeNotifier {
     final result = await callable.call<Map<Object?, Object?>>({
       'name': name.trim(),
       'operatorName': operatorName.trim(),
+      'shareCampaignCredits': canEnrollSharedCampaignCredits,
     });
     final created = StoreMembership.fromMap(result.data);
     await bootstrap();
@@ -222,6 +261,7 @@ class StoreSession extends ChangeNotifier {
     _activeStoreId = null;
     _loading = false;
     _lastError = null;
+    _sharedCampaignCreditsEnrollmentAllowed = false;
     notifyListeners();
   }
 

@@ -6,6 +6,7 @@ import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/services/store_session.dart';
 
 class TopUpTab extends StatelessWidget {
   const TopUpTab({Key? key}) : super(key: key);
@@ -14,6 +15,7 @@ class TopUpTab extends StatelessWidget {
   Widget build(BuildContext context) {
     SizeConfig().init(context);
     final WalletViewModel walletVM = WalletViewModel();
+    final shared = StoreSession.instance.usesSharedCampaignCredits;
 
     // PAS-AUTH-03: bring Top Up into the same icon → headline →
     // subtitle → CTA → walkthrough family as the other surfaces *without*
@@ -46,7 +48,9 @@ class TopUpTab extends StatelessWidget {
           ),
           SizedBox(height: SizeConfig.heightMultiplier * 2),
           Text(
-            'Top up your wallet',
+            shared
+                ? 'Top up shared campaign credits'
+                : 'Top up campaign credits',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: SizeConfig.textMultiplier * 2.2,
@@ -56,8 +60,11 @@ class TopUpTab extends StatelessWidget {
           ),
           SizedBox(height: SizeConfig.heightMultiplier * 1),
           Text(
-            'Wallet credit pays for WhatsApp messages, SMS reminders '
-            'and promotion sends. Choose how you want to add credit.',
+            shared
+                ? 'This credit is available to all linked stores for WhatsApp, '
+                    'SMS and campaign sends. Sales balances stay separate.'
+                : 'Campaign credit pays for WhatsApp messages, SMS reminders '
+                    'and promotion sends. Choose how you want to add credit.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: SizeConfig.textMultiplier * 1.6,
