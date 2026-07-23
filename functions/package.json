@@ -9,8 +9,8 @@
     "test:rules": "node --test test/multistore_rules.test.mjs",
     "test:security": "npm run build && node --test test/paystack_security.test.mjs test/bot_store_selection.test.mjs test/request_auth.test.mjs",
     "test:bot-http": "node --test --test-concurrency=1 test/bot_http.integration.test.mjs",
-    "test:stores": "npm run build && node --test --test-concurrency=1 test/store_management.integration.test.mjs",
-    "test:migration": "node --test --test-concurrency=1 test/migration.integration.test.mjs",
+    "test:stores": "npm run build && node --test --test-concurrency=1 test/store_management.integration.test.mjs test/shared_campaign_credits.integration.test.mjs test/paystack_shared_credits.integration.test.cjs",
+    "test:migration": "node --test --test-concurrency=1 test/migration.integration.test.mjs test/shared_credits_migration.integration.test.mjs",
     "serve": "npm run build && firebase emulators:start --only functions",
     "serve-debug": "npm run build && firebase emulators:start --only functions --debug",
     "shell": "npm run build && firebase functions:shell",
@@ -18,6 +18,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "multistore:migrate": "node scripts/migrate-multistore.mjs",
+    "shared-credits:migrate": "node scripts/migrate-shared-campaign-credits.mjs",
     "multistore:smoke-rules": "node scripts/smoke-production-rules.mjs"
   },
   "engines": {

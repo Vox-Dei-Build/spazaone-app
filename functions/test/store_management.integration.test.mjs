@@ -72,6 +72,11 @@ async function clearEmulators() {
     "operators",
     "operatorInvites",
     "operatorPhoneLookup",
+    "releaseControls",
+    "campaignWalletBalances",
+    "campaignWalletAccess",
+    "campaignWalletOperations",
+    "campaignWalletReservations",
   ]) {
     await admin.firestore().recursiveDelete(db.collection(collection));
   }
@@ -121,6 +126,7 @@ test("adopts legacy owner, creates a zero-credit store, and enforces access", as
   const adopted = await bootstrap({}, ownerContext);
   assert.equal(adopted.adoptedLegacyStore, true);
   assert.equal(adopted.stores[0].storeId, "owner-a");
+  assert.equal(adopted.sharedCampaignCreditsEnrollmentAllowed, false);
   assert.deepEqual(
     (await db.doc("stores/owner-a/operators/owner-a").get()).get("fcmTokens"),
     ["owner-device"],
@@ -142,6 +148,63 @@ test("adopts legacy owner, creates a zero-credit store, and enforces access", as
   await assert.rejects(
     () => assertStoreAccess("operator-a", created.storeId),
     /do not have access/i,
+  );
+});
+
+test("shared store creation fails closed until the owner is server-allowed", async () => {
+  const create = fft.wrap(createStore);
+  await db.doc("users/owner-a/wallet/current").set({
+    virtualBalance: 15,
+    salesVirtualBalance: 120,
+  });
+
+  await assert.rejects(
+    () =>
+      create(
+        {
+          name: "Blocked Shared Shop",
+          operatorName: "Owner A",
+          shareCampaignCredits: true,
+        },
+        ownerContext,
+      ),
+    /not enabled/i,
+  );
+
+  await db.doc("releaseControls/sharedCampaignCredits").set({
+    enabled: true,
+    ownerUids: ["owner-a"],
+  });
+  const allowedBootstrap = await fft.wrap(bootstrapStoreAccess)(
+    {},
+    ownerContext,
+  );
+  assert.equal(allowedBootstrap.sharedCampaignCreditsEnrollmentAllowed, true);
+  const created = await create(
+    {
+      name: "Shared Shop",
+      operatorName: "Owner A",
+      shareCampaignCredits: true,
+    },
+    ownerContext,
+  );
+  assert.equal(created.sharedCampaignCredits, true);
+  assert.equal(created.campaignWalletStoreId, "owner-a");
+  assert.equal(
+    (await db.doc(`stores/${created.storeId}`).get()).get(
+      "campaignWalletStoreId",
+    ),
+    "owner-a",
+  );
+  assert.equal(
+    (await db.doc("campaignWalletBalances/owner-a").get()).get("balance"),
+    15,
+  );
+  assert.equal(
+    (await db.doc(`users/${created.storeId}/wallet/current`).get()).get(
+      "virtualBalance",
+    ),
+    0,
   );
 });
 

@@ -23,6 +23,13 @@ service cloud.firestore {
       );
     }
 
+    function hasCampaignWalletAccess(walletStoreId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/campaignWalletAccess/$(walletStoreId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/campaignWalletAccess/$(walletStoreId)/members/$(request.auth.uid)).data.storeIds is list &&
+        get(/databases/$(database)/documents/campaignWalletAccess/$(walletStoreId)/members/$(request.auth.uid)).data.storeIds.size() > 0;
+    }
+
     function ownsExisting(data) {
       return data.userId is string && isStoreMember(data.userId);
     }
@@ -81,6 +88,19 @@ service cloud.firestore {
     match /operators/{uid}/stores/{storeId} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow write: if false;
+    }
+
+    // Shared-store operators see only the campaign-credit projection. They
+    // never receive access to the canonical wallet document, which also holds
+    // primary-store sales, payout, and cash-advance fields.
+    match /campaignWalletBalances/{walletStoreId} {
+      allow read: if isStoreMember(walletStoreId) ||
+        hasCampaignWalletAccess(walletStoreId);
+      allow write: if false;
+    }
+
+    match /campaignWalletAccess/{walletStoreId}/{document=**} {
+      allow read, write: if false;
     }
 
     match /notifications/{storeId}/{document=**} {

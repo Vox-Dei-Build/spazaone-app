@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/campaign_credits_service.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/sms_messaging_service.dart';
@@ -287,21 +288,11 @@ class MessagingNotificationService {
   }
 
   Future<void> deductBalance(String merchantId, double cost) async {
-    DocumentReference walletRef = firestore
-        .collection('users')
-        .doc(merchantId)
-        .collection('wallet')
-        .doc('current');
-
-    await firestore.runTransaction((transaction) async {
-      DocumentSnapshot snapshot = await transaction.get(walletRef);
-      if (!snapshot.exists) return;
-
-      double currentBalance = (snapshot['virtualBalance'] ?? 0).toDouble();
-      double newBalance = currentBalance - cost;
-
-      transaction.update(walletRef, {'virtualBalance': newBalance});
-    });
+    await CampaignCreditsService().debit(
+      storeId: merchantId,
+      amount: cost,
+      reason: 'customer-notification',
+    );
   }
 
   String _generateRenderedMessage(

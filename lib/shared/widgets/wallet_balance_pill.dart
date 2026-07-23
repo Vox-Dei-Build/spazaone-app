@@ -27,7 +27,8 @@ class WalletBalancePill extends StatelessWidget {
     return Semantics(
       button: true,
       label:
-          'Billing, app balance ${CurrencyUtil.format(wallet.virtualBalance)}',
+          'Billing, ${wallet.sharedCampaignCredits ? 'shared campaign credits' : 'campaign credits'} '
+          '${CurrencyUtil.format(wallet.virtualBalance)}',
       excludeSemantics: true,
       child: Stack(
         clipBehavior: Clip.none,
@@ -40,13 +41,11 @@ class WalletBalancePill extends StatelessWidget {
               // tint; otherwise open the Account tab first for billing setup.
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder:
-                      (_) => WalletPage(
-                        initialTab:
-                            isLow
-                                ? WalletInitialTab.topUp
-                                : WalletInitialTab.account,
-                      ),
+                  builder: (_) => WalletPage(
+                    initialTab: isLow
+                        ? WalletInitialTab.topUp
+                        : WalletInitialTab.account,
+                  ),
                 ),
               );
             },
@@ -54,6 +53,7 @@ class WalletBalancePill extends StatelessWidget {
               isLoading: wallet.isLoading,
               balance: wallet.virtualBalance,
               isLow: isLow,
+              isShared: wallet.sharedCampaignCredits,
             ),
           ),
           if (wallet.salesVirtualBalance > 0)
@@ -84,18 +84,19 @@ class _PillBody extends StatelessWidget {
     required this.isLoading,
     required this.balance,
     required this.isLow,
+    required this.isShared,
   });
 
   final bool isLoading;
   final double balance;
   final bool isLow;
+  final bool isShared;
 
   @override
   Widget build(BuildContext context) {
-    final bg =
-        isLow
-            ? Colors.orange.withOpacity(0.12)
-            : Colors.black.withOpacity(0.05);
+    final bg = isLow
+        ? Colors.orange.withOpacity(0.12)
+        : Colors.black.withOpacity(0.05);
     final border = isLow ? Colors.orange : Colors.black26;
     final fg = isLow ? Colors.orange.shade800 : Colors.black87;
 
@@ -120,46 +121,54 @@ class _PillBody extends StatelessWidget {
           SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
           isLoading
               ? SizedBox(
-                width: SizeConfig.imageSizeMultiplier * 8,
-                height: SizeConfig.textMultiplier * 1.6,
-                child: const _Shimmer(),
-              )
+                  width: SizeConfig.imageSizeMultiplier * 8,
+                  height: SizeConfig.textMultiplier * 1.6,
+                  child: const _Shimmer(),
+                )
               : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    CurrencyUtil.format(balance),
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.7,
-                      fontWeight: FontWeight.w600,
-                      color: fg,
-                    ),
-                  ),
-                  // PAS-UX-WTC: inline "Top up" affordance so the
-                  // low-balance state isn't just a colour change.
-                  if (isLow) ...[
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: SizeConfig.imageSizeMultiplier * 1.5,
-                        vertical: SizeConfig.heightMultiplier * 0.2,
-                      ),
-                      decoration: BoxDecoration(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      CurrencyUtil.format(balance),
+                      style: TextStyle(
+                        fontSize: SizeConfig.textMultiplier * 1.7,
+                        fontWeight: FontWeight.w600,
                         color: fg,
-                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        'Top up',
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.2,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                    ),
+                    if (isShared) ...[
+                      SizedBox(width: SizeConfig.imageSizeMultiplier),
+                      Icon(
+                        Icons.link_rounded,
+                        size: SizeConfig.imageSizeMultiplier * 3.2,
+                        color: fg,
+                      ),
+                    ],
+                    // PAS-UX-WTC: inline "Top up" affordance so the
+                    // low-balance state isn't just a colour change.
+                    if (isLow) ...[
+                      SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: SizeConfig.imageSizeMultiplier * 1.5,
+                          vertical: SizeConfig.heightMultiplier * 0.2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: fg,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Top up',
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 1.2,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
-              ),
+                ),
         ],
       ),
     );

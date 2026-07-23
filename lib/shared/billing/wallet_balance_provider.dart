@@ -7,8 +7,10 @@ import 'package:flutter/foundation.dart';
 
 /// A lightweight global provider for the merchant's spendable wallet balance.
 ///
-/// Subscribes to `users/{uid}/wallet/current` and exposes `virtualBalance`
-/// (and the green "sales proceeds" indicator) as observable state. This lets
+/// Subscribes to the selected store's wallet and exposes `virtualBalance`
+/// (and the green "sales proceeds" indicator) as observable state. Enrolled
+/// stores read campaign credits from a balance-only shared projection while
+/// sales proceeds remain bound to the active store. This lets
 /// every screen — page header pill, affordability footer, cost confirmation
 /// sheet — read live balance without re-rolling its own Firestore stream.
 ///
@@ -28,9 +30,14 @@ class WalletBalanceProvider extends ChangeNotifier {
   final FirebaseFirestore _firestore;
 
   StreamSubscription<User?>? _authSub;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _walletSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _storeWalletSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _campaignSub;
   User? _currentUser;
   String _boundStoreId = '';
+  String _boundCampaignWalletId = '';
+  bool _boundShared = false;
+  bool _storeLoaded = false;
+  bool _campaignLoaded = false;
 
   double _virtualBalance = 0.0;
   double _salesVirtualBalance = 0.0;
@@ -49,6 +56,9 @@ class WalletBalanceProvider extends ChangeNotifier {
   /// True if the wallet stream has errored. Falls back to last known values.
   bool get hasError => _hasError;
 
+  bool get sharedCampaignCredits => _boundShared;
+  String get activeStoreName => StoreSession.instance.activeStoreName;
+
   /// Convenience: whether the user can afford a given action cost.
   bool canAfford(double cost) => _virtualBalance >= cost;
 
@@ -59,18 +69,25 @@ class WalletBalanceProvider extends ChangeNotifier {
 
   void _onStoreChanged() {
     if (_currentUser != null &&
-        StoreSession.instance.storeId != _boundStoreId) {
+        (StoreSession.instance.storeId != _boundStoreId ||
+            StoreSession.instance.campaignWalletStoreId !=
+                _boundCampaignWalletId ||
+            StoreSession.instance.usesSharedCampaignCredits != _boundShared)) {
       _subscribeToActiveStore();
     }
   }
 
   void _subscribeToActiveStore() {
-    _walletSub?.cancel();
-    _walletSub = null;
+    _storeWalletSub?.cancel();
+    _campaignSub?.cancel();
+    _storeWalletSub = null;
+    _campaignSub = null;
     final user = _currentUser;
 
     if (user == null) {
       _boundStoreId = '';
+      _boundCampaignWalletId = '';
+      _boundShared = false;
       _virtualBalance = 0.0;
       _salesVirtualBalance = 0.0;
       _isLoading = false;
@@ -84,10 +101,16 @@ class WalletBalanceProvider extends ChangeNotifier {
     notifyListeners();
 
     final storeId = StoreSession.instance.storeId;
+    final campaignWalletId = StoreSession.instance.campaignWalletStoreId;
+    final shared = StoreSession.instance.usesSharedCampaignCredits;
     _boundStoreId = storeId;
+    _boundCampaignWalletId = campaignWalletId;
+    _boundShared = shared;
     _virtualBalance = 0.0;
     _salesVirtualBalance = 0.0;
-    _walletSub = _firestore
+    _storeLoaded = false;
+    _campaignLoaded = !shared;
+    _storeWalletSub = _firestore
         .collection('users')
         .doc(storeId)
         .collection('wallet')
@@ -98,9 +121,12 @@ class WalletBalanceProvider extends ChangeNotifier {
         final data = snap.data();
         final vb = data?['virtualBalance'];
         final sb = data?['salesVirtualBalance'];
-        _virtualBalance = vb is num ? vb.toDouble() : 0.0;
+        if (!shared) {
+          _virtualBalance = vb is num ? vb.toDouble() : 0.0;
+        }
         _salesVirtualBalance = sb is num ? sb.toDouble() : 0.0;
-        _isLoading = false;
+        _storeLoaded = true;
+        _isLoading = !(_storeLoaded && _campaignLoaded);
         _hasError = false;
         notifyListeners();
       },
@@ -110,13 +136,35 @@ class WalletBalanceProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+    if (shared) {
+      _campaignSub = _firestore
+          .collection('campaignWalletBalances')
+          .doc(campaignWalletId)
+          .snapshots()
+          .listen(
+        (snap) {
+          final balance = snap.data()?['balance'];
+          _virtualBalance = balance is num ? balance.toDouble() : 0.0;
+          _campaignLoaded = true;
+          _isLoading = !(_storeLoaded && _campaignLoaded);
+          _hasError = false;
+          notifyListeners();
+        },
+        onError: (Object _) {
+          _hasError = true;
+          _isLoading = false;
+          notifyListeners();
+        },
+      );
+    }
   }
 
   @override
   void dispose() {
     StoreSession.instance.removeListener(_onStoreChanged);
     _authSub?.cancel();
-    _walletSub?.cancel();
+    _storeWalletSub?.cancel();
+    _campaignSub?.cancel();
     super.dispose();
   }
 }

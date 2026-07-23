@@ -103,6 +103,9 @@ class RemoteConfigService {
               dotenv.env['FEATURE_OTP_RESEND_IN_DIALOG_ENABLED'] == 'true',
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED':
               dotenv.env['FEATURE_MULTI_STORE_OPERATORS_ENABLED'] == 'true',
+          'FEATURE_SHARED_CAMPAIGN_CREDITS_ENROLLMENT_ENABLED': dotenv
+                  .env['FEATURE_SHARED_CAMPAIGN_CREDITS_ENROLLMENT_ENABLED'] ==
+              'true',
         });
       } catch (e) {
         debugPrint("Failed to apply Remote Config defaults: $e");

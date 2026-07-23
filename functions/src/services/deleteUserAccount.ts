@@ -91,6 +91,19 @@ export const deleteUserAccount = functions
     ) {
       ownedStoreIds.add(uid);
     }
+    const sharedWalletIds = new Set<string>();
+    for (const storeId of ownedStoreIds) {
+      const store = await db.doc(`stores/${storeId}`).get();
+      const walletStoreId = String(
+        store.data()?.campaignWalletStoreId ?? "",
+      ).trim();
+      if (
+        store.data()?.sharedCampaignCreditsEnabled === true &&
+        walletStoreId
+      ) {
+        sharedWalletIds.add(walletStoreId);
+      }
+    }
 
     // Do all ownership checks before the first destructive write. Deleting an
     // owner while another active operator depends on the store would orphan
@@ -152,6 +165,25 @@ export const deleteUserAccount = functions
         const batch = db.batch();
         batch.delete(membership.ref);
         batch.delete(storeMembershipRef);
+        const store = await db.doc(`stores/${membership.id}`).get();
+        const campaignWalletStoreId = String(
+          store.data()?.campaignWalletStoreId ?? "",
+        ).trim();
+        if (
+          store.data()?.sharedCampaignCreditsEnabled === true &&
+          campaignWalletStoreId
+        ) {
+          batch.set(
+            db.doc(
+              `campaignWalletAccess/${campaignWalletStoreId}/members/${uid}`,
+            ),
+            {
+              storeIds: FieldValue.arrayRemove(membership.id),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
         if (tokens.length) {
           const legacyStoreRef = db.doc(`users/${membership.id}`);
           const legacyStore = await legacyStoreRef.get();
@@ -174,6 +206,21 @@ export const deleteUserAccount = functions
     const operatorRef = db.doc(`operators/${uid}`);
     if ((await operatorRef.get()).exists) {
       await admin.firestore().recursiveDelete(operatorRef);
+    }
+    for (const walletStoreId of sharedWalletIds) {
+      if (!ownedStoreIds.has(walletStoreId)) continue;
+      await deleteCollectionWhere(
+        "campaignWalletReservations",
+        "walletStoreId",
+        walletStoreId,
+      );
+      for (const path of [
+        `campaignWalletAccess/${walletStoreId}`,
+        `campaignWalletOperations/${walletStoreId}`,
+      ]) {
+        await admin.firestore().recursiveDelete(db.doc(path));
+      }
+      await db.doc(`campaignWalletBalances/${walletStoreId}`).delete();
     }
 
     const authUser = await admin.auth().getUser(uid);
@@ -209,9 +256,30 @@ function hashPhone(phone: string): string {
 
 async function deleteStoreMetadata(storeId: string): Promise<void> {
   const storeRef = db.doc(`stores/${storeId}`);
+  const store = await storeRef.get();
+  const campaignWalletStoreId = String(
+    store.data()?.campaignWalletStoreId ?? "",
+  ).trim();
   const members = await storeRef.collection("operators").get();
   for (const member of members.docs) {
-    await db.doc(`operators/${member.id}/stores/${storeId}`).delete();
+    const batch = db.batch();
+    batch.delete(db.doc(`operators/${member.id}/stores/${storeId}`));
+    if (
+      store.data()?.sharedCampaignCreditsEnabled === true &&
+      campaignWalletStoreId
+    ) {
+      batch.set(
+        db.doc(
+          `campaignWalletAccess/${campaignWalletStoreId}/members/${member.id}`,
+        ),
+        {
+          storeIds: FieldValue.arrayRemove(storeId),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+    await batch.commit();
   }
   if ((await storeRef.get()).exists) {
     await admin.firestore().recursiveDelete(storeRef);

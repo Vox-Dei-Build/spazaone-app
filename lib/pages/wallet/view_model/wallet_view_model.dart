@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/config/remote_config.dart';
@@ -415,50 +416,31 @@ class WalletViewModel extends ChangeNotifier {
   /// 🔥 Transfer money from Sales Balance to Virtual Balance
   Future<void> transferToVirtualBalance(
       BuildContext context, double amount) async {
-    final walletRef = firestore
-        .collection('users')
-        .doc(userId)
-        .collection('wallet')
-        .doc('current');
-
-    await firestore.runTransaction((transaction) async {
-      final snap = await transaction.get(walletRef);
-      if (!snap.exists) {
-        showSnackbar(context, 'Wallet not found.', Colors.red);
-        return;
-      }
-
-      final data = snap.data();
-
-      final double currentVirtual = (data?['virtualBalance'] ?? 0.0).toDouble();
-
-      // 👇 Prefer the new field; fall back to legacy if needed
-      final double currentSales =
-          (data?['salesVirtualBalance'] ?? data?['cashAdvanceBalance'] ?? 0.0)
-              .toDouble();
-
-      if (currentSales < amount) {
-        showSnackbar(context, '❌ Insufficient Sales Balance.', Colors.red);
-        return;
-      }
-
-      final double newVirtual = currentVirtual + amount;
-      final double newSales = currentSales - amount;
-
-      // ✅ Write to the new field
-      final update = <String, dynamic>{
-        'virtualBalance': newVirtual,
-        'salesVirtualBalance': newSales,
-      };
-
-      transaction.update(walletRef, update);
-
+    try {
+      final operationId = firestore.collection('_operationIds').doc().id;
+      await FirebaseFunctions.instance
+          .httpsCallable('transferSalesToCampaignCredits')
+          .call({
+        'storeId': userId,
+        'amount': amount,
+        'operationId': operationId,
+      });
+      if (!context.mounted) return;
       showSnackbar(
         context,
-        '✅ R$amount moved to Virtual Balance.',
+        'R$amount moved to campaign credits.',
         Colors.green,
       );
-    });
+    } on FirebaseFunctionsException catch (error) {
+      if (!context.mounted) return;
+      final message = error.message == 'INSUFFICIENT_SALES_BALANCE'
+          ? 'Insufficient sales balance.'
+          : error.message ?? 'Could not move funds.';
+      showSnackbar(context, message, Colors.red);
+    } catch (_) {
+      if (!context.mounted) return;
+      showSnackbar(context, 'Could not move funds.', Colors.red);
+    }
   }
 
   /// Open the Paystack Form screen

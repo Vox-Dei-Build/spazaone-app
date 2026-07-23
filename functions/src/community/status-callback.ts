@@ -1,5 +1,9 @@
 import { functions, db } from "../config/main";
 import { FieldValue } from "firebase-admin/firestore";
+import {
+  campaignWalletContextFromCharge,
+  mutateCampaignCredits,
+} from "../wallet/campaignCredits";
 
 /**
  * Cloud Function to handle incoming message status updates from Twilio.
@@ -125,17 +129,31 @@ export const messageStatusCallback = functions.https.onRequest(
           if (!chargeSnap.exists || charge?.refunded === true) return;
 
           const merchantId = String(charge?.merchantId ?? "");
+          const walletStoreId = String(charge?.walletStoreId ?? merchantId);
           const cost = Number(charge?.cost ?? 0);
-          if (!merchantId || !Number.isFinite(cost) || cost <= 0) return;
+          if (
+            !merchantId ||
+            !walletStoreId ||
+            !Number.isFinite(cost) ||
+            cost <= 0
+          ) {
+            return;
+          }
 
-          const walletRef = db
-            .collection("users")
-            .doc(merchantId)
-            .collection("wallet")
-            .doc("current");
-          const walletSnap = await tx.get(walletRef);
-          const balance = Number(walletSnap.data()?.virtualBalance ?? 0);
-          tx.update(walletRef, { virtualBalance: balance + cost });
+          const walletContext = campaignWalletContextFromCharge(
+            merchantId,
+            walletStoreId,
+            charge?.sharedCampaignCredits === true,
+          );
+          await mutateCampaignCredits(tx, walletContext, cost, {
+            id: `refund:${messageSid}`,
+            kind: "promotion-refund",
+            metadata: {
+              messageSid,
+              status: messageStatus,
+              providerCode,
+            },
+          });
           tx.set(
             chargeRef,
             {
