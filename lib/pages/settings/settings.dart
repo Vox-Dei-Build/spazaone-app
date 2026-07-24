@@ -41,18 +41,27 @@ class SettingsPage extends StatelessWidget {
                   Expanded(
                     child: ListView(
                       children: [
-                        if (FeatureFlags.enableMultiStoreOperators)
-                          SettingTile(
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const StoreManagementPage(),
+                        ValueListenableBuilder<bool>(
+                          valueListenable:
+                              FeatureFlags.multiStoreOperatorsEnabled,
+                          builder: (context, enabled, _) {
+                            if (!enabled) {
+                              return const SizedBox.shrink();
+                            }
+
+                            return SettingTile(
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const StoreManagementPage(),
+                                ),
                               ),
-                            ),
-                            icon: Icons.storefront_outlined,
-                            title: 'Stores & Operators',
-                            subTitle:
-                                'Current: ${context.watch<StoreSession>().activeStoreName}',
-                          ),
+                              icon: Icons.storefront_outlined,
+                              title: 'Stores & Operators',
+                              subTitle:
+                                  'Current: ${context.watch<StoreSession>().activeStoreName}',
+                            );
+                          },
+                        ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(
                             context,
