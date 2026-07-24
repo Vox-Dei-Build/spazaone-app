@@ -28,6 +28,14 @@ type MembershipWrite = {
   source: "legacy-adoption" | "direct-invite" | "claimed-invite" | "created";
 };
 
+type MembershipWriter = {
+  set(
+    documentRef: FirebaseFirestore.DocumentReference,
+    data: FirebaseFirestore.DocumentData,
+    options: FirebaseFirestore.SetOptions,
+  ): unknown;
+};
+
 function requireAuth(context: functions.https.CallableContext) {
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -60,7 +68,7 @@ function phoneLast4(phone: string | undefined): string {
 }
 
 function setMembership(
-  batch: FirebaseFirestore.WriteBatch,
+  batch: MembershipWriter,
   value: MembershipWrite,
 ): void {
   const now = FieldValue.serverTimestamp();
@@ -334,131 +342,174 @@ export const createStore = functions.https.onCall(async (data, context) => {
     data?.operatorName ?? auth.token.name ?? "Owner",
     "Operator name",
   );
+  const supportsSharedCampaignCredits =
+    data?.campaignCreditsMode === "shared-v1" ||
+    typeof data?.shareCampaignCredits === "boolean";
   const phone = formatPhoneNumber(String(auth.token.phone_number ?? ""));
   const storeRef = db.collection("stores").doc();
   const storeId = storeRef.id;
   const now = FieldValue.serverTimestamp();
-  const batch = db.batch();
-  const shareCampaignCredits = data?.shareCampaignCredits === true;
-  if (
-    shareCampaignCredits &&
-    !(await isSharedCampaignCreditsEnrollmentAllowed(auth.uid))
-  ) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Shared campaign credits are not enabled for this account yet.",
-    );
-  }
   const ownedStores = existing.filter(
     (membership) => membership.role === "owner",
   );
+
+  // A user's first owned store remains isolated. Every additional store they
+  // own must share the same campaign/top-up wallet. This is a server
+  // invariant, not a Remote Config enrollment choice: otherwise an old flag
+  // value can silently create an empty secondary wallet and block sends.
+  if (ownedStores.length > 0 && !supportsSharedCampaignCredits) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Update SpazaOne before adding another store.",
+    );
+  }
+
+  const sharedOwnedStores = ownedStores.filter(
+    (membership) => membership.sharedCampaignCredits,
+  );
+  const unsharedOwnedStores = ownedStores.filter(
+    (membership) => !membership.sharedCampaignCredits,
+  );
+  const sharedWalletIds = new Set(
+    sharedOwnedStores.map((membership) => membership.campaignWalletStoreId),
+  );
+  if (
+    sharedWalletIds.size > 1 ||
+    (sharedOwnedStores.length > 0 && unsharedOwnedStores.length > 0) ||
+    (sharedOwnedStores.length === 0 && unsharedOwnedStores.length > 1)
+  ) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Existing stores need a one-time campaign credit migration before another store can be added.",
+    );
+  }
+
   const canonicalMembership =
-    ownedStores.find((membership) => membership.sharedCampaignCredits) ??
-    ownedStores.find((membership) => membership.storeId === auth.uid) ??
-    ownedStores[0];
-  const sharedCampaignCredits =
-    shareCampaignCredits && canonicalMembership != null;
+    sharedOwnedStores[0] ?? unsharedOwnedStores[0];
+  const sharedCampaignCredits = canonicalMembership != null;
   const campaignWalletStoreId = sharedCampaignCredits
     ? canonicalMembership.campaignWalletStoreId
     : storeId;
 
-  let campaignBalance = 0;
-  if (sharedCampaignCredits) {
-    const canonicalWallet = await db
-      .doc(`users/${campaignWalletStoreId}/wallet/current`)
-      .get();
-    if (!canonicalWallet.exists) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "The existing campaign credit wallet is unavailable.",
+  await db.runTransaction(async (transaction) => {
+    let campaignBalance = 0;
+    if (sharedCampaignCredits) {
+      const [canonicalStore, canonicalWallet] = await Promise.all([
+        transaction.get(db.doc(`stores/${campaignWalletStoreId}`)),
+        transaction.get(
+          db.doc(`users/${campaignWalletStoreId}/wallet/current`),
+        ),
+      ]);
+      if (
+        !canonicalStore.exists ||
+        String(canonicalStore.data()?.ownerUid ?? "") !== auth.uid ||
+        !canonicalWallet.exists
+      ) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "The existing campaign credit wallet is unavailable.",
+        );
+      }
+      const configuredWalletStoreId = String(
+        canonicalStore.data()?.campaignWalletStoreId ?? campaignWalletStoreId,
       );
-    }
-    campaignBalance = Number(canonicalWallet.data()?.virtualBalance ?? 0);
-    if (!Number.isFinite(campaignBalance)) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "The existing campaign credit balance is invalid.",
+      if (
+        canonicalStore.data()?.sharedCampaignCreditsEnabled === true &&
+        configuredWalletStoreId !== campaignWalletStoreId
+      ) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Existing campaign credit wallet configuration is inconsistent.",
+        );
+      }
+      campaignBalance = Number(
+        canonicalWallet.data()?.virtualBalance ?? 0,
       );
+      if (!Number.isFinite(campaignBalance) || campaignBalance < 0) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "The existing campaign credit balance is invalid.",
+        );
+      }
     }
-  }
 
-  batch.set(storeRef, {
-    name: storeName,
-    ownerUid: auth.uid,
-    status: "active",
-    legacyUserPath: `users/${storeId}`,
-    schemaVersion: 2,
-    createdAt: now,
-    ...(sharedCampaignCredits
-      ? {
+    transaction.set(storeRef, {
+      name: storeName,
+      ownerUid: auth.uid,
+      status: "active",
+      legacyUserPath: `users/${storeId}`,
+      schemaVersion: 2,
+      createdAt: now,
+      ...(sharedCampaignCredits
+        ? {
+            sharedCampaignCreditsEnabled: true,
+            campaignWalletStoreId,
+            sharedCampaignCreditsEnrolledAt: now,
+            sharedCampaignCreditsSource: "automatic-store-creation",
+          }
+        : {}),
+    });
+    if (sharedCampaignCredits) {
+      transaction.set(
+        db.doc(`stores/${campaignWalletStoreId}`),
+        {
           sharedCampaignCreditsEnabled: true,
           campaignWalletStoreId,
           sharedCampaignCreditsEnrolledAt: now,
-          sharedCampaignCreditsSource: "store-creation",
-        }
-      : {}),
+          sharedCampaignCreditsSource: "automatic-store-creation",
+        },
+        { merge: true },
+      );
+      transaction.set(
+        db.doc(`campaignWalletBalances/${campaignWalletStoreId}`),
+        {
+          walletStoreId: campaignWalletStoreId,
+          balance: campaignBalance,
+          shared: true,
+          sourceStoreId: storeId,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+    }
+    transaction.set(db.doc(`users/${storeId}`), {
+      name: operatorName,
+      shopName: storeName,
+      mobileNumber: phone,
+      mobileNumberNormalized: phone,
+      ownerUid: auth.uid,
+      multiStoreSchemaVersion: 2,
+      referralCount: 0,
+      createdAt: now,
+    });
+    transaction.set(db.doc(`users/${storeId}/wallet/current`), {
+      // The signup credit belongs to an account, not every store it creates.
+      virtualBalance: 0.0,
+      cashAdvanceBalance: 0.0,
+      salesVirtualBalance: 0.0,
+      cashAdvanceWithdrawn: 0.0,
+      cashAdvanceDueDate: null,
+      penaltyFee: 0.0,
+      accountSuspended: false,
+      totalCashAdvanceGiven: 0.0,
+      totalCashAdvanceRepaid: 0.0,
+      repaymentHistory: [],
+    });
+    setMembership(transaction, {
+      storeId,
+      uid: auth.uid,
+      role: "owner",
+      storeName,
+      displayName: operatorName,
+      phoneLast4: phoneLast4(phone),
+      phoneHash: phone ? phoneHash(phone) : undefined,
+      campaignWalletStoreId: sharedCampaignCredits
+        ? campaignWalletStoreId
+        : undefined,
+      sharedCampaignCredits,
+      source: "created",
+    });
   });
-  if (sharedCampaignCredits) {
-    batch.set(
-      db.doc(`stores/${campaignWalletStoreId}`),
-      {
-        sharedCampaignCreditsEnabled: true,
-        campaignWalletStoreId,
-        sharedCampaignCreditsEnrolledAt: now,
-        sharedCampaignCreditsSource: "store-creation",
-      },
-      { merge: true },
-    );
-    batch.set(
-      db.doc(`campaignWalletBalances/${campaignWalletStoreId}`),
-      {
-        walletStoreId: campaignWalletStoreId,
-        balance: campaignBalance,
-        shared: true,
-        sourceStoreId: storeId,
-        updatedAt: now,
-      },
-      { merge: true },
-    );
-  }
-  batch.set(db.doc(`users/${storeId}`), {
-    name: operatorName,
-    shopName: storeName,
-    mobileNumber: phone,
-    mobileNumberNormalized: phone,
-    ownerUid: auth.uid,
-    multiStoreSchemaVersion: 2,
-    referralCount: 0,
-    createdAt: now,
-  });
-  batch.set(db.doc(`users/${storeId}/wallet/current`), {
-    // The signup credit belongs to an account, not every store it creates.
-    virtualBalance: 0.0,
-    cashAdvanceBalance: 0.0,
-    salesVirtualBalance: 0.0,
-    cashAdvanceWithdrawn: 0.0,
-    cashAdvanceDueDate: null,
-    penaltyFee: 0.0,
-    accountSuspended: false,
-    totalCashAdvanceGiven: 0.0,
-    totalCashAdvanceRepaid: 0.0,
-    repaymentHistory: [],
-  });
-  setMembership(batch, {
-    storeId,
-    uid: auth.uid,
-    role: "owner",
-    storeName,
-    displayName: operatorName,
-    phoneLast4: phoneLast4(phone),
-    phoneHash: phone ? phoneHash(phone) : undefined,
-    campaignWalletStoreId: sharedCampaignCredits
-      ? campaignWalletStoreId
-      : undefined,
-    sharedCampaignCredits,
-    source: "created",
-  });
-  await batch.commit();
   return {
     storeId,
     storeName,

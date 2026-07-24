@@ -210,7 +210,12 @@ class StoreSession extends ChangeNotifier {
     final result = await callable.call<Map<Object?, Object?>>({
       'name': name.trim(),
       'operatorName': operatorName.trim(),
-      'shareCampaignCredits': canEnrollSharedCampaignCredits,
+      // The explicit capability lets the backend reject clients that predate
+      // shared wallet support instead of creating an unusable isolated store.
+      'campaignCreditsMode': 'shared-v1',
+      // Keep this during the staged backend rollout. The previous callable
+      // understands this field and fails closed when enrollment is disabled.
+      'shareCampaignCredits': true,
     });
     final created = StoreMembership.fromMap(result.data);
     await bootstrap();
