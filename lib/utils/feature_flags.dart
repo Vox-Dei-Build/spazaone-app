@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
 
 class FeatureFlags {
@@ -16,10 +19,13 @@ class FeatureFlags {
   /// Multi-store/operator release switch. Default false supports a controlled
   /// pilot and gives operations an immediate client-side rollback lever.
   static bool enableMultiStoreOperators = false;
+  static final ValueNotifier<bool> multiStoreOperatorsEnabled =
+      ValueNotifier<bool>(false);
   static const bool _forceMultiStoreForEmulator = bool.fromEnvironment(
     'ENABLE_MULTI_STORE_OPERATORS',
     defaultValue: false,
   );
+  static StreamSubscription<Set<String>>? _remoteConfigSubscription;
 
   /// Allows newly created stores to join the owner's campaign-credit wallet.
   ///
@@ -63,7 +69,23 @@ class FeatureFlags {
 
   static Future<void> loadFlags() async {
     final rc = await RemoteConfigService.getInstance();
+    _applyFlags(rc);
 
+    // The Remote Config SDK fetches real-time updates after app startup.
+    // Re-apply the activated values so feature-gated UI updates immediately
+    // instead of keeping the launch-time static value until the next process
+    // restart.
+    _remoteConfigSubscription ??= rc.activatedUpdates.listen((_) {
+      _applyFlags(rc);
+    });
+  }
+
+  @visibleForTesting
+  static void applyFlagsForTesting(RemoteConfigBoolReader rc) {
+    _applyFlags(rc);
+  }
+
+  static void _applyFlags(RemoteConfigBoolReader rc) {
     enableTopUp = rc.getBool('FEATURE_TOP_UP_ENABLED', defaultValue: true);
     enableTransactionHistory = rc.getBool(
       'FEATURE_TRANSACTION_HISTORY_ENABLED',
@@ -104,6 +126,7 @@ class FeatureFlags {
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED',
           defaultValue: false,
         );
+    multiStoreOperatorsEnabled.value = enableMultiStoreOperators;
     enableSharedCampaignCreditsEnrollment = rc.getBool(
       'FEATURE_SHARED_CAMPAIGN_CREDITS_ENROLLMENT_ENABLED',
       defaultValue: false,

@@ -1,12 +1,27 @@
+import 'dart:async';
+
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-class RemoteConfigService {
+abstract interface class RemoteConfigBoolReader {
+  bool getBool(String key, {bool defaultValue = false});
+}
+
+class RemoteConfigService implements RemoteConfigBoolReader {
   static RemoteConfigService? _instance;
   final FirebaseRemoteConfig _remoteConfig;
+  final StreamController<Set<String>> _activatedUpdates =
+      StreamController<Set<String>>.broadcast();
 
   RemoteConfigService._(this._remoteConfig);
+
+  /// Parameter keys whose newly fetched values have been activated.
+  ///
+  /// Firebase's real-time listener fetches and activates updates after app
+  /// startup, so consumers must re-read their cached feature flags when this
+  /// stream emits instead of waiting for another cold launch.
+  Stream<Set<String>> get activatedUpdates => _activatedUpdates.stream;
 
   static Future<RemoteConfigService> getInstance() async {
     if (_instance == null) {
@@ -126,6 +141,8 @@ class RemoteConfigService {
           (event) async {
             try {
               await _remoteConfig.activate();
+              _activatedUpdates
+                  .add(Set<String>.unmodifiable(event.updatedKeys));
               debugPrint("Remote config updated and activated.");
             } catch (e) {
               debugPrint("Failed to activate Remote Config update: $e");
@@ -151,6 +168,7 @@ class RemoteConfigService {
         : _remoteConfig.getDouble(key);
   }
 
+  @override
   bool getBool(String key, {bool defaultValue = false}) {
     final value = _remoteConfig.getValue(key);
     if (value.source == ValueSource.valueStatic) {
