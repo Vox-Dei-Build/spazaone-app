@@ -65,6 +65,18 @@ const deletingOperatorContext = {
   },
 };
 
+const splitOwnerContext = {
+  auth: {
+    uid: "owner-split",
+    token: {
+      name: "Split Owner",
+      phone_number: "+27820000006",
+      auth_time: Math.floor(Date.now() / 1000),
+      firebase: { sign_in_provider: "phone" },
+    },
+  },
+};
+
 async function clearEmulators() {
   for (const collection of [
     "users",
@@ -104,6 +116,11 @@ before(async () => {
       phoneNumber: "+27820000005",
       displayName: "Deleting Operator",
     }),
+    admin.auth().createUser({
+      uid: "owner-split",
+      phoneNumber: "+27820000006",
+      displayName: "Split Owner",
+    }),
     db.doc("users/owner-a").set({
       name: "Owner A",
       shopName: "Legacy Alpha",
@@ -119,7 +136,7 @@ after(async () => {
   fft.cleanup();
 });
 
-test("adopts legacy owner, creates a zero-credit store, and enforces access", async () => {
+test("adopts a legacy owner and automatically shares credits with an added store", async () => {
   const bootstrap = fft.wrap(bootstrapStoreAccess);
   const create = fft.wrap(createStore);
 
@@ -132,16 +149,37 @@ test("adopts legacy owner, creates a zero-credit store, and enforces access", as
     ["owner-device"],
   );
 
+  await db.doc("users/owner-a/wallet/current").set({
+    virtualBalance: 15,
+    salesVirtualBalance: 120,
+  });
   const created = await create(
-    { name: "Second Shop", operatorName: "Owner A" },
+    {
+      name: "Second Shop",
+      operatorName: "Owner A",
+      campaignCreditsMode: "shared-v1",
+      shareCampaignCredits: true,
+    },
     ownerContext,
   );
   assert.notEqual(created.storeId, "owner-a");
+  assert.equal(created.sharedCampaignCredits, true);
+  assert.equal(created.campaignWalletStoreId, "owner-a");
   assert.equal(
     (await db.doc(`users/${created.storeId}/wallet/current`).get()).get(
       "virtualBalance",
     ),
     0,
+  );
+  assert.equal(
+    (await db.doc("stores/owner-a").get()).get(
+      "sharedCampaignCreditsEnabled",
+    ),
+    true,
+  );
+  assert.equal(
+    (await db.doc("campaignWalletBalances/owner-a").get()).get("balance"),
+    15,
   );
 
   await assertStoreAccess("owner-a", created.storeId);
@@ -151,40 +189,27 @@ test("adopts legacy owner, creates a zero-credit store, and enforces access", as
   );
 });
 
-test("shared store creation fails closed until the owner is server-allowed", async () => {
+test("old clients are blocked and capable clients cannot opt out of the shared wallet", async () => {
   const create = fft.wrap(createStore);
-  await db.doc("users/owner-a/wallet/current").set({
-    virtualBalance: 15,
-    salesVirtualBalance: 120,
-  });
 
   await assert.rejects(
     () =>
       create(
         {
-          name: "Blocked Shared Shop",
+          name: "Outdated Client Shop",
           operatorName: "Owner A",
-          shareCampaignCredits: true,
         },
         ownerContext,
       ),
-    /not enabled/i,
+    /update SpazaOne/i,
   );
 
-  await db.doc("releaseControls/sharedCampaignCredits").set({
-    enabled: true,
-    ownerUids: ["owner-a"],
-  });
-  const allowedBootstrap = await fft.wrap(bootstrapStoreAccess)(
-    {},
-    ownerContext,
-  );
-  assert.equal(allowedBootstrap.sharedCampaignCreditsEnrollmentAllowed, true);
   const created = await create(
     {
-      name: "Shared Shop",
+      name: "Always Shared Shop",
       operatorName: "Owner A",
-      shareCampaignCredits: true,
+      campaignCreditsMode: "shared-v1",
+      shareCampaignCredits: false,
     },
     ownerContext,
   );
@@ -205,6 +230,63 @@ test("shared store creation fails closed until the owner is server-allowed", asy
       "virtualBalance",
     ),
     0,
+  );
+});
+
+test("refuses to create another isolated wallet when owned stores need migration", async () => {
+  const create = fft.wrap(createStore);
+  const stores = [
+    { id: "split-primary", name: "Split Primary", balance: 20 },
+    { id: "split-secondary", name: "Split Secondary", balance: 0 },
+  ];
+  for (const store of stores) {
+    await Promise.all([
+      db.doc(`stores/${store.id}`).set({
+        name: store.name,
+        ownerUid: "owner-split",
+        status: "active",
+        schemaVersion: 2,
+      }),
+      db.doc(`stores/${store.id}/operators/owner-split`).set({
+        uid: "owner-split",
+        storeId: store.id,
+        role: "owner",
+        status: "active",
+      }),
+      db.doc(`operators/owner-split/stores/${store.id}`).set({
+        uid: "owner-split",
+        storeId: store.id,
+        storeName: store.name,
+        role: "owner",
+        status: "active",
+      }),
+      db.doc(`users/${store.id}/wallet/current`).set({
+        virtualBalance: store.balance,
+      }),
+    ]);
+  }
+
+  await assert.rejects(
+    () =>
+      create(
+        {
+          name: "Unsafe Third Shop",
+          operatorName: "Split Owner",
+          campaignCreditsMode: "shared-v1",
+          shareCampaignCredits: true,
+        },
+        splitOwnerContext,
+      ),
+    /one-time campaign credit migration/i,
+  );
+  assert.equal(
+    (
+      await db
+        .collection("stores")
+        .where("ownerUid", "==", "owner-split")
+        .get()
+    ).size,
+    2,
   );
 });
 

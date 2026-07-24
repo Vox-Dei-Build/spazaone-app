@@ -31,18 +31,21 @@ the primary store's sales and payout fields.
 
 ## Controls
 
-- Remote Config enrollment key:
-  `FEATURE_SHARED_CAMPAIGN_CREDITS_ENROLLMENT_ENABLED`
-- Default: `false`.
-- Server enrollment control:
-  `releaseControls/sharedCampaignCredits` with `enabled: true` and an explicit
-  `ownerUids` allowlist. A missing document or missing owner fails closed.
-- This key controls only **new enrollment** when creating a store. It is not a
-  balance-routing kill switch.
-- Once stores are enrolled, routing remains sticky even if the key is turned
-  off. Splitting a wallet after either store spends would duplicate or lose
-  money.
-- Existing stores are enrolled only by the owner-scoped migration script.
+- Campaign/top-up credits are a server invariant for stores with the same
+  owner. Creating an additional owned store automatically enrolls the existing
+  canonical store and the new store in one transaction.
+- The client sends `campaignCreditsMode: shared-v1`. A client that predates
+  shared-wallet support is rejected before the store is created, so it cannot
+  silently create an isolated `R0` wallet.
+- The legacy Remote Config enrollment key and
+  `releaseControls/sharedCampaignCredits` allowlist remain readable during the
+  staged rollout, but they no longer decide whether an additional owned store
+  shares credits.
+- Once stores are enrolled, routing is sticky. Splitting a wallet after either
+  store spends would duplicate or lose money.
+- Existing multi-store owners are enrolled only by the owner-scoped migration
+  script. If multiple unshared owned stores are detected, new store creation
+  fails closed until that migration is completed.
 - The migration requires one explicit `--owner`; it has no "all merchants"
   mode.
 - A secondary balance greater than zero requires the separate
@@ -60,10 +63,10 @@ the primary store's sales and payout fields.
 | Paystack top-up | Unchanged | Credits canonical shared credits, attributed to initiating store |
 | Customer ordering/account bot | Unchanged | Store ledgers, orders and customer balances remain isolated |
 
-Do not enroll a merchant until every device/operator that may select a
-secondary store has installed the new build. This is the old-app safety gate.
-All other merchants remain completely unchanged because enrollment is explicit
-and the global enrollment flag stays off.
+Do not migrate an existing merchant until every device/operator that may
+select a secondary store has installed the shared-credit build. The
+`shared-v1` creation capability is the safety gate for new stores. All
+single-store merchants remain unchanged.
 
 ## Financial failure controls
 
@@ -110,6 +113,10 @@ Required adversarial assertions:
 
 - a secondary operator can read the campaign-balance projection;
 - that operator cannot read the canonical wallet's sales fields;
+- adding a second owned store automatically enrolls the canonical and new
+  stores without duplicating the balance;
+- an old client and an owner with multiple unshared stores both fail before a
+  new store document is created;
 - concurrent debits and concurrent campaign reservations never go negative;
 - duplicate operation IDs debit only once;
 - cross-owner wallet pointers fail closed;
@@ -124,8 +131,8 @@ Required adversarial assertions:
 
 ## Production and store rollout
 
-1. Keep both multi-store and shared-credit enrollment flags off. Freeze
-   unrelated Firebase deployments.
+1. Freeze unrelated Firebase deployments and confirm the multi-store app
+   rollout state.
 2. Confirm the Firebase target is exactly `pasella-ledger`.
 3. Complete a managed Firestore export and record the restore location.
 4. Deploy only the changed/new Functions:
@@ -154,10 +161,9 @@ functions:deleteUserAccount
    firebase deploy --project pasella-ledger --only firestore:rules
    ```
 
-7. Leave
-   `FEATURE_SHARED_CAMPAIGN_CREDITS_ENROLLMENT_ENABLED=false`.
-   Keep `releaseControls/sharedCampaignCredits.enabled=false` (or leave the
-   document absent).
+7. Leave the legacy enrollment flag and allowlist unchanged during rollout.
+   New store creation is governed by the server invariant and client
+   `shared-v1` capability.
 8. Follow `docs/releases.md`: merge the approved release commit to `main`, bump
    `pubspec.yaml`, then push the matching annotated
    `v<version>+<build>` tag. The tag starts both CodeMagic workflows:
@@ -192,9 +198,8 @@ functions:deleteUserAccount
     one small real top-up and one small campaign from each store.
 13. Promote the already-tested CodeMagic artifacts through Play/App Store
     staged rollout. Do not rebuild outside CodeMagic.
-14. Enable new-store enrollment only for the tested app version after the
-    pilot migration and real-money checks pass. Set both the Remote Config
-    condition and the server-side owner allowlist.
+14. Confirm old clients receive the update-required error when attempting to
+    add a store, while the tested `shared-v1` client creates a shared store.
 
 ## Stop and rollback
 
