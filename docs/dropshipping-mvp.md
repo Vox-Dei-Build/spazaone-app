@@ -1,0 +1,234 @@
+# Spaza One dropshipping MVP
+
+## Architecture and source-of-truth decisions
+
+The dropshipping flow is separate from manual Sales records and the legacy
+WhatsApp ecommerce sale documents. There is no administrator-managed product
+catalog in the normal seller flow.
+
+- CJdropshipping is accessed only by Cloud Functions. `CJ_API_KEY` stays in
+  Cloud Secret Manager and is exchanged server-side for CJ access tokens.
+- Sellers browse the live CJ catalog through authenticated callable functions.
+  Product details, variants, stock and South African freight are never accepted
+  from the Flutter client.
+- CJ returns product and freight prices in USD. The backend obtains a current
+  USD/ZAR reference rate, applies the configured FX reserve (3% by default),
+  and performs integer-minor-unit conversions server-side.
+- `users/{storeId}/products/{productId}` remains the compatible seller product
+  projection. CJ listings add `supplierId`, `sourceProductId`,
+  `sourceVariantId`, `supplierSku`, product/delivery cost estimates,
+  `markupMinor`, `sellPriceMinor`, `fulfilmentMode`, `isDropshipListing`,
+  `commerceListingId`, `checkoutUrl`, and `shippingNotes`. Existing product,
+  stock and reporting code can continue reading `cost` and `sellingPrice`.
+  Dropship projections omit an owned-stock quantity, so they do not trigger
+  low-stock alerts or inflate inventory-value reports.
+- `commerceListings/{listingId}` is the server-owned ordering projection. It
+  stores the seller's fixed markup and CJ identifiers. A buyer cannot alter it
+  by editing the compatible seller product document.
+- `commerceOrders/{orderId}` is the dropshipping order source of truth. It
+  contains buyer and delivery data plus immutable snapshots of CJ product cost,
+  freight, origin, delivery service, USD amounts, FX rate/reserve, landed cost,
+  selling price, payment fee, margin and amount due. Manual orders snapshot a
+  zero payment fee.
+- `commerceCheckoutAttempts/{hash}` deduplicates repeated checkout submissions.
+  `payments/paystackCommerce/processed/{reference}` deduplicates verified
+  Paystack callbacks. Both are server-only.
+
+The catalog listing price is an estimate. When the buyer supplies a South
+African postal code, the server obtains a new CJ stock/freight quote, reapplies
+the seller's fixed markup, validates the margin, and snapshots the order.
+Historical orders are never repriced.
+
+## Compliance and payment activation gate
+
+Digital payment is intentionally disabled until Spaza One completes provider
+onboarding and compliance approval. `COMMERCE_PAYMENTS_ENABLED` defaults to
+false and only the exact value `true` activates Paystack checkout.
+
+While the gate is off:
+
+- sellers browse CJ, set markup, publish listings and share Spaza One WhatsApp
+  ordering links;
+- the link opens the existing Spaza One bot with the shop code, quantity and
+  product already in context;
+- the bot collects the buyer's delivery address and payment preference without
+  sending them to a webpage;
+- the authenticated bot backend live-quotes CJ delivery and creates the order
+  request without taking an online payment;
+- Spaza One snapshots the live CJ landed cost, selling price, zero payment fee
+  and seller margin in an isolated `commerceOrder`;
+- the seller arranges payment using their existing manual process and confirms
+  it in the Orders queue; and
+- only then can the seller place the CJ order and continue fulfilment.
+
+Paystack code remains dormant and no Paystack API is called while the flag is
+false. The gate is a release control, not a substitute for Paystack's own
+compliance or account activation checks.
+
+## Security boundary
+
+- Catalog search, product detail, freight quote and listing creation callables
+  require authentication and active access to the selected store.
+- Listing creation accepts only CJ product/variant identifiers and a markup.
+  The backend retrieves every product, image, stock, cost, freight and FX value.
+- The authenticated bot endpoint accepts listing, buyer and address details but
+  ignores any client amount, cost, margin, seller or supplier values. It checks
+  the bot secret, confirms that the listing belongs to the routed shop and
+  reprices the CJ variant from the delivery postal code.
+- Public browser order creation fails closed while digital payments are
+  disabled. The public checkout page is retained only for a future approved
+  digital-payment release and does not expose a manual order form.
+- Buyer payment initialization is a dedicated commerce operation. It does not
+  call wallet top-up endpoints, credit a wallet, or write a manual Sale.
+- The Paystack webhook validates the exact raw-body SHA-512 signature,
+  re-verifies the reference with Paystack, checks success, ZAR, amount, order,
+  seller and listing metadata, and applies `paid` in one Firestore transaction
+  with its processed-reference marker.
+- Sellers and active store operators can read only their store's orders. Direct
+  client writes to canonical listings, orders, checkout attempts, payment
+  markers and supplier integration state are denied.
+- Fulfilment actions use an explicit transition table. Skipping or reversing a
+  state is rejected server-side.
+
+## Lifecycle and responsibility
+
+`pending_payment → paid → submitted_for_fulfilment → shipped → delivered`
+
+For the current manual flow, `pending_payment` means the buyer sent an order
+request and the seller still needs to confirm payment. This confirmation is an
+audited server-side transition; it does not create a manual Sales record or
+credit a wallet.
+
+For the MVP, the seller—not a Spaza One administrator—places and pays for the CJ
+order using the snapshotted SKU, variant, buyer address and chosen logistics
+shown in the Orders queue. After ordering, the seller selects “I ordered this
+from CJ”, then adds tracking and marks delivery.
+
+Cancellation is allowed from `pending_payment`, `paid`, or
+`submitted_for_fulfilment`. A paid cancellation sets order status `cancelled`
+and payment status `refund_pending`; once the manual or provider refund is
+completed, the store owner records it and the order becomes `refunded`.
+
+## Deployment configuration
+
+- Store the CJ key with
+  `npx firebase-tools@latest --project pasella-ledger functions:secrets:set CJ_API_KEY`.
+  Never place it in Flutter, Firestore, source control, or a command argument.
+- Keep the existing `PASELLA_BOT_TOKEN` value aligned between the Spaza One bot
+  and Functions Secret Manager. Despite the legacy identifier, it secures
+  Spaza One server-to-server requests.
+- `CJ_FX_BUFFER_BPS` optionally changes the default 3% FX reserve. `300` means
+  300 basis points. This protects the landed-cost quote from FX/payment spread;
+  every applied value is snapshotted on the order.
+- `COMMERCE_CHECKOUT_BASE_URL` is not used by the current WhatsApp-only manual
+  flow. Configure it only when testing the future approved digital checkout.
+- Keep `COMMERCE_PAYMENTS_ENABLED=false` in production until Spaza One has
+  completed compliance approval and Paystack onboarding. Manual order requests
+  continue working with the flag off.
+- After approval, configure the Paystack secret through Secret Manager, verify
+  test-mode checkout/webhooks/refunds, then set
+  `COMMERCE_PAYMENTS_ENABLED=true` in a controlled release.
+- The existing `verifyPaystackTransaction` webhook dispatches verified
+  `commerce_order` events into the isolated commerce transaction before any
+  wallet/Sales code. Leave the shared Paystack webhook URL in place.
+- Confirm Twilio, WhatsApp and SMS credentials are available to Functions.
+  Confirm Paystack only as part of the approved activation release.
+  Notification failure is recorded but does not roll back payment or
+  fulfilment state.
+- Deploy Functions and Firestore rules together. No migration of manual Sales,
+  existing products, stock or wallets is required.
+
+## Manual QA checklist
+
+### Before payment approval
+
+- Leave `COMMERCE_PAYMENTS_ENABLED` unset or false and confirm CJ catalog search
+  and live quotes work.
+- Create and share a seller listing; confirm the shared link opens the Spaza One
+  WhatsApp bot with `shop <code> order 1 <product>` prefilled.
+- Send the message and confirm the bot asks for the South African address in
+  WhatsApp, followed by payment preference and final confirmation.
+- Confirm Spaza One creates one manual `commerceOrder`, snapshots zero payment
+  fee and never calls Paystack or creates a manual Sales record.
+- Confirm the buyer receives one in-conversation order reference and total,
+  with the seller's existing manual payment instructions where available.
+- In Orders, confirm manual payment with a method/reference, then place the CJ
+  order and record its order number.
+
+The digital-payment checks require an approved test account and
+`COMMERCE_PAYMENTS_ENABLED=true` in a non-production environment.
+
+### Seller catalog and listing
+
+- Sign in as a store owner and active operator; open Products → Suppliers.
+- Search for several CJ products and confirm no Firestore catalog documents or
+  CJ credentials are exposed to the client.
+- Select a product and switch variants. Confirm Spaza One refreshes stock,
+  product cost, South African freight, logistics and delivery estimate.
+- Confirm a variant with no stock or no South African route cannot be listed.
+- Enter a markup and confirm estimated selling price, payment fee and margin.
+- With manual payments, confirm any positive markup is accepted and the payment
+  fee snapshot is zero. With digital payments enabled, confirm markup below the
+  estimated provider fee is rejected.
+- Create the listing and confirm it appears in Products as supplier fulfilled
+  without changing an existing seller product.
+
+### WhatsApp buyer ordering
+
+- Share the listing to a phone that has no Spaza One seller session. Confirm the
+  buyer stays inside WhatsApp throughout the order request.
+- Confirm the direct product message selects the intended shop and listing,
+  including when an old unfinished bot order existed in that chat.
+- Enter a South African delivery address in the requested comma-separated
+  format. Confirm the backend obtains a fresh CJ freight quote before creating
+  the manual order request.
+- Confirm mixed carts, quantity above one, malformed addresses and a listing
+  belonging to another shop are rejected.
+- Add fake price/cost/margin fields with an HTTP client; confirm they are
+  ignored.
+- Confirm out-of-stock, unsupported delivery and unavailable FX/provider states
+  fail before the order is created with customer-safe messages.
+- Open the dormant browser checkout while payments are disabled and confirm it
+  shows WhatsApp-only guidance instead of a buyer-details form.
+
+### Payment and snapshots
+
+- For the current flow, confirm the seller—not the buyer client—can transition
+  an order from awaiting manual confirmation to paid.
+- Confirm the order stores `paymentMethod: manual`, a zero fee and the manual
+  confirmation audit details.
+- Complete a Paystack test payment and confirm the return page moves from
+  pending to paid only after the verified webhook (post-approval only).
+- Confirm the order stores CJ product and freight USD values, FX rate/date and
+  reserve, converted landed cost, fee, selling price and margin snapshots.
+- Replay the webhook and confirm one paid transition, no wallet credit and no
+  manual Sales document (post-approval only).
+
+### Seller fulfilment
+
+- Confirm the paid order shows CJ SKU, variant, delivery service, buyer address,
+  supplier breakdown and snapshot margin.
+- Place the order in CJ using the buyer address and seller funding; select
+  “I ordered this from CJ”.
+- Mark it shipped with carrier/tracking, then delivered. Confirm invalid state
+  skips are rejected and buyer/seller notification attempts are recorded.
+
+### Cancellation, access and regression
+
+- Cancel an unpaid order and confirm no refund is required.
+- Cancel a paid order and confirm it becomes `refund_pending`; record the
+  manual or provider refund reference/note and confirm `refunded`.
+- Confirm another seller and the public cannot read the order or canonical
+  listing, while the owning store can.
+- Recheck normal products, stock, manual Sales, reports, wallets, existing
+  Paystack top-ups and existing WhatsApp ordering. A normal product must still
+  use the existing cart/`checkoutCart`/Sales path.
+
+## Automation follow-up
+
+After the seller-funded MVP is validated, use CJ's order APIs to create and pay
+supplier orders idempotently, persist the CJ order ID, consume tracking updates,
+and reconcile supplier cancellations and disputes. Fully automatic ordering
+requires an explicit funding model: a prefunded Spaza One CJ balance, seller
+wallet deduction, or another approved settlement arrangement. Existing order
+price/margin snapshots must remain immutable when automation is added.

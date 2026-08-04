@@ -8,6 +8,8 @@
     "test:urgent-update": "npm run build && node --test test/urgent_update_nudge_policy.test.mjs",
     "test:rules": "node --test test/multistore_rules.test.mjs",
     "test:security": "npm run build && node --test test/paystack_security.test.mjs test/bot_store_selection.test.mjs test/request_auth.test.mjs",
+    "test:commerce": "npm run build && node --test test/commerce_domain.test.mjs test/cj_client.test.mjs",
+    "test:commerce-integration": "npm run build && node --test --test-concurrency=1 test/commerce_payment.integration.test.mjs",
     "test:bot-http": "node --test --test-concurrency=1 test/bot_http.integration.test.mjs",
     "test:stores": "npm run build && node --test --test-concurrency=1 test/store_management.integration.test.mjs test/shared_campaign_credits.integration.test.mjs test/paystack_shared_credits.integration.test.cjs",
     "test:migration": "node --test --test-concurrency=1 test/migration.integration.test.mjs test/shared_credits_migration.integration.test.mjs",
@@ -26,6 +28,7 @@
   },
   "main": "lib/index.js",
   "dependencies": {
+    "axios": "1.18.1",
     "currency-formatter": "^1.5.9",
     "dotenv": "^16.6.1",
     "firebase-admin": "^13.10.0",

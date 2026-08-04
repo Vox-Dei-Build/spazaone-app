@@ -87,6 +87,20 @@ export * from "./ecommerce/getOnlineSalesFromLedger";
 export * from "./ecommerce/getShopContextBotHttp";
 export * from "./ecommerce/getMerchantOrderingLink";
 export * from "./ecommerce/getMerchantCatalogBotHttp";
+/* ---- Dropshipping commerce (separate from manual Sales) ---- */
+export {
+  searchCjSupplierCatalog,
+  getCjSupplierProduct,
+  quoteCjSupplierVariant,
+} from "./commerce/cjCatalog";
+export { createDropshipListing } from "./commerce/createDropshipListing";
+export {
+  createCommerceOrder,
+  verifyCommercePaystackTransaction,
+  getCommerceOrderStatus,
+} from "./commerce/payment";
+export { commerceCheckout } from "./commerce/checkoutPage";
+export { updateCommerceOrder } from "./commerce/updateCommerceOrder";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
 /* ---- Multi-store access ---- */
 export * from "./stores/storeManagement";

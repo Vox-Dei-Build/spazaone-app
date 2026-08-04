@@ -22,6 +22,7 @@ import 'package:pasella/pages/settings/chat/chat_page.dart';
 import 'package:pasella/pages/settings/delete/delete_account_page.dart';
 import 'package:pasella/pages/settings/privacy/privacy_page.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
+import 'package:pasella/pages/stock/stock.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
@@ -510,9 +511,16 @@ Future<void> _initializeCoreServices() async {
     );
   }
 
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-  );
+  // `useFirestoreEmulator` installs a host + plaintext transport in the SDK
+  // settings. Replacing the settings object afterwards resets that host and
+  // can silently send an emulator build back toward production Firestore.
+  // Mobile persistence is already enabled by default; only apply the explicit
+  // production setting when the emulator connection does not own it.
+  if (!FirebaseEnvironment.useEmulators) {
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+    );
+  }
 
   // Feature flags must be ready before MyApp selects its initial route. The
   // bootstrap surface remains visible while this potentially network-backed
@@ -717,6 +725,7 @@ class MyApp extends StatefulWidget {
     WalletPage.id: (context) => const WalletPage(),
     PrivacyPage.id: (context) => const PrivacyPage(),
     PromotionsPage.id: (context) => const PromotionsPage(),
+    StockPage.id: (context) => const StockPage(initialTab: 2),
   };
 
   static Set<String> get knownRoutes => _routes.keys.toSet();

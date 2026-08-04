@@ -13,6 +13,7 @@ import {
   mutateCampaignCredits,
   resolveCampaignWallet,
 } from "../../wallet/campaignCredits";
+import { applyVerifiedCommercePayment } from "../../commerce/payment";
 
 type PaymentPurpose = "sale" | "topup";
 
@@ -87,6 +88,19 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       // Security boundary: never trust metadata from the webhook request.
       // Paystack's independently verified transaction is the source of truth.
       const metadata = transaction.metadata ?? {};
+      if (String(metadata.purpose ?? "").toLowerCase() === "commerce_order") {
+        // Compatibility dispatcher only: commerce uses its own order,
+        // snapshot and idempotency transaction and never reaches wallet or
+        // legacy Sales mutation below. This lets an existing Paystack account
+        // keep its single configured webhook URL during the MVP rollout.
+        const result = await applyVerifiedCommercePayment(transaction);
+        res.status(200).json({
+          ok: true,
+          purpose: "commerce_order",
+          deduped: result.deduped,
+        });
+        return;
+      }
       const merchantId = requireStoreId(metadata.merchantId);
       const purpose = String(
         metadata.purpose ?? "",
@@ -249,8 +263,8 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       res
         .status(200)
         .json({ success: true, ...(deduped ? { deduped: true } : {}) });
-    } catch (error: any) {
-      const code = String(error?.message ?? "");
+    } catch (error: unknown) {
+      const code = error instanceof Error ? error.message : String(error ?? "");
       const known: Record<string, [number, string]> = {
         MISSING_SALE_ID: [400, "Missing saleId for sale payment"],
         SALE_NOT_FOUND: [404, "Sale not found"],

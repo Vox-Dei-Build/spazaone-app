@@ -6,6 +6,8 @@ import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
+import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
+import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:provider/provider.dart';
@@ -31,6 +33,16 @@ class ProductCard extends StatelessWidget {
     );
   }
 
+  Future<void> _shareDropship(BuildContext context) async {
+    try {
+      await CommerceService.shareToWhatsApp(
+        title: product.name ?? 'Product',
+      );
+    } catch (error) {
+      if (context.mounted) showCommerceError(context, error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context); // Initialize SizeConfig
@@ -39,8 +51,9 @@ class ProductCard extends StatelessWidget {
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) =>
-                ProductDetailsPage(docID: docID, product: product),
+            builder: (context) => product.isDropshipListing
+                ? DropshipListingPage(product: product)
+                : ProductDetailsPage(docID: docID, product: product),
           ),
         );
       },
@@ -109,10 +122,18 @@ class ProductCard extends StatelessWidget {
                             left: SizeConfig.imageSizeMultiplier * 1,
                             bottom: SizeConfig.heightMultiplier * 0.6,
                             child: ElevatedButton.icon(
-                              onPressed: () => _promote(context),
-                              icon:
-                                  const Icon(Icons.campaign_outlined, size: 15),
-                              label: const Text('Promote'),
+                              onPressed: () => product.isDropshipListing
+                                  ? _shareDropship(context)
+                                  : _promote(context),
+                              icon: Icon(
+                                product.isDropshipListing
+                                    ? Icons.share_outlined
+                                    : Icons.campaign_outlined,
+                                size: 15,
+                              ),
+                              label: Text(
+                                product.isDropshipListing ? 'Share' : 'Promote',
+                              ),
                               style: ElevatedButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
@@ -143,7 +164,7 @@ class ProductCard extends StatelessWidget {
               SizedBox(height: SizeConfig.heightMultiplier * 0.5),
               Flexible(
                 child: Text(
-                  'Cost: ${CurrencyUtil.format(product.cost ?? 0)}',
+                  '${product.isDropshipListing ? 'Est. landed cost' : 'Cost'}: ${CurrencyUtil.format(product.cost ?? 0)}',
                   style: TextStyle(
                     fontSize: SizeConfig.textMultiplier * 1.5,
                     color: Colors.black,
@@ -153,7 +174,7 @@ class ProductCard extends StatelessWidget {
               SizedBox(height: SizeConfig.heightMultiplier * 0.5),
               Flexible(
                 child: Text(
-                  'Price: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
+                  '${product.isDropshipListing ? 'From' : 'Price'}: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
                   style: TextStyle(
                     fontSize: SizeConfig.textMultiplier * 1.5,
                     color: Colors.black,
@@ -163,7 +184,9 @@ class ProductCard extends StatelessWidget {
               SizedBox(height: SizeConfig.heightMultiplier * 0.5),
               Flexible(
                 child: Text(
-                  '${product.quantity ?? ''} in Stock',
+                  product.isDropshipListing
+                      ? 'Supplier fulfilled'
+                      : '${product.quantity ?? ''} in Stock',
                   style: TextStyle(
                     fontSize: SizeConfig.textMultiplier * 1.5,
                     color: Colors.blue,

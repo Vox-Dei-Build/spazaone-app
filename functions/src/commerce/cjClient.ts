@@ -1,0 +1,649 @@
+import axios from "axios";
+
+const CJ_API_BASE = "https://developers.cjdropshipping.com/api2.0/v1";
+const FX_API_URL = "https://api.frankfurter.dev/v2/rate/USD/ZAR";
+const REQUEST_TIMEOUT_MS = 15_000;
+const TOKEN_SAFETY_MS = 5 * 60 * 1000;
+const FX_CACHE_MS = 60 * 60 * 1000;
+const FX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+type JsonObject = Record<string, unknown>;
+type CjRequestConfig = Parameters<typeof axios.request>[0];
+
+type TokenCache = {
+  accessToken: string;
+  expiresAt: number;
+};
+
+export type CjFxRate = {
+  rate: number;
+  rateMicros: number;
+  date: string;
+  bufferBps: number;
+};
+
+export type CjCatalogProduct = {
+  productId: string;
+  productSku: string;
+  title: string;
+  image: string;
+  category: string;
+  productCostUsdMinor: number;
+  estimatedProductCostMinor: number;
+};
+
+export type CjVariant = {
+  variantId: string;
+  productId: string;
+  sku: string;
+  name: string;
+  option: string;
+  image: string;
+  productCostUsdMinor: number;
+  estimatedProductCostMinor: number;
+};
+
+export type CjProductDetails = {
+  productId: string;
+  productSku: string;
+  title: string;
+  description: string;
+  images: string[];
+  category: string;
+  status: string;
+  variants: CjVariant[];
+  fx: CjFxRate;
+};
+
+export type CjLandedQuote = {
+  product: CjProductDetails;
+  variant: CjVariant;
+  originCountryCode: string;
+  stock: number;
+  logisticName: string;
+  logisticAging: string;
+  productCostUsdMinor: number;
+  shippingCostUsdMinor: number;
+  productCostMinor: number;
+  shippingCostMinor: number;
+  landedCostMinor: number;
+  currency: "ZAR";
+  fx: CjFxRate;
+  verifiedAt: string;
+};
+
+let tokenCache: TokenCache | null = null;
+let tokenRequest: Promise<string> | null = null;
+let fxCache: (CjFxRate & { cachedAt: number }) | null = null;
+
+function object(value: unknown): JsonObject {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonObject)
+    : {};
+}
+
+function list(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function text(value: unknown, max = 200): string {
+  return String(value ?? "")
+    .trim()
+    .slice(0, max);
+}
+
+function positiveInteger(value: unknown): number {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? Math.floor(amount) : 0;
+}
+
+function apiKey(): string {
+  const key = String(process.env.CJ_API_KEY ?? "").trim();
+  if (!key) throw new Error("CJ_NOT_CONFIGURED");
+  return key;
+}
+
+function fxBufferBps(): number {
+  const configured = Number(process.env.CJ_FX_BUFFER_BPS ?? 300);
+  if (
+    !Number.isSafeInteger(configured) ||
+    configured < 0 ||
+    configured > 2000
+  ) {
+    return 300;
+  }
+  return configured;
+}
+
+export function usdMinor(value: unknown): number {
+  const raw = text(value, 80).replace(/,/g, "");
+  const match = raw.match(/-?\d+(?:\.\d+)?/);
+  const dollars = match ? Number(match[0]) : Number(value);
+  if (!Number.isFinite(dollars) || dollars < 0) {
+    throw new Error("CJ_PRICE_INVALID");
+  }
+  const minor = Math.round(dollars * 100);
+  if (!Number.isSafeInteger(minor)) throw new Error("CJ_PRICE_INVALID");
+  return minor;
+}
+
+export function convertUsdMinorToZarMinor(
+  amountUsdMinor: number,
+  rate: number,
+  bufferBps: number,
+): number {
+  if (
+    !Number.isSafeInteger(amountUsdMinor) ||
+    amountUsdMinor < 0 ||
+    !Number.isFinite(rate) ||
+    rate <= 0 ||
+    !Number.isSafeInteger(bufferBps) ||
+    bufferBps < 0
+  ) {
+    throw new Error("CJ_CONVERSION_INVALID");
+  }
+  const converted = Math.round(
+    amountUsdMinor * rate * ((10_000 + bufferBps) / 10_000),
+  );
+  if (!Number.isSafeInteger(converted)) {
+    throw new Error("CJ_CONVERSION_INVALID");
+  }
+  return converted;
+}
+
+function safeImage(value: unknown): string {
+  const url = text(value, 1000);
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" ? parsed.toString() : "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function cleanDescription(value: unknown): string {
+  return String(value ?? "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 3000);
+}
+
+function parseExpiry(value: unknown, fallbackMs: number): number {
+  const parsed = Date.parse(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : Date.now() + fallbackMs;
+}
+
+async function exchangeApiKey(): Promise<string> {
+  try {
+    const response = await axios.post(
+      `${CJ_API_BASE}/authentication/getAccessToken`,
+      { apiKey: apiKey() },
+      { timeout: REQUEST_TIMEOUT_MS },
+    );
+    const payload = object(response.data);
+    const data = object(payload.data);
+    // CJ access tokens are currently JWT-sized (observed at 566 characters),
+    // despite older field documentation listing a much shorter maximum. Never
+    // truncate a credential before sending it back in CJ-Access-Token.
+    const accessToken = normalizeCjAccessToken(data.accessToken);
+    if (payload.result !== true || !accessToken) {
+      throw new Error("CJ_AUTH_FAILED");
+    }
+    tokenCache = {
+      accessToken,
+      expiresAt: parseExpiry(
+        data.accessTokenExpiryDate,
+        12 * 24 * 60 * 60 * 1000,
+      ),
+    };
+    return accessToken;
+  } catch (error) {
+    const providerError = object(error);
+    const response = object(providerError.response);
+    const payload = object(response.data);
+    // Never serialize the Axios request: it contains the CJ API key body.
+    console.warn("CJ authentication failed", {
+      responseStatus: Number(response.status) || null,
+      upstreamCode: text(payload.code, 40) || null,
+      upstreamMessage: text(payload.message, 200) || null,
+      networkCode: text(providerError.code, 40) || null,
+    });
+    throw new Error("CJ_AUTH_FAILED");
+  }
+}
+
+export function normalizeCjAccessToken(value: unknown): string {
+  return text(value, 4000);
+}
+
+async function accessToken(force = false): Promise<string> {
+  if (
+    !force &&
+    tokenCache &&
+    tokenCache.expiresAt - TOKEN_SAFETY_MS > Date.now()
+  ) {
+    return tokenCache.accessToken;
+  }
+  if (!force && tokenRequest) return tokenRequest;
+  tokenRequest = exchangeApiKey().finally(() => {
+    tokenRequest = null;
+  });
+  return tokenRequest;
+}
+
+function cjSucceeded(payload: JsonObject): boolean {
+  return payload.result === true || payload.success === true;
+}
+
+async function cjRequest<T = unknown>(
+  config: CjRequestConfig,
+  retry = true,
+): Promise<T> {
+  const token = await accessToken();
+  try {
+    const response = await axios.request({
+      ...config,
+      baseURL: CJ_API_BASE,
+      timeout: REQUEST_TIMEOUT_MS,
+      headers: {
+        ...(config.data == null ? {} : { "Content-Type": "application/json" }),
+        "CJ-Access-Token": token,
+        ...(config.headers ?? {}),
+      },
+    });
+    const payload = object(response.data);
+    if (!cjSucceeded(payload)) {
+      const code = text(payload.code, 40);
+      if (retry && ["1600001", "1600003"].includes(code)) {
+        tokenCache = null;
+        await accessToken(true);
+        return cjRequest<T>(config, false);
+      }
+      if (["1600001", "1600003"].includes(code)) {
+        throw new Error("CJ_AUTH_FAILED");
+      }
+      throw new Error("CJ_UPSTREAM_REJECTED");
+    }
+    return payload.data as T;
+  } catch (error) {
+    const errorObject = object(error);
+    const response = object(errorObject.response);
+    const responseStatus = Number(response.status);
+    const upstream = object(response.data);
+    const upstreamCode = text(upstream.code, 40);
+    const networkCode = text(errorObject.code, 40);
+    // Keep enough upstream context to diagnose a supplier outage without
+    // ever logging the CJ API key or access token.
+    console.warn("CJ request failed", {
+      path: text(config.url, 160),
+      responseStatus: Number.isFinite(responseStatus) ? responseStatus : null,
+      upstreamCode: upstreamCode || null,
+      upstreamMessage: text(upstream.message, 200) || null,
+      requestId: text(upstream.requestId, 80) || null,
+      networkCode: networkCode || null,
+    });
+    if (retry && responseStatus === 401) {
+      tokenCache = null;
+      await accessToken(true);
+      return cjRequest<T>(config, false);
+    }
+    if (responseStatus === 401) throw new Error("CJ_AUTH_FAILED");
+    if (error instanceof Error && error.message.startsWith("CJ_")) throw error;
+    throw new Error("CJ_UNAVAILABLE");
+  }
+}
+
+export async function getUsdZarRate(): Promise<CjFxRate> {
+  if (fxCache && Date.now() - fxCache.cachedAt < FX_CACHE_MS) {
+    return {
+      rate: fxCache.rate,
+      rateMicros: fxCache.rateMicros,
+      date: fxCache.date,
+      bufferBps: fxCache.bufferBps,
+    };
+  }
+  try {
+    const response = await axios.get(FX_API_URL, {
+      timeout: REQUEST_TIMEOUT_MS,
+    });
+    const payload = object(response.data);
+    const rate = Number(payload.rate);
+    const date = text(payload.date, 10);
+    const rateDate = Date.parse(`${date}T23:59:59Z`);
+    if (
+      !Number.isFinite(rate) ||
+      rate <= 0 ||
+      !Number.isFinite(rateDate) ||
+      Date.now() - rateDate > FX_MAX_AGE_MS
+    ) {
+      throw new Error("CJ_FX_STALE");
+    }
+    fxCache = {
+      rate,
+      rateMicros: Math.round(rate * 1_000_000),
+      date,
+      bufferBps: fxBufferBps(),
+      cachedAt: Date.now(),
+    };
+    return {
+      rate: fxCache.rate,
+      rateMicros: fxCache.rateMicros,
+      date: fxCache.date,
+      bufferBps: fxCache.bufferBps,
+    };
+  } catch (error) {
+    if (fxCache && Date.now() - fxCache.cachedAt < FX_MAX_AGE_MS) {
+      return {
+        rate: fxCache.rate,
+        rateMicros: fxCache.rateMicros,
+        date: fxCache.date,
+        bufferBps: fxCache.bufferBps,
+      };
+    }
+    if (error instanceof Error && error.message === "CJ_FX_STALE") throw error;
+    throw new Error("CJ_FX_UNAVAILABLE");
+  }
+}
+
+export function normalizeCjSearchResponse(
+  value: unknown,
+  fx: CjFxRate,
+): { products: CjCatalogProduct[]; page: number; totalPages: number } {
+  const data = object(value);
+  // Product List V2 currently wraps its result in a one-item `content`
+  // array. Older responses used a direct object, so accept both shapes.
+  const contentItems = list(data.content);
+  const content = contentItems.length
+    ? object(contentItems[0])
+    : object(data.content);
+  const rawProducts = list(content.productList).length
+    ? list(content.productList)
+    : list(data.list);
+  const products = rawProducts
+    .map((item): CjCatalogProduct | null => {
+      const product = object(item);
+      const productId = text(product.id ?? product.pid, 200);
+      const title = text(product.nameEn ?? product.productNameEn, 200);
+      if (!productId || !title) return null;
+      let productCostUsdMinor: number;
+      try {
+        productCostUsdMinor = usdMinor(product.sellPrice);
+      } catch (_) {
+        return null;
+      }
+      return {
+        productId,
+        productSku: text(product.sku ?? product.spu ?? product.productSku, 200),
+        title,
+        image: safeImage(product.bigImage ?? product.productImage),
+        category: text(product.threeCategoryName ?? product.categoryName, 160),
+        productCostUsdMinor,
+        estimatedProductCostMinor: convertUsdMinorToZarMinor(
+          productCostUsdMinor,
+          fx.rate,
+          fx.bufferBps,
+        ),
+      };
+    })
+    .filter((product): product is CjCatalogProduct => product !== null);
+  return {
+    products,
+    page: positiveInteger(data.pageNumber ?? data.page ?? data.pageNum) || 1,
+    totalPages: Math.min(
+      positiveInteger(data.totalPages ?? content.totalPages) ||
+        (products.length ? 1 : 0),
+      1000,
+    ),
+  };
+}
+
+function normalizeVariant(
+  value: unknown,
+  productId: string,
+  fx: CjFxRate,
+): CjVariant | null {
+  const variant = object(value);
+  const variantId = text(variant.vid, 200);
+  if (!variantId) return null;
+  let productCostUsdMinor: number;
+  try {
+    productCostUsdMinor = usdMinor(variant.variantSellPrice);
+  } catch (_) {
+    return null;
+  }
+  return {
+    variantId,
+    productId: text(variant.pid, 200) || productId,
+    sku: text(variant.variantSku, 200),
+    name: text(variant.variantNameEn ?? variant.variantName, 240),
+    option: text(variant.variantKey ?? variant.variantStandard, 240),
+    image: safeImage(variant.variantImage),
+    productCostUsdMinor,
+    estimatedProductCostMinor: convertUsdMinorToZarMinor(
+      productCostUsdMinor,
+      fx.rate,
+      fx.bufferBps,
+    ),
+  };
+}
+
+export function normalizeCjProductDetails(
+  value: unknown,
+  fx: CjFxRate,
+): CjProductDetails {
+  const data = object(value);
+  const productId = text(data.pid, 200);
+  const title = text(data.productNameEn, 200);
+  if (!productId || !title) throw new Error("CJ_PRODUCT_INVALID");
+  const images = [data.bigImage, ...list(data.productImageSet)]
+    .map(safeImage)
+    .filter(Boolean)
+    .filter((image, index, all) => all.indexOf(image) === index)
+    .slice(0, 8);
+  const variants = list(data.variants)
+    .map((variant) => normalizeVariant(variant, productId, fx))
+    .filter((variant): variant is CjVariant => variant !== null);
+  if (!variants.length) throw new Error("CJ_VARIANTS_UNAVAILABLE");
+  return {
+    productId,
+    productSku: text(data.productSku, 200),
+    title,
+    description: cleanDescription(data.description),
+    images,
+    category: text(data.categoryName, 160),
+    status: text(data.status, 20),
+    variants,
+    fx,
+  };
+}
+
+export async function searchCjProducts(input: {
+  query: string;
+  page: number;
+  size?: number;
+}): Promise<{
+  products: CjCatalogProduct[];
+  page: number;
+  totalPages: number;
+  fx: CjFxRate;
+}> {
+  const fx = await getUsdZarRate();
+  const data = await cjRequest({
+    method: "GET",
+    url: "/product/listV2",
+    params: {
+      keyWord: input.query || undefined,
+      page: input.page,
+      size: input.size ?? 20,
+      features: "enable_category",
+    },
+  });
+  return { ...normalizeCjSearchResponse(data, fx), fx };
+}
+
+export async function getCjProductDetails(
+  productId: string,
+): Promise<CjProductDetails> {
+  const [fx, data] = await Promise.all([
+    getUsdZarRate(),
+    cjRequest({
+      method: "GET",
+      url: "/product/query",
+      params: { pid: productId },
+    }),
+  ]);
+  return normalizeCjProductDetails(data, fx);
+}
+
+function inventoryOrigins(
+  value: unknown,
+): Array<{ countryCode: string; stock: number }> {
+  return list(value)
+    .map((item) => {
+      const inventory = object(item);
+      const countryCode = text(inventory.countryCode, 2).toUpperCase();
+      const stock = Math.max(
+        positiveInteger(inventory.totalInventory),
+        positiveInteger(inventory.totalInventoryNum),
+        positiveInteger(inventory.cjInventory),
+        positiveInteger(inventory.cjInventoryNum),
+        positiveInteger(inventory.factoryInventory),
+        positiveInteger(inventory.factoryInventoryNum),
+      );
+      return { countryCode, stock };
+    })
+    .filter(
+      (origin) => /^[A-Z]{2}$/.test(origin.countryCode) && origin.stock > 0,
+    )
+    .filter(
+      (origin, index, all) =>
+        all.findIndex(
+          (candidate) => candidate.countryCode === origin.countryCode,
+        ) === index,
+    )
+    .slice(0, 4);
+}
+
+type FreightOption = {
+  originCountryCode: string;
+  stock: number;
+  logisticName: string;
+  logisticAging: string;
+  shippingCostUsdMinor: number;
+};
+
+async function freightOptions(
+  origins: Array<{ countryCode: string; stock: number }>,
+  variantId: string,
+  postalCode: string,
+): Promise<FreightOption[]> {
+  const results = await Promise.allSettled(
+    origins.map(async (origin) => {
+      const data = await cjRequest({
+        method: "POST",
+        url: "/logistic/freightCalculate",
+        data: {
+          startCountryCode: origin.countryCode,
+          endCountryCode: "ZA",
+          ...(postalCode ? { zip: postalCode } : {}),
+          products: [{ quantity: 1, vid: variantId }],
+        },
+      });
+      return list(data)
+        .map((item): FreightOption | null => {
+          const option = object(item);
+          const logisticName = text(option.logisticName, 120);
+          if (!logisticName) return null;
+          try {
+            return {
+              originCountryCode: origin.countryCode,
+              stock: origin.stock,
+              logisticName,
+              logisticAging: text(option.logisticAging, 80),
+              shippingCostUsdMinor: usdMinor(option.logisticPrice),
+            };
+          } catch (_) {
+            return null;
+          }
+        })
+        .filter((option): option is FreightOption => option !== null);
+    }),
+  );
+  return results.flatMap((result) =>
+    result.status === "fulfilled" ? result.value : [],
+  );
+}
+
+export async function quoteCjVariant(input: {
+  productId: string;
+  variantId: string;
+  postalCode?: string;
+}): Promise<CjLandedQuote> {
+  const [product, variantValue] = await Promise.all([
+    getCjProductDetails(input.productId),
+    cjRequest({
+      method: "GET",
+      url: "/product/variant/queryByVid",
+      params: { vid: input.variantId, features: "enable_inventory" },
+    }),
+  ]);
+  const variantData = object(variantValue);
+  if (product.status && product.status !== "3") {
+    throw new Error("CJ_PRODUCT_UNAVAILABLE");
+  }
+  const variant = normalizeVariant(variantData, product.productId, product.fx);
+  if (!variant || variant.productId !== product.productId) {
+    throw new Error("CJ_VARIANT_INVALID");
+  }
+  let origins = inventoryOrigins(variantData.inventories);
+  if (!origins.length) {
+    const inventory = await cjRequest({
+      method: "GET",
+      url: "/product/stock/queryByVid",
+      params: { vid: input.variantId },
+    });
+    origins = inventoryOrigins(inventory);
+  }
+  if (!origins.length) throw new Error("CJ_OUT_OF_STOCK");
+  const options = await freightOptions(
+    origins,
+    input.variantId,
+    text(input.postalCode, 12),
+  );
+  options.sort((a, b) => a.shippingCostUsdMinor - b.shippingCostUsdMinor);
+  const selected = options[0];
+  if (!selected) throw new Error("CJ_NO_SHIPPING_TO_ZA");
+  const productCostMinor = convertUsdMinorToZarMinor(
+    variant.productCostUsdMinor,
+    product.fx.rate,
+    product.fx.bufferBps,
+  );
+  const shippingCostMinor = convertUsdMinorToZarMinor(
+    selected.shippingCostUsdMinor,
+    product.fx.rate,
+    product.fx.bufferBps,
+  );
+  return {
+    product,
+    variant,
+    originCountryCode: selected.originCountryCode,
+    stock: selected.stock,
+    logisticName: selected.logisticName,
+    logisticAging: selected.logisticAging,
+    productCostUsdMinor: variant.productCostUsdMinor,
+    shippingCostUsdMinor: selected.shippingCostUsdMinor,
+    productCostMinor,
+    shippingCostMinor,
+    landedCostMinor: productCostMinor + shippingCostMinor,
+    currency: "ZAR",
+    fx: product.fx,
+    verifiedAt: new Date().toISOString(),
+  };
+}

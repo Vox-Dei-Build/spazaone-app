@@ -9,10 +9,15 @@ import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
+import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
+import 'package:pasella/pages/stock/dropship/commerce_orders_page.dart';
 import 'package:provider/provider.dart';
 
 class StockPage extends StatefulWidget {
-  const StockPage({super.key});
+  const StockPage({super.key, this.initialTab = 0});
+
+  static const id = '/commerceOrders';
+  final int initialTab;
 
   @override
   State<StockPage> createState() => _StockPageState();
@@ -26,7 +31,14 @@ class _StockPageState extends State<StockPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    final initialTab =
+        widget.initialTab >= 0 && widget.initialTab < 4 ? widget.initialTab : 0;
+    _tabController = TabController(
+      length: 4,
+      initialIndex: initialTab,
+      vsync: this,
+    );
+    _tabIndexNotifier.value = initialTab;
     _tabController.addListener(() {
       _tabIndexNotifier.value = _tabController.index;
     });
@@ -46,7 +58,7 @@ class _StockPageState extends State<StockPage>
       child: Consumer<StockViewModel>(
         builder: (context, viewModel, child) {
           return DefaultTabController(
-            length: 3,
+            length: 4,
             child: Scaffold(
               floatingActionButton: ValueListenableBuilder<int>(
                 valueListenable: _tabIndexNotifier,
@@ -112,47 +124,48 @@ class _StockPageState extends State<StockPage>
                                 break;
                             }
                           },
-                          itemBuilder:
-                              (context) =>
-                                  const <PopupMenuEntry<_StockHeaderAction>>[
-                                    PopupMenuItem(
-                                      value: _StockHeaderAction.search,
-                                      child: ListTile(
-                                        leading: Icon(Icons.search),
-                                        title: Text('Search products'),
-                                        contentPadding: EdgeInsets.zero,
-                                        dense: true,
-                                      ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: _StockHeaderAction.help,
-                                      child: ListTile(
-                                        leading: Icon(Icons.help_outline),
-                                        title: Text('How to capture stock'),
-                                        contentPadding: EdgeInsets.zero,
-                                        dense: true,
-                                      ),
-                                    ),
-                                  ],
+                          itemBuilder: (context) =>
+                              const <PopupMenuEntry<_StockHeaderAction>>[
+                            PopupMenuItem(
+                              value: _StockHeaderAction.search,
+                              child: ListTile(
+                                leading: Icon(Icons.search),
+                                title: Text('Search products'),
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: _StockHeaderAction.help,
+                              child: ListTile(
+                                leading: Icon(Icons.help_outline),
+                                title: Text('How to capture stock'),
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
                       TabBar(
                         controller: _tabController,
+                        isScrollable: false,
+                        labelPadding: EdgeInsets.zero,
                         labelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.8,
+                          fontSize: SizeConfig.textMultiplier * 1.45,
                           fontWeight: FontWeight.normal,
                         ),
                         unselectedLabelStyle: TextStyle(
-                          fontSize:
-                              SizeConfig.textMultiplier *
-                              1.8, // Font size for unselected tabs
-                          fontWeight:
-                              FontWeight
-                                  .normal, // Font weight for unselected tabs
+                          fontSize: SizeConfig.textMultiplier *
+                              1.45, // Keep all four destinations visible.
+                          fontWeight: FontWeight
+                              .normal, // Font weight for unselected tabs
                         ),
                         tabs: const [
                           Tab(text: 'PRODUCTS'),
+                          Tab(text: 'SUPPLIERS'),
+                          Tab(text: 'ORDERS'),
                           Tab(text: 'REPORT'),
                         ],
                       ),
@@ -173,6 +186,8 @@ class _StockPageState extends State<StockPage>
                               onAddProduct: () => _openNewProduct(),
                               onWatchTutorial: () => _openTutorial(),
                             ),
+                            const SupplierCatalogPage(),
+                            const CommerceOrdersPage(),
                             ProductReportsTab(viewModel: viewModel),
                           ],
                         ),
@@ -191,21 +206,21 @@ class _StockPageState extends State<StockPage>
   Widget _buildFloatingActionButton(int tabIndex, StockViewModel viewModel) {
     return tabIndex == 0 && viewModel.products.isNotEmpty
         ? FloatingActionButton.extended(
-          elevation: 3.0,
-          onPressed: _openNewProduct,
-          icon: Icon(
-            Icons.add_outlined,
-            color: Colors.white,
-            size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
-          ),
-          label: Text(
-            'Add Product',
-            style: TextStyle(
+            elevation: 3.0,
+            onPressed: _openNewProduct,
+            icon: Icon(
+              Icons.add_outlined,
               color: Colors.white,
-              fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
+              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
             ),
-          ),
-        )
+            label: Text(
+              'Add Product',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
+              ),
+            ),
+          )
         : Container();
   }
 
@@ -216,9 +231,9 @@ class _StockPageState extends State<StockPage>
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (context) => const NewProductPage()))
         .then((_) {
-          // snap back to "Product Page" tab when you pop
-          _tabController.animateTo(0);
-        });
+      // snap back to "Product Page" tab when you pop
+      _tabController.animateTo(0);
+    });
   }
 
   /// PAS-UX-04: shared launcher for the capture-stock walkthrough so the
@@ -230,8 +245,8 @@ class _StockPageState extends State<StockPage>
     );
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) => LoomVideoPage(loomUrl: url, title: 'How to Capture Stock'),
+        builder: (_) =>
+            LoomVideoPage(loomUrl: url, title: 'How to Capture Stock'),
       ),
     );
   }
@@ -240,12 +255,10 @@ class _StockPageState extends State<StockPage>
 class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
   @override
   Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
-    final double fabX =
-        scaffoldGeometry.scaffoldSize.width -
+    final double fabX = scaffoldGeometry.scaffoldSize.width -
         16.0 -
         scaffoldGeometry.floatingActionButtonSize.width / 2;
-    final double fabY =
-        scaffoldGeometry.scaffoldSize.height -
+    final double fabY = scaffoldGeometry.scaffoldSize.height -
         100.0 -
         scaffoldGeometry.floatingActionButtonSize.height / 2;
     return Offset(fabX, fabY);

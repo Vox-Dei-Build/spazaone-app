@@ -58,18 +58,23 @@ class PageHeader extends StatelessWidget {
       child: Row(
         children: [
           // ── Brand ────────────────────────────────────────────────
-          SizedBox(
-            width: SizeConfig.imageSizeMultiplier * 34,
-            height: SizeConfig.imageSizeMultiplier * 8,
-            child: Image.asset(
-              'assets/images/spazaone_logo_horizontal.png',
-              fit: BoxFit.contain,
+          Expanded(
+            child: Align(
               alignment: Alignment.centerLeft,
-              semanticLabel: 'SpazaOne',
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: SizeConfig.imageSizeMultiplier * 34,
+                  maxHeight: SizeConfig.imageSizeMultiplier * 8,
+                ),
+                child: Image.asset(
+                  'assets/images/spazaone_logo_horizontal.png',
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
+                  semanticLabel: 'SpazaOne',
+                ),
+              ),
             ),
           ),
-
-          const Spacer(),
 
           // ── Page-scoped actions ──────────────────────────────────
           if (onSearchTap != null)
