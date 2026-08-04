@@ -103,12 +103,11 @@ In order:
 1. **Materialise .env** from secure `DOTENV_FILE` env var.
 2. **Flutter pub get / analyze / test**.
 3. **Verify version code matches the git tag**.
-4. **Set up code signing**: generates a fresh RSA private key, mints
-   an Apple Distribution cert via App Store Connect API, fetches /
-   creates a provisioning profile for `com.tsepo.pasella`, writes
-   `$HOME/export_options.plist`. (Apple caps Distribution certs at 2
-   per team. Revoke an unused cert in the Apple Developer portal
-   before re-running if both slots are full.)
+4. **Set up code signing**: CodeMagic installs the persistent Apple
+   Distribution certificate and matching App Store provisioning profile stored
+   under Code signing identities for `com.tsepo.pasella` using the explicit
+   `spazaone_apple_distribution` and `spazaone_app_store_profile` references.
+   `xcode-project use-profiles` then writes `$HOME/export_options.plist`.
 5. **Strip flutter_app_badger_plus invalid privacy manifest**: runs
    `scripts/strip_badger_privacy.sh`. See [Privacy manifest strip](#privacy-manifest-strip)
    below.
@@ -122,6 +121,14 @@ In order:
 9. **Publish to App Store Connect** -> TestFlight. `submit_to_app_store`
    is `false`; promotion to App Store review is manual from App Store
    Connect after QA.
+
+The signing certificate/private-key pair is deliberately persistent. Never add
+per-build `openssl genrsa` or pass a newly generated key to
+`fetch-signing-files --create`; doing so creates additional Apple Distribution
+certificates and eventually exhausts the team limit. If Code signing identities
+cannot be used temporarily, the supported rollback is one secure, persistent
+`CERTIFICATE_PRIVATE_KEY` used by `fetch-signing-files --create`. Do not revoke
+the previously working certificate/profile merely to make a rollback pass.
 
 ## What the Android workflow does
 
