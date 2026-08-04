@@ -8,6 +8,7 @@ import 'package:pasella/pages/promote/widgets/promotions/create_promotions/produ
 import 'package:pasella/pages/stock/product_details/widgets/delete_product_confirmation_dialog.dart';
 import 'package:pasella/pages/stock/widgets/product_form.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
+import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:provider/provider.dart';
@@ -48,6 +49,9 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.product.isDropshipListing) {
+      return DropshipListingPage(product: widget.product);
+    }
     return ChangeNotifierProvider(
       create: (_) => ProductViewModel(widget.product),
       child: Consumer<ProductViewModel>(

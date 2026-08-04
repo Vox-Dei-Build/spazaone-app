@@ -6,6 +6,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isSpazaAdmin() {
+      return signedIn() && request.auth.token.spazaAdmin == true;
+    }
+
     function isStoreMember(storeId) {
       return signedIn() && (
         request.auth.uid == storeId ||
@@ -148,6 +152,25 @@ service cloud.firestore {
       allow update: if signedIn() &&
         merchantOwnsExisting(resource.data) &&
         merchantOwnsIncoming(request.resource.data);
+    }
+
+    // Canonical checkout listings cannot be edited from a client. Sellers use
+    // their compatible users/{storeId}/products projection in the app.
+    match /commerceListings/{listingId} {
+      allow read: if isSpazaAdmin() ||
+        (resource.data.sellerId is string &&
+          isStoreMember(resource.data.sellerId));
+      allow write: if false;
+    }
+
+    // commerceOrders, not manual Sales, are the dropshipping source of truth.
+    // All mutations pass through guarded Cloud Functions so price snapshots,
+    // status transitions and audit history cannot be forged by a client.
+    match /commerceOrders/{orderId} {
+      allow read: if isSpazaAdmin() ||
+        (resource.data.sellerId is string &&
+          isStoreMember(resource.data.sellerId));
+      allow write: if false;
     }
 
     // Capability cache contains phone-number delivery capability but no

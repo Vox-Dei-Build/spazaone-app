@@ -97,6 +97,17 @@ beforeEach(async () => {
       setDoc(doc(db, "paymentReferences/referenceA"), {
         merchantId: "storeA",
       }),
+      setDoc(doc(db, "commerceListings/listingA"), {
+        sellerId: "storeA",
+        active: true,
+        sellPriceMinor: 14000,
+      }),
+      setDoc(doc(db, "commerceOrders/orderA"), {
+        sellerId: "storeA",
+        status: "paid",
+        amountDueMinor: 14000,
+        marginMinor: 3418,
+      }),
     ]);
   });
 });
@@ -204,6 +215,47 @@ test("unauthenticated clients cannot read customer financial data", async () => 
   // Transitional root-profile lookup stays available for released login code.
   await assertSucceeds(getDoc(doc(db, "users/storeA")));
   await assertFails(getDoc(doc(db, "users/storeA/customers/customerA")));
+});
+
+test("commerce orders are seller-scoped, admin-readable and server-written", async () => {
+  const sellerDb = env.authenticatedContext("storeA").firestore();
+  const operatorDb = env.authenticatedContext("operator1").firestore();
+  const otherDb = env.authenticatedContext("operator2").firestore();
+  const adminDb = env
+    .authenticatedContext("spaza-admin", { spazaAdmin: true })
+    .firestore();
+  const publicDb = env.unauthenticatedContext().firestore();
+
+  await assertSucceeds(getDoc(doc(sellerDb, "commerceOrders/orderA")));
+  await assertSucceeds(getDoc(doc(operatorDb, "commerceOrders/orderA")));
+  await assertSucceeds(
+    getDocs(
+      query(
+        collection(operatorDb, "commerceOrders"),
+        where("sellerId", "==", "storeA"),
+      ),
+    ),
+  );
+  await assertFails(getDoc(doc(otherDb, "commerceOrders/orderA")));
+  await assertFails(
+    getDocs(
+      query(
+        collection(otherDb, "commerceOrders"),
+        where("sellerId", "==", "storeA"),
+      ),
+    ),
+  );
+  await assertSucceeds(getDoc(doc(adminDb, "commerceOrders/orderA")));
+  await assertFails(getDoc(doc(publicDb, "commerceOrders/orderA")));
+  await assertFails(
+    updateDoc(doc(sellerDb, "commerceOrders/orderA"), { marginMinor: 999999 }),
+  );
+  await assertFails(
+    setDoc(doc(sellerDb, "commerceOrders/forged"), {
+      sellerId: "storeA",
+      status: "delivered",
+    }),
+  );
 });
 
 test("released app keeps its authenticated transaction collection-group report", async () => {

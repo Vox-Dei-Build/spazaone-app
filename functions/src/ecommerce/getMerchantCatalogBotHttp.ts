@@ -15,6 +15,9 @@ type CatalogProduct = {
   unit?: string;
   price?: number;
   imageUrl?: string;
+  isDropshipListing?: boolean;
+  commerceListingId?: string;
+  fulfilmentMode?: string;
 };
 
 function cleanString(value: unknown): string | undefined {
@@ -88,13 +91,24 @@ export const getMerchantCatalogBotHttp = functions
           if (unit) product.unit = unit;
           if (price !== undefined) product.price = price;
           if (imageUrl) product.imageUrl = imageUrl;
+          if (data.isDropshipListing === true) {
+            const commerceListingId = cleanString(data.commerceListingId);
+            if (!commerceListingId) return null;
+            product.isDropshipListing = true;
+            product.commerceListingId = commerceListingId;
+            product.fulfilmentMode =
+              cleanString(data.fulfilmentMode) ?? "seller_manual_cj_order";
+          }
           return product;
         })
         .filter((product): product is CatalogProduct => Boolean(product));
 
       res.status(200).json(catalog);
-    } catch (error: any) {
-      console.error("Error fetching bot catalog:", error?.message || error);
+    } catch (error: unknown) {
+      console.error(
+        "Error fetching bot catalog:",
+        error instanceof Error ? error.message : error,
+      );
       res.status(500).json({ error: "failed_to_fetch_catalog" });
     }
   });
