@@ -11,6 +11,7 @@ import { formatPhoneNumber } from "../utils/phoneUtils";
 type OrderNotice = {
   orderId: string;
   sellerId: string;
+  customerId?: string;
   buyerName: string;
   buyerPhone: string;
   status: string;
@@ -124,7 +125,12 @@ async function notifySeller(order: OrderNotice): Promise<string> {
       type: "COMMERCE_ORDER_EVENT",
       orderId: order.orderId,
       merchantId: order.sellerId,
-      route: "/commerceOrders",
+      route: "/customerAccount",
+      notificationType: "commerce_order",
+      action: "open_customer_orders",
+      customerId: order.customerId ?? "",
+      customerName: order.buyerName,
+      customerNumber: order.buyerPhone,
       status: order.status,
     },
   });

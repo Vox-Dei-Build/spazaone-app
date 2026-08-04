@@ -12,4 +12,19 @@ void main() {
     expect(route, isA<Route<dynamic>>());
     expect(route.settings.name, LoginPage.id);
   });
+
+  test('commerce notifications open the customer Orders tab', () {
+    expect(
+      customerNotificationTabIndex(
+        const {'notificationType': 'commerce_order'},
+      ),
+      1,
+    );
+    expect(
+      customerNotificationTabIndex(
+        const {'action': 'open_customer_messages'},
+      ),
+      2,
+    );
+  });
 }

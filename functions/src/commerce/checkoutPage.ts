@@ -138,7 +138,7 @@ function checkoutPage(input: {
     ? "Spaza One verifies live supplier and delivery pricing. Card details are entered only on Paystack."
     : "No online payment is collected. The seller will contact you to arrange payment and confirm your order.";
   const content = `<section class="card product">${image}<div>
-      <div class="eyebrow">CJdropshipping product</div>
+      <div class="eyebrow">Spaza One supplier product</div>
       <h1 class="title">${escapeHtml(input.title)}</h1>
       <div class="price">From R ${(input.sellPriceMinor / 100).toFixed(2)}</div>
       <div class="muted">Final delivery price is calculated from your address.</div>

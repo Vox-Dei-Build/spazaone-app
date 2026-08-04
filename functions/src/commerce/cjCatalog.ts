@@ -1,13 +1,199 @@
-import { functions } from "../config/main";
+import { db, functions } from "../config/main";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
 import {
+  catalogProductWithZaDelivery,
+  CjCatalogProduct,
+  CjZaEligibleProduct,
+  findCjProductZaDelivery,
   getCjProductDetails,
   quoteCjVariant,
   searchCjProducts,
 } from "./cjClient";
 import { commercePaymentsEnabled } from "./readiness";
 
-const cjRuntime = functions.runWith({ secrets: ["CJ_API_KEY"] });
+const cjRuntime = functions.runWith({
+  secrets: ["CJ_API_KEY"],
+  timeoutSeconds: 120,
+  memory: "512MB",
+});
+const ELIGIBILITY_COLLECTION = "supplierCatalogEligibility";
+const POSITIVE_CACHE_MS = 24 * 60 * 60 * 1000;
+const NEGATIVE_CACHE_MS = 6 * 60 * 60 * 1000;
+const MAX_LIVE_CHECKS = 12;
+const LIVE_CHECK_CONCURRENCY = 3;
+
+type EligibilityCache = {
+  eligible: boolean;
+  checkedAtMs: number;
+  deliverableVariantId: string;
+  estimatedDeliveryCostMinor: number;
+  estimatedLandedCostMinor: number;
+  logisticAging: string;
+  deliveryVerifiedAt: string;
+};
+
+function cacheRef(productId: string) {
+  return db.doc(`${ELIGIBILITY_COLLECTION}/cj_za_${productId}`);
+}
+
+function cacheValue(value: FirebaseFirestore.DocumentData): EligibilityCache {
+  return {
+    eligible: value.eligible === true,
+    checkedAtMs: Number(value.checkedAtMs ?? 0),
+    deliverableVariantId: String(value.deliverableVariantId ?? ""),
+    estimatedDeliveryCostMinor: Number(value.estimatedDeliveryCostMinor ?? 0),
+    estimatedLandedCostMinor: Number(value.estimatedLandedCostMinor ?? 0),
+    logisticAging: String(value.logisticAging ?? ""),
+    deliveryVerifiedAt: String(value.deliveryVerifiedAt ?? ""),
+  };
+}
+
+function cacheIsFresh(cache: EligibilityCache, nowMs: number): boolean {
+  const ttl = cache.eligible ? POSITIVE_CACHE_MS : NEGATIVE_CACHE_MS;
+  return cache.checkedAtMs > 0 && nowMs - cache.checkedAtMs < ttl;
+}
+
+function productFromCache(
+  product: CjCatalogProduct,
+  cache: EligibilityCache,
+): CjZaEligibleProduct | null {
+  if (
+    !cache.eligible ||
+    !cache.deliverableVariantId ||
+    cache.estimatedLandedCostMinor <= 0
+  ) {
+    return null;
+  }
+  return {
+    ...product,
+    deliverableVariantId: cache.deliverableVariantId,
+    estimatedDeliveryCostMinor: cache.estimatedDeliveryCostMinor,
+    estimatedLandedCostMinor: cache.estimatedLandedCostMinor,
+    logisticAging: cache.logisticAging,
+    deliveryVerifiedAt: cache.deliveryVerifiedAt,
+  };
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  task: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+      while (next < values.length) {
+        const index = next++;
+        results[index] = await task(values[index]);
+      }
+    }),
+  );
+  return results;
+}
+
+function isProductEligibilityFailure(error: unknown): boolean {
+  const code = error instanceof Error ? error.message : "";
+  return [
+    "CJ_NO_SHIPPING_TO_ZA",
+    "CJ_OUT_OF_STOCK",
+    "CJ_PRODUCT_UNAVAILABLE",
+    "CJ_PRODUCT_INVALID",
+    "CJ_VARIANTS_UNAVAILABLE",
+  ].includes(code);
+}
+
+async function searchZaEligibleProducts(input: {
+  query: string;
+  page: number;
+}) {
+  const search = await searchCjProducts({ ...input, size: 24 });
+  if (!search.products.length) {
+    return { ...search, products: [], checkedCount: 0 };
+  }
+
+  const nowMs = Date.now();
+  const snapshots = await db.getAll(
+    ...search.products.map((product) => cacheRef(product.productId)),
+  );
+  const caches = new Map<string, EligibilityCache>();
+  snapshots.forEach((snapshot, index) => {
+    if (snapshot.exists) {
+      caches.set(
+        search.products[index].productId,
+        cacheValue(snapshot.data() ?? {}),
+      );
+    }
+  });
+
+  const eligible = new Map<string, CjZaEligibleProduct>();
+  for (const product of search.products) {
+    const cache = caches.get(product.productId);
+    if (!cache || !cacheIsFresh(cache, nowMs)) continue;
+    const cachedProduct = productFromCache(product, cache);
+    if (cachedProduct) eligible.set(product.productId, cachedProduct);
+  }
+
+  const candidates = search.products
+    .filter((product) => {
+      const cache = caches.get(product.productId);
+      return !cache || !cacheIsFresh(cache, nowMs);
+    })
+    .slice(0, MAX_LIVE_CHECKS);
+
+  const checked = await mapWithConcurrency(
+    candidates,
+    LIVE_CHECK_CONCURRENCY,
+    async (product): Promise<CjZaEligibleProduct | null> => {
+      try {
+        const quote = await findCjProductZaDelivery(product.productId);
+        const verified = catalogProductWithZaDelivery(product, quote);
+        await cacheRef(product.productId).set({
+          supplierId: "cj_dropshipping",
+          supplierProductId: product.productId,
+          destinationCountryCode: "ZA",
+          eligible: true,
+          checkedAtMs: nowMs,
+          deliverableVariantId: verified.deliverableVariantId,
+          estimatedDeliveryCostMinor: verified.estimatedDeliveryCostMinor,
+          estimatedLandedCostMinor: verified.estimatedLandedCostMinor,
+          logisticAging: verified.logisticAging,
+          deliveryVerifiedAt: verified.deliveryVerifiedAt,
+          schemaVersion: 1,
+        });
+        return verified;
+      } catch (error) {
+        if (isProductEligibilityFailure(error)) {
+          await cacheRef(product.productId).set({
+            supplierId: "cj_dropshipping",
+            supplierProductId: product.productId,
+            destinationCountryCode: "ZA",
+            eligible: false,
+            checkedAtMs: nowMs,
+            schemaVersion: 1,
+          });
+          return null;
+        }
+        console.warn("CJ ZA eligibility check skipped", {
+          productId: product.productId,
+          code: error instanceof Error ? error.message : "unknown",
+        });
+        return null;
+      }
+    },
+  );
+  checked.forEach((product) => {
+    if (product) eligible.set(product.productId, product);
+  });
+
+  return {
+    ...search,
+    products: search.products
+      .map((product) => eligible.get(product.productId))
+      .filter((product): product is CjZaEligibleProduct => Boolean(product)),
+    checkedCount: candidates.length,
+  };
+}
 
 function cleanId(value: unknown, field: string): string {
   const id = String(value ?? "").trim();
@@ -25,7 +211,7 @@ export function publicCjError(error: unknown): functions.https.HttpsError {
   if (code === "CJ_NOT_CONFIGURED" || code === "CJ_AUTH_FAILED") {
     return new functions.https.HttpsError(
       "failed-precondition",
-      "CJdropshipping is not connected to Spaza One yet.",
+      "The Spaza One supplier catalogue is temporarily unavailable.",
     );
   }
   if (code === "CJ_OUT_OF_STOCK") {
@@ -43,7 +229,7 @@ export function publicCjError(error: unknown): functions.https.HttpsError {
   if (code.includes("VARIANT") || code.includes("PRODUCT")) {
     return new functions.https.HttpsError(
       "not-found",
-      "That CJdropshipping product is no longer available.",
+      "That supplier product is no longer available.",
     );
   }
   if (code.startsWith("CJ_FX")) {
@@ -54,7 +240,7 @@ export function publicCjError(error: unknown): functions.https.HttpsError {
   }
   return new functions.https.HttpsError(
     "unavailable",
-    "CJdropshipping could not be reached. Please try again.",
+    "The supplier network could not be reached. Please try again.",
   );
 }
 
@@ -83,7 +269,7 @@ export const searchCjSupplierCatalog = cjRuntime.https.onCall(
       );
     }
     try {
-      const result = await searchCjProducts({ query, page, size: 20 });
+      const result = await searchZaEligibleProducts({ query, page });
       return {
         ...result,
         digitalPaymentsEnabled: commercePaymentsEnabled(),

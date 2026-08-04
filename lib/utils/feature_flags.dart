@@ -16,6 +16,12 @@ class FeatureFlags {
   static bool enableTopUpPaystack = true;
   static bool enableMoveFunds = false;
 
+  /// Enables automatic online-sales reporting once Spaza One's payment
+  /// provider integration has completed compliance and is ready for sellers.
+  /// The implementation remains available behind this remote kill switch;
+  /// the safe default is the explanatory coming-soon state.
+  static bool enableOnlineSales = false;
+
   /// Multi-store/operator release switch. Default false supports a controlled
   /// pilot and gives operations an immediate client-side rollback lever.
   static bool enableMultiStoreOperators = false;
@@ -119,6 +125,10 @@ class FeatureFlags {
     );
     enableMoveFunds = rc.getBool(
       'FEATURE_MOVE_FUNDS_ENABLED',
+      defaultValue: false,
+    );
+    enableOnlineSales = rc.getBool(
+      'FEATURE_ONLINE_SALES_ENABLED',
       defaultValue: false,
     );
     enableMultiStoreOperators = _forceMultiStoreForEmulator ||

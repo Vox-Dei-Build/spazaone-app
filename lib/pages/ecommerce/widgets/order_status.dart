@@ -12,10 +12,8 @@ enum OrderStatus {
   accepted,
   paid,
   cancelled,
+  refunded,
   rejected,
-  /* fulfilled,
-  cancelled,
-  refunded, */
   uncollected,
   collected,
   outForDelivery,
@@ -32,10 +30,8 @@ extension OrderStatusLabel on OrderStatus {
         OrderStatus.accepted => 'Accepted',
         OrderStatus.paid => 'Paid',
         OrderStatus.cancelled => 'Cancelled',
+        OrderStatus.refunded => 'Refunded',
         OrderStatus.rejected => 'Rejected',
-        /* OrderStatus.fulfilled => 'Fulfilled',
-        OrderStatus.cancelled => 'Cancelled',
-        OrderStatus.refunded => 'Refunded', */
         OrderStatus.uncollected => 'Uncollected',
         OrderStatus.collected => 'Collected',
         OrderStatus.outForDelivery => 'Out for Delivery',
@@ -51,10 +47,8 @@ extension OrderStatusX on OrderStatus {
         OrderStatus.pending => Colors.amber,
         OrderStatus.accepted => Colors.indigo,
         OrderStatus.paid => Colors.green,
-        /* OrderStatus.fulfilled => Colors.blue,
         OrderStatus.cancelled => Colors.red,
-        OrderStatus.refunded => Colors.purple, */
-        OrderStatus.cancelled => Colors.red,
+        OrderStatus.refunded => Colors.purple,
         OrderStatus.rejected => Colors.red,
         OrderStatus.uncollected => Colors.orange,
         OrderStatus.collected => Colors.teal,
@@ -66,7 +60,6 @@ extension OrderStatusX on OrderStatus {
         OrderStatus.all => Theme.of(c).colorScheme.outline,
       };
 
-  // String parser (kept for convenience)
   // String parser (kept for convenience)
   static OrderStatus fromString(
     String v, {
@@ -93,26 +86,25 @@ extension OrderStatusX on OrderStatus {
       return OrderStatus.bnplPending;
     }
 
-    if (x.contains('paid') || x.contains('complete') || ps == 'paid') {
-      return OrderStatus.paid;
+    if (x.contains('refund') || ps == 'refunded') {
+      return OrderStatus.refunded;
     }
+    if (x.contains('cancel') || ps == 'cancelled') {
+      return OrderStatus.cancelled;
+    }
+    if (x == 'delivered') return OrderStatus.delivered;
+    if (x == 'shipped' || x == 'out_for_delivery') {
+      return OrderStatus.outForDelivery;
+    }
+    if (x == 'submitted_for_fulfilment') return OrderStatus.accepted;
     if (x.contains('uncollected') || ps == 'uncollected') {
       return OrderStatus.uncollected;
     }
     if (x.contains('collected') || ps == 'collected') {
       return OrderStatus.collected;
     }
-    /* if (x.contains('refund') || ps == 'refunded') {
-      return OrderStatus.refunded;
-    }
-    if (x.contains('cancel') || ps == 'cancelled') {
-      return OrderStatus.cancelled;
-    }
-    if (x.contains('fulfill') || ps == 'fulfilled') {
-      return OrderStatus.fulfilled;
-    } */
-    if (x.contains('cancel') || ps == 'cancelled') {
-      return OrderStatus.cancelled;
+    if (x.contains('paid') || x.contains('complete') || ps == 'paid') {
+      return OrderStatus.paid;
     }
     if (x.contains('reject') || ps == 'rejected') {
       return OrderStatus.rejected;
@@ -170,31 +162,36 @@ OrderStatus resolveOrderStatus({
   if (s == 'out_for_delivery' || s.contains('out_for_delivery')) {
     return OrderStatus.outForDelivery;
   }
+  if (s == 'shipped') return OrderStatus.outForDelivery;
   if (isCollected || s.contains('collected')) return OrderStatus.collected;
 
-  // 3) Payment/fulfillment/cancellation/refund
+  if (s == 'submitted_for_fulfilment') return OrderStatus.accepted;
+
+  // 3) Cancellation/refund must win over an older paid payment snapshot.
+  if (s.contains('refund') || ps == 'refunded') return OrderStatus.refunded;
+  if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
+
+  // 4) Payment/fulfillment
   if (isPaid || s == 'paid' || s == 'fulfilled' || ps == 'paid') {
     return OrderStatus.paid;
   }
-  /* if (s.contains('refund') || ps == 'refunded') return OrderStatus.refunded;
-  if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
-  if (s.contains('fulfill') || ps == 'fulfilled') return OrderStatus.fulfilled; */
-  if (s.contains('cancel') || ps == 'cancelled') return OrderStatus.cancelled;
   if (s.contains('reject') || ps == 'rejected') return OrderStatus.rejected;
 
-  // 4) Accepted (merchant approved but not yet dispatched/paid)
-  if (s == 'accepted') return OrderStatus.accepted;
+  // 5) Accepted (merchant approved but not yet dispatched/paid)
+  if (s == 'accepted') {
+    return OrderStatus.accepted;
+  }
 
   if (s.contains('uncollected') || ps == 'uncollected') {
     return OrderStatus.uncollected;
   }
 
-  // 5) Pending / default
+  // 6) Pending / default
   if (s.contains('pending') || s.isEmpty || ps == 'pending') {
     return OrderStatus.pending;
   }
 
-  // 6) Fallback to parser
+  // 7) Fallback to parser
   return OrderStatusX.fromString(status,
       paymentMethod: paymentMethod, type: type, paymentStatus: paymentStatus);
 }

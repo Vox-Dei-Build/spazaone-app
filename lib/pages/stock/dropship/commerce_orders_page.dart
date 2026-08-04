@@ -85,6 +85,18 @@ class CommerceOrdersPage extends StatelessWidget {
   }
 }
 
+Future<void> showCommerceOrderDetails(
+  BuildContext context,
+  CommerceOrder order,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => _OrderDetails(order: order),
+  );
+}
+
 class _Metric extends StatelessWidget {
   const _Metric({
     required this.label,
@@ -133,12 +145,7 @@ class _OrderCard extends StatelessWidget {
       margin: EdgeInsets.zero,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          builder: (_) => _OrderDetails(order: order),
-        ),
+        onTap: () => showCommerceOrderDetails(context, order),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -265,8 +272,9 @@ class _OrderDetailsState extends State<_OrderDetails> {
         manualPaymentNote: manualPaymentNote,
       );
       if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('Order updated.')),
       );
     } catch (error) {
@@ -293,8 +301,8 @@ class _OrderDetailsState extends State<_OrderDetails> {
     }
     final supplierOrderId = await _textDialog(
       context,
-      title: 'CJ order placed',
-      label: 'CJ order number',
+      title: 'Supplier order placed',
+      label: 'Supplier order number',
       confirmLabel: 'Save and continue',
     );
     if (supplierOrderId == null) return;
@@ -403,12 +411,12 @@ class _OrderDetailsState extends State<_OrderDetails> {
               value: CurrencyUtil.format(order.baseCostMinor / 100)),
           if (order.supplierProductCostMinor > 0)
             _DetailRow(
-                label: 'CJ product',
+                label: 'Supplier product',
                 value:
                     CurrencyUtil.format(order.supplierProductCostMinor / 100)),
           if (order.supplierShippingCostMinor > 0)
             _DetailRow(
-                label: 'CJ delivery',
+                label: 'Supplier delivery',
                 value:
                     CurrencyUtil.format(order.supplierShippingCostMinor / 100)),
           _DetailRow(
@@ -420,11 +428,12 @@ class _OrderDetailsState extends State<_OrderDetails> {
               highlight: true),
           if (order.supplierId == 'cj_dropshipping') ...[
             const Divider(height: 32),
-            const Text('CJ fulfilment',
+            const Text('Supplier details',
                 style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            const Text(
-                'Use these references when placing the supplier order in CJ.'),
+            const Text('Fulfilment partner: CJdropshipping'),
+            const SizedBox(height: 4),
+            const Text('Use these references when placing the supplier order.'),
             if (order.supplierSku.isNotEmpty) ...[
               const SizedBox(height: 8),
               SelectableText('SKU: ${order.supplierSku}'),
@@ -432,7 +441,7 @@ class _OrderDetailsState extends State<_OrderDetails> {
             if (order.supplierVariantId.isNotEmpty)
               SelectableText('Variant: ${order.supplierVariantId}'),
             if (order.supplierOrderId.isNotEmpty)
-              SelectableText('CJ order: ${order.supplierOrderId}'),
+              SelectableText('Supplier order: ${order.supplierOrderId}'),
             if (order.logisticName.isNotEmpty)
               Text('Delivery: ${order.logisticName}'
                   '${order.logisticAging.isEmpty ? '' : ' · ${order.logisticAging} days'}'),
@@ -489,7 +498,7 @@ class _OrderDetailsState extends State<_OrderDetails> {
       case 'paid':
         add(
             order.supplierId == 'cj_dropshipping'
-                ? 'I ordered this from CJ'
+                ? 'Mark supplier order as placed'
                 : 'Submit for fulfilment',
             Icons.outbox_outlined,
             _fulfill);

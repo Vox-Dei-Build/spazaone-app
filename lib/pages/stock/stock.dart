@@ -10,13 +10,13 @@ import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
-import 'package:pasella/pages/stock/dropship/commerce_orders_page.dart';
 import 'package:provider/provider.dart';
 
 class StockPage extends StatefulWidget {
   const StockPage({super.key, this.initialTab = 0});
 
-  static const id = '/commerceOrders';
+  static const id = '/stockPage';
+  static const legacyCommerceOrdersId = '/commerceOrders';
   final int initialTab;
 
   @override
@@ -32,9 +32,9 @@ class _StockPageState extends State<StockPage>
   void initState() {
     super.initState();
     final initialTab =
-        widget.initialTab >= 0 && widget.initialTab < 4 ? widget.initialTab : 0;
+        widget.initialTab >= 0 && widget.initialTab < 3 ? widget.initialTab : 0;
     _tabController = TabController(
-      length: 4,
+      length: 3,
       initialIndex: initialTab,
       vsync: this,
     );
@@ -58,7 +58,7 @@ class _StockPageState extends State<StockPage>
       child: Consumer<StockViewModel>(
         builder: (context, viewModel, child) {
           return DefaultTabController(
-            length: 4,
+            length: 3,
             child: Scaffold(
               floatingActionButton: ValueListenableBuilder<int>(
                 valueListenable: _tabIndexNotifier,
@@ -157,15 +157,13 @@ class _StockPageState extends State<StockPage>
                           fontWeight: FontWeight.normal,
                         ),
                         unselectedLabelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier *
-                              1.45, // Keep all four destinations visible.
+                          fontSize: SizeConfig.textMultiplier * 1.45,
                           fontWeight: FontWeight
                               .normal, // Font weight for unselected tabs
                         ),
                         tabs: const [
                           Tab(text: 'PRODUCTS'),
-                          Tab(text: 'SUPPLIERS'),
-                          Tab(text: 'ORDERS'),
+                          Tab(text: 'CATALOGUE'),
                           Tab(text: 'REPORT'),
                         ],
                       ),
@@ -187,7 +185,6 @@ class _StockPageState extends State<StockPage>
                               onWatchTutorial: () => _openTutorial(),
                             ),
                             const SupplierCatalogPage(),
-                            const CommerceOrdersPage(),
                             ProductReportsTab(viewModel: viewModel),
                           ],
                         ),

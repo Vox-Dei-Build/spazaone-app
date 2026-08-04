@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/models/sales/order_model.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/order_filters.dart';
@@ -17,6 +20,8 @@ import 'package:pasella/pages/ecommerce/orders_management/widgets/order_shimmer.
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_skeleton.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/orders_summary_bar.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
+import 'package:pasella/pages/stock/dropship/commerce_orders_page.dart';
+import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
@@ -48,6 +53,7 @@ class OrdersManagementPage extends StatefulWidget {
 
 class _OrdersManagementPageState extends State<OrdersManagementPage> {
   late final OrdersController _controller;
+  late final StreamSubscription<List<CommerceOrder>> _commerceOrdersSub;
   final _searchCtl = TextEditingController();
   final _scroll = ScrollController();
 
@@ -68,6 +74,17 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
       ),
       customerId: widget.customerId,
     );
+    _commerceOrdersSub = CommerceService()
+        .watchOrders(
+      customerId: widget.customerId,
+      customerPhone: widget.mobileNumber,
+    )
+        .listen(
+      _controller.setCommerceOrders,
+      onError: (Object error, StackTrace stack) {
+        debugPrint('Customer supplier orders stream failed: $error');
+      },
+    );
     // Fire-and-forget initial load. The controller flips `loading` on
     // before the first frame is built so the skeleton renders.
     _controller.load();
@@ -77,6 +94,7 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
   void dispose() {
     _searchCtl.dispose();
     _scroll.dispose();
+    _commerceOrdersSub.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -199,9 +217,8 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
 
     final groups = ctrl.filteredGrouped;
     if (groups.isEmpty) {
-      final hasFilters = !ctrl.filter.isAll ||
-          ctrl.query.isNotEmpty ||
-          ctrl.range != null;
+      final hasFilters =
+          !ctrl.filter.isAll || ctrl.query.isNotEmpty || ctrl.range != null;
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
@@ -251,17 +268,14 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
         }
         if (entry is _RowEntry) {
           final o = entry.order;
-          final status = OrderStatusX.fromString(
-            o.status,
-            paymentMethod: o.paymentMethod,
-            type: o.type,
-            paymentStatus: o.paymentStatus,
-          );
+          final status = computeStatus(o);
           final timeStr = o.createdAt != null
               ? DateFormat('HH:mm').format(o.createdAt!)
               : '';
           final collected = o.collected;
-          final showCollectedBadge = status != OrderStatus.collected &&
+          final isCommerceOrder = o.source == 'commerce';
+          final showCollectedBadge = !isCommerceOrder &&
+              status != OrderStatus.collected &&
               status != OrderStatus.uncollected;
           return OrderRow(
             id: o.id,
@@ -269,15 +283,27 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
             totalText: CurrencyUtil.format(o.total),
             itemsCount: o.itemsCount,
             relativeTime: timeStr,
-            collectedBadge: showCollectedBadge
-                ? CollectedBadge(
-                    text: collected ? 'Collected' : 'Uncollected',
-                    color: collected
-                        ? const Color(0xFF1B5E20)
-                        : const Color(0xFFE65100),
+            collectedBadge: isCommerceOrder
+                ? const CollectedBadge(
+                    text: 'Supplier order',
+                    color: Colors.green,
                   )
-                : null,
+                : showCollectedBadge
+                    ? CollectedBadge(
+                        text: collected ? 'Collected' : 'Uncollected',
+                        color: collected
+                            ? const Color(0xFF1B5E20)
+                            : const Color(0xFFE65100),
+                      )
+                    : null,
             onTap: () async {
+              if (isCommerceOrder) {
+                final commerceOrder = ctrl.commerceOrderFor(o.id);
+                if (commerceOrder != null) {
+                  await showCommerceOrderDetails(context, commerceOrder);
+                }
+                return;
+              }
               final updated = await Navigator.push(
                 context,
                 MaterialPageRoute(

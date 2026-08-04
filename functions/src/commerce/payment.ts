@@ -502,6 +502,7 @@ export const createCommerceOrder = functions
         await notifyCommerceOrder({
           orderId: orderRef.id,
           sellerId: String(orderData.sellerId ?? ""),
+          customerId: String(orderData.customerId ?? ""),
           buyerName: buyer.name,
           buyerPhone: buyer.phone,
           status: "pending_payment",
@@ -647,6 +648,7 @@ export async function applyVerifiedCommercePayment(
       notice = {
         orderId,
         sellerId: String(data.sellerId),
+        customerId: String(data.customerId ?? ""),
         buyerName: String(data.buyer?.name ?? "Customer"),
         buyerPhone: String(data.buyer?.phone ?? ""),
         status: "paid",

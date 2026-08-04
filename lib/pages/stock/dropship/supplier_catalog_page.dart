@@ -71,7 +71,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             controller: _search,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search CJdropshipping products',
+              hintText: 'Search Spaza One catalogue',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: IconButton(
                 tooltip: 'Search',
@@ -98,8 +98,8 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
               Expanded(
                 child: Text(
                   _digitalPaymentsEnabled
-                      ? 'Live supplier products. Delivery is checked automatically for South Africa.'
-                      : 'Orders use manual payment for now. Sellers confirm payment before ordering from CJ.',
+                      ? 'Supplier products with delivery available to South Africa.'
+                      : 'Delivery-ready products for South Africa. Confirm customer payment before placing the supplier order.',
                   style: const TextStyle(fontSize: 12),
                 ),
               ),
@@ -116,7 +116,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     if (_error != null) {
       return _CatalogMessage(
         icon: Icons.cloud_off_outlined,
-        title: 'Could not load CJdropshipping',
+        title: 'Could not load the catalogue',
         message: _error!,
         action: () => _load(page: _page),
       );
@@ -263,15 +263,28 @@ class _SupplierProductCard extends StatelessWidget {
                     ],
                     const SizedBox(height: 6),
                     Text(
-                      'Product from ${CurrencyUtil.format(product.estimatedProductCostMinor / 100)}',
+                      'Estimated landed cost from ${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)}',
                     ),
                     const SizedBox(height: 5),
-                    const Text(
-                      'Choose variant & calculate delivery',
-                      style: TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.local_shipping_outlined,
+                          size: 16,
+                          color: Colors.green,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            'South Africa delivery available'
+                            '${product.logisticAging.isEmpty ? '' : ' · ${product.logisticAging} days'}',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -342,7 +355,10 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       }
       setState(() {
         _details = details;
-        _variant = details.variants.first;
+        _variant = details.variants.firstWhere(
+          (variant) => variant.id == widget.product.deliverableVariantId,
+          orElse: () => details.variants.first,
+        );
         _loadingDetails = false;
       });
       await _loadQuote();
@@ -420,7 +436,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'CJdropshipping',
+                      'Spaza One supplier',
                       style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.w700,
@@ -550,9 +566,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               emphasized: true,
             ),
             _PriceRow(
-              label: widget.digitalPaymentsEnabled
-                  ? 'Estimated Paystack fee'
-                  : 'Online payment fee',
+              label: 'Online payment fee',
               value: '- ${CurrencyUtil.format(_feeMinor / 100)}',
             ),
             _PriceRow(
@@ -577,7 +591,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  'Buyers will send an order request without paying online. Confirm their manual payment in Orders before placing the CJ order.',
+                  'The customer will send an order request on WhatsApp without paying online. Confirm payment in Customer → Orders before placing the supplier order.',
                   style: TextStyle(color: Colors.orange.shade900),
                 ),
               ),

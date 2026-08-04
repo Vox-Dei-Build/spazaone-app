@@ -21,11 +21,16 @@ class FirebaseEnvironment {
   );
   static const String emulatorProjectId = String.fromEnvironment(
     'FIREBASE_EMULATOR_PROJECT_ID',
-    defaultValue: 'demo-spazaone-multistore',
+    // Native Firebase auto-configures the default app from the bundled plist /
+    // google-services file. Reuse that project namespace while routing every
+    // mutable service to localhost; using a different default project name on
+    // iOS causes the native SDK to reject a second [DEFAULT] app.
+    defaultValue: 'pasella-ledger',
   );
 
   static FirebaseOptions options(FirebaseOptions production) {
     if (!useEmulators) return production;
+    if (emulatorProjectId == production.projectId) return production;
     return FirebaseOptions(
       apiKey: production.apiKey,
       appId: production.appId,
