@@ -5,6 +5,7 @@ import {
   CjCatalogProduct,
   CjZaEligibleProduct,
   findCjProductZaDelivery,
+  findCjProductZaDeliveryFromDetails,
   getCjProductDetails,
   quoteCjVariant,
   searchCjProducts,
@@ -17,10 +18,10 @@ const cjRuntime = functions.runWith({
   memory: "512MB",
 });
 const ELIGIBILITY_COLLECTION = "supplierCatalogEligibility";
-const POSITIVE_CACHE_MS = 24 * 60 * 60 * 1000;
-const NEGATIVE_CACHE_MS = 6 * 60 * 60 * 1000;
-const MAX_LIVE_CHECKS = 12;
-const LIVE_CHECK_CONCURRENCY = 3;
+const POSITIVE_CACHE_MS = 30 * 60 * 1000;
+const NEGATIVE_CACHE_MS = 15 * 60 * 1000;
+const MAX_LIVE_CHECKS = 4;
+const LIVE_CHECK_CONCURRENCY = 1;
 
 type EligibilityCache = {
   eligible: boolean;
@@ -140,6 +141,7 @@ async function searchZaEligibleProducts(input: {
       return !cache || !cacheIsFresh(cache, nowMs);
     })
     .slice(0, MAX_LIVE_CHECKS);
+  let firstTransientFailure: unknown;
 
   const checked = await mapWithConcurrency(
     candidates,
@@ -178,6 +180,7 @@ async function searchZaEligibleProducts(input: {
           productId: product.productId,
           code: error instanceof Error ? error.message : "unknown",
         });
+        firstTransientFailure ??= error;
         return null;
       }
     },
@@ -185,6 +188,9 @@ async function searchZaEligibleProducts(input: {
   checked.forEach((product) => {
     if (product) eligible.set(product.productId, product);
   });
+  if (!eligible.size && firstTransientFailure) {
+    throw firstTransientFailure;
+  }
 
   return {
     ...search,
@@ -238,9 +244,15 @@ export function publicCjError(error: unknown): functions.https.HttpsError {
       "Live supplier pricing is temporarily unavailable. Please try again.",
     );
   }
+  if (code === "CJ_RATE_LIMITED") {
+    return new functions.https.HttpsError(
+      "resource-exhausted",
+      "Supplier pricing is busy right now. Please wait a moment and try again.",
+    );
+  }
   return new functions.https.HttpsError(
     "unavailable",
-    "The supplier network could not be reached. Please try again.",
+    "Spaza One could not refresh supplier availability right now. Please try again in a moment.",
   );
 }
 
@@ -286,8 +298,28 @@ export const getCjSupplierProduct = cjRuntime.https.onCall(
   async (data, context) => {
     const input = await authorize(data, context);
     const productId = cleanId(input.productId, "productId");
+    const preferredVariantId = String(input.preferredVariantId ?? "").trim();
+    if (
+      preferredVariantId &&
+      !/^[A-Za-z0-9_-]{1,200}$/.test(preferredVariantId)
+    ) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Choose a valid product variant.",
+      );
+    }
     try {
-      return await getCjProductDetails(productId);
+      const product = await getCjProductDetails(productId);
+      const quote = await findCjProductZaDeliveryFromDetails(
+        product,
+        5,
+        preferredVariantId,
+      );
+      return {
+        ...product,
+        recommendedVariantId: quote.variant.variantId,
+        recommendedQuote: quote,
+      };
     } catch (error) {
       console.error("getCjSupplierProduct failed", error);
       throw publicCjError(error);

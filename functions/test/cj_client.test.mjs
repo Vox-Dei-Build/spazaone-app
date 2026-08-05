@@ -3,9 +3,12 @@ import test from "node:test";
 import {
   catalogProductWithZaDelivery,
   convertUsdMinorToZarMinor,
+  createRequestScheduler,
   normalizeCjAccessToken,
   normalizeCjProductDetails,
   normalizeCjSearchResponse,
+  normalizeUsdZarRate,
+  prioritizedCjVariants,
   usdMinor,
 } from "../lib/commerce/cjClient.js";
 
@@ -19,6 +22,46 @@ const fx = {
 test("CJ access tokens preserve the current JWT-sized value", () => {
   const token = "x".repeat(566);
   assert.equal(normalizeCjAccessToken(token), token);
+});
+
+test("supplier requests are serialized and continue after a failed request", async () => {
+  const schedule = createRequestScheduler(20);
+  const starts = [];
+  const first = schedule(async () => {
+    starts.push(Date.now());
+    throw new Error("expected failure");
+  });
+  const second = schedule(async () => {
+    starts.push(Date.now());
+    return "second";
+  });
+  const third = schedule(async () => {
+    starts.push(Date.now());
+    return "third";
+  });
+
+  await assert.rejects(first, /expected failure/);
+  assert.equal(await second, "second");
+  assert.equal(await third, "third");
+  assert.equal(starts.length, 3);
+  assert.ok(starts[1] - starts[0] >= 15);
+  assert.ok(starts[2] - starts[1] >= 15);
+});
+
+test("USD/ZAR rates accept both documented Frankfurter response shapes", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  assert.deepEqual(
+    normalizeUsdZarRate({ date: today, rates: { ZAR: 16.4408 } }),
+    { date: today, rate: 16.4408 },
+  );
+  assert.deepEqual(normalizeUsdZarRate({ date: today, rate: 16.4408 }), {
+    date: today,
+    rate: 16.4408,
+  });
+  assert.throws(
+    () => normalizeUsdZarRate({ date: "2020-01-01", rate: 16 }),
+    /CJ_FX_STALE/,
+  );
 });
 
 test("CJ USD conversion uses integer minor units and the configured reserve", () => {
@@ -160,10 +203,67 @@ test("catalogue eligibility exposes only the verified ZA variant preview", () =>
   assert.equal(eligible.estimatedLandedCostMinor, 13905);
   assert.throws(
     () =>
+      catalogProductWithZaDelivery(product, {
+        product: details,
+        variant,
+        originCountryCode: "CN",
+        stock: 20,
+        logisticName: "CJPacket",
+        logisticAging: "12-20",
+        productCostUsdMinor: 0,
+        shippingCostUsdMinor: 0,
+        productCostMinor: 0,
+        shippingCostMinor: 0,
+        landedCostMinor: 0,
+        currency: "ZAR",
+        fx,
+        verifiedAt: "2026-08-04T10:00:00.000Z",
+      }),
+    /CJ_QUOTE_INVALID/,
+  );
+  assert.throws(
+    () =>
       catalogProductWithZaDelivery(
         { ...product, productId: "different-product" },
         { ...eligible, product: details, variant },
       ),
     /CJ_PRODUCT_MISMATCH/,
+  );
+});
+
+test("cached deliverable variant is retried before catalogue alternatives", () => {
+  const product = normalizeCjProductDetails(
+    {
+      pid: "cj-product-1",
+      productNameEn: "Rechargeable lamp",
+      status: "3",
+      variants: [
+        {
+          vid: "variant-1",
+          pid: "cj-product-1",
+          variantKey: "Black",
+          variantSellPrice: 3,
+        },
+        {
+          vid: "variant-2",
+          pid: "cj-product-1",
+          variantKey: "White",
+          variantSellPrice: 4,
+        },
+        {
+          vid: "variant-3",
+          pid: "cj-product-1",
+          variantKey: "Blue",
+          variantSellPrice: 5,
+        },
+      ],
+    },
+    fx,
+  );
+  assert.deepEqual(
+    prioritizedCjVariants(product, "variant-3", 2).map(
+      (variant) => variant.variantId,
+    ),
+    ["variant-3", "variant-1"],
   );
 });

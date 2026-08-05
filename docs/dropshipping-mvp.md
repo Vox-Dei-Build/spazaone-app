@@ -11,14 +11,22 @@ catalog in the normal seller flow.
 - Sellers browse the Spaza One Catalogue through authenticated callable
   functions. Search candidates are freight-checked to South Africa on the
   server and only products with a currently deliverable variant are returned.
-  Positive eligibility is cached for 24 hours and negative eligibility for six
-  hours in the server-only `supplierCatalogEligibility` collection. Listing
-  creation and order creation always re-quote; the cache is never a price or
-  availability guarantee. Product details, variants, stock and freight are
-  never accepted from the Flutter client.
+  Positive eligibility is cached for 30 minutes and negative eligibility for
+  15 minutes in the server-only `supplierCatalogEligibility` collection.
+  Opening a product rechecks the cached variant and automatically tries a small
+  set of alternatives when it has stopped shipping. Listing creation and order
+  creation always re-quote; the cache is never a price or availability
+  guarantee. Product details, variants, stock and freight are never accepted
+  from the Flutter client.
 - CJ returns product and freight prices in USD. The backend obtains a current
   USD/ZAR reference rate, applies the configured FX reserve (3% by default),
-  and performs integer-minor-unit conversions server-side.
+  and performs integer-minor-unit conversions server-side. It accepts both
+  documented Frankfurter response formats, caches a valid rate and fails closed
+  when neither source has a recent rate.
+- CJ requests are serialized above the provider's one-request-per-second limit
+  and a throttled response receives one jittered retry. Catalogue live checks
+  and variant fallbacks are sequential so an upstream throttle is never
+  mistaken for an unavailable product inside one Functions instance.
 - `users/{storeId}/products/{productId}` remains the compatible seller product
   projection. CJ listings add `supplierId`, `sourceProductId`,
   `sourceVariantId`, `supplierSku`, product/delivery cost estimates,
@@ -178,12 +186,17 @@ The digital-payment checks require an approved test account and
 - Sign in as a store owner and active operator; open Products → Catalogue.
 - Search several categories and confirm every returned card says South Africa
   delivery is available. Products with no current ZA freight route must not be
-  returned. Confirm a repeated search uses the server eligibility cache.
+  returned. Confirm category chips, global search, landed-cost sorting and
+  delivery-time sorting all remain usable. Confirm a repeated search uses the
+  server eligibility cache.
 - Confirm `supplierCatalogEligibility` cannot be read or written by a client
   and no supplier credentials are exposed.
-- Select a product and switch variants. Confirm Spaza One refreshes stock,
-  product cost, South African freight, logistics and delivery estimate.
-- Confirm a variant with no stock or no South African route cannot be listed.
+- Select a product and confirm it opens with a server-verified variant, current
+  landed cost and a visible Add product footer above Android system navigation.
+- Switch variants and confirm Spaza One refreshes stock, product cost, South
+  African freight, logistics and delivery estimate. When the new option has no
+  stock or no South African route, confirm the last working option remains
+  selected and can still be listed.
 - Enter a markup and confirm estimated selling price, payment fee and margin.
 - With manual payments, confirm any positive markup is accepted and the payment
   fee snapshot is zero. With digital payments enabled, confirm markup below the

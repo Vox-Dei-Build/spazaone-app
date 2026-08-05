@@ -1,8 +1,13 @@
 import axios from "axios";
 
 const CJ_API_BASE = "https://developers.cjdropshipping.com/api2.0/v1";
-const FX_API_URL = "https://api.frankfurter.dev/v2/rate/USD/ZAR";
+const FX_API_URLS = [
+  "https://api.frankfurter.dev/v1/latest?base=USD&symbols=ZAR",
+  "https://api.frankfurter.dev/v2/rate/USD/ZAR?providers=SARB",
+];
 const REQUEST_TIMEOUT_MS = 15_000;
+const CJ_REQUEST_INTERVAL_MS = 1_100;
+const CJ_RATE_LIMIT_RETRY_MS = 1_500;
 const TOKEN_SAFETY_MS = 5 * 60 * 1000;
 const FX_CACHE_MS = 60 * 60 * 1000;
 const FX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -83,6 +88,32 @@ export type CjLandedQuote = {
 let tokenCache: TokenCache | null = null;
 let tokenRequest: Promise<string> | null = null;
 let fxCache: (CjFxRate & { cachedAt: number }) | null = null;
+
+export function createRequestScheduler(intervalMs: number) {
+  let tail: Promise<void> = Promise.resolve();
+  let lastStartedAt = 0;
+
+  return async function schedule<T>(task: () => Promise<T>): Promise<T> {
+    const run = tail.then(async () => {
+      const waitMs = Math.max(0, lastStartedAt + intervalMs - Date.now());
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+      lastStartedAt = Date.now();
+      return task();
+    });
+    tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
+}
+
+// CJ enforces one request per second for this integration. Keep every request,
+// including token exchange, on the same queue so a single function instance
+// never creates the burst that previously made valid variants look unavailable.
+const scheduleCjRequest = createRequestScheduler(CJ_REQUEST_INTERVAL_MS);
 
 function object(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -188,15 +219,21 @@ function parseExpiry(value: unknown, fallbackMs: number): number {
   return Number.isFinite(parsed) ? parsed : Date.now() + fallbackMs;
 }
 
-async function exchangeApiKey(): Promise<string> {
+async function exchangeApiKey(retry = true): Promise<string> {
   try {
-    const response = await axios.post(
-      `${CJ_API_BASE}/authentication/getAccessToken`,
-      { apiKey: apiKey() },
-      { timeout: REQUEST_TIMEOUT_MS },
+    const response = await scheduleCjRequest(() =>
+      axios.post(
+        `${CJ_API_BASE}/authentication/getAccessToken`,
+        { apiKey: apiKey() },
+        { timeout: REQUEST_TIMEOUT_MS },
+      ),
     );
     const payload = object(response.data);
     const data = object(payload.data);
+    const responseCode = text(payload.code, 40);
+    if (responseCode === "1600200") {
+      throw new Error("CJ_RATE_LIMITED");
+    }
     // CJ access tokens are currently JWT-sized (observed at 566 characters),
     // despite older field documentation listing a much shorter maximum. Never
     // truncate a credential before sending it back in CJ-Access-Token.
@@ -223,6 +260,22 @@ async function exchangeApiKey(): Promise<string> {
       upstreamMessage: text(payload.message, 200) || null,
       networkCode: text(providerError.code, 40) || null,
     });
+    const rateLimited =
+      Number(response.status) === 429 ||
+      text(payload.code, 40) === "1600200" ||
+      (error instanceof Error && error.message === "CJ_RATE_LIMITED");
+    if (retry && rateLimited) {
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          CJ_RATE_LIMIT_RETRY_MS + Math.floor(Math.random() * 500),
+        ),
+      );
+      return exchangeApiKey(false);
+    }
+    if (rateLimited) {
+      throw new Error("CJ_RATE_LIMITED");
+    }
     throw new Error("CJ_AUTH_FAILED");
   }
 }
@@ -256,23 +309,31 @@ async function cjRequest<T = unknown>(
 ): Promise<T> {
   const token = await accessToken();
   try {
-    const response = await axios.request({
-      ...config,
-      baseURL: CJ_API_BASE,
-      timeout: REQUEST_TIMEOUT_MS,
-      headers: {
-        ...(config.data == null ? {} : { "Content-Type": "application/json" }),
-        "CJ-Access-Token": token,
-        ...(config.headers ?? {}),
-      },
-    });
+    const response = await scheduleCjRequest(() =>
+      axios.request({
+        ...config,
+        baseURL: CJ_API_BASE,
+        timeout: REQUEST_TIMEOUT_MS,
+        headers: {
+          ...(config.data == null
+            ? {}
+            : { "Content-Type": "application/json" }),
+          "CJ-Access-Token": token,
+          ...(config.headers ?? {}),
+        },
+      }),
+    );
     const payload = object(response.data);
     if (!cjSucceeded(payload)) {
       const code = text(payload.code, 40);
+      const message = text(payload.message, 200).toLowerCase();
       if (retry && ["1600001", "1600003"].includes(code)) {
         tokenCache = null;
         await accessToken(true);
         return cjRequest<T>(config, false);
+      }
+      if (code === "1600200" || message.includes("too many requests")) {
+        throw new Error("CJ_RATE_LIMITED");
       }
       if (["1600001", "1600003"].includes(code)) {
         throw new Error("CJ_AUTH_FAILED");
@@ -297,15 +358,49 @@ async function cjRequest<T = unknown>(
       requestId: text(upstream.requestId, 80) || null,
       networkCode: networkCode || null,
     });
+    const rateLimited =
+      responseStatus === 429 ||
+      upstreamCode === "1600200" ||
+      (error instanceof Error && error.message === "CJ_RATE_LIMITED");
+    if (retry && rateLimited) {
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          CJ_RATE_LIMIT_RETRY_MS + Math.floor(Math.random() * 500),
+        ),
+      );
+      return cjRequest<T>(config, false);
+    }
     if (retry && responseStatus === 401) {
       tokenCache = null;
       await accessToken(true);
       return cjRequest<T>(config, false);
     }
     if (responseStatus === 401) throw new Error("CJ_AUTH_FAILED");
+    if (rateLimited) throw new Error("CJ_RATE_LIMITED");
     if (error instanceof Error && error.message.startsWith("CJ_")) throw error;
     throw new Error("CJ_UNAVAILABLE");
   }
+}
+
+export function normalizeUsdZarRate(value: unknown): {
+  rate: number;
+  date: string;
+} {
+  const payload = object(value);
+  const rates = object(payload.rates);
+  const rate = Number(payload.rate ?? rates.ZAR);
+  const date = text(payload.date, 10);
+  const rateDate = Date.parse(`${date}T23:59:59Z`);
+  if (
+    !Number.isFinite(rate) ||
+    rate <= 0 ||
+    !Number.isFinite(rateDate) ||
+    Date.now() - rateDate > FX_MAX_AGE_MS
+  ) {
+    throw new Error("CJ_FX_STALE");
+  }
+  return { rate, date };
 }
 
 export async function getUsdZarRate(): Promise<CjFxRate> {
@@ -317,47 +412,39 @@ export async function getUsdZarRate(): Promise<CjFxRate> {
       bufferBps: fxCache.bufferBps,
     };
   }
-  try {
-    const response = await axios.get(FX_API_URL, {
-      timeout: REQUEST_TIMEOUT_MS,
-    });
-    const payload = object(response.data);
-    const rate = Number(payload.rate);
-    const date = text(payload.date, 10);
-    const rateDate = Date.parse(`${date}T23:59:59Z`);
-    if (
-      !Number.isFinite(rate) ||
-      rate <= 0 ||
-      !Number.isFinite(rateDate) ||
-      Date.now() - rateDate > FX_MAX_AGE_MS
-    ) {
-      throw new Error("CJ_FX_STALE");
-    }
-    fxCache = {
-      rate,
-      rateMicros: Math.round(rate * 1_000_000),
-      date,
-      bufferBps: fxBufferBps(),
-      cachedAt: Date.now(),
-    };
-    return {
-      rate: fxCache.rate,
-      rateMicros: fxCache.rateMicros,
-      date: fxCache.date,
-      bufferBps: fxCache.bufferBps,
-    };
-  } catch (error) {
-    if (fxCache && Date.now() - fxCache.cachedAt < FX_MAX_AGE_MS) {
+  for (const url of FX_API_URLS) {
+    try {
+      const response = await axios.get(url, { timeout: REQUEST_TIMEOUT_MS });
+      const normalized = normalizeUsdZarRate(response.data);
+      fxCache = {
+        rate: normalized.rate,
+        rateMicros: Math.round(normalized.rate * 1_000_000),
+        date: normalized.date,
+        bufferBps: fxBufferBps(),
+        cachedAt: Date.now(),
+      };
       return {
         rate: fxCache.rate,
         rateMicros: fxCache.rateMicros,
         date: fxCache.date,
         bufferBps: fxCache.bufferBps,
       };
+    } catch (error) {
+      console.warn("USD/ZAR rate source failed", {
+        source: new URL(url).pathname,
+        code: error instanceof Error ? error.message : "unknown",
+      });
     }
-    if (error instanceof Error && error.message === "CJ_FX_STALE") throw error;
-    throw new Error("CJ_FX_UNAVAILABLE");
   }
+  if (fxCache && Date.now() - fxCache.cachedAt < FX_MAX_AGE_MS) {
+    return {
+      rate: fxCache.rate,
+      rateMicros: fxCache.rateMicros,
+      date: fxCache.date,
+      bufferBps: fxCache.bufferBps,
+    };
+  }
+  throw new Error("CJ_FX_UNAVAILABLE");
 }
 
 export function normalizeCjSearchResponse(
@@ -675,36 +762,70 @@ export async function quoteCjVariant(input: {
 export async function findCjProductZaDelivery(
   productId: string,
   maxVariants = 2,
+  preferredVariantId = "",
 ): Promise<CjLandedQuote> {
   const product = await getCjProductDetails(productId);
+  return findCjProductZaDeliveryFromDetails(
+    product,
+    maxVariants,
+    preferredVariantId,
+  );
+}
+
+export function prioritizedCjVariants(
+  product: CjProductDetails,
+  preferredVariantId: string,
+  maxVariants: number,
+): CjVariant[] {
+  const preferred = product.variants.find(
+    (variant) => variant.variantId === preferredVariantId,
+  );
+  const ordered = preferred
+    ? [
+        preferred,
+        ...product.variants.filter((variant) => variant !== preferred),
+      ]
+    : product.variants;
+  return ordered.slice(0, Math.max(1, maxVariants));
+}
+
+/**
+ * Revalidates a cached recommendation first, then checks a small number of
+ * alternatives one at a time. Sequential checks avoid CJ's one-QPS limit and
+ * let the sheet recover automatically when an old variant stops shipping.
+ */
+export async function findCjProductZaDeliveryFromDetails(
+  product: CjProductDetails,
+  maxVariants = 4,
+  preferredVariantId = "",
+): Promise<CjLandedQuote> {
   if (product.status && product.status !== "3") {
     throw new Error("CJ_PRODUCT_UNAVAILABLE");
   }
-  const variants = product.variants.slice(0, Math.max(1, maxVariants));
-  const attempts = await Promise.allSettled(
-    variants.map((variant) =>
-      quoteCjVariantWithProduct({ product, variantId: variant.variantId }),
-    ),
+  const variants = prioritizedCjVariants(
+    product,
+    preferredVariantId,
+    maxVariants,
   );
-  const quotes = attempts
-    .filter(
-      (attempt): attempt is PromiseFulfilledResult<CjLandedQuote> =>
-        attempt.status === "fulfilled",
-    )
-    .map((attempt) => attempt.value)
-    .sort((a, b) => a.landedCostMinor - b.landedCostMinor);
-  if (quotes.length) return quotes[0];
-
-  const providerFailure = attempts.find(
-    (attempt) =>
-      attempt.status === "rejected" &&
-      ![
-        "CJ_NO_SHIPPING_TO_ZA",
-        "CJ_OUT_OF_STOCK",
-        "CJ_VARIANT_INVALID",
-      ].includes(attempt.reason instanceof Error ? attempt.reason.message : ""),
-  );
-  if (providerFailure?.status === "rejected") throw providerFailure.reason;
+  for (const variant of variants) {
+    try {
+      return await quoteCjVariantWithProduct({
+        product,
+        variantId: variant.variantId,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (
+        ![
+          "CJ_NO_SHIPPING_TO_ZA",
+          "CJ_OUT_OF_STOCK",
+          "CJ_VARIANT_INVALID",
+        ].includes(code)
+      ) {
+        throw error;
+      }
+    }
+  }
   throw new Error("CJ_NO_SHIPPING_TO_ZA");
 }
 
@@ -714,6 +835,14 @@ export function catalogProductWithZaDelivery(
 ): CjZaEligibleProduct {
   if (quote.product.productId !== product.productId) {
     throw new Error("CJ_PRODUCT_MISMATCH");
+  }
+  if (
+    !quote.variant.variantId ||
+    quote.productCostMinor <= 0 ||
+    quote.shippingCostMinor < 0 ||
+    quote.landedCostMinor <= 0
+  ) {
+    throw new Error("CJ_QUOTE_INVALID");
   }
   return {
     ...product,

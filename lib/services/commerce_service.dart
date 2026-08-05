@@ -44,10 +44,15 @@ class CommerceService {
         Map<String, dynamic>.from(result.data as Map));
   }
 
-  Future<CjProductDetails> getCjProduct(String productId) async {
+  Future<CjProductDetails> getCjProduct(
+    String productId, {
+    String preferredVariantId = '',
+  }) async {
     final result = await _functions.httpsCallable('getCjSupplierProduct').call({
       'storeId': StoreSession.instance.storeId,
       'productId': productId,
+      if (preferredVariantId.isNotEmpty)
+        'preferredVariantId': preferredVariantId,
     });
     return CjProductDetails.fromJson(
       Map<String, dynamic>.from(result.data as Map),
@@ -203,10 +208,31 @@ class CommerceService {
 
 String commerceErrorMessage(Object error) {
   if (error is FirebaseFunctionsException) {
-    final message = error.message?.trim();
-    if (message != null && message.isNotEmpty) return message;
+    return friendlyCommerceErrorMessage(error.message);
   }
   return 'Spaza One could not complete that action. Please try again.';
+}
+
+String friendlyCommerceErrorMessage(String? providerMessage) {
+  final message = providerMessage?.trim() ?? '';
+  if (message.isEmpty) {
+    return 'Spaza One could not complete that action. Please try again.';
+  }
+  final lower = message.toLowerCase();
+  const providerTerms = <String>[
+    'cj ',
+    'cjdropshipping',
+    'cj dropshipping',
+    'network',
+    'connection',
+    'could not be reached',
+    'failed host lookup',
+    'socketexception',
+  ];
+  if (providerTerms.any(lower.contains)) {
+    return 'Spaza One could not refresh supplier availability right now. Please try again in a moment.';
+  }
+  return message;
 }
 
 void showCommerceError(BuildContext context, Object error) {

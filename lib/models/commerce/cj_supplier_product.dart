@@ -83,6 +83,8 @@ class CjProductDetails {
     required this.images,
     required this.category,
     required this.variants,
+    required this.recommendedVariantId,
+    required this.recommendedQuote,
   });
 
   final String id;
@@ -92,6 +94,8 @@ class CjProductDetails {
   final List<String> images;
   final String category;
   final List<CjVariant> variants;
+  final String recommendedVariantId;
+  final CjLandedQuote? recommendedQuote;
 
   factory CjProductDetails.fromJson(Map<String, dynamic> data) =>
       CjProductDetails(
@@ -108,6 +112,10 @@ class CjProductDetails {
             .map((value) => CjVariant.fromJson(_asMap(value)))
             .where((variant) => variant.id.isNotEmpty)
             .toList(growable: false),
+        recommendedVariantId: data['recommendedVariantId']?.toString() ?? '',
+        recommendedQuote: data['recommendedQuote'] is Map
+            ? CjLandedQuote.fromJson(_asMap(data['recommendedQuote']))
+            : null,
       );
 }
 
