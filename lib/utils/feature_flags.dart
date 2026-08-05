@@ -22,11 +22,14 @@ class FeatureFlags {
   /// the safe default is the explanatory coming-soon state.
   static bool enableOnlineSales = false;
 
-  /// Multi-store/operator release switch. Default false supports a controlled
-  /// pilot and gives operations an immediate client-side rollback lever.
-  static bool enableMultiStoreOperators = false;
+  /// Multi-store/operator emergency rollback switch.
+  ///
+  /// Multi-store is a standard Spaza One feature, so missing or unavailable
+  /// Remote Config must leave it enabled. Operations can still explicitly set
+  /// the remote value to false to hide the surface during an incident.
+  static bool enableMultiStoreOperators = true;
   static final ValueNotifier<bool> multiStoreOperatorsEnabled =
-      ValueNotifier<bool>(false);
+      ValueNotifier<bool>(true);
   static const bool _forceMultiStoreForEmulator = bool.fromEnvironment(
     'ENABLE_MULTI_STORE_OPERATORS',
     defaultValue: false,
@@ -133,7 +136,7 @@ class FeatureFlags {
     enableMultiStoreOperators = _forceMultiStoreForEmulator ||
         rc.getBool(
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED',
-          defaultValue: false,
+          defaultValue: true,
         );
     multiStoreOperatorsEnabled.value = enableMultiStoreOperators;
     enableSharedCampaignCreditsEnrollment = rc.getBool(

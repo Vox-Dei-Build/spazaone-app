@@ -18,6 +18,13 @@ void main() {
     FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
   });
 
+  test('multi-store stays enabled when Remote Config is unavailable', () {
+    FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
+
+    expect(FeatureFlags.enableMultiStoreOperators, isTrue);
+    expect(FeatureFlags.multiStoreOperatorsEnabled.value, isTrue);
+  });
+
   test('multi-store notifier follows activated feature flag values', () {
     final reader = _FakeRemoteConfig({
       'FEATURE_MULTI_STORE_OPERATORS_ENABLED': true,

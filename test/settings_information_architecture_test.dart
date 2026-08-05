@@ -6,7 +6,7 @@ import 'package:pasella/utils/feature_flags.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  tearDown(() => FeatureFlags.multiStoreOperatorsEnabled.value = false);
+  tearDown(() => FeatureFlags.multiStoreOperatorsEnabled.value = true);
 
   Future<void> pumpSettings(WidgetTester tester) {
     return tester.pumpWidget(

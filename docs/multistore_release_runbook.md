@@ -1,6 +1,10 @@
 # Multi-store and multi-operator release runbook
 
-Release candidate: SpazaOne `4.4.0+76`
+Initial release candidate: Spaza One `4.4.0+76`
+
+Current availability decision: multi-store is a standard Spaza One feature
+from `4.6.2+82`. The pilot completed; the Remote Config parameter remains only
+as an emergency rollback switch.
 
 ## Release decision
 
@@ -49,15 +53,19 @@ credit.
 ## Release controls
 
 - Remote Config key: `FEATURE_MULTI_STORE_OPERATORS_ENABLED`.
-- Default: `false` in the app and local Remote Config defaults.
-- Keep it `false` through backend, rules, migration, bot, and internal-app QA.
+- Default: `true` in the app, local defaults, and production Remote Config.
+- A missing or failed Remote Config fetch must leave multi-store available.
+- Set the parameter to `false` only as an emergency rollback action.
+- Keep backend, rules, bot routing, and store/operator security tests in every
+  release gate because availability is no longer limited to pilot builds.
+- Historical pilot process (completed): keep it `false` through backend,
+  rules, migration, bot, and internal-app QA.
 - For the pilot, distribute `4.4.0+76` only through the internal testing track
   and use a Remote Config condition for that exact app version and platform.
   The current client does not implement a UID allowlist, so do not describe a
   global boolean as a named-user rollout.
-- After pilot sign-off, promote the same tested binary through the store's
-  staged rollout. The version condition then enables the feature only for
-  users who receive `4.4.0`; old builds continue on the legacy path.
+- After pilot sign-off, the feature becomes standard-on. Version-specific
+  pilot conditions should be removed so later builds cannot silently lose it.
 - Turning it off returns app clients to their legacy UID store. Backend
   membership metadata remains additive and can be re-enabled later.
 
