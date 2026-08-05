@@ -9,6 +9,7 @@ import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/services/activation_nudge_intent_bus.dart';
+import 'package:pasella/services/completed_signup_tracker.dart';
 import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -73,6 +74,13 @@ class _DashboardState extends State<Dashboard> {
     await ConsentModal.showPostAuthIfNeeded(context);
     if (!mounted) return;
     setState(() => _consentSurfaceCompleted = true);
+    if (!mounted || !await _waitUntilCurrentRoute()) return;
+    // A phone signup may have completed before the deferred consent sheet.
+    // Resolve its local marker on every first Dashboard mount so an app
+    // restart between consent and emission cannot lose the conversion.
+    await CompletedSignupTracker.instance.resolveAfterConsent(
+      merchantId: userId,
+    );
     if (!mounted || !await _waitUntilCurrentRoute()) return;
     await _showRebrandNoticeIfNeeded(userId);
     if (!mounted || !await _waitUntilCurrentRoute()) return;

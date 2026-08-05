@@ -57,6 +57,7 @@ class OrderPaymentResult {
     required this.stateLabel,
     required this.sendIntent,
     this.errorMessage,
+    this.paymentRecordedNow,
   });
 
   final OrderActionStatus status;
@@ -73,6 +74,10 @@ class OrderPaymentResult {
   /// Populated for non-success outcomes so the caller can show the
   /// underlying reason without re-deriving it.
   final String? errorMessage;
+
+  /// True only when this call performed a new paid transition. Null keeps
+  /// compatibility with an older deployed Function that predates this field.
+  final bool? paymentRecordedNow;
 
   bool get isSuccess => status == OrderActionStatus.success;
 }
@@ -164,24 +169,30 @@ class PaymentService {
 
     try {
       final fn = FirebaseFunctions.instance.httpsCallable('updateOrderPayment');
-      await fn.call({
+      final response = await fn.call({
         'merchantId': uid,
         'orderId': orderId,
         'paymentAction': action,
         ...extraData,
       });
+      final responseData = response.data;
+      final paymentRecordedNow = responseData is Map
+          ? responseData['paymentRecordedNow'] as bool?
+          : null;
       if (stateLabel == null) {
         return OrderPaymentResult(
           status: OrderActionStatus.unexpectedError,
           stateLabel: '',
           sendIntent: sendIntent,
+          paymentRecordedNow: paymentRecordedNow,
           errorMessage: 'Order updated, but action "$action" is not mapped.',
         );
       }
       return OrderPaymentResult(
         status: OrderActionStatus.success,
         stateLabel: stateLabel,
-        sendIntent: sendIntent,
+        sendIntent: sendIntent && paymentRecordedNow != false,
+        paymentRecordedNow: paymentRecordedNow,
       );
     } on FirebaseFunctionsException catch (e) {
       debugPrint('[updateOrderPayment] code=${e.code} message=${e.message}');

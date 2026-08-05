@@ -241,10 +241,10 @@ class TelemetryService {
   /// using GA4 standard event names where possible so they light up in
   /// Google Ads conversion / audience tooling without extra config:
   ///
-  ///   * [SignupCompleted]   -> `sign_up`        (standard)
+  ///   * [SignupCompleted]   -> `sign_up`        (phone signups only)
   ///   * [SigninCompleted]   -> `login`          (standard, retention signal)
   ///   * [CustomerCreated]   -> `generate_lead`  (standard, onboarding hop)
-  ///   * [SaleCompleted]     -> `purchase`       (standard, conversion + value)
+  ///   * [PaymentReceived]   -> `purchase`       (standard, conversion + value)
   ///   * [OrderingLinkCreated] -> `ordering_link_created` (custom)
   ///   * [OrderingLinkShared] -> `share`          (standard)
   ///   * [PayoutRequested]   -> `payout_requested` (custom)
@@ -274,6 +274,10 @@ class TelemetryService {
             :final businessType,
             :final businessCategory,
           ):
+          // Anonymous Explore sessions are useful in PostHog, but they do not
+          // meet the paid-acquisition definition of a completed account/phone
+          // signup and must not feed the Google Ads conversion.
+          if (method != 'phone') return;
           await fa.logEvent(
             name: 'sign_up',
             parameters: {
@@ -299,23 +303,33 @@ class TelemetryService {
               'customer_count_bucket': customerCountBucket,
             },
           );
-        case SaleCompleted(
+        case PaymentReceived(
+            :final transactionId,
             :final amountBucket,
-            :final isCredit,
-            :final customerIsExisting,
-            :final hasProducts,
-            :final productCountBucket,
+            :final source,
+            :final method,
           ):
-          await fa.logEvent(
-            name: 'purchase',
+          final value = _bucketMidpointZAR(amountBucket).toDouble();
+          await fa.logPurchase(
+            currency: 'ZAR',
+            value: value,
+            transactionId: transactionId,
+            affiliation: 'Spaza One merchant app',
+            items: [
+              AnalyticsEventItem(
+                itemId: source,
+                itemName: 'Payment received',
+                itemCategory: 'merchant_payment',
+                itemVariant: method,
+                currency: 'ZAR',
+                price: value,
+                quantity: 1,
+              ),
+            ],
             parameters: {
-              'currency': 'ZAR',
-              'value': _bucketMidpointZAR(amountBucket),
               'amount_bucket': amountBucket,
-              'is_credit': isCredit ? 1 : 0,
-              'customer_is_existing': customerIsExisting ? 1 : 0,
-              'has_products': hasProducts ? 1 : 0,
-              'product_count_bucket': productCountBucket,
+              'payment_source': source,
+              'payment_method': method,
             },
           );
         case OrderingLinkCreated(:final source, :final regenerated):

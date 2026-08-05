@@ -15,6 +15,23 @@ void main() {
     expect(event.properties['product_count_bucket'], '2-3');
   });
 
+  test('payment received carries a stable reconciliation key', () {
+    const event = PaymentReceived(
+      transactionId: 'ledger_payment:transaction-1',
+      amountBucket: '50-200',
+      source: 'ledger_repayment',
+      method: 'manual',
+    );
+
+    expect(event.name, 'payment_received');
+    expect(event.properties, {
+      'transaction_id': 'ledger_payment:transaction-1',
+      'amount_bucket': '50-200',
+      'source': 'ledger_repayment',
+      'method': 'manual',
+    });
+  });
+
   test('product count bucket is coarse and bounded', () {
     expect(productCountBucket(0), '0');
     expect(productCountBucket(1), '1');

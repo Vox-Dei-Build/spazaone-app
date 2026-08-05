@@ -15,7 +15,7 @@ The function reads `systemConfig/urgentUpdateNudges`:
   "maxPerRun": 500,
   "maxSendsPerUser": 3,
   "cooldownHours": 23,
-  "title": "Urgent: update Pasella today",
+  "title": "Urgent: update Spaza One today",
   "body": "Don't miss customer messages. Update to {version} now to keep WhatsApp, SMS and conversations working reliably."
 }
 ```

@@ -9,6 +9,7 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/auth_util.dart';
@@ -301,6 +302,18 @@ class SalesViewModel extends TransactionViewModel {
         dateAdded: DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
       );
 
+      // The paid sale is durable at this point. Record its payment before
+      // ancillary stock updates so an inventory-write failure cannot erase
+      // the conversion from internal reporting.
+      await PaymentReceiptTracker.instance.capture(
+        PaymentReceived(
+          transactionId: 'cash_sale:${docRef.id}',
+          amountBucket: amountBucketZAR(amountEntered),
+          source: 'cash_sale',
+          method: 'cash',
+        ),
+      );
+
       for (var productId in selectedProducts.keys) {
         Product? product = products.firstWhere(
           (p) => p.id == productId,
@@ -336,7 +349,6 @@ class SalesViewModel extends TransactionViewModel {
           productCountBucket: productCountBucket(selectedProducts.length),
         ),
       );
-
       // PAS-GROWTH: a completed cash sale is the strongest "the app just
       // worked for me" moment in the ledger flow. Hand it to the review
       // service which decides whether to actually surface the OS prompt

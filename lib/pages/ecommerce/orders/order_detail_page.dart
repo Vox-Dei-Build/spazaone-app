@@ -13,6 +13,7 @@ import 'package:pasella/pages/ecommerce/orders/widgets/products_section_enhanced
 import 'package:pasella/pages/ecommerce/orders/widgets/section.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/whatsapp_delivery_pill.dart';
 import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/config/size_config.dart';
@@ -135,6 +136,18 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     } else if (action == 'REJECT_BNPL') {
       await TelemetryService.instance.capture(
         BnplOfferRejected(amountBucket: amountBucket),
+      );
+    }
+    if ((action == 'MARK_CASH_RECEIVED' || action == 'SETTLE_BNPL') &&
+        result.paymentRecordedNow != false) {
+      await PaymentReceiptTracker.instance.capture(
+        PaymentReceived(
+          transactionId: 'customer_order:${widget.orderId}',
+          amountBucket: amountBucket,
+          source: 'customer_order',
+          method:
+              action == 'SETTLE_BNPL' ? 'bnpl_repayment' : 'cash_or_transfer',
+        ),
       );
     }
 

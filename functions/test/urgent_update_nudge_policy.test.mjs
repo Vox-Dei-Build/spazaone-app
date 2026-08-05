@@ -77,3 +77,40 @@ test("produces compelling compact copy with the target version", () => {
   assert.match(copy.body, /Update to 4\.1\.6 now/);
   assert.match(copy.body, /WhatsApp, SMS and conversations/);
 });
+
+test("rebrands stale operator-configured copy before sending", () => {
+  const copy = urgentUpdateCopy(
+    "4.1.6",
+    "Urgent: update Pasella today",
+    "PASELLA {version} keeps your messages working.",
+  );
+
+  assert.equal(copy.title, "Urgent: update Spaza One today");
+  assert.equal(copy.body, "Spaza One 4.1.6 keeps your messages working.");
+  assert.doesNotMatch(`${copy.title} ${copy.body}`, /pasella/i);
+});
+
+test("preserves explicit rebrand-announcement wording", () => {
+  const copy = urgentUpdateCopy(
+    "4.3.1",
+    "Pasella is now SpazaOne 🎉",
+    "Same app. Same account. Update to {version}.",
+  );
+
+  assert.equal(copy.title, "Pasella is now SpazaOne 🎉");
+  assert.equal(copy.body, "Same app. Same account. Update to 4.3.1.");
+});
+
+test("rebrands stale tokens even when current branding is also present", () => {
+  const copy = urgentUpdateCopy(
+    "4.3.1",
+    "Pasella users: update Spaza One now",
+    "Pasella is now SpazaOne. Open Pasella and update to {version}.",
+  );
+
+  assert.equal(copy.title, "Spaza One users: update Spaza One now");
+  assert.equal(
+    copy.body,
+    "Pasella is now SpazaOne. Open Spaza One and update to 4.3.1.",
+  );
+});

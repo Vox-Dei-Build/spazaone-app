@@ -2,6 +2,11 @@
 import { db, functions } from "../config/main";
 import { authorizeCallableMerchantOrBot } from "../security/requestAuth";
 import * as admin from "firebase-admin";
+import {
+  buildPaymentReceiptPatch,
+  isPaymentAlreadyRecorded,
+  isPaymentReceiptAction,
+} from "./orderPaymentPolicy";
 
 const ALLOWED = new Set([
   "ACCEPT_ORDER",
@@ -145,7 +150,7 @@ async function finalizeInventoryOnce(opts: {
  * @param {string} data.paymentAction - The action to perform (must be one of ALLOWED).
  * @param {functions.https.CallableContext} context - Callable context with authentication info.
  * @throws {functions.https.HttpsError} If arguments are invalid, order not found, or update fails.
- * @returns {Promise<{ok: boolean}>} Returns `{ ok: true }` if the update succeeds.
+ * @returns {Promise<{ok: boolean, paymentRecordedNow?: boolean}>} Result.
  */
 export const updateOrderPayment = functions.https.onCall(
   async (data, context) => {
@@ -188,6 +193,28 @@ export const updateOrderPayment = functions.https.onCall(
         .doc(merchantId)
         .collection("sales")
         .doc(orderId);
+
+      if (isPaymentReceiptAction(paymentAction)) {
+        const paymentRecordedNow = await db.runTransaction(async (tx) => {
+          const current = await tx.get(ref);
+          if (!current.exists) {
+            throw new functions.https.HttpsError(
+              "not-found",
+              "Order not found",
+            );
+          }
+          const currentData = current.data() || {};
+          if (isPaymentAlreadyRecorded(currentData)) return false;
+
+          tx.update(
+            ref,
+            buildPaymentReceiptPatch(paymentAction, currentData, new Date()),
+          );
+          return true;
+        });
+        return { ok: true, paymentRecordedNow };
+      }
+
       const snap = await ref.get();
       if (!snap.exists) {
         throw new functions.https.HttpsError("not-found", "Order not found");
@@ -399,24 +426,6 @@ export const updateOrderPayment = functions.https.onCall(
           break;
         }
 
-        case "MARK_CASH_RECEIVED": {
-          const existingMethod = String(
-            orderData.paymentMethod || orderData.type || "",
-          );
-          patch = {
-            ...patch,
-            paymentMethod:
-              existingMethod.toLowerCase() === "transfer" ||
-              existingMethod.toLowerCase() === "eft"
-                ? "Transfer"
-                : "Cash",
-            paymentStatus: "paid",
-            status: "paid",
-            cashReceivedAt: now,
-          };
-          break;
-        }
-
         case "MARK_COLLECTED": {
           patch = {
             ...patch,
@@ -429,16 +438,6 @@ export const updateOrderPayment = functions.https.onCall(
           if (customerId) {
             await finalizeInventoryOnce({ merchantId, orderId, customerId });
           }
-          break;
-        }
-
-        case "SETTLE_BNPL": {
-          patch = {
-            ...patch,
-            paymentStatus: "paid",
-            status: "paid",
-            paidAt: now,
-          };
           break;
         }
 

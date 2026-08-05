@@ -6,6 +6,7 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test:urgent-update": "npm run build && node --test test/urgent_update_nudge_policy.test.mjs",
+    "test:order-payment": "npm run build && node --test test/order_payment_policy.test.mjs",
     "test:promotion-image": "npm run build && node --test test/product_promotion_image_policy.test.mjs",
     "test:rules": "node --test test/multistore_rules.test.mjs",
     "test:security": "npm run build && node --test test/paystack_security.test.mjs test/bot_store_selection.test.mjs test/request_auth.test.mjs",

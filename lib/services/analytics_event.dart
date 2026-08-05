@@ -295,6 +295,39 @@ class SaleCompleted extends AnalyticsEvent {
       };
 }
 
+/// Money was actually received for a sale or customer repayment.
+///
+/// This is deliberately separate from [SaleCompleted]: a credit sale is a
+/// valuable merchant action, but it is not a payment until the customer
+/// settles it. [transactionId] is a Firestore/order identifier, never a
+/// payment-card reference or other sensitive payment credential. It gives
+/// analytics a stable reconciliation key; app-side retry protection is handled
+/// by `PaymentReceiptTracker` because GA4 app streams do not deduplicate it.
+class PaymentReceived extends AnalyticsEvent {
+  final String transactionId;
+  final String amountBucket;
+  final String source;
+  final String method;
+
+  const PaymentReceived({
+    required this.transactionId,
+    required this.amountBucket,
+    required this.source,
+    required this.method,
+  });
+
+  @override
+  String get name => 'payment_received';
+
+  @override
+  Map<String, Object?> get properties => {
+        'transaction_id': transactionId,
+        'amount_bucket': amountBucket,
+        'source': source,
+        'method': method,
+      };
+}
+
 /// Merchant abandoned the sale form before submitting.
 class SaleAbandoned extends AnalyticsEvent {
   final String? lastFieldFocused;

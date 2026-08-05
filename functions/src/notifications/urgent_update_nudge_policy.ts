@@ -66,15 +66,31 @@ export function urgentUpdateCopy(
   titleOverride?: unknown,
   bodyOverride?: unknown,
 ): UrgentUpdateCopy {
-  const title = cleanCopy(titleOverride, 100) || DEFAULT_TITLE;
-  const bodyTemplate = cleanCopy(bodyOverride, 300) || DEFAULT_BODY;
+  const title = brandSafeCopy(titleOverride, 100) || DEFAULT_TITLE;
+  const bodyTemplate = brandSafeCopy(bodyOverride, 300) || DEFAULT_BODY;
   return {
     title,
     body: bodyTemplate.replace(/\{version\}/g, targetVersion),
   };
 }
 
-function cleanCopy(value: unknown, maxLength: number): string {
+/**
+ * Rebrand stale operator copy while preserving explicit migration wording such
+ * as "Pasella is now SpazaOne".
+ */
+function brandSafeCopy(value: unknown, maxLength: number): string {
   if (typeof value !== "string") return "";
-  return value.trim().replace(/\s+/g, " ").slice(0, maxLength);
+  const cleaned = value.trim().replace(/\s+/g, " ");
+  const protectedLegacyOffsets = new Set<number>();
+  const migrationPattern = /\bpasella\s+is\s+now\s+spaza\s*one\b/gi;
+  let migrationMatch: RegExpExecArray | null;
+  while ((migrationMatch = migrationPattern.exec(cleaned)) != null) {
+    protectedLegacyOffsets.add(migrationMatch.index);
+  }
+  const branded = cleaned.replace(
+    /\bpasella\b/gi,
+    (legacyName, offset: number) =>
+      protectedLegacyOffsets.has(offset) ? legacyName : "Spaza One",
+  );
+  return branded.slice(0, maxLength);
 }

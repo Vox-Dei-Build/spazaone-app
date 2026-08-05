@@ -3,8 +3,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
+import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
+import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
@@ -77,13 +79,22 @@ class AddPaymentViewModel extends TransactionViewModel {
     };
 
     try {
-      await FirebaseFirestore.instance
+      final transactionRef = await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUserId)
           .collection('customers')
           .doc(customerId)
           .collection('transactions')
           .add(transactionData);
+
+      await PaymentReceiptTracker.instance.capture(
+        PaymentReceived(
+          transactionId: 'ledger_payment:${transactionRef.id}',
+          amountBucket: amountBucketZAR(amountEntered),
+          source: 'ledger_repayment',
+          method: 'manual',
+        ),
+      );
 
       final smsCost = SMSPricingUtil.calculateCost(
         text: SMSMessages.paymentConfirmationShort,

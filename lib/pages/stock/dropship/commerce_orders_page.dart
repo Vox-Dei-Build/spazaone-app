@@ -2,7 +2,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
+import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/commerce_service.dart';
+import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 const _earningStatuses = {
@@ -271,6 +273,16 @@ class _OrderDetailsState extends State<_OrderDetails> {
         refundNote: refundNote,
         manualPaymentNote: manualPaymentNote,
       );
+      if (action == 'confirm_manual_payment') {
+        await PaymentReceiptTracker.instance.capture(
+          PaymentReceived(
+            transactionId: 'commerce_order:${order.id}',
+            amountBucket: amountBucketZAR(order.amountDueMinor / 100),
+            source: 'commerce_order',
+            method: 'manual',
+          ),
+        );
+      }
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);

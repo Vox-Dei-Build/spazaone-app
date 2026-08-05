@@ -8,6 +8,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/main.dart' show navigatorKey;
 import 'package:pasella/pages/auth/widgets/otp_code_dialog.dart';
 import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/completed_signup_tracker.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -183,14 +184,10 @@ class AuthViewModel with ChangeNotifier {
                     user,
                     referrerUserId: referrerUserId,
                   );
-                  // Phone-OTP signup completed (manual code entry path).
-                  // We identify the merchant immediately so subsequent events
-                  // attach to a person profile rather than the anonymous id.
-                  await TelemetryService.instance.identify(
+                  // Phone-OTP signup completed (manual code entry path). The
+                  // acquisition signal is queued when consent is deferred.
+                  await CompletedSignupTracker.instance.recordPhoneSignup(
                     merchantId: user.uid,
-                  );
-                  await TelemetryService.instance.capture(
-                    const SignupCompleted(method: 'phone'),
                   );
                 } else {
                   showErrorSnackBar(
@@ -572,10 +569,10 @@ class AuthViewModel with ChangeNotifier {
                   user,
                   referrerUserId: referrerUserId,
                 );
-                // Auto-verified phone registration -- identify and fire signup.
-                await TelemetryService.instance.identify(merchantId: user.uid);
-                await TelemetryService.instance.capture(
-                  const SignupCompleted(method: 'phone'),
+                // Auto-verified phone registration. Queue the acquisition
+                // signal when the post-auth consent sheet has not run yet.
+                await CompletedSignupTracker.instance.recordPhoneSignup(
+                  merchantId: user.uid,
                 );
                 handleSuccessfulLogin(context);
                 break;
@@ -648,11 +645,10 @@ class AuthViewModel with ChangeNotifier {
           referrerUserId: referrerUserId,
         );
         // Anonymous account upgraded to a phone account. The Firebase UID is
-        // unchanged across the link so we re-identify (idempotent) and fire
-        // SignupCompleted with method: 'phone' to mark the upgrade in funnels.
-        await TelemetryService.instance.identify(merchantId: user.uid);
-        await TelemetryService.instance.capture(
-          const SignupCompleted(method: 'phone'),
+        // unchanged across the link; the tracker deduplicates the completed
+        // phone-signup conversion for that account.
+        await CompletedSignupTracker.instance.recordPhoneSignup(
+          merchantId: user.uid,
         );
         handleSuccessfulLogin(
           context,
@@ -908,8 +904,8 @@ class AuthViewModel with ChangeNotifier {
   ///
   ///   * login:        sign in, identify, fire SigninCompleted, go to dashboard.
   ///   * registration: sign in, write the auth-keyed minimum to users/{uid},
-  ///                   identify, fire SignupCompleted, navigate to
-  ///                   `/finishProfilePage` for name + shopName collection.
+  ///                   navigate to `/finishProfilePage`, then emit the
+  ///                   completed signup after name + shopName are saved.
   ///
   /// Reuses [initiatePhoneNumberVerification] but bypasses its baked-in
   /// `_storeUserDetails(...)` call on auto-verification — the auto path
@@ -1074,9 +1070,9 @@ class AuthViewModel with ChangeNotifier {
   /// Registration branch: writes the auth-keyed minimum (mobileNumber,
   /// mobileNumberNormalized, referralCount, optional referrerUserId) and
   /// creates the initial wallet so any downstream code that assumes a wallet
-  /// exists for an authenticated user keeps working. Then identifies, fires
-  /// SignupCompleted(method:'phone'), and navigates to `/finishProfilePage`.
-  /// Name and shopName are deferred to that screen.
+  /// exists for an authenticated user keeps working. It then navigates to
+  /// `/finishProfilePage`; the completed-signup event is intentionally emitted
+  /// only after that required profile step succeeds.
   Future<void> _onNumberFirstAuthSuccess(
     BuildContext context,
     VerificationPurpose purpose, {
@@ -1097,10 +1093,6 @@ class AuthViewModel with ChangeNotifier {
         user,
         formattedPhone: formattedPhone,
         referrerUserId: referrerUserId,
-      );
-      await TelemetryService.instance.identify(merchantId: user.uid);
-      await TelemetryService.instance.capture(
-        const SignupCompleted(method: 'phone'),
       );
       _routeToFinishProfile(context);
     } else {
@@ -1197,6 +1189,9 @@ class AuthViewModel with ChangeNotifier {
       'name': trimmedName,
       if (trimmedShop.isNotEmpty) 'shopName': trimmedShop,
     }, SetOptions(merge: true));
+    await CompletedSignupTracker.instance.recordPhoneSignup(
+      merchantId: user.uid,
+    );
     handleSuccessfulLogin(context);
   }
 

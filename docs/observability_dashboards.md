@@ -177,7 +177,21 @@ merchants. There is no end-customer-level analytics by design (POPIA).
 - Chart: `Stacked bar`, weekly bucket
 - Pinned to: Dashboard 2
 
-### 2.5 Sale abandonment hot spots
+### 2.5 Payments received
+- Event: `payment_received`
+- Math: unique `transaction_id` values (not raw event total)
+- Primary breakdown: `source` (`cash_sale`, `ledger_repayment`,
+  `customer_order`, `commerce_order`)
+- Secondary breakdown: `method`
+- Add a companion bar broken down by `amount_bucket` for value distribution.
+- Chart: `Line` (weekly count) plus `Bar` (amount buckets)
+- Pinned to: Dashboard 2
+
+> This event means money was actually received. Do not substitute
+> `sale_completed`: credit creation is a sale/activation event but is not a
+> payment until settlement.
+
+### 2.6 Sale abandonment hot spots
 - Event: `sale_abandoned`
 - Math: `Total count`
 - Breakdown: `last_field`
@@ -337,7 +351,7 @@ activation, not just installs.
 | `SignupCompleted`   | `sign_up`          | GA4 standard event. Params: `method`, optional `business_type`, etc. |
 | `SigninCompleted`   | `login`            | GA4 standard event. Drives retention cohorts in GA4.                  |
 | `CustomerCreated`   | `generate_lead`    | GA4 standard event. Onboarding hop between signup and first sale. Params: `has_image`, `customer_count_bucket`. No `value`/`currency` -- contact has no revenue yet. |
-| `SaleCompleted`     | `purchase`         | GA4 standard. Params: `currency='ZAR'`, `value`=bucket midpoint, `amount_bucket`, `is_credit`, `customer_is_existing`, `has_products`, `product_count_bucket`. |
+| `PaymentReceived`   | `purchase`         | GA4 standard. Fires only after a paid cash sale, ledger repayment, cash/BNPL order settlement, or confirmed manual commerce payment. Includes a stable `transaction_id`, one generic payment item, `currency='ZAR'`, bucket-midpoint `value`, `payment_source`, and `payment_method`. |
 | `PayoutRequested`   | `payout_requested` | Custom. Params: `amount_bucket`, `value`=bucket midpoint, `currency='ZAR'`. |
 
 ### Rules
@@ -346,6 +360,15 @@ activation, not just installs.
   raw transaction amount. The mapping lives in
   `TelemetryService._bucketMidpointZAR` and must be updated in lock-step
   with `amountBucketZAR` in `lib/services/analytics_event.dart`.
+- `SaleCompleted` remains PostHog-only. In particular, creating a credit/BNPL
+  sale must never emit `purchase`; settlement emits `PaymentReceived` later.
+- `transaction_id` is a stable Firestore/order identifier with a source
+  prefix. It contains no card, bank, phone, or customer details. GA4 does not
+  deduplicate transaction IDs for app streams, so the app also keeps a local
+  capped 180-day receipt set to suppress normal retry/resume duplicates. The
+  legacy customer-order Function also accepts each paid transition atomically
+  once across devices. See Google's app-stream limitation:
+  https://support.google.com/analytics/answer/12313109
 - `setUserId` is the merchant's Firebase UID, set in
   `TelemetryService.identify` and cleared in `TelemetryService.reset`. This
   is what stitches FA sessions into per-merchant retention cohorts.
@@ -364,12 +387,15 @@ activation, not just installs.
 1. In GA4, mark `sign_up`, `generate_lead`, `purchase`, and
    `payout_requested` as conversions (Admin -> Events -> toggle "Mark as
    conversion").
-2. In Google Ads, import those conversions from the linked GA4 property and
-   set the optimization target on the campaign accordingly (typically
-   `purchase` for ROAS, `sign_up` or `generate_lead` for early funnel scale).
+2. In Google Ads, import those conversions from the linked GA4 property. Keep
+   the Aug 2026 acquisition campaign on its campaign-specific `sign_up` goal;
+   use `purchase` for bidding only after released-build payment receipts have
+   been validated and sufficient volume exists.
 3. Verify in GA4 DebugView using a debug install: signup, add a customer,
-   complete a sale, request a payout, confirm all four events arrive with
-   the expected params.
+   complete a signup, add a customer, record a paid cash sale or repayment,
+   request a payout, and confirm all four events arrive with the expected
+   params. Also create a credit sale and confirm it does **not** emit
+   `purchase` until settlement.
 
 ### Consent-gated collection
 
