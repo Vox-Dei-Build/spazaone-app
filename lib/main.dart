@@ -806,13 +806,14 @@ class MyApp extends StatefulWidget {
   }
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   StreamSubscription<User?>? _authSubscription;
   bool _permissionCheckScheduled = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
       _handleAuthChange,
       onError: (Object error, StackTrace stack) {
@@ -824,6 +825,17 @@ class _MyAppState extends State<MyApp> {
       },
     );
     _handleAuthChange(FirebaseAuth.instance.currentUser);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed ||
+        FirebaseAuth.instance.currentUser == null ||
+        StoreSession.instance.loading ||
+        StoreSession.instance.lastError == null) {
+      return;
+    }
+    unawaited(StoreSession.instance.bootstrap());
   }
 
   void _handleAuthChange(User? user) {
@@ -879,6 +891,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSubscription?.cancel();
     super.dispose();
   }

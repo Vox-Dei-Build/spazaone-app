@@ -181,6 +181,11 @@ test("adopts a legacy owner and automatically shares credits with an added store
     (await db.doc("campaignWalletBalances/owner-a").get()).get("balance"),
     15,
   );
+  const afterCreate = await bootstrap({}, ownerContext);
+  assert.deepEqual(
+    afterCreate.stores.map((store) => store.storeName),
+    ["Legacy Alpha", "Second Shop"],
+  );
 
   await assertStoreAccess("owner-a", created.storeId);
   await assert.rejects(
@@ -313,6 +318,10 @@ test("persists, claims, lists, and cancels pending phone invitations", async () 
     pendingOperatorContext,
   );
   assert.equal(claimed.claimedInvites, 1);
+  assert.deepEqual(
+    claimed.stores.map((store) => store.storeName),
+    ["Legacy Alpha"],
+  );
   await assertStoreAccess("operator-pending", "owner-a", ["admin"]);
   listing = await list({ storeId: "owner-a" }, ownerContext);
   assert.equal(listing.pendingInvites.length, 0);

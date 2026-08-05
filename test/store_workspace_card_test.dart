@@ -34,4 +34,51 @@ void main() {
     await tester.tap(find.text('Soweto Market'));
     expect(tapped, isTrue);
   });
+
+  testWidgets('store workspace uses truthful loading and retry states', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoreWorkspaceCard(
+            activeStoreName: 'Loading stores…',
+            storeCount: 0,
+            role: 'owner',
+            loading: true,
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Loading stores…'), findsOneWidget);
+    expect(find.text('Connecting…'), findsOneWidget);
+    expect(find.text('My Store'), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoreWorkspaceCard(
+            activeStoreName: 'Stores unavailable',
+            storeCount: 0,
+            role: 'owner',
+            connectionIssue: true,
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Stores unavailable'), findsOneWidget);
+    expect(find.text('Tap to reconnect'), findsOneWidget);
+    expect(find.byIcon(Icons.cloud_off_outlined), findsOneWidget);
+    expect(find.text('My Store'), findsNothing);
+  });
 }

@@ -11,12 +11,16 @@ class StoreWorkspaceCard extends StatelessWidget {
     required this.storeCount,
     required this.role,
     required this.onTap,
+    this.loading = false,
+    this.connectionIssue = false,
   });
 
   final String activeStoreName;
   final int storeCount;
   final String role;
   final VoidCallback onTap;
+  final bool loading;
+  final bool connectionIssue;
 
   String get _roleLabel {
     final value = role.trim();
@@ -28,7 +32,15 @@ class StoreWorkspaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
-    final countLabel = storeCount == 1 ? '1 store' : '$storeCount stores';
+    final countLabel = loading && storeCount == 0
+        ? 'Connecting…'
+        : connectionIssue && storeCount == 0
+            ? 'Tap to reconnect'
+            : storeCount == 1
+                ? '1 store'
+                : '$storeCount stores';
+    final detailLabel =
+        storeCount == 0 ? countLabel : '$countLabel · $_roleLabel';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 14),
@@ -86,7 +98,7 @@ class StoreWorkspaceCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '$countLabel · $_roleLabel',
+                        detailLabel,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -95,10 +107,24 @@ class StoreWorkspaceCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                if (loading && storeCount == 0)
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: primary,
+                    ),
+                  )
+                else
+                  Icon(
+                    connectionIssue
+                        ? Icons.cloud_off_outlined
+                        : Icons.chevron_right_rounded,
+                    color: connectionIssue
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
               ],
             ),
           ),

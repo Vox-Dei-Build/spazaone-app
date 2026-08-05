@@ -55,6 +55,8 @@ class SettingsPage extends StatelessWidget {
                               activeStoreName: session.activeStoreName,
                               storeCount: session.stores.length,
                               role: session.activeStore?.role.name ?? 'owner',
+                              loading: session.loading,
+                              connectionIssue: session.lastError != null,
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const StoreManagementPage(),

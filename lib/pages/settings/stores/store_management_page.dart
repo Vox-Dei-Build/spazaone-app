@@ -15,15 +15,25 @@ class StoreManagementPage extends StatefulWidget {
 
 class _StoreManagementPageState extends State<StoreManagementPage> {
   Future<Map<String, dynamic>>? _operators;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshOperators();
-  }
+  String? _operatorsStoreId;
 
   void _refreshOperators() {
-    _operators = StoreSession.instance.loadOperators();
+    final session = StoreSession.instance;
+    if (session.activeStore == null) {
+      _operatorsStoreId = null;
+      _operators = null;
+      return;
+    }
+    _operatorsStoreId = session.storeId;
+    _operators = session.loadOperators();
+  }
+
+  Future<Map<String, dynamic>> _operatorsFor(StoreSession session) {
+    if (_operators == null || _operatorsStoreId != session.storeId) {
+      _operatorsStoreId = session.storeId;
+      _operators = session.loadOperators();
+    }
+    return _operators!;
   }
 
   String _errorMessage(Object error) {
@@ -272,233 +282,346 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
       backgroundColor: Colors.grey.shade50,
       appBar: const CustomAppBar(title: 'Stores & team'),
       body: Consumer<StoreSession>(
-        builder: (context, session, _) => RefreshIndicator(
-          onRefresh: () async {
+        builder: (context, session, _) {
+          Future<void> refresh() async {
             await session.bootstrap();
-            setState(_refreshOperators);
-          },
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _ActiveStoreCard(session: session),
-              const SizedBox(height: 26),
-              Row(
+            if (session.stores.isNotEmpty && mounted) {
+              setState(_refreshOperators);
+            }
+          }
+
+          if (session.stores.isEmpty) {
+            return RefreshIndicator(
+              onRefresh: refresh,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Your stores',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _createStore,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add store'),
+                  _StoreAccessStateCard(
+                    loading: session.loading,
+                    connectionIssue: session.lastError != null,
+                    onRetry: session.loading ? null : refresh,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Card(
-                margin: EdgeInsets.zero,
-                elevation: 0,
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-                child: Column(
-                  children: List.generate(session.stores.length, (index) {
-                    final store = session.stores[index];
-                    final active = store.storeId == session.storeId;
-                    return Column(
-                      children: [
-                        ListTile(
-                          minVerticalPadding: 12,
-                          onTap:
-                              active ? null : () => _switchStore(store.storeId),
-                          leading: Container(
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color: active
-                                  ? theme.colorScheme.primary.withValues(
-                                      alpha: 0.10,
-                                    )
-                                  : theme.colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              Icons.storefront_outlined,
-                              color: active
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          title: Text(
-                            store.storeName,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          subtitle: Text(
-                            '${_roleLabel(store.role)}${store.sharedCampaignCredits ? ' · Shared campaign credits' : ''}',
-                          ),
-                          trailing: active
-                              ? Icon(
-                                  Icons.check_circle_rounded,
-                                  color: theme.colorScheme.primary,
-                                )
-                              : const Icon(Icons.chevron_right_rounded),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: refresh,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _ActiveStoreCard(session: session),
+                const SizedBox(height: 26),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Your stores',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
                         ),
-                        if (index < session.stores.length - 1)
-                          const Divider(height: 1, indent: 70),
-                      ],
-                    );
-                  }),
-                ),
-              ),
-              const SizedBox(height: 28),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Team',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          session.activeStoreName,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  if (session.canManageOperators)
                     TextButton.icon(
-                      onPressed: _inviteOperator,
-                      icon: const Icon(Icons.person_add_alt_1_outlined),
-                      label: const Text('Add person'),
+                      onPressed: _createStore,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Add store'),
                     ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              FutureBuilder<Map<String, dynamic>>(
-                future: _operators,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: CircularProgressIndicator(),
-                      ),
-                    );
-                  }
-                  if (snapshot.hasError) {
-                    return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.error_outline),
-                        title: const Text('Could not load operators'),
-                        subtitle: Text(_errorMessage(snapshot.error!)),
-                        trailing: IconButton(
-                          onPressed: () => setState(_refreshOperators),
-                          icon: const Icon(Icons.refresh),
-                        ),
-                      ),
-                    );
-                  }
-                  final payload = snapshot.data ?? const {};
-                  final operators = payload['operators'] as List? ?? const [];
-                  final pendingInvites =
-                      payload['pendingInvites'] as List? ?? const [];
-                  final teamRows = <Widget>[
-                    ...operators.whereType<Map>().map((item) {
-                      final uid = item['uid']?.toString() ?? '';
-                      final name =
-                          item['displayName']?.toString() ?? 'Operator';
-                      final isOwner = item['role'] == 'owner';
-                      final isSelf =
-                          uid == FirebaseAuth.instance.currentUser?.uid;
-                      final last4 = item['phoneLast4']?.toString() ?? '';
-                      return ListTile(
-                        minVerticalPadding: 10,
-                        leading: const CircleAvatar(
-                          child: Icon(Icons.person_outline),
-                        ),
-                        title: Text(name),
-                        subtitle: Text(
-                          '${item['role']}${last4.isEmpty ? '' : ' · •••• $last4'}',
-                        ),
-                        trailing:
-                            session.canManageOperators && !isOwner && !isSelf
-                                ? IconButton(
-                                    tooltip: 'Remove operator',
-                                    onPressed: () => _removeOperator(uid, name),
-                                    icon: const Icon(
-                                      Icons.person_remove_outlined,
-                                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  margin: EdgeInsets.zero,
+                  elevation: 0,
+                  clipBehavior: Clip.antiAlias,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                  child: Column(
+                    children: List.generate(session.stores.length, (index) {
+                      final store = session.stores[index];
+                      final active = store.storeId == session.storeId;
+                      return Column(
+                        children: [
+                          ListTile(
+                            minVerticalPadding: 12,
+                            onTap: active
+                                ? null
+                                : () => _switchStore(store.storeId),
+                            leading: Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? theme.colorScheme.primary.withValues(
+                                        alpha: 0.10,
+                                      )
+                                    : theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.storefront_outlined,
+                                color: active
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            title: Text(
+                              store.storeName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${_roleLabel(store.role)}${store.sharedCampaignCredits ? ' · Shared campaign credits' : ''}',
+                            ),
+                            trailing: active
+                                ? Icon(
+                                    Icons.check_circle_rounded,
+                                    color: theme.colorScheme.primary,
                                   )
-                                : null,
+                                : const Icon(Icons.chevron_right_rounded),
+                          ),
+                          if (index < session.stores.length - 1)
+                            const Divider(height: 1, indent: 70),
+                        ],
                       );
                     }),
-                    if (pendingInvites.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(4, 16, 4, 4),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text('Pending invitations'),
-                        ),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Team',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            session.activeStoreName,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
-                      ...pendingInvites.whereType<Map>().map((item) {
-                        final inviteId = item['inviteId']?.toString() ?? '';
+                    ),
+                    if (session.canManageOperators)
+                      TextButton.icon(
+                        onPressed: _inviteOperator,
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: const Text('Add person'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<Map<String, dynamic>>(
+                  future: _operatorsFor(session),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.error_outline),
+                          title: const Text('Could not load operators'),
+                          subtitle: Text(_errorMessage(snapshot.error!)),
+                          trailing: IconButton(
+                            onPressed: () => setState(_refreshOperators),
+                            icon: const Icon(Icons.refresh),
+                          ),
+                        ),
+                      );
+                    }
+                    final payload = snapshot.data ?? const {};
+                    final operators = payload['operators'] as List? ?? const [];
+                    final pendingInvites =
+                        payload['pendingInvites'] as List? ?? const [];
+                    final teamRows = <Widget>[
+                      ...operators.whereType<Map>().map((item) {
+                        final uid = item['uid']?.toString() ?? '';
+                        final name =
+                            item['displayName']?.toString() ?? 'Operator';
+                        final isOwner = item['role'] == 'owner';
+                        final isSelf =
+                            uid == FirebaseAuth.instance.currentUser?.uid;
                         final last4 = item['phoneLast4']?.toString() ?? '';
                         return ListTile(
+                          minVerticalPadding: 10,
                           leading: const CircleAvatar(
-                            child: Icon(Icons.schedule_outlined),
+                            child: Icon(Icons.person_outline),
                           ),
-                          title: Text('•••• $last4'),
-                          subtitle: Text('${item['role']} · awaiting sign-in'),
-                          trailing: IconButton(
-                            tooltip: 'Cancel invitation',
-                            onPressed: () => _cancelInvite(inviteId),
-                            icon: const Icon(Icons.close),
+                          title: Text(name),
+                          subtitle: Text(
+                            '${item['role']}${last4.isEmpty ? '' : ' · •••• $last4'}',
                           ),
+                          trailing: session.canManageOperators &&
+                                  !isOwner &&
+                                  !isSelf
+                              ? IconButton(
+                                  tooltip: 'Remove operator',
+                                  onPressed: () => _removeOperator(uid, name),
+                                  icon: const Icon(
+                                    Icons.person_remove_outlined,
+                                  ),
+                                )
+                              : null,
                         );
                       }),
-                    ],
-                  ];
-                  return Card(
-                    margin: EdgeInsets.zero,
-                    elevation: 0,
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      side: BorderSide(
-                        color: theme.colorScheme.outlineVariant,
+                      if (pendingInvites.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(4, 16, 4, 4),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('Pending invitations'),
+                          ),
+                        ),
+                        ...pendingInvites.whereType<Map>().map((item) {
+                          final inviteId = item['inviteId']?.toString() ?? '';
+                          final last4 = item['phoneLast4']?.toString() ?? '';
+                          return ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.schedule_outlined),
+                            ),
+                            title: Text('•••• $last4'),
+                            subtitle:
+                                Text('${item['role']} · awaiting sign-in'),
+                            trailing: IconButton(
+                              tooltip: 'Cancel invitation',
+                              onPressed: () => _cancelInvite(inviteId),
+                              icon: const Icon(Icons.close),
+                            ),
+                          );
+                        }),
+                      ],
+                    ];
+                    return Card(
+                      margin: EdgeInsets.zero,
+                      elevation: 0,
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        side: BorderSide(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
                       ),
-                    ),
-                    child: Column(
-                      children: teamRows.isEmpty
-                          ? [
-                              const ListTile(
-                                leading: Icon(Icons.people_outline),
-                                title: Text('No team members yet'),
-                              ),
-                            ]
-                          : teamRows,
-                    ),
-                  );
-                },
+                      child: Column(
+                        children: teamRows.isEmpty
+                            ? [
+                                const ListTile(
+                                  leading: Icon(Icons.people_outline),
+                                  title: Text('No team members yet'),
+                                ),
+                              ]
+                            : teamRows,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StoreAccessStateCard extends StatelessWidget {
+  const _StoreAccessStateCard({
+    required this.loading,
+    required this.connectionIssue,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final bool connectionIssue;
+  final Future<void> Function()? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
               ),
-            ],
-          ),
+              child: loading
+                  ? Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                      ),
+                    )
+                  : Icon(
+                      Icons.cloud_off_outlined,
+                      color: theme.colorScheme.primary,
+                    ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    loading
+                        ? 'Loading your stores'
+                        : connectionIssue
+                            ? 'Stores unavailable'
+                            : 'No stores available',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    loading
+                        ? 'Connecting securely…'
+                        : connectionIssue
+                            ? 'Check your connection and try again.'
+                            : 'Ask a store owner to add you.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!loading)
+              IconButton(
+                tooltip: 'Try again',
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+          ],
         ),
       ),
     );
