@@ -117,10 +117,10 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
             ? 'Online and synced'
             : 'Offline or unable to sync';
     final String tooltip = isChecking
-        ? 'Checking whether SpazaOne can reach the cloud.'
+        ? 'Checking whether Spaza One can reach the cloud.'
         : isOnline
             ? 'Online — changes can sync to the cloud.'
-            : 'Offline — changes stay on this device until SpazaOne can reach the cloud.';
+            : 'Offline — changes stay on this device until Spaza One can reach the cloud.';
 
     return Tooltip(
       message: tooltip,

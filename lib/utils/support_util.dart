@@ -50,15 +50,15 @@ class SupportUtil {
   static String _getMessageTemplate(WhatsAppMessageType type) {
     switch (type) {
       case WhatsAppMessageType.feedback:
-        return "Hi SpazaOne Support 👋,\n\nI’d like to leave feedback about the app experience. 📝\nHere’s what I think:";
+        return "Hi Spaza One Support 👋,\n\nI’d like to leave feedback about the app experience. 📝\nHere’s what I think:";
       case WhatsAppMessageType.sales:
-        return "Hi SpazaOne Team 👋,\n\nI'm interested in increasing my sales. Can you share some tips or features I can use? 💰";
+        return "Hi Spaza One Team 👋,\n\nI'm interested in increasing my sales. Can you share some tips or features I can use? 💰";
       case WhatsAppMessageType.bug:
-        return "Hi SpazaOne Support 👋,\n\nI found a bug 🐛 in the app. Here's what happened:";
+        return "Hi Spaza One Support 👋,\n\nI found a bug 🐛 in the app. Here's what happened:";
       case WhatsAppMessageType.other:
-        return "Hi SpazaOne 👋,\n\nI have a general question or request.";
+        return "Hi Spaza One 👋,\n\nI have a general question or request.";
       case WhatsAppMessageType.support:
-        return "Hi SpazaOne Support 👋,\n\nI need assistance with something on the app. Could you please help me out?\n\nThanks! 😊";
+        return "Hi Spaza One Support 👋,\n\nI need assistance with something on the app. Could you please help me out?\n\nThanks! 😊";
     }
   }
 

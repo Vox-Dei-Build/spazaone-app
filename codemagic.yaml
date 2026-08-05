@@ -251,6 +251,13 @@ definitions:
           echo "::warning:: No tests found; skipping."
         fi
 
+    - &functions_test
+      name: Firebase Functions checks
+      script: |
+        npm --prefix functions ci --prefer-offline
+        npm --prefix functions run test:commerce
+        npm --prefix functions run test:promotion-image
+
 workflows:
   android-release:
     name: Android — Play Internal
@@ -295,6 +302,7 @@ workflows:
       - *flutter_pub_get
       - *flutter_analyze
       - *flutter_test
+      - *functions_test
       - name: Verify version code matches the git tag
         script: |
           # Tag format: v<major>.<minor>.<patch>+<buildNumber>
@@ -349,7 +357,8 @@ workflows:
           # so Gradle's signingConfigs.release block (which reads from
           # key.properties) will produce a release-signed bundle
           # without any local file shuffling.
-          flutter build appbundle --release
+          flutter build appbundle --release \
+            --dart-define=DROPSHIP_CATALOG_V2=true
       - name: Verify 16 KB page-size compliance
         script: |
           set -euo pipefail
@@ -446,6 +455,7 @@ workflows:
       - *flutter_pub_get
       - *flutter_analyze
       - *flutter_test
+      - *functions_test
       - name: Verify version code matches the git tag
         script: |
           TAG="${CM_TAG:-}"
@@ -512,6 +522,7 @@ workflows:
             exit 1
           fi
           flutter build ipa --release \
+            --dart-define=DROPSHIP_CATALOG_V2=true \
             --export-options-plist="$HOME/export_options.plist"
       - name: Verify IPA privacy manifests are valid
         # Defensive post-build assertion. Apple's App Store Connect

@@ -217,7 +217,7 @@ function addCustomerNudgeCopy(customerCount: number): {
   if (customerCount === 0) {
     return {
       title: "Add your first customer",
-      body: "Start with one regular so SpazaOne can track tabs, reminders and orders.",
+      body: "Start with one regular so Spaza One can track tabs, reminders and orders.",
     };
   }
 

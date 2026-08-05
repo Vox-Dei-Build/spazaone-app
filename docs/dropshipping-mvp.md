@@ -74,10 +74,13 @@ false and only the exact value `true` activates Paystack checkout.
 
 While the gate is off:
 
-- sellers browse CJ, set markup, publish listings and share Spaza One WhatsApp
-  ordering links;
-- the link opens the existing Spaza One bot with the shop code, quantity and
-  product already in context;
+- sellers browse the Spaza One supplier catalogue, set markup and publish the
+  result as a normal seller product;
+- supplier-fulfilled products use the same Promote action and existing
+  WhatsApp catalogue/storefront flow as seller-owned products; no special
+  product checkout link is exposed;
+- the buyer opens the seller's normal WhatsApp storefront and chooses the
+  listing from the same catalogue as the seller's other products;
 - the bot collects the buyer's delivery address and payment preference without
   sending them to a webpage;
 - the authenticated bot backend live-quotes CJ delivery and creates the order
@@ -176,10 +179,12 @@ completed, the store owner records it and the order becomes `refunded`.
   Confirm Paystack only as part of the approved activation release.
   Notification failure is recorded but does not roll back payment or
   fulfilment state.
-- Roll out in two stages: deploy the server-only catalogue rules and scheduled
-  worker first, let the default categories warm, then switch the catalogue
-  callables and release the app. This avoids an empty cold catalogue. No
-  migration of manual Sales, existing products, stock or wallets is required.
+- Roll out in two stages: deploy the server-only catalogue rules, catalogue
+  functions, scheduled worker and promotion-image proxy first; let the default
+  categories warm and smoke-test a supplier-product promotion image, then
+  release the app. This avoids an empty cold catalogue or placeholder images
+  in WhatsApp promotions. No migration of manual Sales, existing products,
+  stock or wallets is required.
 
 ## Manual QA checklist
 
@@ -187,10 +192,12 @@ completed, the store owner records it and the order becomes `refunded`.
 
 - Leave `COMMERCE_PAYMENTS_ENABLED` unset or false and confirm catalogue search,
   product opening and listing creation work without live supplier requests.
-- Create and share a seller listing; confirm the shared link opens the Spaza One
-  WhatsApp bot with `shop <code> order 1 <product>` prefilled.
-- Send the message and confirm the bot asks for the South African address in
-  WhatsApp, followed by payment preference and final confirmation.
+- Create a supplier listing and confirm its Products-card Promote action opens
+  the same campaign flow as a seller-owned product. Confirm no supplier-only
+  checkout URL or direct-product ordering link is shown.
+- Open the seller's normal WhatsApp storefront, select the listing from the
+  catalogue and confirm the bot asks for the South African address, payment
+  preference and final confirmation entirely in WhatsApp.
 - Confirm Spaza One creates one manual `commerceOrder`, snapshots zero payment
   fee and never calls Paystack or creates a manual Sales record.
 - Confirm the buyer receives one in-conversation order reference and total,
@@ -223,16 +230,19 @@ The digital-payment checks require an approved test account and
   fee snapshot is zero. With digital payments enabled, confirm markup below the
   estimated provider fee is rejected.
 - Create the listing and confirm it appears in Products as supplier fulfilled
-  without changing an existing seller product.
+  without changing an existing seller product. Confirm it is available in the
+  same WhatsApp catalogue and promotion picker as other listed products.
 - Confirm Products has only Products, Catalogue and Report tabs; there is no
   separate seller-wide Orders destination.
 
 ### WhatsApp buyer ordering
 
-- Share the listing to a phone that has no Spaza One seller session. Confirm the
-  buyer stays inside WhatsApp throughout the order request.
-- Confirm the direct product message selects the intended shop and listing,
-  including when an old unfinished bot order existed in that chat.
+- Promote the listing to a phone that has no Spaza One seller session, then
+  enter through the seller's existing WhatsApp storefront. Confirm the buyer
+  stays inside WhatsApp throughout the order request.
+- Select the supplier listing from the normal catalogue and confirm the bot
+  associates the order with the intended shop and listing, including when an
+  old unfinished bot order existed in that chat.
 - Enter a South African delivery address in the requested comma-separated
   format. Confirm the backend obtains a fresh CJ freight quote before creating
   the manual order request.

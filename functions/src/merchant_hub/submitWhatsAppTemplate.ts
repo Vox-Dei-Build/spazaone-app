@@ -199,7 +199,7 @@ export async function submitWhatsAppTemplateDocument(
     await templateRef.update({
       "channels.whatsapp.approvalStatus": "submission_failed",
       "channels.whatsapp.submissionError":
-        "SpazaOne ordering WhatsApp number is not configured.",
+        "Spaza One ordering WhatsApp number is not configured.",
     });
     return;
   }

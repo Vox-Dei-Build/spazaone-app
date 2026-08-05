@@ -41,7 +41,7 @@ String buildProductPromotionSmsPreview({
       ? 'Contact the shop to order.'
       : 'Call $contact to order.';
   final resolvedShopName =
-      shopName.trim().isEmpty ? 'SpazaOne' : shopName.trim();
+      shopName.trim().isEmpty ? 'Spaza One' : shopName.trim();
   return '$resolvedShopName: ${product.name.trim()} is $price. '
       '$orderInstruction Reply STOP to opt out.';
 }
@@ -242,8 +242,8 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
             : 'Preparing WhatsApp promotions',
         body: failed
             ? templateFailureReason(template) ??
-                'SpazaOne could not submit the reusable product message.'
-            : 'SpazaOne created the product message for you. Meta is reviewing '
+                'Spaza One could not submit the reusable product message.'
+            : 'Spaza One created the product message for you. Meta is reviewing '
                 'it; there is nothing else you need to complete.',
         actionLabel: failed ? 'Retry setup' : 'Check again',
         busy: _retrying,
@@ -313,8 +313,8 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
     );
     final selectedCount = vm.selectedCustomerIds.length;
     final recommendation = selectedCount == filtered.eligible.length
-        ? 'SpazaOne selected all $selectedCount reachable customers.'
-        : 'SpazaOne selected $selectedCount '
+        ? 'Spaza One selected all $selectedCount reachable customers.'
+        : 'Spaza One selected $selectedCount '
             'customer${selectedCount == 1 ? '' : 's'}. You can adjust the list.';
     return CustomerSelectionStep(
       heading: 'Who should receive it?',

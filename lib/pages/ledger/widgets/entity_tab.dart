@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
@@ -9,9 +8,7 @@ import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/transactions/transaction_model.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
-import 'package:pasella/services/whatsapp_capability_cache.dart';
 import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
-import 'package:pasella/shared/widgets/onboarding/customer_growth_nudge.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
@@ -41,21 +38,6 @@ class EntityTab extends StatefulWidget {
   final String? emptyCtaLabel;
   final VoidCallback? onEmptyCtaTap;
 
-  /// Optional non-empty list header. CustomerTab uses this for the
-  /// customer setup checklist so the card scrolls with the customer
-  /// list instead of consuming fixed vertical space above it.
-  final Widget? listHeader;
-
-  /// PAS-UX-rel: Whether to render the [CustomerGrowthNudge] beneath
-  /// [listHeader] when the category is Customer. Only meaningful on
-  /// the Customer tab; other categories ignore it.
-  ///
-  /// CustomerTab hides the growth nudge while the merchant setup card
-  /// still has incomplete steps — two overlapping progress surfaces
-  /// on the same tab was the top piece of noise merchants called out
-  /// in the design review. Activation first, growth after.
-  final ValueListenable<bool>? showGrowthNudge;
-
   /// PAS-AUTH-03: optional walkthrough video key. When set and the
   /// matching Remote Config entry returns a non-empty URL, a "Watch a
   /// 2-min walkthrough" link is rendered below the primary CTA — same
@@ -73,15 +55,13 @@ class EntityTab extends StatefulWidget {
     this.scrollController,
     this.emptyCtaLabel,
     this.onEmptyCtaTap,
-    this.listHeader,
-    this.showGrowthNudge,
     this.tutorialKey,
-    this.tutorialTitle = 'How to use SpazaOne',
+    this.tutorialTitle = 'How to use Spaza One',
     Key? key,
   }) : super(key: key);
 
   @override
-  _EntityTabState createState() => _EntityTabState();
+  State<EntityTab> createState() => _EntityTabState();
 }
 
 class _EntityTabState extends State<EntityTab> {
@@ -313,7 +293,7 @@ class _EntityTabState extends State<EntityTab> {
                           coachmarkKey: 'add_first_customer',
                           title: 'Start with one customer',
                           message:
-                              'Save one real customer. SpazaOne opens their Pay Later screen next.',
+                              'Save one real customer. Spaza One opens their Pay Later screen next.',
                           icon: Icons.person_add_alt_1_outlined,
                           enabled: widget.category == 'Customer',
                           child: ElevatedButton.icon(
@@ -387,28 +367,10 @@ class _EntityTabState extends State<EntityTab> {
               widget.hasCustomersNotifier.value = allEntities.isNotEmpty;
             });
 
-            // PAS-WA-V1: prime the WhatsApp-capability cache for any
-            // numbers we haven't looked up yet. Bulk-loads via chunked
-            // `whereIn`, so the per-row Firestore cost stays at zero
-            // even on a 200-customer ledger. Already-known numbers are
-            // skipped inside the cache, making this safe to call on
-            // every stream tick.
-            final numbers = allEntities
-                .map((e) => e.customer.number)
-                .whereType<String>()
-                .where((n) => n.isNotEmpty)
-                .toSet();
-            if (numbers.isNotEmpty) {
-              // ignore: unawaited_futures
-              WhatsAppCapabilityCache.instance.primeFor(numbers);
-            }
-
             List<CustomerWithTransactions> filteredEntities =
                 dataModel.applyFilters(allEntities);
 
             String? searchTerm = widget.searchTextNotifier.value?.toLowerCase();
-            final hasSearchTerm =
-                searchTerm != null && searchTerm.trim().isNotEmpty;
             if (searchTerm != null && searchTerm.isNotEmpty) {
               filteredEntities = filteredEntities.where((entity) {
                 return entity.customer.name.toLowerCase().contains(
@@ -440,72 +402,50 @@ class _EntityTabState extends State<EntityTab> {
               );
             }
 
-            // PAS-WA-V1: rebuild only the list when capability data
-            // arrives — the rest of the surface (filters, empty state,
-            // etc.) is already settled by this point.
-            return AnimatedBuilder(
-              animation: WhatsAppCapabilityCache.instance,
-              builder: (context, _) {
-                return SingleChildScrollView(
-                  controller: widget.scrollController,
-                  child: Column(
-                    children: [
-                      if (!hasSearchTerm && widget.listHeader != null)
-                        widget.listHeader!,
-                      if (widget.category == 'Customer' && !hasSearchTerm)
-                        _MaybeGrowthNudge(
-                          showGrowthNudge: widget.showGrowthNudge,
-                          customerCount: allEntities.length,
-                          onAddCustomer: widget.onEmptyCtaTap,
-                        ),
-                      ...filteredEntities.map((entityWithTransactions) {
-                        LedgerTransaction? lastTransaction;
-                        double balance =
-                            entityWithTransactions.customer.balance;
+            return SingleChildScrollView(
+              controller: widget.scrollController,
+              child: Column(
+                children: [
+                  ...filteredEntities.map((entityWithTransactions) {
+                    LedgerTransaction? lastTransaction;
+                    double balance = entityWithTransactions.customer.balance;
 
-                        if (entityWithTransactions.customer.lastTransaction !=
-                                null &&
-                            entityWithTransactions
-                                .customer.lastTransaction!.isNotEmpty) {
-                          lastTransaction = LedgerTransaction.fromMap(
-                            entityWithTransactions.customer.lastTransaction!,
-                          );
-                        }
+                    if (entityWithTransactions.customer.lastTransaction !=
+                            null &&
+                        entityWithTransactions
+                            .customer.lastTransaction!.isNotEmpty) {
+                      lastTransaction = LedgerTransaction.fromMap(
+                        entityWithTransactions.customer.lastTransaction!,
+                      );
+                    }
 
-                        return TransactionTile(
-                          color: kTertiaryColor.value,
-                          name: entityWithTransactions.customer.name,
-                          profileImageUrl:
-                              entityWithTransactions.customer.profileImageUrl,
-                          balance: balance,
-                          amount: lastTransaction != null
-                              ? lastTransaction.amount.toDouble()
-                              : 0,
-                          remarks:
-                              lastTransaction?.remarks ?? 'No transactions yet',
-                          status: lastTransaction?.status ?? 'DUE',
-                          type: lastTransaction?.type ?? 'Credit',
-                          date: lastTransaction?.date != null
-                              ? DateFormat(
-                                  'y MMM d, h:mm a',
-                                ).format(lastTransaction!.date)
-                              : '',
-                          selectedCustomerId:
-                              entityWithTransactions.customer.id,
-                          isNPA: entityWithTransactions.customer.isNPA,
-                          number: entityWithTransactions.customer.number,
-                          unreadCount: entityWithTransactions.unreadCount,
-                          hasWhatsApp:
-                              WhatsAppCapabilityCache.instance.capabilityFor(
-                            entityWithTransactions.customer.number,
-                          ),
-                        );
-                      }),
-                      const SizedBox(height: 112),
-                    ],
-                  ),
-                );
-              },
+                    return TransactionTile(
+                      color: kTertiaryColor.toARGB32(),
+                      name: entityWithTransactions.customer.name,
+                      profileImageUrl:
+                          entityWithTransactions.customer.profileImageUrl,
+                      balance: balance,
+                      amount: lastTransaction != null
+                          ? lastTransaction.amount.toDouble()
+                          : 0,
+                      remarks:
+                          lastTransaction?.remarks ?? 'No transactions yet',
+                      status: lastTransaction?.status ?? 'DUE',
+                      type: lastTransaction?.type ?? 'Credit',
+                      date: lastTransaction?.date != null
+                          ? DateFormat(
+                              'y MMM d, h:mm a',
+                            ).format(lastTransaction!.date)
+                          : '',
+                      selectedCustomerId: entityWithTransactions.customer.id,
+                      isNPA: entityWithTransactions.customer.isNPA,
+                      number: entityWithTransactions.customer.number,
+                      unreadCount: entityWithTransactions.unreadCount,
+                    );
+                  }),
+                  const SizedBox(height: 112),
+                ],
+              ),
             );
           },
         ),
@@ -517,42 +457,5 @@ class _EntityTabState extends State<EntityTab> {
   void dispose() {
     widget.searchTextNotifier.removeListener(_handleSearch);
     super.dispose();
-  }
-}
-
-/// Renders the customer growth nudge only when the parent surface has
-/// opted-in via [showGrowthNudge]. If [showGrowthNudge] is null the
-/// nudge is always visible — preserves behaviour for callers that
-/// don't participate in the setup-first / growth-second gating.
-class _MaybeGrowthNudge extends StatelessWidget {
-  const _MaybeGrowthNudge({
-    required this.showGrowthNudge,
-    required this.customerCount,
-    required this.onAddCustomer,
-  });
-
-  final ValueListenable<bool>? showGrowthNudge;
-  final int customerCount;
-  final VoidCallback? onAddCustomer;
-
-  @override
-  Widget build(BuildContext context) {
-    final gate = showGrowthNudge;
-    if (gate == null) {
-      return CustomerGrowthNudge(
-        customerCount: customerCount,
-        onAddCustomer: onAddCustomer,
-      );
-    }
-    return ValueListenableBuilder<bool>(
-      valueListenable: gate,
-      builder: (context, show, _) {
-        if (!show) return const SizedBox.shrink();
-        return CustomerGrowthNudge(
-          customerCount: customerCount,
-          onAddCustomer: onAddCustomer,
-        );
-      },
-    );
   }
 }

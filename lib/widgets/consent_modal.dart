@@ -201,7 +201,7 @@ class _ConsentModalState extends State<ConsentModal> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Pick what SpazaOne can collect. You can change this '
+                  'Pick what Spaza One can collect. You can change this '
                   'anytime in Settings → Privacy.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -225,7 +225,7 @@ class _ConsentModalState extends State<ConsentModal> {
                   icon: Icons.insights_outlined,
                   title: 'Usage insights',
                   description:
-                      'Feature usage linked to your SpazaOne account. No '
+                      'Feature usage linked to your Spaza One account. No '
                       'message contents or contact details.',
                   value: _analytics,
                   onChanged:
@@ -339,7 +339,7 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Choose what SpazaOne can collect. You can change this anytime '
+              'Choose what Spaza One can collect. You can change this anytime '
               'in Settings → Privacy.',
               style: TextStyle(
                 fontSize: 13.5,

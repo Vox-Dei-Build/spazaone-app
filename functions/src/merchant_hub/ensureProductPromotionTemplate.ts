@@ -208,7 +208,7 @@ export const ensureProductPromotionTemplate = functions.https.onCall(
     if (!latest.exists || !latestData) {
       throw new functions.https.HttpsError(
         "internal",
-        "SpazaOne could not prepare the promotion message.",
+        "Spaza One could not prepare the promotion message.",
       );
     }
     const whatsapp = latestData.channels?.whatsapp || {};

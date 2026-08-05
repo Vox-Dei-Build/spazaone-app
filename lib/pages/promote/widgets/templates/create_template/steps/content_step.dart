@@ -121,7 +121,7 @@ class ContentStep extends StatelessWidget {
         // avoid rendering "The  team" in the preview.
         Text(
           shopName.trim().isEmpty
-              ? 'The SpazaOne team'
+              ? 'The Spaza One team'
               : 'The ${shopName.trim()} team',
           style: const TextStyle(fontStyle: FontStyle.italic),
         ),

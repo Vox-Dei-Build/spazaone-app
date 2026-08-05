@@ -24,7 +24,7 @@ class ProductDetailsPage extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _ProductDetailsPage createState() => _ProductDetailsPage();
+  State<ProductDetailsPage> createState() => _ProductDetailsPage();
 }
 
 class _ProductDetailsPage extends State<ProductDetailsPage> {
@@ -50,7 +50,10 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
   @override
   Widget build(BuildContext context) {
     if (widget.product.isDropshipListing) {
-      return DropshipListingPage(product: widget.product);
+      return DropshipListingPage(
+        product: widget.product,
+        docID: widget.docID,
+      );
     }
     return ChangeNotifierProvider(
       create: (_) => ProductViewModel(widget.product),

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
-import 'package:pasella/shared/widgets/channel_capability_badge.dart';
-import 'package:pasella/shared/widgets/payment_status_pill.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
@@ -24,7 +22,6 @@ class TransactionTile extends StatelessWidget {
     this.number,
     this.profileImageUrl, // Add profileImageUrl
     required this.unreadCount,
-    this.hasWhatsApp,
   });
 
   final int color;
@@ -40,11 +37,6 @@ class TransactionTile extends StatelessWidget {
   final String? number;
   final String? profileImageUrl; // Add profileImageUrl
   final int? unreadCount;
-
-  /// PAS-WA-V1: tri-state channel capability used to render the
-  /// WhatsApp/SMS badge. `null` means "not known yet" — the badge
-  /// shows a neutral phone glyph rather than guessing.
-  final bool? hasWhatsApp;
 
   @override
   Widget build(BuildContext context) {
@@ -111,11 +103,9 @@ class TransactionTile extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Wrap the name + badges in Expanded so it doesn't overflow the balance
           Expanded(
             child: Row(
               children: [
-                // Wrap name in Flexible to ellipsize correctly
                 Flexible(
                   child: Text(
                     name,
@@ -144,41 +134,18 @@ class TransactionTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                // PAS-WA-V1: at-a-glance channel reachability. Rendered
-                // inline at the end of the name row so it tracks the name's
-                // baseline and stays compact (no extra vertical line, and
-                // no row-to-row drift like when it was in the subtitle).
-                // The name above is wrapped in Flexible so it ellipsizes
-                // to make room for the badge rather than pushing it off
-                // the row.
-                Padding(
-                  padding: EdgeInsets.only(
-                      left: SizeConfig.imageSizeMultiplier * 1.5),
-                  child: ChannelCapabilityBadge(
-                    hasNumber: number != null && number!.isNotEmpty,
-                    hasWhatsApp: hasWhatsApp,
-                  ),
-                ),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                CurrencyUtil.format(balance),
-                style: TextStyle(
-                  color: balance >= 0 ? kPrimaryColor : Colors.red,
-                  fontWeight: FontWeight.bold,
-                  fontSize: SizeConfig.textMultiplier * 1.8,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.2),
-              PaymentStatusPill(balance: balance, dense: true),
-            ],
+          Text(
+            CurrencyUtil.format(balance),
+            style: TextStyle(
+              color: balance >= 0 ? kPrimaryColor : Colors.red,
+              fontWeight: FontWeight.bold,
+              fontSize: SizeConfig.textMultiplier * 1.8,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -198,65 +165,25 @@ class TransactionTile extends StatelessWidget {
     final displayType = type == 'Credit' ? 'Transaction' : type;
     if (!hasTransaction) {
       return Text(
-        'No transactions yet',
+        'No activity yet',
         style: TextStyle(
           color: Colors.grey.shade600,
           fontSize: SizeConfig.textMultiplier * 1.5,
           fontWeight: FontWeight.w400,
-          fontStyle: FontStyle.italic,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       );
     }
-    return Row(
-      children: [
-        Expanded(
-          child: Text.rich(
-            TextSpan(
-              style: TextStyle(
-                color: status == 'PAID' ? kPrimaryColor : Colors.red,
-                fontWeight: FontWeight.w500,
-                fontSize: SizeConfig.textMultiplier * 1.5,
-              ),
-              children: [
-                TextSpan(text: CurrencyUtil.format(amount)),
-                TextSpan(
-                  text:
-                      displayType.isNotEmpty ? ' $displayType added on ' : ' ',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                TextSpan(
-                  text: date,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              ],
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        if (remarks.isNotEmpty) ...[
-          SizedBox(width: SizeConfig.heightMultiplier * 2),
-          Flexible(
-            child: Text(
-              remarks,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: SizeConfig.textMultiplier * 1.4,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ],
+    return Text(
+      '${CurrencyUtil.format(amount)} · $displayType · $date',
+      style: TextStyle(
+        color: Colors.grey.shade600,
+        fontSize: SizeConfig.textMultiplier * 1.45,
+        fontWeight: FontWeight.w400,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

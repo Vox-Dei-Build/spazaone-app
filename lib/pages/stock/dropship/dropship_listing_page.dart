@@ -1,36 +1,40 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/models/stock/product_model.dart';
-import 'package:pasella/services/commerce_service.dart';
+import 'package:pasella/pages/promote/utils/linked_product_promotion.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 class DropshipListingPage extends StatelessWidget {
-  const DropshipListingPage({super.key, required this.product});
+  const DropshipListingPage({
+    super.key,
+    required this.product,
+    required this.docID,
+    this.promotionLauncher = launchLinkedProductPromotion,
+  });
 
   final Product product;
+  final String docID;
+  final LinkedProductPromotionLauncher promotionLauncher;
 
-  Future<void> _share(BuildContext context) async {
-    try {
-      await CommerceService.shareToWhatsApp(
-        title: product.name ?? 'Product',
-      );
-    } catch (error) {
-      if (context.mounted) showCommerceError(context, error);
-    }
+  Future<void> _promote(BuildContext context) {
+    return promotionLauncher(
+      context,
+      promotionProductRef(product, docID),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Dropship listing'),
+      appBar: const CustomAppBar(title: 'Product'),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: ElevatedButton.icon(
-            onPressed: () => _share(context),
-            icon: const Icon(Icons.share_outlined),
-            label: const Text('Share Order on WhatsApp'),
+            onPressed: () => _promote(context),
+            icon: const Icon(Icons.campaign_outlined),
+            label: const Text('Promote on WhatsApp'),
           ),
         ),
       ),
@@ -86,13 +90,6 @@ class DropshipListingPage extends StatelessWidget {
           _Line(
             label: 'Markup',
             value: CurrencyUtil.format((product.markupMinor ?? 0) / 100),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              'The buyer orders inside WhatsApp. Spaza One checks the live South African delivery cost before creating the order request.',
-              style: TextStyle(fontSize: 12),
-            ),
           ),
           if (product.shippingNotes?.isNotEmpty == true) ...[
             const Divider(height: 32),

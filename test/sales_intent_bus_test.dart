@@ -37,4 +37,21 @@ void main() {
     const intent = SalesIntent.marketing();
     expect(intent.marketingView, SalesIntentMarketingView.promotions);
   });
+
+  test('notifies an already-mounted Sales destination', () {
+    final bus = SalesIntentBus.instance;
+    bus.take();
+    var notifications = 0;
+    void listener() => notifications += 1;
+    bus.addListener(listener);
+    addTearDown(() {
+      bus.removeListener(listener);
+      bus.take();
+    });
+
+    bus.stash(const SalesIntent.marketing());
+
+    expect(notifications, 1);
+    expect(bus.take(), isA<SalesIntent>());
+  });
 }

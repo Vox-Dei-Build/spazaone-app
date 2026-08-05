@@ -15,6 +15,8 @@
 /// swap between them without relearning the API.
 library;
 
+import 'package:flutter/foundation.dart';
+
 /// The legacy marketing destination requested by a caller.
 ///
 /// Sales now has one product-first Marketing overview, so both values land on
@@ -37,7 +39,7 @@ class SalesIntent {
   final SalesIntentMarketingView marketingView;
 }
 
-class SalesIntentBus {
+class SalesIntentBus extends ChangeNotifier {
   SalesIntentBus._();
   static final SalesIntentBus instance = SalesIntentBus._();
 
@@ -47,6 +49,9 @@ class SalesIntentBus {
   /// Overwrites any previous unconsumed intent.
   void stash(SalesIntent intent) {
     _pending = intent;
+    // SalesPage is kept alive by the app's bottom navigation. Notify it as
+    // well as retaining the intent for a page that has not mounted yet.
+    notifyListeners();
   }
 
   /// Reads and clears the pending intent. Returns `null` if none is

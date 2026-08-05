@@ -10,6 +10,7 @@ Future<void> _pumpCardWith(
   WidgetTester tester,
   MerchantSetupState state, {
   MerchantSetupActions? actions,
+  bool allowCompletedLinkDismissal = true,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -19,6 +20,7 @@ Future<void> _pumpCardWith(
             userId: 'user-1',
             actions: actions ?? _noopActions(),
             state: state,
+            allowCompletedLinkDismissal: allowCompletedLinkDismissal,
           ),
         ),
       ),
@@ -262,6 +264,20 @@ void main() {
           find.text('https://wa.me/1234567890?text=shop%20AC1'),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'dedicated setup guide keeps completed content non-dismissible',
+      (tester) async {
+        await _pumpCardWith(
+          tester,
+          _allDone,
+          allowCompletedLinkDismissal: false,
+        );
+
+        expect(find.text('Your shop link is ready'), findsOneWidget);
+        expect(find.byTooltip('Hide'), findsNothing);
       },
     );
   });

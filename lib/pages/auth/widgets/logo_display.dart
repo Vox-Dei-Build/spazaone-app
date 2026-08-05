@@ -18,7 +18,7 @@ class LogoDisplay extends StatelessWidget {
         ),
         SizedBox(height: SizeConfig.heightMultiplier * 2), // Responsive spacing
         Text(
-          'SpazaOne',
+          'Spaza One',
           style: TextStyle(
             fontSize: SizeConfig.textMultiplier * 3, // Responsive font size
             fontWeight: FontWeight.bold,

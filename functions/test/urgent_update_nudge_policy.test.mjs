@@ -73,7 +73,7 @@ test("deduplicates legacy and multi-device tokens", () => {
 
 test("produces compelling compact copy with the target version", () => {
   const copy = urgentUpdateCopy("4.1.6");
-  assert.equal(copy.title, "Urgent: update SpazaOne today");
+  assert.equal(copy.title, "Urgent: update Spaza One today");
   assert.match(copy.body, /Update to 4\.1\.6 now/);
   assert.match(copy.body, /WhatsApp, SMS and conversations/);
 });

@@ -51,7 +51,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    final intent = SalesIntentBus.instance.take();
+    final intentBus = SalesIntentBus.instance;
+    final intent = intentBus.take();
     final initialMainIndex = intent == null ? 0 : 1;
 
     _mainController = TabController(
@@ -67,6 +68,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       });
 
     _salesVM = SalesViewModel();
+    intentBus.addListener(_consumePendingIntent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_mainController.index == 1) {
@@ -76,6 +78,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       // Ensure cash list has fresh data immediately on first show.
       _salesVM.updateSelectedDate(_selectedDay ?? DateTime.now());
     });
+  }
+
+  void _consumePendingIntent() {
+    final intent = SalesIntentBus.instance.take();
+    if (intent == null || !mounted) return;
+
+    if (_mainController.index != 1) {
+      _mainController.animateTo(1);
+    }
+    _loadMarketing();
   }
 
   void _loadMarketing() {
@@ -94,6 +106,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    SalesIntentBus.instance.removeListener(_consumePendingIntent);
     _mainController.dispose();
     _salesVM.dispose();
     super.dispose();
@@ -247,10 +260,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                 },
                               ),
                             ),
-                            if (_selectedSalesView == SalesViewType.cash) ...[
-                              const _SalesMeaningHint(),
-                              const SizedBox(height: LayoutConstants.spaceMd),
-                            ],
                             if (_selectedSalesView == SalesViewType.cash ||
                                 FeatureFlags.enableOnlineSales) ...[
                               DateFilterBar(
@@ -385,43 +394,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   }
 }
 
-class _SalesMeaningHint extends StatelessWidget {
-  const _SalesMeaningHint();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: LayoutConstants.spaceSm),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(LayoutConstants.spaceSm),
-        decoration: BoxDecoration(
-          color: Colors.green.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.green.withValues(alpha: 0.18)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.info_outline, size: 18, color: Colors.green),
-            const SizedBox(width: LayoutConstants.spaceSm),
-            Expanded(
-              child: Text(
-                'Record day-end revenue totals here, or capture individual cash sales when stock and profit detail matters.',
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.4,
-                  height: 1.25,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _OnlineSalesComingSoon extends StatelessWidget {
   const _OnlineSalesComingSoon();
 
@@ -454,29 +426,13 @@ class _OnlineSalesComingSoon extends StatelessWidget {
             ),
             const SizedBox(height: LayoutConstants.spaceSm),
             Text(
-              'Spaza One is partnering with a payments provider so customer '
-              'orders can be paid and recorded automatically.',
+              'Spaza One is finalising a payments partnership. Until then, '
+              'take orders on WhatsApp and record completed sales manually.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade700,
                 fontSize: 15,
                 height: 1.4,
-              ),
-            ),
-            const SizedBox(height: LayoutConstants.spaceMd),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(LayoutConstants.spaceMd),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'For now, continue taking orders on WhatsApp, confirming '
-                'payments with customers and recording completed sales '
-                'manually.',
-                textAlign: TextAlign.center,
-                style: TextStyle(height: 1.35),
               ),
             ),
           ],

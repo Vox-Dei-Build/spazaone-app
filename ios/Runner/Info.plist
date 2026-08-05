@@ -58,13 +58,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>SpazaOne needs camera access so you can take photos of your products to share and sell.</string>
+	<string>Spaza One needs camera access so you can take photos of your products to share and sell.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>SpazaOne uses your contacts so you can send notifications, orders and promotions to your customers. With your consent, SpazaOne securely stores the selected contact details on our servers so you can reach them later.</string>
+	<string>Spaza One uses your contacts so you can send notifications, orders and promotions to your customers. With your consent, Spaza One securely stores the selected contact details on our servers so you can reach them later.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>SpazaOne saves the photos you take so they appear in your photo library.</string>
+	<string>Spaza One saves the photos you take so they appear in your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SpazaOne needs photo library access so you can select existing product photos to share with customers.</string>
+	<string>Spaza One needs photo library access so you can select existing product photos to share with customers.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

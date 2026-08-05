@@ -55,7 +55,7 @@ class LanguagePage extends StatelessWidget {
                     color: kHighLightColor,
                   ),
                   const SizedBox(height: 10.0),
-                  const Text('Choose SpazaOne App Language')
+                  const Text('Choose Spaza One App Language')
                 ],
               );
             },

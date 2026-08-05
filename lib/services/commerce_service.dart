@@ -5,8 +5,6 @@ import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/phone_util.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 const _useDropshipCatalogV2 = bool.fromEnvironment(
   'DROPSHIP_CATALOG_V2',
@@ -153,54 +151,6 @@ class CommerceService {
 
   static int estimatedFeeMinor(int sellPriceMinor) =>
       ((sellPriceMinor * 0.029 + 100) * 1.15).round();
-
-  static String shareMessage({
-    required String title,
-    required String orderingUrl,
-  }) =>
-      'Order $title from Spaza One on WhatsApp:\n$orderingUrl';
-
-  static String buildProductOrderingUrl({
-    required Uri baseUrl,
-    required String code,
-    required String title,
-  }) =>
-      baseUrl.replace(
-        queryParameters: {
-          ...baseUrl.queryParameters,
-          'text': 'shop $code order 1 $title',
-        },
-      ).toString();
-
-  static Future<void> shareToWhatsApp({
-    required String title,
-  }) async {
-    final result = await FirebaseFunctions.instance
-        .httpsCallable('getMerchantOrderingLink')
-        .call({'action': 'get', 'storeId': StoreSession.instance.storeId});
-    final data = Map<String, dynamic>.from(result.data as Map);
-    final code = data['code']?.toString().trim() ?? '';
-    final baseUrl = Uri.tryParse(data['orderingUrl']?.toString() ?? '');
-    if (code.isEmpty ||
-        baseUrl == null ||
-        !{'https', 'http'}.contains(baseUrl.scheme)) {
-      throw StateError('Spaza One WhatsApp ordering is not configured.');
-    }
-    final orderingUrl = buildProductOrderingUrl(
-      baseUrl: baseUrl,
-      code: code,
-      title: title,
-    );
-    final message = shareMessage(title: title, orderingUrl: orderingUrl);
-    final whatsapp = Uri.parse(
-      'whatsapp://send?text=${Uri.encodeComponent(message)}',
-    );
-    if (await canLaunchUrl(whatsapp)) {
-      await launchUrl(whatsapp);
-      return;
-    }
-    await Share.share(message);
-  }
 }
 
 String commerceErrorMessage(Object error) {

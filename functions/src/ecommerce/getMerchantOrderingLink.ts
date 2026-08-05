@@ -211,7 +211,7 @@ function buildResult(
   if (!e164) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "SpazaOne ordering WhatsApp number is not configured.",
+      "Spaza One ordering WhatsApp number is not configured.",
     );
   }
   const text = `shop ${code}`;

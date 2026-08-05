@@ -70,7 +70,7 @@ class PageHeader extends StatelessWidget {
                   'assets/images/spazaone_logo_horizontal.png',
                   fit: BoxFit.contain,
                   alignment: Alignment.centerLeft,
-                  semanticLabel: 'SpazaOne',
+                  semanticLabel: 'Spaza One',
                 ),
               ),
             ),

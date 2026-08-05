@@ -65,9 +65,8 @@ class FeatureFlags {
 
   /// Controls whether the two-slide merchant onboarding intro sheet is
   /// shown on the merchant's first Dashboard mount. Kept behind a flag
-  /// so we can A/B or kill it remotely as the persistent
-  /// [MerchantSetupCard] on the Customers tab matures — the two
-  /// surfaces overlap by design and we may not need both.
+  /// so we can A/B or kill it remotely. The persistent
+  /// [MerchantSetupCard] remains available from Settings → Setup Guide.
   ///
   /// Defaults to true so a missing / failed Remote Config fetch keeps
   /// the current behaviour.

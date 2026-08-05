@@ -363,28 +363,19 @@ class _CustomerBalanceSummary extends StatelessWidget {
               letterSpacing: -0.3,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'An all-time view of money still owed to your business.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade700,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  primary.withValues(alpha: 0.15),
-                  primary.withValues(alpha: 0.06),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: primary.withValues(alpha: 0.18)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x10000000),
+                  blurRadius: 14,
+                  offset: Offset(0, 4),
+                ),
+              ],
             ),
             child: Row(
               children: [
@@ -433,30 +424,8 @@ class _CustomerBalanceSummary extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _SummaryMetricCard(
-                  icon: Icons.people_alt_outlined,
-                  label: 'Owing customers',
-                  value: '$owingCount',
-                  color: Colors.orange.shade800,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _SummaryMetricCard(
-                  icon: Icons.groups_outlined,
-                  label: 'Total customers',
-                  value: totalCustomers?.toString() ?? '—',
-                  color: Colors.blueGrey.shade700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
@@ -464,28 +433,27 @@ class _CustomerBalanceSummary extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.donut_small_outlined, color: primary),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        ratio == null
-                            ? 'Owing rate unavailable'
-                            : '${ratio.toStringAsFixed(1)}% of customers owe you',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Use the list below to decide who to follow up with.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ],
+                  child: _InlineSummaryMetric(
+                    label: 'Owing',
+                    value: '$owingCount',
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+                const _SummaryDivider(),
+                Expanded(
+                  child: _InlineSummaryMetric(
+                    label: 'Customers',
+                    value: totalCustomers?.toString() ?? '—',
+                    color: Colors.blueGrey.shade700,
+                  ),
+                ),
+                const _SummaryDivider(),
+                Expanded(
+                  child: _InlineSummaryMetric(
+                    label: 'Owing rate',
+                    value: ratio == null ? '—' : '${ratio.toStringAsFixed(0)}%',
+                    color: primary,
                   ),
                 ),
               ],
@@ -498,23 +466,6 @@ class _CustomerBalanceSummary extends StatelessWidget {
                 child: Text(
                   'Customers to follow up',
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '$owingCount',
-                  style: TextStyle(
-                    color: primary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -561,15 +512,13 @@ class _CustomerBalanceSummary extends StatelessWidget {
   }
 }
 
-class _SummaryMetricCard extends StatelessWidget {
-  const _SummaryMetricCard({
-    required this.icon,
+class _InlineSummaryMetric extends StatelessWidget {
+  const _InlineSummaryMetric({
     required this.label,
     required this.value,
     required this.color,
   });
 
-  final IconData icon;
   final String label;
   final String value;
   final Color color;
@@ -577,36 +526,39 @@ class _SummaryMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryDivider extends StatelessWidget {
+  const _SummaryDivider();
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            maxLines: 2,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.grey.shade700,
-              height: 1.2,
-            ),
-          ),
-        ],
-      ),
+      width: 1,
+      height: 38,
+      color: Colors.grey.shade200,
     );
   }
 }

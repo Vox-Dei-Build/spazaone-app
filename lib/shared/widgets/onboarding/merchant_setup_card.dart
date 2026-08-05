@@ -31,7 +31,7 @@ class MerchantSetupActions {
   final VoidCallback onOpenOrderingLink;
   final VoidCallback onOpenBanking;
 
-  /// Opens Marketing so SpazaOne can prepare the reusable product-promotion
+  /// Opens Marketing so Spaza One can prepare the reusable product-promotion
   /// message automatically. The callback name is retained for source
   /// compatibility with older call sites.
   final VoidCallback onCreateTemplate;
@@ -39,9 +39,9 @@ class MerchantSetupActions {
 
 /// The merchant setup card.
 ///
-/// Renders as the `listHeader` of the Customers tab and walks a fresh
-/// merchant through the six things that need to be true before their
-/// shop can trade, order, get paid, and market:
+/// Walks a fresh merchant through the six things that need to be true before
+/// their shop can trade, order, get paid, and market. It lives in the Settings
+/// setup guide so the daily Customers surface remains focused:
 ///
 ///   1. Add first customer
 ///   2. Add first product
@@ -62,9 +62,7 @@ class MerchantSetupActions {
 /// by [watchMerchantSetup]. The nested six-`StreamBuilder` cascade
 /// that used to live here is now one call.
 ///
-/// Callers that already own a [MerchantSetupState] (e.g.
-/// [CustomerTab], which subscribes once at the tab level and uses the
-/// same state to gate the growth nudge) can pass it directly via
+/// Callers that already own a [MerchantSetupState] can pass it directly via
 /// [state] to avoid opening a second set of Firestore listeners.
 class MerchantSetupCard extends StatefulWidget {
   /// Build a card that owns its own Firestore subscription.
@@ -72,6 +70,7 @@ class MerchantSetupCard extends StatefulWidget {
     super.key,
     required this.userId,
     required this.actions,
+    this.allowCompletedLinkDismissal = true,
   })  : _stateOverride = null,
         state = null;
 
@@ -84,6 +83,7 @@ class MerchantSetupCard extends StatefulWidget {
     required this.userId,
     required this.actions,
     required MerchantSetupState this.state,
+    this.allowCompletedLinkDismissal = true,
   }) : _stateOverride = null;
 
   /// Test-only: build a card that subscribes to a caller-supplied
@@ -93,6 +93,7 @@ class MerchantSetupCard extends StatefulWidget {
     required this.userId,
     required this.actions,
     required Stream<MerchantSetupState> stateStream,
+    this.allowCompletedLinkDismissal = true,
   })  : _stateOverride = stateStream,
         state = null;
 
@@ -100,6 +101,12 @@ class MerchantSetupCard extends StatefulWidget {
   final MerchantSetupActions actions;
   final MerchantSetupState? state;
   final Stream<MerchantSetupState>? _stateOverride;
+
+  /// Whether the completed shop-link panel can be hidden from this surface.
+  ///
+  /// Embedded nudges may be dismissed, but dedicated destinations such as
+  /// Settings → Setup Guide must always retain useful content.
+  final bool allowCompletedLinkDismissal;
 
   @visibleForTesting
   static const shopLinkDismissedHiveKeyPrefix = 'merchant_setup_shop_link:';
@@ -192,7 +199,9 @@ class _MerchantSetupCardState extends State<MerchantSetupCard> {
   }
 
   Widget _wrap(MerchantSetupState state) {
-    if (state.isComplete && _shopLinkDismissed) {
+    if (widget.allowCompletedLinkDismissal &&
+        state.isComplete &&
+        _shopLinkDismissed) {
       return const SizedBox.shrink();
     }
 
@@ -206,7 +215,8 @@ class _MerchantSetupCardState extends State<MerchantSetupCard> {
       child: _MerchantSetupSurface(
         state: state,
         actions: widget.actions,
-        onHideShopLink: _hideShopLink,
+        onHideShopLink:
+            widget.allowCompletedLinkDismissal ? _hideShopLink : null,
       ),
     );
   }
@@ -224,7 +234,7 @@ class _MerchantSetupSurface extends StatelessWidget {
 
   final MerchantSetupState state;
   final MerchantSetupActions actions;
-  final VoidCallback onHideShopLink;
+  final VoidCallback? onHideShopLink;
 
   @override
   Widget build(BuildContext context) {
@@ -627,7 +637,7 @@ class _ShopLinkPanel extends StatelessWidget {
   final String orderingCode;
   final String fallbackText;
   final VoidCallback onOpenOrderingLink;
-  final VoidCallback onHide;
+  final VoidCallback? onHide;
 
   String get _copyValue {
     if (orderingUrl.isNotEmpty) return orderingUrl;
@@ -714,15 +724,16 @@ class _ShopLinkPanel extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Hide',
-                  onPressed: onHide,
-                  icon: const Icon(Icons.close),
-                  constraints: const BoxConstraints(
-                    minWidth: LayoutConstants.minTouchTarget,
-                    minHeight: LayoutConstants.minTouchTarget,
+                if (onHide != null)
+                  IconButton(
+                    tooltip: 'Hide',
+                    onPressed: onHide,
+                    icon: const Icon(Icons.close),
+                    constraints: const BoxConstraints(
+                      minWidth: LayoutConstants.minTouchTarget,
+                      minHeight: LayoutConstants.minTouchTarget,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: LayoutConstants.spaceMd),
@@ -961,11 +972,11 @@ List<_SetupStep> _buildSteps(
       rowBody: s.hasApprovedTemplate
           ? 'Marketing messages are ready when you need them.'
           : s.hasProducts
-              ? 'SpazaOne prepares the reusable message and handles Meta approval.'
+              ? 'Spaza One prepares the reusable message and handles Meta approval.'
               : 'Available after a product exists.',
       actionTitle: 'Prepare WhatsApp promotions',
       actionBody:
-          'SpazaOne creates and submits the reusable product message for you.',
+          'Spaza One creates and submits the reusable product message for you.',
       actionLabel: s.hasProducts ? 'Open Marketing' : null,
       action: s.hasProducts ? a.onCreateTemplate : null,
     ),

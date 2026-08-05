@@ -29,7 +29,7 @@ async function resolveOwnedTwilioTemplateId(
     if (data.systemManaged === true) {
       throw new functions.https.HttpsError(
         "failed-precondition",
-        "SpazaOne-managed templates cannot be deleted.",
+        "Templates managed by Spaza One cannot be deleted.",
       );
     }
 
@@ -73,7 +73,7 @@ async function resolveOwnedTwilioTemplateId(
   if (data.systemManaged === true) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "SpazaOne-managed templates cannot be deleted.",
+      "Templates managed by Spaza One cannot be deleted.",
     );
   }
   if (data.userId !== uid) {

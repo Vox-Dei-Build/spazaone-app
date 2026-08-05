@@ -6,7 +6,9 @@ import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 class SupplierCatalogPage extends StatefulWidget {
-  const SupplierCatalogPage({super.key});
+  const SupplierCatalogPage({super.key, this.onListingCreated});
+
+  final VoidCallback? onListingCreated;
 
   @override
   State<SupplierCatalogPage> createState() => _SupplierCatalogPageState();
@@ -15,21 +17,20 @@ class SupplierCatalogPage extends StatefulWidget {
 enum _CatalogSort { recommended, lowestCost, fastestDelivery }
 
 class _CatalogCategory {
-  const _CatalogCategory(this.label, this.query, this.icon);
+  const _CatalogCategory(this.label, this.query);
 
   final String label;
   final String query;
-  final IconData icon;
 }
 
 const _catalogCategories = <_CatalogCategory>[
-  _CatalogCategory('Explore', '', Icons.auto_awesome_outlined),
-  _CatalogCategory('Fashion', 'fashion', Icons.checkroom_outlined),
-  _CatalogCategory('Home', 'home', Icons.home_outlined),
-  _CatalogCategory('Beauty', 'beauty', Icons.spa_outlined),
-  _CatalogCategory('Electronics', 'electronics', Icons.devices_other_outlined),
-  _CatalogCategory('Baby', 'baby', Icons.child_friendly_outlined),
-  _CatalogCategory('Accessories', 'accessories', Icons.watch_outlined),
+  _CatalogCategory('Explore', ''),
+  _CatalogCategory('Fashion', 'fashion'),
+  _CatalogCategory('Home', 'home'),
+  _CatalogCategory('Beauty', 'beauty'),
+  _CatalogCategory('Electronics', 'electronics'),
+  _CatalogCategory('Baby', 'baby'),
+  _CatalogCategory('Accessories', 'accessories'),
 ];
 
 String _deliveryEstimate(String aging) {
@@ -42,6 +43,9 @@ int _firstDeliveryDay(String aging) {
   final match = RegExp(r'\d+').firstMatch(aging);
   return int.tryParse(match?.group(0) ?? '') ?? 9999;
 }
+
+int dropshipMarkupMinor(String value) =>
+    ((double.tryParse(value.replaceAll(',', '.')) ?? 0) * 100).round();
 
 class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   final _search = TextEditingController();
@@ -145,35 +149,36 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 7),
           child: TextField(
             controller: _search,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'What would you like to sell?',
+              hintText: 'Search supplier products',
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: _search.text.isEmpty
-                  ? IconButton(
-                      tooltip: 'Search',
-                      onPressed: _loading ? null : _searchProducts,
-                      icon: const Icon(Icons.arrow_forward),
-                    )
-                  : IconButton(
-                      tooltip: 'Clear search',
-                      onPressed: _loading
-                          ? null
-                          : () {
-                              _search.clear();
-                              setState(() {});
-                              _load();
-                            },
-                      icon: const Icon(Icons.close),
-                    ),
+              suffixIcon: IconButton(
+                tooltip: 'Search',
+                onPressed: _loading ? null : _searchProducts,
+                icon: const Icon(Icons.arrow_forward_rounded),
+              ),
               filled: true,
               fillColor: Theme.of(context).colorScheme.surfaceContainerLowest,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: Color(0xFF258541),
+                  width: 1.5,
+                ),
               ),
             ),
             onChanged: (_) => setState(() {}),
@@ -181,7 +186,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           ),
         ),
         SizedBox(
-          height: 44,
+          height: 38,
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             scrollDirection: Axis.horizontal,
@@ -191,37 +196,15 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
               final category = _catalogCategories[index];
               return ChoiceChip(
                 selected: index == _categoryIndex && _search.text.isEmpty,
-                avatar: Icon(category.icon, size: 17),
                 label: Text(category.label),
+                visualDensity: VisualDensity.compact,
+                labelPadding: const EdgeInsets.symmetric(horizontal: 5),
                 onSelected: (_) => _selectCategory(index),
               );
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-          child: Container(
-            padding: const EdgeInsets.all(11),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0F8F2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.verified_outlined,
-                    size: 18, color: Color(0xFF258541)),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Browse by category or search all Spaza One supplier products. Every product shown already has a recent South Africa delivery estimate.',
-                    style: TextStyle(fontSize: 12, height: 1.3),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        const SizedBox(height: 8),
         Expanded(child: _body()),
       ],
     );
@@ -280,33 +263,29 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             children: [
               Expanded(
                 child: Text(
-                  '${products.length} delivery-ready ${products.length == 1 ? 'product' : 'products'}',
+                  '${products.length} ${products.length == 1 ? 'product' : 'products'}',
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
               ),
-              DropdownButtonHideUnderline(
-                child: DropdownButton<_CatalogSort>(
-                  value: _sort,
-                  borderRadius: BorderRadius.circular(12),
-                  icon: const Icon(Icons.sort, size: 20),
-                  items: const [
-                    DropdownMenuItem(
-                      value: _CatalogSort.recommended,
-                      child: Text('Recommended'),
-                    ),
-                    DropdownMenuItem(
-                      value: _CatalogSort.lowestCost,
-                      child: Text('Lowest cost'),
-                    ),
-                    DropdownMenuItem(
-                      value: _CatalogSort.fastestDelivery,
-                      child: Text('Fastest delivery'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setState(() => _sort = value);
-                  },
-                ),
+              PopupMenuButton<_CatalogSort>(
+                tooltip: 'Sort products',
+                initialValue: _sort,
+                icon: const Icon(Icons.sort_rounded),
+                onSelected: (value) => setState(() => _sort = value),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: _CatalogSort.recommended,
+                    child: Text('Recommended'),
+                  ),
+                  PopupMenuItem(
+                    value: _CatalogSort.lowestCost,
+                    child: Text('Lowest cost'),
+                  ),
+                  PopupMenuItem(
+                    value: _CatalogSort.fastestDelivery,
+                    child: Text('Fastest delivery'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -314,29 +293,43 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         Expanded(
           child: RefreshIndicator(
             onRefresh: () => _load(page: _page),
-            child: ListView.separated(
+            child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
-              itemCount: products.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                if (index == products.length) {
-                  return _Pagination(
-                    page: _page,
-                    totalPages: _totalPages,
-                    previous: _page > 1 ? () => _load(page: _page - 1) : null,
-                    next: _page < _totalPages
-                        ? () => _load(page: _page + 1)
-                        : _hasMore
-                            ? () => _load(page: _page + 1)
-                            : null,
-                  );
-                }
-                return _SupplierProductCard(
-                  product: products[index],
-                  digitalPaymentsEnabled: _digitalPaymentsEnabled,
-                );
-              },
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: .67,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _SupplierProductCard(
+                        product: products[index],
+                        digitalPaymentsEnabled: _digitalPaymentsEnabled,
+                        onListingCreated: widget.onListingCreated,
+                      ),
+                      childCount: products.length,
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
+                    child: _Pagination(
+                      page: _page,
+                      totalPages: _totalPages,
+                      previous: _page > 1 ? () => _load(page: _page - 1) : null,
+                      next: _page < _totalPages || _hasMore
+                          ? () => _load(page: _page + 1)
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -349,10 +342,12 @@ class _SupplierProductCard extends StatelessWidget {
   const _SupplierProductCard({
     required this.product,
     required this.digitalPaymentsEnabled,
+    required this.onListingCreated,
   });
 
   final CjCatalogProduct product;
   final bool digitalPaymentsEnabled;
+  final VoidCallback? onListingCreated;
 
   Future<void> _select(BuildContext context) async {
     final result = await showModalBottomSheet<DropshipListingResult>(
@@ -366,7 +361,7 @@ class _SupplierProductCard extends StatelessWidget {
       ),
     );
     if (result == null || !context.mounted) return;
-    await showModalBottomSheet<void>(
+    final viewProducts = await showModalBottomSheet<bool>(
       context: context,
       useSafeArea: true,
       builder: (context) => Padding(
@@ -382,97 +377,70 @@ class _SupplierProductCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Your price is saved and the product is ready to share with customers.',
+              'It is now available in your Products and WhatsApp catalogue.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => CommerceService.shareToWhatsApp(
-                  title: product.title,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(
+                  onListingCreated == null ? 'Done' : 'View my products',
                 ),
-                icon: const Icon(Icons.share_outlined),
-                label: const Text('Share on WhatsApp'),
               ),
             ),
           ],
         ),
       ),
     );
+    if (viewProducts == true && context.mounted) {
+      onListingCreated?.call();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasPrice = product.estimatedLandedCostMinor > 0;
     return Card(
       margin: EdgeInsets.zero,
-      elevation: 0,
+      elevation: 1,
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor.withAlpha(90)),
         borderRadius: BorderRadius.circular(16),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _select(context),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _ProductImage(url: product.image, size: 96),
-              const SizedBox(width: 13),
-              Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 1.15,
+              child: _CatalogProductImage(url: product.image),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE6F4EA),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'SA DELIVERY OPTION',
-                        style: TextStyle(
-                          color: Color(0xFF207338),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: .3,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
                     Text(
                       product.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         height: 1.2,
                       ),
                     ),
-                    if (product.category.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        product.category,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                    const SizedBox(height: 8),
+                    const Spacer(),
                     Text(
-                      hasPrice
-                          ? 'From ${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)} landed'
-                          : 'Open to check current price',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      '${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)} landed',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 5),
                     Row(
                       children: [
                         const Icon(
@@ -488,7 +456,7 @@ class _SupplierProductCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Color(0xFF258541),
-                              fontSize: 12,
+                              fontSize: 11,
                             ),
                           ),
                         ),
@@ -497,13 +465,34 @@ class _SupplierProductCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.only(top: 36),
-                child: Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _CatalogProductImage extends StatelessWidget {
+  const _CatalogProductImage({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.isEmpty) {
+      return const ColoredBox(
+        color: Color(0xFFF0F3F2),
+        child: Icon(Icons.inventory_2_outlined),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => const ColoredBox(color: Color(0xFFF0F3F2)),
+      errorWidget: (_, __, ___) => const ColoredBox(
+        color: Color(0xFFF0F3F2),
+        child: Icon(Icons.broken_image_outlined),
       ),
     );
   }
@@ -525,6 +514,8 @@ class _CjListingSheet extends StatefulWidget {
 class _CjListingSheetState extends State<_CjListingSheet> {
   final _commerce = CommerceService();
   final _markup = TextEditingController();
+  final _markupFocus = FocusNode();
+  final _markupFieldKey = GlobalKey();
   CjVariant? _variant;
   CjLandedQuote? _quote;
   bool _usesCatalogSnapshot = false;
@@ -532,8 +523,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   bool _saving = false;
   String? _error;
 
-  int get _markupMinor =>
-      ((double.tryParse(_markup.text.replaceAll(',', '.')) ?? 0) * 100).round();
+  int get _markupMinor => dropshipMarkupMinor(_markup.text);
   int get _sellPriceMinor => (_quote?.landedCostMinor ?? 0) + _markupMinor;
   int get _feeMinor => widget.digitalPaymentsEnabled
       ? CommerceService.estimatedFeeMinor(_sellPriceMinor)
@@ -550,6 +540,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
 
   @override
   void dispose() {
+    _markupFocus.dispose();
     _markup.dispose();
     super.dispose();
   }
@@ -619,6 +610,19 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   @override
   Widget build(BuildContext context) {
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardOpen = keyboard > 0;
+    if (keyboardOpen && _markupFocus.hasFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final fieldContext = _markupFieldKey.currentContext;
+        if (!mounted || fieldContext == null) return;
+        Scrollable.ensureVisible(
+          fieldContext,
+          alignment: .5,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      });
+    }
     return FractionallySizedBox(
       heightFactor: .94,
       alignment: Alignment.bottomCenter,
@@ -636,7 +640,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               children: [
                 _sheetHeader(context),
                 Expanded(child: _sheetBody(context)),
-                if (_quote != null) _bottomAction(context),
+                if (_quote != null && !keyboardOpen) _bottomAction(context),
               ],
             ),
           ),
@@ -729,35 +733,30 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       children: [
-        _VerifiedVariantNotice(usesCatalogSnapshot: _usesCatalogSnapshot),
-        const SizedBox(height: 16),
-        InputDecorator(
-          decoration: const InputDecoration(
-            labelText: 'Delivery-ready product option',
-            border: OutlineInputBorder(),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _variant!.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Option',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Text(
+                _variant!.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.verified_outlined,
-                color: Color(0xFF258541),
-                size: 21,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 7),
-        Text(
-          'Spaza One shows the delivery-ready option already verified for this product.',
-          style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.verified_rounded,
+              color: Color(0xFF258541),
+              size: 19,
+            ),
+          ],
         ),
         if (_error != null) ...[
           const SizedBox(height: 12),
@@ -825,19 +824,25 @@ class _CjListingSheetState extends State<_CjListingSheet> {
           ),
         ),
         const SizedBox(height: 20),
-        TextField(
-          controller: _markup,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,2}')),
-          ],
-          decoration: const InputDecoration(
-            labelText: 'Your profit markup',
-            prefixText: 'R ',
-            border: OutlineInputBorder(),
-            helperText: 'This amount is added to the landed cost.',
+        Text(
+          'Set your profit',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Added to the landed cost.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 10),
+        KeyedSubtree(
+          key: _markupFieldKey,
+          child: DropshipMarkupField(
+            controller: _markup,
+            focusNode: _markupFocus,
+            onChanged: (_) => setState(() {}),
           ),
-          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 14),
         _PriceRow(
@@ -863,25 +868,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               style: TextStyle(color: Colors.red),
             ),
           ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF8E7),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            widget.digitalPaymentsEnabled
-                ? 'Customer orders arrive in Spaza One. Confirm the order before placing it with the supplier.'
-                : 'Customers order through WhatsApp. Confirm payment in Customer → Orders before placing the supplier order.',
-            style: const TextStyle(color: Color(0xFF6F4A00), height: 1.35),
-          ),
-        ),
         const SizedBox(height: 12),
-        const Text(
-          'Price and South Africa delivery are checked again when the customer orders. Supplier cost, delivery and your margin are saved with that order.',
-          style: TextStyle(fontSize: 12, height: 1.35),
-        ),
       ],
     );
   }
@@ -908,9 +895,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _markupMinor > 0
-                      ? 'Estimated customer price'
-                      : 'Add your markup',
+                  _markupMinor > 0 ? 'Customer price' : 'Set your profit',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 Text(
@@ -940,41 +925,6 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   }
 }
 
-class _VerifiedVariantNotice extends StatelessWidget {
-  const _VerifiedVariantNotice({required this.usesCatalogSnapshot});
-
-  final bool usesCatalogSnapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(11),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF6ED),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.check_circle_outline,
-              color: Color(0xFF258541), size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              usesCatalogSnapshot
-                  ? 'Ready to add. This option has a recent South Africa delivery estimate.'
-                  : 'Ready to add. This option currently has delivery to South Africa.',
-              style: const TextStyle(
-                color: Color(0xFF1E6833),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _QuoteLoading extends StatelessWidget {
   const _QuoteLoading();
 
@@ -989,13 +939,8 @@ class _QuoteLoading extends StatelessWidget {
             CircularProgressIndicator(),
             SizedBox(height: 16),
             Text(
-              'Loading the delivery-ready product option…',
+              'Loading product…',
               textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 6),
-            Text(
-              'Your catalogue estimate will be ready in a moment.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
@@ -1018,7 +963,7 @@ class _CatalogueLoading extends StatelessWidget {
             CircularProgressIndicator(),
             SizedBox(height: 14),
             Text(
-              'Loading delivery-ready products…',
+              'Loading products…',
               textAlign: TextAlign.center,
             ),
           ],
@@ -1101,6 +1046,60 @@ class _ProductImage extends StatelessWidget {
                 ),
               ),
       ),
+    );
+  }
+}
+
+/// Explicitly outlined money input used by the supplier listing sheet.
+///
+/// Spaza One's global form theme uses underlines. This field deliberately
+/// overrides every border state so it continues to read as editable when it
+/// is not focused.
+class DropshipMarkupField extends StatelessWidget {
+  const DropshipMarkupField({
+    super.key,
+    required this.controller,
+    required this.onChanged,
+    this.focusNode,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final FocusNode? focusNode;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      key: const Key('dropship-markup-field'),
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,2}')),
+      ],
+      decoration: InputDecoration(
+        labelText: 'Profit markup',
+        hintText: '0.00',
+        prefixText: 'R ',
+        suffixIcon: const Icon(Icons.edit_outlined, size: 20),
+        filled: true,
+        fillColor: const Color(0xFFF7F9F8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF9AA19C)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: Color(0xFF258541),
+            width: 2,
+          ),
+        ),
+      ),
+      onChanged: onChanged,
     );
   }
 }

@@ -360,7 +360,7 @@ export const createStore = functions.https.onCall(async (data, context) => {
   if (ownedStores.length > 0 && !supportsSharedCampaignCredits) {
     throw new functions.https.HttpsError(
       "failed-precondition",
-      "Update SpazaOne before adding another store.",
+      "Update Spaza One before adding another store.",
     );
   }
 

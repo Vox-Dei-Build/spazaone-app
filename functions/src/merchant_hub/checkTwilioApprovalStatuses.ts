@@ -129,7 +129,7 @@ exports.checkTwilioApprovalStatuses = functions.pubsub
                 body:
                   status === "approved"
                     ? "Choose a product and customers whenever you are ready to send."
-                    : `SpazaOne could not finish setup. ${wa.rejection_reason || "Open Marketing to try again."}`,
+                    : `Spaza One could not finish setup. ${wa.rejection_reason || "Open Marketing to try again."}`,
               }
             : {
                 title:

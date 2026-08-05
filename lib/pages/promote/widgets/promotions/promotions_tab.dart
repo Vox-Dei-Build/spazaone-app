@@ -2,13 +2,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/run_promotion_page.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/view_promotion/view_promotion.dart';
-import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/utils/text_sanitizer.dart';
@@ -53,13 +51,20 @@ class _PromotionsTabState extends State<PromotionsTab> {
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             SizedBox(height: SizeConfig.heightMultiplier * 8),
-            const EmptyStateOnboarding(
-              icon: Icons.campaign_outlined,
-              headline: 'No promotions yet',
-              subtitle: 'Choose a WhatsApp-listed product, select customers, '
-                  'review the cost and send. SpazaOne prepares the message.',
-              tutorialKey: TutorialConfig.TUTORIAL_RUN_PROMOTIONS,
-              tutorialTitle: 'How to run a promotion',
+            const Column(
+              children: [
+                Icon(
+                  Icons.campaign_outlined,
+                  size: 48,
+                  color: Colors.black26,
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'No campaigns yet',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
             ),
           ],
         ),

@@ -440,7 +440,7 @@ export const runMerchantPromotion = functions
       const usrSnap = await db.collection("users").doc(merchantId).get();
       const user = usrSnap.data();
       const shopName =
-        String(user?.shopName ?? "SpazaOne").trim() || "SpazaOne";
+        String(user?.shopName ?? "Spaza One").trim() || "Spaza One";
       const isProductPromotion =
         tpl.systemManaged === true &&
         tpl.templateKind === PRODUCT_PROMOTION_TEMPLATE_KIND;

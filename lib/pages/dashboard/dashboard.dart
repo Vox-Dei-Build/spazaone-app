@@ -100,9 +100,8 @@ class _DashboardState extends State<Dashboard> {
     if (_introScheduled || userId.isEmpty) return;
     _introScheduled = true;
 
-    // The setup card on the Customers tab is the persistent guide;
-    // the intro is a first-run supplement. When the flag is off we
-    // skip the sheet entirely and let the card carry the load.
+    // The Setup Guide in Settings is the persistent guide; the intro is a
+    // first-run supplement. When the flag is off we skip the sheet entirely.
     if (!FeatureFlags.enableMerchantOnboardingIntro) return;
 
     await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -302,10 +301,9 @@ class _DashboardState extends State<Dashboard> {
             // consumed persistent vertical space above every tab
             // while delivering little ongoing value once one or two
             // items were auto-ticked. Its role has been superseded
-            // by MerchantSetupCard on the Customers tab, which
-            // covers the full setup path (customer → product →
-            // WhatsApp listing → ordering link → payout → template)
-            // and scrolls with the customer list. The old widget
+            // by the Setup Guide in Settings, which covers the full setup
+            // path (customer → product → WhatsApp listing → ordering link →
+            // payout → template) without occupying daily workspace. The old widget
             // (`lib/shared/widgets/onboarding/onboarding_checklist.dart`)
             // is `@Deprecated` — retained only for the Hive-key
             // pattern; do not reintroduce.
@@ -458,7 +456,7 @@ class _SpazaOneRebrandNotice extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             Text(
-              'Pasella is now SpazaOne',
+              'Pasella is now Spaza One',
               textAlign: TextAlign.center,
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
@@ -492,7 +490,7 @@ class _SpazaOneRebrandNotice extends StatelessWidget {
                   backgroundColor: Colors.green.shade700,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                child: const Text('Continue to SpazaOne'),
+                child: const Text('Continue to Spaza One'),
               ),
             ),
           ],

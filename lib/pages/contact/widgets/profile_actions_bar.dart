@@ -4,7 +4,6 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
-import 'package:pasella/pages/contact/widgets/insights_spotlight.dart';
 import 'package:pasella/pages/reports/customer_report/widgets/customer_report_panel.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
@@ -24,7 +23,7 @@ class ProfileAppBar extends StatefulWidget implements PreferredSizeWidget {
   }) : super(key: key);
 
   @override
-  _ProfileAppBarState createState() => _ProfileAppBarState();
+  State<ProfileAppBar> createState() => _ProfileAppBarState();
 
   @override
   Size get preferredSize =>
@@ -32,27 +31,11 @@ class ProfileAppBar extends StatefulWidget implements PreferredSizeWidget {
 }
 
 class _ProfileAppBarState extends State<ProfileAppBar> {
-  // PAS-UX-06A: target for the one-time discovery spotlight on the
-  // customer insights icon. Stays attached to the IconButton below so the
-  // overlay can find its RenderBox.
-  final GlobalKey _insightsButtonKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    // Schedule the spotlight after the AppBar has laid out. The service
-    // itself checks the "already seen" Hive flag and no-ops if so, so
-    // calling this every time the profile is opened is safe.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      InsightsSpotlight.maybeShow(context, _insightsButtonKey);
-    });
-  }
-
   Future<void> _navigateToEditIfAllowed(
       BuildContext context, Widget page) async {
     bool shouldProceed = await isAnonymousGate(context);
     if (!shouldProceed) return;
+    if (!context.mounted) return;
 
     await Navigator.of(context)
         .push(MaterialPageRoute(builder: (context) => page));
@@ -198,13 +181,9 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
         // CustomerReportPanel that used to live above the transactions
         // list — same metrics, only visible on demand.
         IconButton(
-          key: _insightsButtonKey,
           icon: const Icon(Icons.insights_outlined),
           tooltip: 'Customer insights',
           onPressed: () {
-            // If the merchant tapped before the spotlight fired, mark it
-            // as seen — they've clearly discovered the feature.
-            InsightsSpotlight.markSeen();
             showCustomerReportSheet(
               context,
               userId: viewModel.userId,
@@ -218,7 +197,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
           onSelected: (String value) async {
             if (value == 'reminder') {
               bool shouldProceed = await isAnonymousGate(context);
-              if (shouldProceed) {
+              if (shouldProceed && context.mounted) {
                 viewModel.handleReminderTap(context);
               }
             } else if (value == 'edit') {
@@ -240,7 +219,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                     'transactions. This cannot be undone.',
                 confirmLabel: 'Delete',
               );
-              if (confirmed) {
+              if (confirmed && context.mounted) {
                 viewModel.deleteCustomer(context);
               }
             }

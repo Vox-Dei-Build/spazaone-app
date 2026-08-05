@@ -327,7 +327,7 @@ class _OnboardingChecklistState
               children: [
                 const Expanded(
                   child: Text(
-                    'First steps in SpazaOne',
+                    'First steps in Spaza One',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                 ),

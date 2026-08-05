@@ -3,7 +3,7 @@ description: SpazaOne helps South African merchants manage customers, balances, 
 
 publish_to: "none"
 
-version: 4.6.1+81
+version: 4.6.2+82
 
 environment:
   sdk: ">=3.0.5 <4.0.0"
@@ -30,6 +30,7 @@ dependencies:
   permission_handler: ^11.3.1
   intl: ^0.18.1
   async: ^2.11.0
+  rxdart: ^0.27.7
   http: ^0.13.6
   twilio_flutter: ^0.0.9
   flutter_dotenv: ^5.1.0

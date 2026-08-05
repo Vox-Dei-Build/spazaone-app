@@ -201,7 +201,7 @@ test("old clients are blocked and capable clients cannot opt out of the shared w
         },
         ownerContext,
       ),
-    /update SpazaOne/i,
+    /update Spaza One/i,
   );
 
   const created = await create(

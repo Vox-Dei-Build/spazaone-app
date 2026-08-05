@@ -4,6 +4,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/pages/settings/help/help.dart';
 import 'package:pasella/pages/settings/privacy/privacy_page.dart';
+import 'package:pasella/pages/settings/setup/merchant_setup_page.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
@@ -70,6 +71,16 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.store,
                           title: 'Business Name',
                           subTitle: 'Shown on receipts and customer messages',
+                        ),
+                        SettingTile(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const MerchantSetupPage(),
+                            ),
+                          ),
+                          icon: Icons.checklist_rounded,
+                          title: 'Setup Guide',
+                          subTitle: 'Customers, products, WhatsApp and payouts',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

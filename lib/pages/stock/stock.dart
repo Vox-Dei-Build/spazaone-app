@@ -184,7 +184,11 @@ class _StockPageState extends State<StockPage>
                               onAddProduct: () => _openNewProduct(),
                               onWatchTutorial: () => _openTutorial(),
                             ),
-                            const SupplierCatalogPage(),
+                            SupplierCatalogPage(
+                              onListingCreated: () {
+                                _tabController.animateTo(0);
+                              },
+                            ),
                             ProductReportsTab(viewModel: viewModel),
                           ],
                         ),

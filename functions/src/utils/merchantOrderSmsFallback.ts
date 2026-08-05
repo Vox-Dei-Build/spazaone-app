@@ -175,14 +175,14 @@ function buildMerchantOrderSmsBody(
       ? "Online order paid"
       : "New WhatsApp order";
   const parts = [
-    `SpazaOne: ${event}`,
+    `Spaza One: ${event}`,
     input.customerName ? `from ${input.customerName}` : null,
     typeof input.orderTotal === "number"
       ? `for ${(input.currency || "ZAR").toUpperCase()} ${input.orderTotal.toFixed(2)}`
       : null,
   ].filter(Boolean);
 
-  return `${parts.join(" ")}. Open SpazaOne to respond.`;
+  return `${parts.join(" ")}. Open Spaza One to respond.`;
 }
 
 /**

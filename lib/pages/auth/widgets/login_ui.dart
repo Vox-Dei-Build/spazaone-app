@@ -122,7 +122,7 @@ Widget buildLoginUI(BuildContext context, AuthViewModel authViewModel) {
                         horizontal: SizeConfig.imageSizeMultiplier * 3,
                       ),
                       child: Text(
-                        'New to SpazaOne?',
+                        'New to Spaza One?',
                         style: TextStyle(
                           fontSize: SizeConfig.textMultiplier * 1.6,
                           color: Colors.grey[600],

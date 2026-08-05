@@ -12,7 +12,7 @@ class PermissionHelper {
       Permission.camera,
       rationaleTitle: 'Allow Camera Access',
       rationaleMessage:
-          'SpazaOne needs camera access so you can take photos of your products to share and sell.',
+          'Spaza One needs camera access so you can take photos of your products to share and sell.',
     );
   }
 
@@ -35,7 +35,7 @@ class PermissionHelper {
       permission,
       rationaleTitle: 'Allow Photo Library Access',
       rationaleMessage:
-          'SpazaOne needs photo library access so you can choose existing product photos to share with customers.',
+          'Spaza One needs photo library access so you can choose existing product photos to share with customers.',
       treatLimitedAsGranted: true,
     );
   }
@@ -47,7 +47,7 @@ class PermissionHelper {
       Permission.contacts,
       rationaleTitle: 'Allow Contacts Access',
       rationaleMessage:
-          'SpazaOne needs contacts access so you can quickly message customers from your address book.',
+          'Spaza One needs contacts access so you can quickly message customers from your address book.',
     );
   }
 

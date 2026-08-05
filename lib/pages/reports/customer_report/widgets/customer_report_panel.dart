@@ -41,12 +41,11 @@ Future<void> showCustomerReportSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder:
-        (ctx) => CustomerReportSheet(
-          userId: userId,
-          customerId: customerId,
-          customerName: customerName,
-        ),
+    builder: (ctx) => CustomerReportSheet(
+      userId: userId,
+      customerId: customerId,
+      customerName: customerName,
+    ),
   );
 }
 
@@ -185,10 +184,6 @@ class _ReportBody extends StatelessWidget {
               label: 'Avg. days to repay',
               value: stats.avgRepaymentDaysLabel,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2.4),
-
-            // ── PROVENANCE ──
-            _ProvenanceLine(count: transactions.length),
           ],
         ),
       ),
@@ -211,7 +206,7 @@ class _SheetHeader extends StatelessWidget {
           width: SizeConfig.imageSizeMultiplier * 11,
           height: SizeConfig.imageSizeMultiplier * 11,
           decoration: BoxDecoration(
-            color: kPrimaryColor.withOpacity(0.12),
+            color: kPrimaryColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(14),
           ),
           alignment: Alignment.center,
@@ -299,25 +294,6 @@ class _BalanceHeroBlock extends StatelessWidget {
                   letterSpacing: 1.4,
                 ),
               ),
-              const Spacer(),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.imageSizeMultiplier * 2,
-                  vertical: SizeConfig.heightMultiplier * 0.3,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  tone.directionLabel,
-                  style: TextStyle(
-                    color: tone.accent,
-                    fontSize: SizeConfig.textMultiplier * 1.2,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
             ],
           ),
           SizedBox(height: SizeConfig.heightMultiplier * 0.6),
@@ -363,62 +339,16 @@ class _SectionEyebrow extends StatelessWidget {
   }
 }
 
-class _ProvenanceLine extends StatelessWidget {
-  final int count;
-  const _ProvenanceLine({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.imageSizeMultiplier * 3,
-        vertical: SizeConfig.heightMultiplier * 1.0,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F5F8),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: Color(0xFF6B7280),
-              shape: BoxShape.circle,
-            ),
-          ),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-          Expanded(
-            child: Text(
-              'Derived from $count '
-              'transaction${count == 1 ? '' : 's'} in this ledger.',
-              style: TextStyle(
-                color: const Color(0xFF4B5563),
-                fontSize: SizeConfig.textMultiplier * 1.35,
-                fontWeight: FontWeight.w500,
-                height: 1.3,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Tone palette for the hero block. Mirrors `CustomerBalanceHero` so the
 /// sheet's headline matches what the merchant just saw on the Pay Later
 /// screen.
 class _BalanceTone {
   final String eyebrow;
-  final String directionLabel;
   final Color accent;
   final Color tint;
 
   const _BalanceTone._({
     required this.eyebrow,
-    required this.directionLabel,
     required this.accent,
     required this.tint,
   });
@@ -427,7 +357,6 @@ class _BalanceTone {
     if (balance < 0) {
       return const _BalanceTone._(
         eyebrow: 'OWING',
-        directionLabel: 'They owe you',
         accent: Color(0xFFC62828),
         tint: Color(0xFFFDECEA),
       );
@@ -435,14 +364,12 @@ class _BalanceTone {
     if (balance > 0) {
       return const _BalanceTone._(
         eyebrow: 'AHEAD',
-        directionLabel: 'You owe them',
         accent: Color(0xFF1B5E20),
         tint: Color(0xFFE8F5E9),
       );
     }
     return const _BalanceTone._(
       eyebrow: 'SETTLED',
-      directionLabel: 'All square',
       accent: Color(0xFF455A64),
       tint: Color(0xFFECEFF1),
     );
@@ -451,15 +378,15 @@ class _BalanceTone {
 
 class _SheetChrome {
   static Widget grabber() => Center(
-    child: Container(
-      width: 36,
-      height: 4,
-      decoration: BoxDecoration(
-        color: const Color(0xFFCFD8DC),
-        borderRadius: BorderRadius.circular(2),
-      ),
-    ),
-  );
+        child: Container(
+          width: 36,
+          height: 4,
+          decoration: BoxDecoration(
+            color: const Color(0xFFCFD8DC),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      );
 }
 
 class _LoadingShell extends StatelessWidget {
@@ -646,7 +573,7 @@ class _MetricRow extends StatelessWidget {
                 vertical: SizeConfig.heightMultiplier * 0.25,
               ),
               decoration: BoxDecoration(
-                color: effectiveValueColor.withOpacity(0.10),
+                color: effectiveValueColor.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(

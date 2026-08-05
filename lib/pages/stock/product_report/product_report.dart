@@ -3,48 +3,19 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/product_report/widget/product_section.dart';
 import 'package:pasella/pages/stock/product_report/widget/product_summary_card.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
-import 'package:pasella/utils/show_toast.dart';
 import 'package:pasella/config/size_config.dart';
 
-class ProductReportsTab extends StatefulWidget {
+class ProductReportsTab extends StatelessWidget {
   final StockViewModel viewModel;
 
   const ProductReportsTab({Key? key, required this.viewModel})
-    : super(key: key);
-
-  @override
-  _ProductReportsTabState createState() => _ProductReportsTabState();
-}
-
-class _ProductReportsTabState extends State<ProductReportsTab> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final lowStockProducts = widget.viewModel.checkLowStock();
-      for (var product in lowStockProducts) {
-        if (product.quantity! < 1) {
-          showSnackbar(
-            context,
-            '${product.name} is finished, please restock :(',
-            Colors.red,
-          );
-        } else {
-          showSnackbar(
-            context,
-            '${product.name} only has ${product.quantity} item(s) left. Stock soon ;)',
-            Colors.orange,
-          );
-        }
-      }
-    });
-  }
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context); // Initialize SizeConfig
-    List<Product> allProducts = widget.viewModel.products;
-    List<Product> lowStockProducts = widget.viewModel.checkLowStock();
+    List<Product> allProducts = viewModel.products;
+    List<Product> lowStockProducts = viewModel.checkLowStock();
     List<Product> noStockProducts =
         lowStockProducts.where((product) => product.quantity == 0).toList();
     List<Product> lowStockProductsTwo =

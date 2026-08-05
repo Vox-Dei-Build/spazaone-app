@@ -23,7 +23,7 @@ export const receiveWhatsappWebhook = functions.https.onRequest((req, res) => {
   console.log(`Received from ${From}: ${userResponse}`);
 
   const menuTemplate =
-    "Hello! 👋🏾 Welcome to SpazaOne! I'm here to help you manage your account, check your balance, view your recent transactions, and more.\n\n🔍 Main Menu:\n\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\nPlease reply with the number of the option you want to explore.";
+    "Hello! 👋🏾 Welcome to Spaza One! I'm here to help you manage your account, check your balance, view your recent transactions, and more.\n\n🔍 Main Menu:\n\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\nPlease reply with the number of the option you want to explore.";
   const shortMenuTemplate =
     "🔍 Main Menu:\n\n1️⃣ Check Balance\n2️⃣ View Transaction History\n\nPlease reply with the number of the option you want to explore.";
 

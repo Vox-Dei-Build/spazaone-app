@@ -272,7 +272,7 @@ class PromotionsViewModel extends ChangeNotifier {
         throw StateError('Template does not belong to the current merchant.');
       }
       if (templateData['systemManaged'] == true) {
-        throw StateError('SpazaOne-managed templates cannot be deleted.');
+        throw StateError('Templates managed by Spaza One cannot be deleted.');
       }
 
       // Delete from Twilio via Cloud Function

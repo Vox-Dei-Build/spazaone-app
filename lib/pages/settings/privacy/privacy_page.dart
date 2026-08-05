@@ -99,7 +99,7 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Choose what data SpazaOne may collect to keep the app stable and '
+            'Choose what data Spaza One may collect to keep the app stable and '
             'understand how merchants use it. Save to apply your changes.',
           ),
           const SizedBox(height: 12),
@@ -114,7 +114,7 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
           SwitchListTile(
             title: const Text('Product analytics'),
             subtitle: const Text(
-              'Usage events linked to your SpazaOne account. No message '
+              'Usage events linked to your Spaza One account. No message '
               'contents or contact details.',
             ),
             value: _analytics,
@@ -140,7 +140,7 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
                 );
               }
             },
-            child: const Text('Read the SpazaOne Privacy Policy'),
+            child: const Text('Read the Spaza One Privacy Policy'),
           ),
           if (widget.state.decidedAt != null) ...[
             const SizedBox(height: 12),

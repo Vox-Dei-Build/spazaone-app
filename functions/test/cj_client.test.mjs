@@ -111,7 +111,7 @@ test("CJ catalog normalization keeps only server-recognized product fields", () 
               id: "cj-product-1",
               sku: "CJ-ONE",
               nameEn: "Rechargeable lamp",
-              bigImage: "https://example.test/lamp.jpg",
+              bigImage: "https://cf.cjdropshipping.com/lamp.jpg",
               sellPrice: "2.50-4.00",
               threeCategoryName: "Home",
               clientPrice: 1,
@@ -134,7 +134,7 @@ test("CJ catalog normalization keeps only server-recognized product fields", () 
     productId: "cj-product-1",
     productSku: "CJ-ONE",
     title: "Rechargeable lamp",
-    image: "https://example.test/lamp.jpg",
+    image: "https://cf.cjdropshipping.com/lamp.jpg",
     category: "Home",
     productCostUsdMinor: 250,
     estimatedProductCostMinor: 4635,
@@ -147,10 +147,11 @@ test("CJ product details sanitize descriptions, images and variant pricing", () 
       pid: "cj-product-1",
       productSku: "CJ-ONE",
       productNameEn: "Rechargeable lamp",
-      bigImage: "https://example.test/lamp.jpg",
+      bigImage: "https://cf.cjdropshipping.com/lamp.jpg",
       productImageSet: [
-        "http://example.test/not-secure.jpg",
-        "https://example.test/lamp-2.jpg",
+        "http://cf.cjdropshipping.com/not-secure.jpg",
+        "https://cc-west-usa.oss-us-west-1.aliyuncs.com/lamp-2.jpg",
+        "https://example.test/not-cj-owned.jpg",
       ],
       description: "<p>Bright &amp; portable</p><script>steal()</script>",
       status: "3",
@@ -160,7 +161,7 @@ test("CJ product details sanitize descriptions, images and variant pricing", () 
           pid: "cj-product-1",
           variantSku: "CJ-ONE-BLK",
           variantKey: "Black",
-          variantImage: "https://example.test/black.jpg",
+          variantImage: "https://oss-cf.cjdropshipping.com/black.jpg",
           variantSellPrice: 3.25,
         },
       ],
@@ -169,8 +170,8 @@ test("CJ product details sanitize descriptions, images and variant pricing", () 
   );
   assert.equal(product.description, "Bright & portable");
   assert.deepEqual(product.images, [
-    "https://example.test/lamp.jpg",
-    "https://example.test/lamp-2.jpg",
+    "https://cf.cjdropshipping.com/lamp.jpg",
+    "https://cc-west-usa.oss-us-west-1.aliyuncs.com/lamp-2.jpg",
   ]);
   assert.equal(product.variants[0].productCostUsdMinor, 325);
   assert.equal(product.variants[0].estimatedProductCostMinor, 6026);
@@ -181,7 +182,7 @@ test("catalogue eligibility exposes only the verified ZA variant preview", () =>
     productId: "cj-product-1",
     productSku: "CJ-ONE",
     title: "Rechargeable lamp",
-    image: "https://example.test/lamp.jpg",
+    image: "https://cf.cjdropshipping.com/lamp.jpg",
     category: "Home",
     productCostUsdMinor: 250,
     estimatedProductCostMinor: 4635,

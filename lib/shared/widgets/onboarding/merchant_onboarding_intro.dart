@@ -40,7 +40,7 @@ class _MerchantOnboardingIntroState extends State<MerchantOnboardingIntro> {
       body:
           'Save one real customer so you can record Pay Later transactions and send WhatsApp confirmations right away.',
       bullets: [
-        'SpazaOne guides you from Customers',
+        'Spaza One guides you from Customers',
         'Pay Later opens after saving',
       ],
     ),

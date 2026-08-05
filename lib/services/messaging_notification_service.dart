@@ -60,7 +60,7 @@ class MessagingNotificationService {
       ]);
 
       String? phoneNumber = results[0] as String?;
-      String shopName = results[1] as String? ?? 'SpazaOne';
+      String shopName = results[1] as String? ?? 'Spaza One';
       double balance = results[2] as double;
       // SMS-safe formatting: avoids U+00A0 thousands separator from
       // NumberFormat('en_ZA') which would force UCS-2 segmentation on any

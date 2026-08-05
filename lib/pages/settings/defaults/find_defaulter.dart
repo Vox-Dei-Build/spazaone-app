@@ -54,7 +54,7 @@ class FindDefaulterPage extends StatelessWidget {
                     DefaulterInfoTile(
                       imagePath: 'assets/images/rands.png',
                       contentMap: {
-                        'Merchants marking defaulters on SpazaOne are saving up to ':
+                        'Merchants marking defaulters on Spaza One are saving up to ':
                             null,
                         'R15 000.00 monthly.':
                             TextStyle(fontWeight: FontWeight.bold),

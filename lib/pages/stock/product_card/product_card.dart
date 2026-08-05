@@ -2,45 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
-import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
-import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
-import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
+import 'package:pasella/pages/promote/utils/linked_product_promotion.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
-import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
-import 'package:provider/provider.dart';
 
 class ProductCard extends StatelessWidget {
   final Product product;
   final String docID;
+  final LinkedProductPromotionLauncher promotionLauncher;
 
-  const ProductCard({Key? key, required this.product, required this.docID})
-      : super(key: key);
+  const ProductCard({
+    Key? key,
+    required this.product,
+    required this.docID,
+    this.promotionLauncher = launchLinkedProductPromotion,
+  }) : super(key: key);
 
   Future<void> _promote(BuildContext context) {
-    return RunPromotionLauncher.launch(
+    return promotionLauncher(
       context,
-      viewModel: context.read<PromotionsViewModel>(),
-      initialProduct: LinkedProductRef(
-        id: docID,
-        name: product.name ?? 'Product',
-        sellingPrice: product.sellingPrice,
-        imageUrl: product.image,
-        whatsappListed: product.whatsappListed,
-      ),
+      promotionProductRef(product, docID),
     );
-  }
-
-  Future<void> _shareDropship(BuildContext context) async {
-    try {
-      await CommerceService.shareToWhatsApp(
-        title: product.name ?? 'Product',
-      );
-    } catch (error) {
-      if (context.mounted) showCommerceError(context, error);
-    }
   }
 
   @override
@@ -52,7 +36,11 @@ class ProductCard extends StatelessWidget {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => product.isDropshipListing
-                ? DropshipListingPage(product: product)
+                ? DropshipListingPage(
+                    product: product,
+                    docID: docID,
+                    promotionLauncher: promotionLauncher,
+                  )
                 : ProductDetailsPage(docID: docID, product: product),
           ),
         );
@@ -60,7 +48,7 @@ class ProductCard extends StatelessWidget {
       child: Card(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 4,
-        shadowColor: Colors.black.withOpacity(0.2),
+        shadowColor: Colors.black.withValues(alpha: 0.2),
         child: Padding(
           padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
           child: Column(
@@ -98,7 +86,7 @@ class ProductCard extends StatelessWidget {
                                 child: Icon(
                                   Icons.image,
                                   size: SizeConfig.imageSizeMultiplier * 15,
-                                  color: Colors.grey.withOpacity(0.5),
+                                  color: Colors.grey.withValues(alpha: 0.5),
                                 ),
                               )
                             : CachedNetworkImage(
@@ -107,7 +95,7 @@ class ProductCard extends StatelessWidget {
                                 errorWidget: (context, url, error) => Icon(
                                   Icons.image,
                                   size: SizeConfig.imageSizeMultiplier * 15,
-                                  color: Colors.grey.withOpacity(0.5),
+                                  color: Colors.grey.withValues(alpha: 0.5),
                                 ),
                               ),
                         Positioned(
@@ -122,18 +110,12 @@ class ProductCard extends StatelessWidget {
                             left: SizeConfig.imageSizeMultiplier * 1,
                             bottom: SizeConfig.heightMultiplier * 0.6,
                             child: ElevatedButton.icon(
-                              onPressed: () => product.isDropshipListing
-                                  ? _shareDropship(context)
-                                  : _promote(context),
-                              icon: Icon(
-                                product.isDropshipListing
-                                    ? Icons.share_outlined
-                                    : Icons.campaign_outlined,
+                              onPressed: () => _promote(context),
+                              icon: const Icon(
+                                Icons.campaign_outlined,
                                 size: 15,
                               ),
-                              label: Text(
-                                product.isDropshipListing ? 'Share' : 'Promote',
-                              ),
+                              label: const Text('Promote'),
                               style: ElevatedButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(

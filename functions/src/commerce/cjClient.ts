@@ -1,5 +1,6 @@
 import axios from "axios";
 import { db } from "../config/main";
+import { safeCjImageUrl } from "./cjImagePolicy";
 
 const CJ_API_BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 const FX_API_URLS = [
@@ -252,13 +253,7 @@ export function convertUsdMinorToZarMinor(
 }
 
 function safeImage(value: unknown): string {
-  const url = text(value, 1000);
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" ? parsed.toString() : "";
-  } catch (_) {
-    return "";
-  }
+  return safeCjImageUrl(value);
 }
 
 function cleanDescription(value: unknown): string {
