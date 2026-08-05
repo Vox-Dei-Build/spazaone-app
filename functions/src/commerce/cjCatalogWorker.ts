@@ -92,13 +92,23 @@ async function recoverExpiredJobs(nowMs: number): Promise<void> {
   );
   if (!expired.length) return;
   const batch = db.batch();
-  expired.forEach((doc) =>
+  expired.forEach((doc) => {
+    const queueBand = String(doc.data().queueBand ?? "background");
     batch.set(
       doc.ref,
-      { status: "pending", leaseUntilMs: 0, updatedAtMs: nowMs },
+      {
+        status: "pending",
+        pendingQueueBand: ["demand", "refresh", "background"].includes(
+          queueBand,
+        )
+          ? queueBand
+          : "background",
+        leaseUntilMs: 0,
+        updatedAtMs: nowMs,
+      },
       { merge: true },
-    ),
-  );
+    );
+  });
   await batch.commit();
 }
 
@@ -113,13 +123,22 @@ async function recoverDueRetryJobs(nowMs: number): Promise<void> {
   );
   if (!due.length) return;
   const batch = db.batch();
-  due.forEach((doc) =>
+  due.forEach((doc) => {
+    const queueBand = String(doc.data().queueBand ?? "background");
     batch.set(
       doc.ref,
-      { status: "pending", updatedAtMs: nowMs },
+      {
+        status: "pending",
+        pendingQueueBand: ["demand", "refresh", "background"].includes(
+          queueBand,
+        )
+          ? queueBand
+          : "background",
+        updatedAtMs: nowMs,
+      },
       { merge: true },
-    ),
-  );
+    );
+  });
   await batch.commit();
 }
 
@@ -129,8 +148,7 @@ async function claimNextJob(): Promise<ClaimedJob | null> {
   for (const queueBand of ["demand", "refresh", "background"] as const) {
     const snapshot = await db
       .collection(CATALOG_JOBS_COLLECTION)
-      .where("status", "==", "pending")
-      .where("queueBand", "==", queueBand)
+      .where("pendingQueueBand", "==", queueBand)
       .limit(30)
       .get();
     const candidates = snapshot.docs.sort((a, b) => {
@@ -145,7 +163,11 @@ async function claimNextJob(): Promise<ClaimedJob | null> {
       const claimed = await db.runTransaction(async (tx) => {
         const latest = await tx.get(candidate.ref);
         const value = latest.data() as CatalogJob | undefined;
-        if (!value || value.status !== "pending") {
+        if (
+          !value ||
+          value.status !== "pending" ||
+          value.queueBand !== queueBand
+        ) {
           return null;
         }
         const attempts = Number(value.attempts ?? 0) + 1;
@@ -153,6 +175,7 @@ async function claimNextJob(): Promise<ClaimedJob | null> {
           candidate.ref,
           {
             status: "working",
+            pendingQueueBand: null,
             attempts,
             leaseUntilMs: nowMs + WORKER_LEASE_MS,
             updatedAtMs: nowMs,
@@ -199,6 +222,7 @@ async function deferForCatalogBudget(job: ClaimedJob): Promise<void> {
   await job.ref.set(
     {
       status: "retry",
+      pendingQueueBand: null,
       attempts: Math.max(0, Number(job.value.attempts ?? 1) - 1),
       leaseUntilMs: 0,
       availableAtMs: nowMs + 60 * 60 * 1000,
@@ -214,6 +238,7 @@ async function completeJob(job: ClaimedJob): Promise<void> {
   await job.ref.set(
     {
       status: "done",
+      pendingQueueBand: null,
       leaseUntilMs: 0,
       completedAtMs: nowMs,
       updatedAtMs: nowMs,
@@ -232,6 +257,7 @@ async function retryJob(job: ClaimedJob, error: unknown): Promise<void> {
   await job.ref.set(
     {
       status: terminal ? "done" : "retry",
+      pendingQueueBand: null,
       leaseUntilMs: 0,
       availableAtMs:
         nowMs + RETRY_BASE_MS * Math.min(6, Math.pow(2, attempts - 1)),

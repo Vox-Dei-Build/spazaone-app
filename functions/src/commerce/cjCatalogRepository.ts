@@ -26,6 +26,7 @@ export type CatalogJob = {
   kind: CatalogJobKind;
   status: "pending" | "retry" | "working" | "done";
   queueBand: CatalogQueueBand;
+  pendingQueueBand: CatalogQueueBand | null;
   priority: number;
   query: string;
   product?: Record<string, unknown>;
@@ -203,6 +204,7 @@ export async function enqueueCatalogDemand(
         kind: "discover_query",
         status: "pending",
         queueBand: requesterStoreId ? "demand" : "background",
+        pendingQueueBand: requesterStoreId ? "demand" : "background",
         priority: requesterStoreId ? 50 : 10,
         query,
         supplierPage,
@@ -257,6 +259,12 @@ export async function enqueueProductRefresh(input: {
   );
   const cacheRef = catalogProductRef(productId);
   const nowMs = Date.now();
+  const queueBand: CatalogQueueBand =
+    (input.priority ?? 30) >= 40
+      ? "demand"
+      : (input.priority ?? 30) >= 20
+        ? "refresh"
+        : "background";
   await db.runTransaction(async (tx) => {
     const snapshot = await tx.get(jobRef);
     const cache = await tx.get(cacheRef);
@@ -318,12 +326,8 @@ export async function enqueueProductRefresh(input: {
       {
         kind: "refresh_product",
         status: "pending",
-        queueBand:
-          (input.priority ?? 30) >= 40
-            ? "demand"
-            : (input.priority ?? 30) >= 20
-              ? "refresh"
-              : "background",
+        queueBand,
+        pendingQueueBand: queueBand,
         priority: input.priority ?? 30,
         query: normalizedQuery(input.query),
         product: input.product,

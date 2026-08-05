@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import admin from "firebase-admin";
 import { buildCatalogCacheDocument } from "../lib/commerce/cjCatalogCache.js";
-import { searchCachedCatalog } from "../lib/commerce/cjCatalogRepository.js";
+import {
+  catalogJobId,
+  enqueueCatalogDemand,
+  enqueueProductRefresh,
+  searchCachedCatalog,
+} from "../lib/commerce/cjCatalogRepository.js";
 
 const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "");
 const emulatorProject = String(
@@ -16,6 +21,8 @@ if (!emulatorHost || !emulatorProject.startsWith("demo-")) {
 
 const db = admin.firestore();
 const collection = db.collection("supplierCatalogProducts");
+const jobs = db.collection("supplierCatalogJobs");
+const demand = db.collection("supplierCatalogDemand");
 const fx = {
   rate: 18,
   rateMicros: 18_000_000,
@@ -77,7 +84,11 @@ function cachedProduct(index) {
 }
 
 before(async () => {
-  await admin.firestore().recursiveDelete(collection);
+  await Promise.all(
+    [collection, jobs, demand].map((target) =>
+      admin.firestore().recursiveDelete(target),
+    ),
+  );
   const batch = db.batch();
   for (let index = 0; index < 25; index += 1) {
     batch.set(
@@ -95,7 +106,11 @@ before(async () => {
 });
 
 after(async () => {
-  await admin.firestore().recursiveDelete(collection);
+  await Promise.all(
+    [collection, jobs, demand].map((target) =>
+      admin.firestore().recursiveDelete(target),
+    ),
+  );
 });
 
 test("catalog search cursor pages are stable and exclude inactive products", async () => {
@@ -128,4 +143,29 @@ test("catalog search cursor pages are stable and exclude inactive products", asy
     ),
     false,
   );
+});
+
+test("catalog jobs expose a single-field pending queue selector", async () => {
+  await enqueueCatalogDemand("Furniture");
+  const discovery = await jobs
+    .doc(catalogJobId("discover_query", "furniture"))
+    .get();
+  assert.equal(discovery.data()?.status, "pending");
+  assert.equal(discovery.data()?.queueBand, "background");
+  assert.equal(discovery.data()?.pendingQueueBand, "background");
+
+  await enqueueProductRefresh({
+    product: {
+      productId: "queued-product",
+      title: "Queued product",
+    },
+    query: "furniture",
+    priority: 45,
+  });
+  const refresh = await jobs
+    .doc(catalogJobId("refresh_product", "queued-product"))
+    .get();
+  assert.equal(refresh.data()?.status, "pending");
+  assert.equal(refresh.data()?.queueBand, "demand");
+  assert.equal(refresh.data()?.pendingQueueBand, "demand");
 });
