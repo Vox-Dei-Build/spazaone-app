@@ -9,18 +9,16 @@ class ProductList extends StatelessWidget {
   final StockViewModel viewModel;
   final String? groupName;
 
-  /// PAS-UX-04: callbacks supplied by the parent so the empty-state can
-  /// recover users instead of dead-ending. Optional so existing nested
-  /// callers (group drilldown) can keep the original empty placeholder.
+  /// Callback supplied by the parent so the empty state can open the same
+  /// product form as the page action. Optional so group drilldowns retain a
+  /// simple placeholder.
   final VoidCallback? onAddProduct;
-  final VoidCallback? onWatchTutorial;
 
   const ProductList({
     Key? key,
     required this.viewModel,
     this.groupName,
     this.onAddProduct,
-    this.onWatchTutorial,
   }) : super(key: key);
 
   @override
@@ -54,7 +52,6 @@ class ProductList extends StatelessWidget {
             userId: viewModel.userId,
             showOnboarding: showOnboarding,
             onAddProduct: onAddProduct,
-            onWatchTutorial: onWatchTutorial,
           );
         }
         return CustomScrollView(
@@ -93,24 +90,20 @@ class ProductList extends StatelessWidget {
 /// [StockViewModel] stream or Firestore. Rendered by [ProductList]
 /// when the catalogue is empty.
 ///
-/// When [showOnboarding] is true (top-level view + [onAddProduct]
-/// supplied) the widget renders the recovery hero — icon, product-
-/// specific title, description, coach-marked CTA, and an optional
-/// walkthrough link. When false, it falls back to the compact
-/// "No products in this group" placeholder used by group drilldowns.
+/// When [showOnboarding] is true (top-level view + [onAddProduct] supplied),
+/// the widget renders a concise action. When false, it falls back to the
+/// compact group placeholder.
 class ProductListEmptyState extends StatelessWidget {
   const ProductListEmptyState({
     super.key,
     required this.userId,
     required this.showOnboarding,
     required this.onAddProduct,
-    required this.onWatchTutorial,
   });
 
   final String userId;
   final bool showOnboarding;
   final VoidCallback? onAddProduct;
-  final VoidCallback? onWatchTutorial;
 
   @override
   Widget build(BuildContext context) {
@@ -123,16 +116,25 @@ class ProductListEmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: SizeConfig.imageSizeMultiplier * 18,
-              color: Colors.grey.withValues(alpha: 0.5),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.inventory_2_outlined,
+                size: 30,
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            const SizedBox(height: 16),
             Text(
-              showOnboarding
-                  ? 'Add your first product'
-                  : 'No products in this group',
+              showOnboarding ? 'No products yet' : 'No products in this group',
               style: TextStyle(
                 fontSize: SizeConfig.textMultiplier * 2.2,
                 fontWeight: FontWeight.w600,
@@ -141,27 +143,17 @@ class ProductListEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             if (showOnboarding) ...[
-              SizedBox(height: SizeConfig.heightMultiplier * 1),
-              Text(
-                'Start with the item you sell most often. Products power stock, sales detail, and WhatsApp ordering.',
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.6,
-                  color: Colors.grey[700],
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
+              const SizedBox(height: 20),
               ActivationCoachmark(
                 userId: userId,
                 coachmarkKey: 'add_first_product_from_products',
                 title: 'Add a product',
-                message:
-                    'Create the item once so it can be used in sales, stock, and ordering.',
+                message: 'Add an item to start selling.',
                 icon: Icons.inventory_2_outlined,
                 child: ElevatedButton.icon(
                   onPressed: onAddProduct,
-                  icon: const Icon(Icons.inventory_2_outlined),
-                  label: const Text('Add your first product'),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add product'),
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(
                       horizontal: SizeConfig.imageSizeMultiplier * 6,
@@ -170,14 +162,6 @@ class ProductListEmptyState extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onWatchTutorial != null) ...[
-                SizedBox(height: SizeConfig.heightMultiplier * 1),
-                TextButton.icon(
-                  onPressed: onWatchTutorial,
-                  icon: const Icon(Icons.play_circle_outline),
-                  label: const Text('Watch a 2-min walkthrough'),
-                ),
-              ],
             ],
           ],
         ),

@@ -9,6 +9,7 @@ import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/services/activation_nudge_intent_bus.dart';
+import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/pages/wallet/widgets/suspension_paywall.dart';
@@ -27,6 +28,13 @@ bool shouldShowSpazaOneRebrandNotice({
       const Duration(hours: 1);
 }
 
+@visibleForTesting
+bool shouldHoldDashboardForConsent({
+  required ConsentState consent,
+  required bool consentSurfaceCompleted,
+}) =>
+    !consent.hasDecided || !consentSurfaceCompleted;
+
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
 
@@ -38,29 +46,48 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   bool _introScheduled = false;
-  bool _firstRunSurfacesScheduled = false;
+  bool _startupScheduled = false;
   bool _rebrandNoticeScheduled = false;
   bool _activationIntentProcessing = false;
+  late bool _consentSurfaceCompleted;
 
-  /// First-run surfaces are sequenced here once deferred auth consent is on:
-  /// consent sheet first, onboarding intro second. Telemetry stays disabled
-  /// while consent is undecided, so this can happen after phone auth without
-  /// leaking pre-consent analytics.
+  @override
+  void initState() {
+    super.initState();
+    // Returning merchants with a saved choice have no first-run privacy
+    // surface to close. New merchants remain behind the neutral gate until
+    // showPostAuthIfNeeded has fully returned, not merely until its notifier
+    // flips while the sheet is still visible.
+    _consentSurfaceCompleted = ConsentService.instance.state.hasDecided;
+  }
 
-  Future<void> _showFirstRunSurfacesIfNeeded(String userId) async {
-    if (_firstRunSurfacesScheduled || userId.isEmpty) return;
-    _firstRunSurfacesScheduled = true;
+  /// Runs every first-run surface through one queue. Waiting for this
+  /// Dashboard route to be current prevents a transient Dashboard mounted
+  /// behind profile completion (or another modal) from stacking sheets.
+  Future<void> _runStartupSequence(String userId) async {
+    if (_startupScheduled || userId.isEmpty) return;
+    _startupScheduled = true;
 
-    if (FeatureFlags.enableDeferAuthConsent) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
-      await ConsentModal.showPostAuthIfNeeded(context);
-      if (!mounted) return;
-    }
-
-    await _showRebrandNoticeIfNeeded(userId);
+    if (!await _waitUntilCurrentRoute()) return;
     if (!mounted) return;
+    await ConsentModal.showPostAuthIfNeeded(context);
+    if (!mounted) return;
+    setState(() => _consentSurfaceCompleted = true);
+    if (!mounted || !await _waitUntilCurrentRoute()) return;
+    await _showRebrandNoticeIfNeeded(userId);
+    if (!mounted || !await _waitUntilCurrentRoute()) return;
     await _showOnboardingIntroIfNeeded(userId);
+    if (!mounted || !await _waitUntilCurrentRoute()) return;
+    await _processActivationIntentIfNeeded(userId);
+  }
+
+  Future<bool> _waitUntilCurrentRoute() async {
+    while (true) {
+      if (!mounted) return false;
+      final route = ModalRoute.of(context);
+      if (route == null || route.isCurrent) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
   }
 
   Future<void> _showRebrandNoticeIfNeeded(String userId) async {
@@ -100,12 +127,9 @@ class _DashboardState extends State<Dashboard> {
     if (_introScheduled || userId.isEmpty) return;
     _introScheduled = true;
 
-    // The Setup Guide in Settings is the persistent guide; the intro is a
+    // Shop Setup in Settings is the persistent guide; the intro is a
     // first-run supplement. When the flag is off we skip the sheet entirely.
     if (!FeatureFlags.enableMerchantOnboardingIntro) return;
-
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
 
     final box = Hive.box('appBox');
     final seenKey = 'merchant_onboarding_intro_seen:$userId';
@@ -261,103 +285,133 @@ class _DashboardState extends State<Dashboard> {
       );
     }
 
-    final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
-    final walletRef = userRef.collection('wallet').doc('current');
+    return ValueListenableBuilder<ConsentState>(
+      valueListenable: ConsentService.instance.notifier,
+      builder: (context, consent, _) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _runStartupSequence(userId);
+        });
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: walletRef.snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+        // Keep first-run coachmarks and empty-state guidance out of view until
+        // the privacy choice closes. This removes the visual "two onboarding
+        // cards at once" effect on small phones.
+        if (shouldHoldDashboardForConsent(
+          consent: consent,
+          consentSurfaceCompleted: _consentSurfaceCompleted,
+        )) {
+          return const _PrivacyChoiceProgress();
         }
 
-        final data = snapshot.data?.data() as Map<String, dynamic>?;
+        final userRef =
+            FirebaseFirestore.instance.collection('users').doc(userId);
+        final walletRef = userRef.collection('wallet').doc('current');
 
-        if (data == null) {
-          // A new account's auth state can arrive a fraction before its
-          // initial wallet document. Treat that as setup-in-progress instead
-          // of exposing an internal data-state message to the merchant.
-          return const _AccountSetupProgress();
-        }
+        return StreamBuilder<DocumentSnapshot>(
+          stream: walletRef.snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-        final isSuspended = data['accountSuspended'] ?? false;
+            final data = snapshot.data?.data() as Map<String, dynamic>?;
 
-        if (isSuspended) {
-          final walletState = WalletViewModel.fromFirestore(data);
-          return SuspensionPaywall(walletState: walletState);
-        }
+            if (data == null) {
+              // A new account's auth state can arrive a fraction before its
+              // initial wallet document. Treat that as setup-in-progress instead
+              // of exposing an internal data-state message to the merchant.
+              return const _AccountSetupProgress();
+            }
 
-        return Consumer<AppModel>(
-          builder: (context, value, child) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _showFirstRunSurfacesIfNeeded(userId);
-              _processActivationIntentIfNeeded(userId);
-            });
-            // PAS-UI-01: the OnboardingChecklist that previously
-            // mounted here (per PAS-UX-09) has been removed from the
-            // visible dashboard chrome. Merchant feedback was that it
-            // consumed persistent vertical space above every tab
-            // while delivering little ongoing value once one or two
-            // items were auto-ticked. Its role has been superseded
-            // by the Setup Guide in Settings, which covers the full setup
-            // path (customer → product → WhatsApp listing → ordering link →
-            // payout → template) without occupying daily workspace. The old widget
-            // (`lib/shared/widgets/onboarding/onboarding_checklist.dart`)
-            // is `@Deprecated` — retained only for the Hive-key
-            // pattern; do not reintroduce.
-            return Scaffold(
-              body: value.navigationOptions[value.currentIndex],
-              bottomNavigationBar: ClipRRect(
-                borderRadius: BorderRadius.circular(
-                  SizeConfig.imageSizeMultiplier * 5,
-                ),
-                child: NavigationBar(
-                  selectedIndex: value.currentIndex,
-                  onDestinationSelected: (index) =>
-                      value.handleNavigation(context, index),
-                  destinations: [
-                    NavigationDestination(
-                      icon: Icon(
-                        Icons.contacts_outlined,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      selectedIcon: Icon(
-                        Icons.contacts_outlined,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      label: 'Customers',
+            final isSuspended = data['accountSuspended'] ?? false;
+
+            if (isSuspended) {
+              final walletState = WalletViewModel.fromFirestore(data);
+              return SuspensionPaywall(walletState: walletState);
+            }
+
+            return Consumer<AppModel>(
+              builder: (context, value, child) {
+                // PAS-UI-01: the OnboardingChecklist that previously
+                // mounted here (per PAS-UX-09) has been removed from the
+                // visible dashboard chrome. Merchant feedback was that it
+                // consumed persistent vertical space above every tab
+                // while delivering little ongoing value once one or two
+                // items were auto-ticked. Its role has been superseded
+                // by Shop Setup in Settings, which covers the full setup
+                // path (customer → product → WhatsApp listing → ordering link →
+                // payout → template) without occupying daily workspace. The old widget
+                // (`lib/shared/widgets/onboarding/onboarding_checklist.dart`)
+                // is `@Deprecated` — retained only for the Hive-key
+                // pattern; do not reintroduce.
+                return Scaffold(
+                  body: value.navigationOptions[value.currentIndex],
+                  bottomNavigationBar: ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      SizeConfig.imageSizeMultiplier * 5,
                     ),
-                    NavigationDestination(
-                      icon: Icon(
-                        Icons.inventory_outlined,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      selectedIcon: Icon(
-                        Icons.inventory_outlined,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      label: 'Products',
+                    child: NavigationBar(
+                      selectedIndex: value.currentIndex,
+                      onDestinationSelected: (index) =>
+                          value.handleNavigation(context, index),
+                      destinations: [
+                        NavigationDestination(
+                          icon: Icon(
+                            Icons.contacts_outlined,
+                            size: SizeConfig.imageSizeMultiplier * 5,
+                          ),
+                          selectedIcon: Icon(
+                            Icons.contacts_outlined,
+                            size: SizeConfig.imageSizeMultiplier * 5,
+                          ),
+                          label: 'Customers',
+                        ),
+                        NavigationDestination(
+                          icon: Icon(
+                            Icons.inventory_outlined,
+                            size: SizeConfig.imageSizeMultiplier * 5,
+                          ),
+                          selectedIcon: Icon(
+                            Icons.inventory_outlined,
+                            size: SizeConfig.imageSizeMultiplier * 5,
+                          ),
+                          label: 'Products',
+                        ),
+                        NavigationDestination(
+                          icon: Icon(
+                            Icons.point_of_sale,
+                            size: SizeConfig.imageSizeMultiplier * 5,
+                          ),
+                          selectedIcon: Icon(
+                            Icons.point_of_sale,
+                            size: SizeConfig.imageSizeMultiplier * 5,
+                          ),
+                          label: 'Sales',
+                        ),
+                      ],
                     ),
-                    NavigationDestination(
-                      icon: Icon(
-                        Icons.point_of_sale,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      selectedIcon: Icon(
-                        Icons.point_of_sale,
-                        size: SizeConfig.imageSizeMultiplier * 5,
-                      ),
-                      label: 'Sales',
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );
       },
+    );
+  }
+}
+
+class _PrivacyChoiceProgress extends StatelessWidget {
+  const _PrivacyChoiceProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      body: const SafeArea(
+        child: Center(child: CircularProgressIndicator()),
+      ),
     );
   }
 }

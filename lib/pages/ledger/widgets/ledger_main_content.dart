@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
 import 'package:pasella/pages/ledger/widgets/customer_tab.dart';
-import 'package:pasella/shared/widgets/loom_video_page.dart';
+import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_tab_bar_with_filter.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
@@ -43,25 +42,20 @@ class LedgerMainContent extends StatelessWidget {
             PageHeader(
               actionWidget: IconButton(
                 icon: Icon(
-                  Icons.help_outline,
+                  Icons.link_rounded,
                   color: Colors.black,
                   size: SizeConfig.imageSizeMultiplier * 5,
                 ),
                 onPressed: () {
-                  final url = TutorialConfig.getTutorialUrl(
-                    TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS,
-                  );
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder:
-                          (context) => LoomVideoPage(
-                            loomUrl: url,
-                            title: 'How to Add Customers',
-                          ),
+                      builder: (_) => const SharePage(
+                        source: 'customers_header',
+                      ),
                     ),
                   );
                 },
-                tooltip: 'Customer help',
+                tooltip: 'WhatsApp ordering link',
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),

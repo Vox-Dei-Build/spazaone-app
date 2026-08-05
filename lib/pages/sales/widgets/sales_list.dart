@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/sales/widgets/sale_detail_page.dart';
-import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -63,17 +61,7 @@ class _SalesListState extends State<SalesList> {
         final data = snapshot.data ?? const <Sale>[];
         if (data.isEmpty) {
           return _paddedScroll(
-            EmptyStateOnboarding(
-              icon: Icons.point_of_sale_outlined,
-              headline: 'No sales recorded yet',
-              subtitle:
-                  'Use Sales for a day-end revenue total or individual cash sale. Add products only when you need stock and profit detail.',
-              ctaLabel:
-                  widget.onAddSale != null ? 'Record your first sale' : null,
-              onCtaTap: widget.onAddSale,
-              tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_SALES,
-              tutorialTitle: 'How to record a sale',
-            ),
+            SalesListEmptyState(onAddSale: widget.onAddSale),
           );
         }
 
@@ -175,6 +163,55 @@ class _SalesListState extends State<SalesList> {
           ),
           growable: false,
         ),
+      ),
+    );
+  }
+}
+
+/// Compact cash-sales empty state, extracted for focused widget testing.
+class SalesListEmptyState extends StatelessWidget {
+  const SalesListEmptyState({super.key, this.onAddSale});
+
+  final VoidCallback? onAddSale;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.point_of_sale_outlined,
+              size: 28,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'No cash sales yet',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (onAddSale != null) ...[
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: onAddSale,
+              icon: const Icon(Icons.add),
+              label: const Text('Record sale'),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/customer_selection/customer_selection_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/promotion_bottom_action.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/promotion_details/template_and_details_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/create_template.dart';
@@ -346,21 +346,29 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           ? step1Valid
           : step2Valid;
 
+      final label = currentStep == RunPromotionStep.templateAndDetails
+          ? 'Choose customers'
+          : 'Review promotion';
+      final nextButton = ElevatedButton(
+        onPressed: (sending || !canProceed) ? null : nextStep,
+        child: sending
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(label),
+      );
+
+      if (currentStep == RunPromotionStep.templateAndDetails) {
+        return SizedBox(width: double.infinity, child: nextButton);
+      }
+
       return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          if (currentStep != RunPromotionStep.templateAndDetails)
-            OutlinedButton(onPressed: previousStep, child: const Text('Back')),
-          ElevatedButton(
-            onPressed: (sending || !canProceed) ? null : nextStep,
-            child: sending
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Next'),
-          ),
+          OutlinedButton(onPressed: previousStep, child: const Text('Back')),
+          const SizedBox(width: 12),
+          Expanded(child: nextButton),
         ],
       );
     }
@@ -505,6 +513,12 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       },
       child: Scaffold(
         appBar: const CustomAppBar(title: 'Run Promotion'),
+        bottomNavigationBar: vm.loadingTemplates || calculating
+            ? null
+            : PromotionBottomAction(
+                key: const Key('run-promotion-bottom-action'),
+                child: _buildNavigationButtons(),
+              ),
         body: vm.loadingTemplates
             ? const Center(child: CircularProgressIndicator())
             : calculating
@@ -518,8 +532,6 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
                           currentIndex: currentStep.index,
                         ),
                         Expanded(child: _buildStepContent()),
-                        SizedBox(height: SizeConfig.heightMultiplier * 2),
-                        _buildNavigationButtons(),
                       ],
                     ),
                   ),

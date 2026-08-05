@@ -40,198 +40,193 @@ class CustomersWithBadLoansTile extends StatelessWidget {
         } else if (snapshot.hasError) {
           return const Text('Could not load customer details.');
         } else {
-          List<dynamic> customers = snapshot.data!;
-          customers.sort((a, b) => a['balance'].compareTo(b['balance']));
+          final customers = List<dynamic>.of(snapshot.data!)
+            ..sort((a, b) => a['balance'].compareTo(b['balance']));
           return Column(
-            children:
-                customers.map((customer) {
-                  final balance = customer['balance'].toDouble();
-                  final name = customer['name'];
-                  final number = customer['number'];
-                  final id = customer['id'];
-                  final profileImageUrl = customer['profileImageUrl'];
-                  final avatarSize = SizeConfig.heightMultiplier * 6;
+            children: customers.map((customer) {
+              final balance = (customer['balance'] as num).toDouble();
+              final name = customer['name'].toString();
+              final number = customer['number']?.toString();
+              final id = customer['id'].toString();
+              final profileImageUrl = customer['profileImageUrl']?.toString();
+              final avatarSize = SizeConfig.heightMultiplier * 5.2;
+              final wasReminded = reminderSentRecently(customer);
 
-                  return PrivateRegion(
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(0.0),
-                      visualDensity: const VisualDensity(horizontal: -2),
-                      leading: SizedBox(
-                        width: avatarSize,
-                        height: avatarSize,
-                        child: profilePicture(
-                          context,
-                          name,
-                          profileImageUrl,
-                          number,
-                          true,
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: PrivateRegion(
+                  child: Material(
+                    key: ValueKey('customer-follow-up-$id'),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CustomerManagementPage(
+                            customerName: name,
+                            customerId: id,
+                            mobileNumber: number,
+                          ),
                         ),
                       ),
-                      title: _buildTitle(name, balance),
-                      // PAS-UX-06A: surface the phone number directly in the
-                      // reports flow. Merchants chasing debt previously had to
-                      // tap into each profile just to see a number; the bare
-                      // icon-only signal hid the value that makes follow-up
-                      // possible. Formatted via formatPhoneNumber so what's
-                      // shown is exactly what WhatsApp/SMS will be sent to.
-                      subtitle: _buildPhoneLine(context, number),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // PAS-WA-V1: this badge is purely informational.
-                          // It surfaces "have I nudged this customer
-                          // recently?" — it does NOT gate the next send.
-                          // There is no monthly cap; merchants pay per
-                          // message and can re-send at any time. The
-                          // wording below is deliberate: no "cannot",
-                          // no "blocked", and the off-state uses a
-                          // muted grey instead of the previous red so
-                          // it doesn't read as a denial.
-                          number != null && number.isNotEmpty
-                              ? (reminderSentRecently(customer)
-                                  ? Tooltip(
-                                    message:
-                                        'Reminder sent in the last 30 days',
-                                    triggerMode: TooltipTriggerMode.tap,
-                                    child: Icon(
-                                      Icons.notifications_active_outlined,
-                                      color: Colors.green,
-                                      size: SizeConfig.imageSizeMultiplier * 5,
+                      child: Ink(
+                        padding: const EdgeInsets.fromLTRB(13, 12, 10, 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE8ECE8)),
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: avatarSize,
+                              height: avatarSize,
+                              child: profilePicture(
+                                context,
+                                name,
+                                profileImageUrl,
+                                number,
+                                true,
+                                displayIcons: false,
+                                radius: avatarSize / 2,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: TextStyle(
+                                      color: const Color(0xFF1A1F1B),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize:
+                                          SizeConfig.textMultiplier * 1.75,
                                     ),
-                                  )
-                                  : Tooltip(
-                                    message:
-                                        'No reminder in the last 30 days — you can send one now',
-                                    triggerMode: TooltipTriggerMode.tap,
-                                    child: Icon(
-                                      Icons.notifications_none_outlined,
-                                      color: Colors.grey.shade600,
-                                      size: SizeConfig.imageSizeMultiplier * 5,
-                                    ),
-                                  ))
-                              : Tooltip(
-                                message:
-                                    'No number available, cannot send reminder',
-                                child: Icon(
-                                  Icons.phone_disabled_outlined,
-                                  color: Colors.grey,
-                                  size: SizeConfig.imageSizeMultiplier * 5,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                  SizedBox(
+                                    height: SizeConfig.heightMultiplier * 0.4,
+                                  ),
+                                  _buildContactLine(
+                                    number,
+                                    wasReminded: wasReminded,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 92),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  CurrencyUtil.format(balance),
+                                  style: TextStyle(
+                                    color: balance >= 0
+                                        ? kPrimaryColor
+                                        : Colors.red,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: SizeConfig.textMultiplier * 1.65,
+                                  ),
+                                  maxLines: 1,
                                 ),
                               ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.visibility,
-                              size: SizeConfig.imageSizeMultiplier * 5,
                             ),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (context) => CustomerManagementPage(
-                                        customerName: name,
-                                        customerId: id,
-                                        mobileNumber: number,
-                                      ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+                            const SizedBox(width: 3),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.grey.shade500,
+                              size: 18,
+                              applyTextScaling: false,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  );
-                }).toList(),
+                  ),
+                ),
+              );
+            }).toList(),
           );
         }
       },
     );
   }
 
-  Widget _buildTitle(name, balance) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 3.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Flexible(
-            child: Text(
-              name,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: SizeConfig.textMultiplier * 2,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-          // PAS-UX-06A: pair name with what they owe on the same row.
-          // This is the single piece of info merchants need at a glance,
-          // and putting it next to the name removes the prior need to
-          // visually map the subtitle amount back up to the title.
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-          Text(
-            CurrencyUtil.format(balance),
-            style: TextStyle(
-              color: balance >= 0 ? kPrimaryColor : Colors.red,
-              fontWeight: FontWeight.bold,
-              fontSize: SizeConfig.textMultiplier * 1.8,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// PAS-UX-06A: render the formatted phone number under the name. Uses
-  /// the same `formatPhoneNumber` the SMS/WhatsApp pipeline uses, so what
-  /// the merchant sees is precisely what a reminder would be sent to.
-  /// If the stored number cannot be confidently formatted as SA-valid
-  /// the raw value is shown with a "not SA-valid" hint, rather than
-  /// silently being blanked — silent blanking was a contributor to the
-  /// trust break this lane addresses.
-  Widget _buildPhoneLine(BuildContext context, dynamic number) {
-    final String raw = (number ?? '').toString().trim();
+  Widget _buildContactLine(
+    String? number, {
+    required bool wasReminded,
+  }) {
+    final raw = (number ?? '').trim();
     if (raw.isEmpty) {
-      return Text(
-        'No phone number',
-        style: TextStyle(
-          color: Colors.grey,
-          fontStyle: FontStyle.italic,
-          fontSize: SizeConfig.textMultiplier * 1.5,
-        ),
-      );
-    }
-    final String formatted = formatPhoneNumber(raw);
-    if (formatted.isEmpty) {
       return Row(
         children: [
           Icon(
-            Icons.warning_amber_rounded,
-            size: SizeConfig.textMultiplier * 1.5,
-            color: Colors.orange,
+            Icons.phone_disabled_outlined,
+            color: Colors.grey.shade500,
+            size: SizeConfig.textMultiplier * 1.55,
+            applyTextScaling: false,
           ),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
-          Flexible(
-            child: Text(
-              '$raw  (not SA-valid)',
-              style: TextStyle(
-                color: Colors.orange.shade800,
-                fontSize: SizeConfig.textMultiplier * 1.5,
-              ),
-              overflow: TextOverflow.ellipsis,
+          const SizedBox(width: 5),
+          Text(
+            'No phone number',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: SizeConfig.textMultiplier * 1.35,
             ),
           ),
         ],
       );
     }
-    return Text(
-      formatted,
-      style: TextStyle(
-        color: Colors.black87,
-        fontSize: SizeConfig.textMultiplier * 1.6,
-        letterSpacing: 0.2,
-      ),
+
+    final formatted = formatPhoneNumber(raw);
+    final isValid = formatted.isNotEmpty;
+    final phoneLabel = isValid ? formatted : raw;
+    final reminderTooltip = wasReminded
+        ? 'Reminder sent in the last 30 days'
+        : 'No reminder in the last 30 days';
+
+    return Row(
+      children: [
+        Icon(
+          isValid ? Icons.phone_outlined : Icons.warning_amber_rounded,
+          color: isValid ? Colors.grey.shade600 : Colors.orange.shade700,
+          size: SizeConfig.textMultiplier * 1.55,
+          applyTextScaling: false,
+        ),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            phoneLabel,
+            style: TextStyle(
+              color: isValid ? Colors.grey.shade700 : Colors.orange.shade800,
+              fontSize: SizeConfig.textMultiplier * 1.35,
+              letterSpacing: 0.1,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ),
+        const SizedBox(width: 7),
+        Tooltip(
+          message: reminderTooltip,
+          triggerMode: TooltipTriggerMode.tap,
+          child: Icon(
+            wasReminded
+                ? Icons.notifications_active_outlined
+                : Icons.notifications_none_outlined,
+            color: wasReminded ? kPrimaryColor : Colors.grey.shade500,
+            size: SizeConfig.textMultiplier * 1.65,
+            applyTextScaling: false,
+          ),
+        ),
+      ],
     );
   }
 }

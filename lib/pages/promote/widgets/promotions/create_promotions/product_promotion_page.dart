@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/customer_selection/customer_selection_step.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
+import 'package:pasella/pages/promote/widgets/promotions/create_promotions/promotion_bottom_action.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/review_and_pricing/review_and_pricing_step.dart';
 import 'package:pasella/services/whatsapp_capability_cache.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
@@ -188,11 +188,11 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
     final vm = context.watch<PromotionsViewModel>();
 
     return Scaffold(
       appBar: const CustomAppBar(title: 'Promote product'),
+      bottomNavigationBar: _buildBottomAction(vm),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _result?.isOk == true
@@ -275,22 +275,32 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
                     linkedProduct: widget.product,
                   ),
           ),
-          SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-          if (_step == _ProductPromotionStep.customers)
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: vm.selectedCustomerIds.isEmpty
-                        ? null
-                        : _continueToReview,
-                    child: const Text('Review promotion'),
-                  ),
-                ),
-              ],
+        ],
+      ),
+    );
+  }
+
+  Widget? _buildBottomAction(PromotionsViewModel vm) {
+    final template = _template;
+    if (_loading ||
+        _result != null ||
+        template == null ||
+        !templateStatusOf(template).isUsable) {
+      return null;
+    }
+
+    return PromotionBottomAction(
+      key: const Key('product-promotion-bottom-action'),
+      child: _step == _ProductPromotionStep.customers
+          ? SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed:
+                    vm.selectedCustomerIds.isEmpty ? null : _continueToReview,
+                child: const Text('Review promotion'),
+              ),
             )
-          else
-            WalletAffordabilityFooter(
+          : WalletAffordabilityFooter(
               cost: vm.totalPrice,
               confirmLabel: 'Send promotion',
               confirmIcon: Icons.send,
@@ -300,9 +310,6 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
               ),
               onConfirm: _saveAndSend,
             ),
-          SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-        ],
-      ),
     );
   }
 
@@ -311,15 +318,9 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
       sendWhatsApp: true,
       sendSMS: true,
     );
-    final selectedCount = vm.selectedCustomerIds.length;
-    final recommendation = selectedCount == filtered.eligible.length
-        ? 'Spaza One selected all $selectedCount reachable customers.'
-        : 'Spaza One selected $selectedCount '
-            'customer${selectedCount == 1 ? '' : 's'}. You can adjust the list.';
     return CustomerSelectionStep(
-      heading: 'Who should receive it?',
-      recommendationText: recommendation,
-      allCustomersLabel: 'All customers with a number',
+      heading: 'Choose customers',
+      allCustomersLabel: 'All with a phone number',
       allCustomers: _allCustomers,
       customers: filtered.eligible,
       selectedCustomerIds: vm.selectedCustomerIds.toSet(),

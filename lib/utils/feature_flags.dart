@@ -63,10 +63,10 @@ class FeatureFlags {
   /// forcing "Cancel and try again".
   static bool enableOtpResendInDialog = false;
 
-  /// Controls whether the two-slide merchant onboarding intro sheet is
-  /// shown on the merchant's first Dashboard mount. Kept behind a flag
+  /// Controls whether the concise merchant onboarding intro sheet is shown
+  /// on the merchant's first Dashboard mount. Kept behind a flag
   /// so we can A/B or kill it remotely. The persistent
-  /// [MerchantSetupCard] remains available from Settings → Setup Guide.
+  /// [MerchantSetupCard] remains available from Settings → Shop Setup.
   ///
   /// Defaults to true so a missing / failed Remote Config fetch keeps
   /// the current behaviour.

@@ -54,47 +54,35 @@ class CustomerSelectionStep extends StatelessWidget {
     this.sendSMS = false,
     this.hiddenNotWhatsAppCount = 0,
     this.unknownWhatsAppCount = 0,
-    this.heading = '👥 Select Customers',
-    this.allCustomersLabel = 'All Customers',
+    this.heading = 'Choose customers',
+    this.allCustomersLabel = 'All customers',
     this.recommendationText,
   }) : super(key: key);
 
-  /// PAS-WA-03: build the channel-aware banner copy. Returns null
-  /// when there's nothing useful to surface (both channels selected
-  /// and no numberless customers hidden).
+  /// Only surface channel information when it changes who can receive the
+  /// promotion. The selected channel controls already communicate the normal
+  /// case, so repeating it here adds noise without helping a decision.
   String? _channelBannerText() {
-    final shownCount = customers.length;
     if (sendWhatsApp && sendSMS) {
-      return 'Showing all $shownCount customers with a phone number. '
-          'WhatsApp will be used where available, otherwise SMS.';
+      return null;
     }
     if (sendWhatsApp && !sendSMS) {
       final parts = <String>[];
-      parts.add(
-        shownCount == 1
-            ? '1 WhatsApp-reachable customer shown.'
-            : '$shownCount WhatsApp-reachable customers shown.',
-      );
       if (hiddenNotWhatsAppCount > 0) {
         parts.add(
           hiddenNotWhatsAppCount == 1
-              ? '1 customer is hidden because their number is not on WhatsApp — enable SMS to include them.'
-              : '$hiddenNotWhatsAppCount customers are hidden because their numbers are not on WhatsApp — enable SMS to include them.',
+              ? '1 customer is not on WhatsApp.'
+              : '$hiddenNotWhatsAppCount customers are not on WhatsApp.',
         );
       }
       if (unknownWhatsAppCount > 0) {
         parts.add(
           unknownWhatsAppCount == 1
-              ? "1 customer's WhatsApp status is unknown and will be checked at send-time."
-              : "$unknownWhatsAppCount customers' WhatsApp status is unknown and will be checked at send-time.",
+              ? '1 number will be checked before sending.'
+              : '$unknownWhatsAppCount numbers will be checked before sending.',
         );
       }
-      return parts.join(' ');
-    }
-    if (!sendWhatsApp && sendSMS) {
-      return shownCount == 1
-          ? '1 customer shown. All will receive SMS.'
-          : '$shownCount customers shown. All will receive SMS.';
+      return parts.isEmpty ? null : parts.join(' ');
     }
     return null;
   }
@@ -186,8 +174,8 @@ class CustomerSelectionStep extends StatelessWidget {
                   Expanded(
                     child: Text(
                       hiddenWithoutNumberCount == 1
-                          ? '1 customer is hidden because they have no phone number.'
-                          : '$hiddenWithoutNumberCount customers are hidden because they have no phone number.',
+                          ? '1 customer without a phone number is not shown.'
+                          : '$hiddenWithoutNumberCount customers without phone numbers are not shown.',
                       style: const TextStyle(fontSize: 12.5),
                     ),
                   ),

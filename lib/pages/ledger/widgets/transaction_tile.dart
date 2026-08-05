@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
+import 'package:pasella/shared/widgets/channel_capability_badge.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
@@ -22,6 +23,8 @@ class TransactionTile extends StatelessWidget {
     this.number,
     this.profileImageUrl, // Add profileImageUrl
     required this.unreadCount,
+    this.hasWhatsApp,
+    this.showChannelCapability = false,
   });
 
   final int color;
@@ -37,6 +40,8 @@ class TransactionTile extends StatelessWidget {
   final String? number;
   final String? profileImageUrl; // Add profileImageUrl
   final int? unreadCount;
+  final bool? hasWhatsApp;
+  final bool showChannelCapability;
 
   @override
   Widget build(BuildContext context) {
@@ -70,15 +75,32 @@ class TransactionTile extends StatelessWidget {
                 height: SizeConfig.imageSizeMultiplier * 12,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: profilePicture(
-                    context,
-                    name,
-                    profileImageUrl,
-                    number,
-                    isNPA,
-                    balance: balance,
-                    showNPAIndicator: false,
-                    radius: SizeConfig.heightMultiplier * 2.6,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      profilePicture(
+                        context,
+                        name,
+                        profileImageUrl,
+                        number,
+                        isNPA,
+                        displayIcons: !showChannelCapability,
+                        balance: balance,
+                        showNPAIndicator: false,
+                        radius: SizeConfig.heightMultiplier * 2.6,
+                      ),
+                      if (showChannelCapability)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: ChannelCapabilityBadge(
+                            hasNumber: number != null && number!.isNotEmpty,
+                            hasWhatsApp: hasWhatsApp,
+                            compact: true,
+                            iconSize: SizeConfig.imageSizeMultiplier * 3,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),

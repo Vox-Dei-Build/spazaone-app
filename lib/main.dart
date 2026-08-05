@@ -56,6 +56,18 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
+@visibleForTesting
+bool firstRunSurfacesCompleteForNotifications({
+  required bool consentDecided,
+  required bool rebrandNoticeSeen,
+  required bool onboardingIntroEnabled,
+  required bool onboardingIntroSeen,
+}) {
+  return consentDecided &&
+      rebrandNoticeSeen &&
+      (!onboardingIntroEnabled || onboardingIntroSeen);
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('Handling a background message: ${message.messageId}');
@@ -831,6 +843,7 @@ class _MyAppState extends State<MyApp> {
     Future<void>.delayed(const Duration(milliseconds: 900), () async {
       if (!mounted || FirebaseAuth.instance.currentUser == null) return;
       await storeBootstrap;
+      if (!await _waitForFirstRunSurfaces(user.uid)) return;
       final appContext = navigatorKey.currentContext;
       if (appContext == null) {
         _permissionCheckScheduled = false;
@@ -839,6 +852,29 @@ class _MyAppState extends State<MyApp> {
       if (!appContext.mounted) return;
       await FCMService().requestPermissionIfNeeded(appContext);
     });
+  }
+
+  Future<bool> _waitForFirstRunSurfaces(String userId) async {
+    while (mounted && FirebaseAuth.instance.currentUser?.uid == userId) {
+      final box = Hive.box('appBox');
+      final ready = firstRunSurfacesCompleteForNotifications(
+        consentDecided: ConsentService.instance.state.hasDecided,
+        rebrandNoticeSeen: box.get(
+              'spazaone_rebrand_notice_seen:$userId',
+              defaultValue: false,
+            ) ==
+            true,
+        onboardingIntroEnabled: FeatureFlags.enableMerchantOnboardingIntro,
+        onboardingIntroSeen: box.get(
+              'merchant_onboarding_intro_seen:$userId',
+              defaultValue: false,
+            ) ==
+            true,
+      );
+      if (ready) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    return false;
   }
 
   @override

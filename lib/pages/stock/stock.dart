@@ -175,14 +175,9 @@ class _StockPageState extends State<StockPage>
                               viewModel: viewModel,
                               groupName:
                                   null, // Set groupname to null so that all products show up
-                              // PAS-UX-04: empty-state recovery — wire
-                              // the same affordances the FAB + kebab
-                              // expose so a first-time merchant on an
-                              // empty catalogue has an inline setup
-                              // path instead of staring at a dead
-                              // "No products available" label.
+                              // Keep one direct action in the empty state.
+                              // Help remains available from the header menu.
                               onAddProduct: () => _openNewProduct(),
-                              onWatchTutorial: () => _openTutorial(),
                             ),
                             SupplierCatalogPage(
                               onListingCreated: () {
@@ -225,9 +220,7 @@ class _StockPageState extends State<StockPage>
         : Container();
   }
 
-  /// PAS-UX-04: shared launcher used by the FAB and the product
-  /// empty-state secondary action so the affordances can never drift
-  /// in behaviour.
+  /// Shared launcher used by the FAB and product empty state.
   void _openNewProduct() {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (context) => const NewProductPage()))
@@ -237,9 +230,7 @@ class _StockPageState extends State<StockPage>
     });
   }
 
-  /// PAS-UX-04: shared launcher for the capture-stock walkthrough so the
-  /// kebab "How to capture stock" and the empty-state "Watch a 2-min
-  /// walkthrough" link land on the same tutorial.
+  /// Launcher for the capture-stock walkthrough in the header menu.
   void _openTutorial() {
     final url = TutorialConfig.getTutorialUrl(
       TutorialConfig.TUTORIAL_CAPTURE_STOCK,

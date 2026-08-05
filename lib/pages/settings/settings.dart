@@ -5,6 +5,7 @@ import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/pages/settings/help/help.dart';
 import 'package:pasella/pages/settings/privacy/privacy_page.dart';
 import 'package:pasella/pages/settings/setup/merchant_setup_page.dart';
+import 'package:pasella/pages/settings/stores/store_workspace_card.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:provider/provider.dart';
@@ -17,7 +18,6 @@ import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/feature_flags.dart';
 
 import '../../shared/widgets/custom_app_bar.dart';
-import 'share/share.dart';
 import 'delete/delete_account_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -50,16 +50,16 @@ class SettingsPage extends StatelessWidget {
                               return const SizedBox.shrink();
                             }
 
-                            return SettingTile(
+                            final session = context.watch<StoreSession>();
+                            return StoreWorkspaceCard(
+                              activeStoreName: session.activeStoreName,
+                              storeCount: session.stores.length,
+                              role: session.activeStore?.role.name ?? 'owner',
                               onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => const StoreManagementPage(),
                                 ),
                               ),
-                              icon: Icons.storefront_outlined,
-                              title: 'Stores & Operators',
-                              subTitle:
-                                  'Current: ${context.watch<StoreSession>().activeStoreName}',
                             );
                           },
                         ),
@@ -78,9 +78,9 @@ class SettingsPage extends StatelessWidget {
                               builder: (_) => const MerchantSetupPage(),
                             ),
                           ),
-                          icon: Icons.checklist_rounded,
-                          title: 'Setup Guide',
-                          subTitle: 'Customers, products, WhatsApp and payouts',
+                          icon: Icons.storefront_outlined,
+                          title: 'Shop Setup',
+                          subTitle: 'Checklist and WhatsApp ordering link',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(
@@ -90,15 +90,6 @@ class SettingsPage extends StatelessWidget {
                           icon: Icons.help,
                           title: 'Help',
                           subTitle: 'FAQs, contact us, privacy policy',
-                        ),
-                        SettingTile(
-                          onTap: () => Navigator.pushNamed(
-                            context,
-                            SharePage.id,
-                          ),
-                          icon: Icons.storefront_outlined,
-                          title: 'WhatsApp Ordering Link',
-                          subTitle: 'Share your shop code and ordering link',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

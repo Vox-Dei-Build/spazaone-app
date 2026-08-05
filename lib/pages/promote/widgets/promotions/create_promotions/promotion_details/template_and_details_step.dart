@@ -124,9 +124,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         // ── Section: Template ────────────────────────────────────────────
         _SectionHeader(
           title: 'Choose a template',
-          subtitle: hasTemplates
-              ? 'Pick the message you want to send.'
-              : 'Create your first template to get started.',
+          subtitle: hasTemplates ? null : 'Create a message to get started.',
           trailing: hasTemplates
               ? TextButton.icon(
                   onPressed: widget.onCreateTemplate,
@@ -146,8 +144,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
             const _InlineNotice(
               icon: Icons.hourglass_top,
               color: Colors.orange,
-              message:
-                  'Your templates are awaiting WhatsApp approval. They\'ll be selectable once approved.',
+              message: 'Waiting for WhatsApp approval.',
             ),
           ...widget.templates.map(
             (t) => TemplatePickerCard(
@@ -158,7 +155,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           ),
         ],
 
-        SizedBox(height: SizeConfig.heightMultiplier * 3),
+        const SizedBox(height: 20),
 
         // ── Section: Linked product (optional) ───────────────────────────
         // PAS-UX-rel #5 Option B. Audit feedback from release testers
@@ -173,12 +170,7 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
         // linked yet so it's discoverable; tap opens the picker. Once
         // a product is linked the tile becomes a summary chip with an
         // unlink action.
-        const _SectionHeader(
-          title: 'Attach a product (optional)',
-          subtitle:
-              'Connect this campaign to one stock item. Customers can order it '
-              'from your WhatsApp catalogue when the product is listed there.',
-        ),
+        const _SectionHeader(title: 'Product (optional)'),
         const SizedBox(height: 8),
         _ProductLinkTile(
           linked: widget.linkedProduct,
@@ -191,31 +183,22 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
           },
           onUnlink: () => widget.onLinkedProductChanged(null),
         ),
-        if (widget.linkedProduct != null)
+        if (widget.linkedProduct != null &&
+            widget.linkedProduct!.whatsappListed != true)
           Padding(
             padding: const EdgeInsets.only(top: 6, left: 4, right: 4),
             child: Text(
-              widget.linkedProduct!.whatsappListed == true
-                  ? 'Attaching keeps the campaign connected to this item. '
-                      'The approved message is unchanged, so tell customers '
-                      'to reply CATALOG if you want them to order it.'
-                  : 'Customers cannot order this item from WhatsApp yet. '
-                      'Turn on its WhatsApp listing in Stock before sending.',
+              'Not listed in your WhatsApp catalogue.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: widget.linkedProduct!.whatsappListed == true
-                    ? theme.colorScheme.onSurfaceVariant
-                    : Colors.orange.shade800,
+                color: Colors.orange.shade800,
               ),
             ),
           ),
 
-        SizedBox(height: SizeConfig.heightMultiplier * 3),
+        const SizedBox(height: 20),
 
         // ── Section: Channels ────────────────────────────────────────────
-        const _SectionHeader(
-          title: 'Choose channels',
-          subtitle: 'WhatsApp is cheaper and richer. SMS is a fallback.',
-        ),
+        const _SectionHeader(title: 'Send via'),
         const SizedBox(height: 4),
         _ChannelTile(
           icon: Icons.chat_bubble,
@@ -250,12 +233,8 @@ class _TemplateAndDetailsStepState extends State<TemplateAndDetailsStep> {
 
         // ── Section: Preview ─────────────────────────────────────────────
         if (selected != null && waContent.isNotEmpty) ...[
-          SizedBox(height: SizeConfig.heightMultiplier * 3),
-          const _SectionHeader(
-            title: 'Preview',
-            subtitle:
-                'How your message will look to a customer named "[Customer Name]".',
-          ),
+          const SizedBox(height: 20),
+          const _SectionHeader(title: 'Preview'),
           const SizedBox(height: 8),
           if (widget.sendWhatsApp && widget.sendSMS)
             _PreviewToggle(
@@ -485,7 +464,7 @@ class _EmptyTemplatesState extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Templates are pre-approved messages you can send to your customers. WhatsApp needs to approve each one before it can be used.',
+            'Create a message for WhatsApp approval.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.disabledColor,
@@ -593,13 +572,6 @@ class _ProductLinkTile extends StatelessWidget {
                             'Add a product',
                             style: theme.textTheme.bodyLarge?.copyWith(
                               fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Tap to choose from your stock',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.disabledColor,
                             ),
                           ),
                         ],

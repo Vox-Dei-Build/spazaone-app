@@ -309,7 +309,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                   valueListenable: businessReportViewModel
                                       .allTimeTotalCustomersNotifier,
                                   builder: (context, totalCustomers, _) {
-                                    return _CustomerBalanceSummary(
+                                    return CustomerBalanceSummary(
                                       report: snapshot.data!,
                                       totalCustomers: totalCustomers,
                                     );
@@ -333,8 +333,9 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
   }
 }
 
-class _CustomerBalanceSummary extends StatelessWidget {
-  const _CustomerBalanceSummary({
+class CustomerBalanceSummary extends StatelessWidget {
+  const CustomerBalanceSummary({
+    super.key,
     required this.report,
     required this.totalCustomers,
   });
@@ -352,114 +353,103 @@ class _CustomerBalanceSummary extends StatelessWidget {
         : ((owingCount / totalCustomers!) * 100).clamp(0.0, 100.0);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+      padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Customer balance summary',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
-            ),
-          ),
-          const SizedBox(height: 14),
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x10000000),
-                  blurRadius: 14,
-                  offset: Offset(0, 4),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE8ECE8)),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: primary,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Outstanding balance',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: primary.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      const SizedBox(height: 3),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          CurrencyUtil.format(report.cashflowImpact.abs()),
-                          style: theme.textTheme.headlineMedium?.copyWith(
-                            color: primary,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.8,
+                      child: Icon(
+                        Icons.account_balance_wallet_outlined,
+                        color: primary,
+                        size: 23,
+                      ),
+                    ),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Outstanding balance',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 2),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              CurrencyUtil.format(
+                                report.cashflowImpact.abs(),
+                              ),
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                color: primary,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.6,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Divider(height: 1, color: Color(0xFFEDEFEA)),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InlineSummaryMetric(
+                        label: 'Owing',
+                        value: '$owingCount',
+                        color: Colors.orange.shade800,
+                      ),
+                    ),
+                    const _SummaryDivider(),
+                    Expanded(
+                      child: _InlineSummaryMetric(
+                        label: 'Customers',
+                        value: totalCustomers?.toString() ?? '—',
+                        color: Colors.blueGrey.shade700,
+                      ),
+                    ),
+                    const _SummaryDivider(),
+                    Expanded(
+                      child: _InlineSummaryMetric(
+                        label: 'Owing rate',
+                        value: ratio == null
+                            ? '—'
+                            : '${ratio.toStringAsFixed(0)}%',
+                        color: primary,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _InlineSummaryMetric(
-                    label: 'Owing',
-                    value: '$owingCount',
-                    color: Colors.orange.shade800,
-                  ),
-                ),
-                const _SummaryDivider(),
-                Expanded(
-                  child: _InlineSummaryMetric(
-                    label: 'Customers',
-                    value: totalCustomers?.toString() ?? '—',
-                    color: Colors.blueGrey.shade700,
-                  ),
-                ),
-                const _SummaryDivider(),
-                Expanded(
-                  child: _InlineSummaryMetric(
-                    label: 'Owing rate',
-                    value: ratio == null ? '—' : '${ratio.toStringAsFixed(0)}%',
-                    color: primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
@@ -467,12 +457,31 @@ class _CustomerBalanceSummary extends StatelessWidget {
                   'Customers to follow up',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
                   ),
                 ),
               ),
+              if (owingCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.09),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$owingCount',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           if (owingCount == 0)
             Container(
               padding: const EdgeInsets.all(22),
@@ -493,17 +502,9 @@ class _CustomerBalanceSummary extends StatelessWidget {
               ),
             )
           else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: CustomersWithBadLoansTile(
-                customersWithBadLoansFuture: Future.value(
-                  report.customersWithNPAs,
-                ),
+            CustomersWithBadLoansTile(
+              customersWithBadLoansFuture: Future.value(
+                report.customersWithNPAs,
               ),
             ),
         ],

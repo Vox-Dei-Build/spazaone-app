@@ -40,8 +40,8 @@ class MerchantSetupActions {
 /// The merchant setup card.
 ///
 /// Walks a fresh merchant through the six things that need to be true before
-/// their shop can trade, order, get paid, and market. It lives in the Settings
-/// setup guide so the daily Customers surface remains focused:
+/// their shop can trade, order, get paid, and market. It lives in Settings →
+/// Shop Setup so the daily Customers surface remains focused:
 ///
 ///   1. Add first customer
 ///   2. Add first product
@@ -105,7 +105,7 @@ class MerchantSetupCard extends StatefulWidget {
   /// Whether the completed shop-link panel can be hidden from this surface.
   ///
   /// Embedded nudges may be dismissed, but dedicated destinations such as
-  /// Settings → Setup Guide must always retain useful content.
+  /// Settings → Shop Setup must always retain useful content.
   final bool allowCompletedLinkDismissal;
 
   @visibleForTesting

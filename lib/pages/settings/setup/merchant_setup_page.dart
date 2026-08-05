@@ -24,7 +24,7 @@ class MerchantSetupPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final userId = StoreSession.instance.storeId;
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Setup guide'),
+      appBar: const CustomAppBar(title: 'Shop setup'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
         children: [

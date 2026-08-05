@@ -8,6 +8,7 @@ import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/transactions/transaction_model.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
+import 'package:pasella/services/whatsapp_capability_cache.dart';
 import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/utils/string_utils.dart';
@@ -367,6 +368,19 @@ class _EntityTabState extends State<EntityTab> {
               widget.hasCustomersNotifier.value = allEntities.isNotEmpty;
             });
 
+            // Prime channel capability in bulk. The process-wide cache skips
+            // known and in-flight numbers, and queries Firestore in chunks,
+            // so customer rows never trigger one read per tile.
+            final customerNumbers = allEntities
+                .map((entity) => entity.customer.number)
+                .whereType<String>()
+                .where((number) => number.isNotEmpty)
+                .toSet();
+            if (customerNumbers.isNotEmpty) {
+              // ignore: unawaited_futures
+              WhatsAppCapabilityCache.instance.primeFor(customerNumbers);
+            }
+
             List<CustomerWithTransactions> filteredEntities =
                 dataModel.applyFilters(allEntities);
 
@@ -402,49 +416,57 @@ class _EntityTabState extends State<EntityTab> {
               );
             }
 
-            return SingleChildScrollView(
-              controller: widget.scrollController,
-              child: Column(
-                children: [
-                  ...filteredEntities.map((entityWithTransactions) {
-                    LedgerTransaction? lastTransaction;
-                    double balance = entityWithTransactions.customer.balance;
+            return AnimatedBuilder(
+              animation: WhatsAppCapabilityCache.instance,
+              builder: (context, _) => SingleChildScrollView(
+                controller: widget.scrollController,
+                child: Column(
+                  children: [
+                    ...filteredEntities.map((entityWithTransactions) {
+                      LedgerTransaction? lastTransaction;
+                      double balance = entityWithTransactions.customer.balance;
 
-                    if (entityWithTransactions.customer.lastTransaction !=
-                            null &&
-                        entityWithTransactions
-                            .customer.lastTransaction!.isNotEmpty) {
-                      lastTransaction = LedgerTransaction.fromMap(
-                        entityWithTransactions.customer.lastTransaction!,
+                      if (entityWithTransactions.customer.lastTransaction !=
+                              null &&
+                          entityWithTransactions
+                              .customer.lastTransaction!.isNotEmpty) {
+                        lastTransaction = LedgerTransaction.fromMap(
+                          entityWithTransactions.customer.lastTransaction!,
+                        );
+                      }
+
+                      return TransactionTile(
+                        color: kTertiaryColor.toARGB32(),
+                        name: entityWithTransactions.customer.name,
+                        profileImageUrl:
+                            entityWithTransactions.customer.profileImageUrl,
+                        balance: balance,
+                        amount: lastTransaction != null
+                            ? lastTransaction.amount.toDouble()
+                            : 0,
+                        remarks:
+                            lastTransaction?.remarks ?? 'No transactions yet',
+                        status: lastTransaction?.status ?? 'DUE',
+                        type: lastTransaction?.type ?? 'Credit',
+                        date: lastTransaction?.date != null
+                            ? DateFormat(
+                                'y MMM d, h:mm a',
+                              ).format(lastTransaction!.date)
+                            : '',
+                        selectedCustomerId: entityWithTransactions.customer.id,
+                        isNPA: entityWithTransactions.customer.isNPA,
+                        number: entityWithTransactions.customer.number,
+                        unreadCount: entityWithTransactions.unreadCount,
+                        showChannelCapability: widget.category == 'Customer',
+                        hasWhatsApp:
+                            WhatsAppCapabilityCache.instance.capabilityFor(
+                          entityWithTransactions.customer.number,
+                        ),
                       );
-                    }
-
-                    return TransactionTile(
-                      color: kTertiaryColor.toARGB32(),
-                      name: entityWithTransactions.customer.name,
-                      profileImageUrl:
-                          entityWithTransactions.customer.profileImageUrl,
-                      balance: balance,
-                      amount: lastTransaction != null
-                          ? lastTransaction.amount.toDouble()
-                          : 0,
-                      remarks:
-                          lastTransaction?.remarks ?? 'No transactions yet',
-                      status: lastTransaction?.status ?? 'DUE',
-                      type: lastTransaction?.type ?? 'Credit',
-                      date: lastTransaction?.date != null
-                          ? DateFormat(
-                              'y MMM d, h:mm a',
-                            ).format(lastTransaction!.date)
-                          : '',
-                      selectedCustomerId: entityWithTransactions.customer.id,
-                      isNPA: entityWithTransactions.customer.isNPA,
-                      number: entityWithTransactions.customer.number,
-                      unreadCount: entityWithTransactions.unreadCount,
-                    );
-                  }),
-                  const SizedBox(height: 112),
-                ],
+                    }),
+                    const SizedBox(height: 112),
+                  ],
+                ),
               ),
             );
           },

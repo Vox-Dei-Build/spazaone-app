@@ -13,11 +13,9 @@ import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart
 /// empty-state contract ("Product empty state must not tell merchants
 /// to start with customers"). We assert here that:
 ///
-///  - the top-level empty catalogue says "Add your first product" and
-///    talks about products,
+///  - the top-level empty catalogue stays concise and product-specific,
 ///  - it never uses the words "customer" or "customers",
 ///  - the CTA fires the passed handler,
-///  - the tutorial link is only rendered when a handler is supplied,
 ///  - the group-drilldown mode (`showOnboarding == false`) falls back
 ///    to the compact placeholder.
 void main() {
@@ -25,7 +23,6 @@ void main() {
     WidgetTester tester, {
     required bool showOnboarding,
     VoidCallback? onAddProduct,
-    VoidCallback? onWatchTutorial,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -34,7 +31,6 @@ void main() {
             userId: '', // empty so the coach mark bypasses Hive
             showOnboarding: showOnboarding,
             onAddProduct: onAddProduct,
-            onWatchTutorial: onWatchTutorial,
           ),
         ),
       ),
@@ -43,18 +39,17 @@ void main() {
   }
 
   group('top-level empty catalogue', () {
-    testWidgets('renders product-first hero copy', (tester) async {
+    testWidgets('renders a concise product action', (tester) async {
       await pumpEmpty(
         tester,
         showOnboarding: true,
         onAddProduct: () {},
       );
 
-      expect(find.text('Add your first product'), findsWidgets);
-      expect(
-        find.textContaining('Start with the item you sell most often'),
-        findsOneWidget,
-      );
+      expect(find.text('No products yet'), findsOneWidget);
+      expect(find.text('Add product'), findsWidgets);
+      expect(find.byType(TextButton), findsNothing);
+      expect(find.textContaining('Products power'), findsNothing);
     });
 
     testWidgets(
@@ -87,28 +82,10 @@ void main() {
       // subclass — `find.byType(ElevatedButton)` uses exact-type
       // match and misses it. Tap the label text; the tap propagates
       // up through the button's gesture recognizer.
-      await tester.tap(find.text('Add your first product').last);
+      await tester.tap(find.text('Add product').last);
       await tester.pump();
 
       expect(tapped, isTrue);
-    });
-
-    testWidgets('walkthrough link only appears when handler is set',
-        (tester) async {
-      await pumpEmpty(
-        tester,
-        showOnboarding: true,
-        onAddProduct: () {},
-      );
-      expect(find.text('Watch a 2-min walkthrough'), findsNothing);
-
-      await pumpEmpty(
-        tester,
-        showOnboarding: true,
-        onAddProduct: () {},
-        onWatchTutorial: () {},
-      );
-      expect(find.text('Watch a 2-min walkthrough'), findsOneWidget);
     });
   });
 
@@ -119,7 +96,7 @@ void main() {
         await pumpEmpty(tester, showOnboarding: false);
 
         expect(find.text('No products in this group'), findsOneWidget);
-        expect(find.text('Add your first product'), findsNothing);
+        expect(find.text('Add product'), findsNothing);
         expect(find.byType(ElevatedButton), findsNothing);
       },
     );
