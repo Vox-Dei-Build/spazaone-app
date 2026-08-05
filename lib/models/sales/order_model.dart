@@ -32,6 +32,7 @@ class OrderModel {
   final String? type;
   final String? paymentMethod;
   final String? paymentStatus;
+  final String source;
 
   /// True when the function sends:
   /// - collected: true/1/"true"/"yes"
@@ -48,6 +49,7 @@ class OrderModel {
     this.type,
     this.paymentMethod,
     this.paymentStatus,
+    this.source = 'legacy',
     this.collected = false,
   });
 
@@ -72,6 +74,7 @@ class OrderModel {
       type: m['type'] as String?,
       paymentMethod: m['paymentMethod'] as String?,
       paymentStatus: m['paymentStatus'] as String?,
+      source: m['source']?.toString() ?? 'legacy',
       collected: isCollected,
     );
   }

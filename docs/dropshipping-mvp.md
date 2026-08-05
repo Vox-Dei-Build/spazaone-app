@@ -8,9 +8,14 @@ catalog in the normal seller flow.
 
 - CJdropshipping is accessed only by Cloud Functions. `CJ_API_KEY` stays in
   Cloud Secret Manager and is exchanged server-side for CJ access tokens.
-- Sellers browse the live CJ catalog through authenticated callable functions.
-  Product details, variants, stock and South African freight are never accepted
-  from the Flutter client.
+- Sellers browse the Spaza One Catalogue through authenticated callable
+  functions. Search candidates are freight-checked to South Africa on the
+  server and only products with a currently deliverable variant are returned.
+  Positive eligibility is cached for 24 hours and negative eligibility for six
+  hours in the server-only `supplierCatalogEligibility` collection. Listing
+  creation and order creation always re-quote; the cache is never a price or
+  availability guarantee. Product details, variants, stock and freight are
+  never accepted from the Flutter client.
 - CJ returns product and freight prices in USD. The backend obtains a current
   USD/ZAR reference rate, applies the configured FX reserve (3% by default),
   and performs integer-minor-unit conversions server-side.
@@ -58,12 +63,17 @@ While the gate is off:
 - Spaza One snapshots the live CJ landed cost, selling price, zero payment fee
   and seller margin in an isolated `commerceOrder`;
 - the seller arranges payment using their existing manual process and confirms
-  it in the Orders queue; and
+  it under Customer → Orders; and
 - only then can the seller place the CJ order and continue fulfilment.
 
 Paystack code remains dormant and no Paystack API is called while the flag is
 false. The gate is a release control, not a substitute for Paystack's own
 compliance or account activation checks.
+
+The existing Sales → Online implementation is separately gated by Remote
+Config key `FEATURE_ONLINE_SALES_ENABLED`, which defaults to false. Until an
+approved provider is live, that surface explains that automatic online payment
+and sales reporting are coming soon; Cash sales continue unchanged.
 
 ## Security boundary
 
@@ -99,10 +109,12 @@ request and the seller still needs to confirm payment. This confirmation is an
 audited server-side transition; it does not create a manual Sales record or
 credit a wallet.
 
-For the MVP, the seller—not a Spaza One administrator—places and pays for the CJ
-order using the snapshotted SKU, variant, buyer address and chosen logistics
-shown in the Orders queue. After ordering, the seller selects “I ordered this
-from CJ”, then adds tracking and marks delivery.
+For the MVP, the seller—not a Spaza One administrator—places and pays for the
+supplier order using the snapshotted SKU, variant, buyer address and chosen
+logistics shown under that customer's Orders tab. After ordering, the seller
+selects “Mark supplier order as placed”, then adds tracking and marks delivery.
+CJdropshipping is disclosed to the seller inside operational Supplier details,
+but buyer-facing pages and catalogue branding say “Spaza One supplier”.
 
 Cancellation is allowed from `pending_payment`, `paid`, or
 `submitted_for_fulfilment`. A paid cancellation sets order status `cancelled`
@@ -125,6 +137,9 @@ completed, the store owner records it and the order becomes `refunded`.
 - Keep `COMMERCE_PAYMENTS_ENABLED=false` in production until Spaza One has
   completed compliance approval and Paystack onboarding. Manual order requests
   continue working with the flag off.
+- Keep `FEATURE_ONLINE_SALES_ENABLED=false` until approved automatic payment
+  collection and reconciliation are ready. The previous Online reporting code
+  remains intact behind this switch.
 - After approval, configure the Paystack secret through Secret Manager, verify
   test-mode checkout/webhooks/refunds, then set
   `COMMERCE_PAYMENTS_ENABLED=true` in a controlled release.
@@ -152,17 +167,20 @@ completed, the store owner records it and the order becomes `refunded`.
   fee and never calls Paystack or creates a manual Sales record.
 - Confirm the buyer receives one in-conversation order reference and total,
   with the seller's existing manual payment instructions where available.
-- In Orders, confirm manual payment with a method/reference, then place the CJ
-  order and record its order number.
+- Under the matching customer → Orders, confirm manual payment with a
+  method/reference, then place the supplier order and record its order number.
 
 The digital-payment checks require an approved test account and
 `COMMERCE_PAYMENTS_ENABLED=true` in a non-production environment.
 
 ### Seller catalog and listing
 
-- Sign in as a store owner and active operator; open Products → Suppliers.
-- Search for several CJ products and confirm no Firestore catalog documents or
-  CJ credentials are exposed to the client.
+- Sign in as a store owner and active operator; open Products → Catalogue.
+- Search several categories and confirm every returned card says South Africa
+  delivery is available. Products with no current ZA freight route must not be
+  returned. Confirm a repeated search uses the server eligibility cache.
+- Confirm `supplierCatalogEligibility` cannot be read or written by a client
+  and no supplier credentials are exposed.
 - Select a product and switch variants. Confirm Spaza One refreshes stock,
   product cost, South African freight, logistics and delivery estimate.
 - Confirm a variant with no stock or no South African route cannot be listed.
@@ -172,6 +190,8 @@ The digital-payment checks require an approved test account and
   estimated provider fee is rejected.
 - Create the listing and confirm it appears in Products as supplier fulfilled
   without changing an existing seller product.
+- Confirm Products has only Products, Catalogue and Report tabs; there is no
+  separate seller-wide Orders destination.
 
 ### WhatsApp buyer ordering
 
@@ -190,6 +210,9 @@ The digital-payment checks require an approved test account and
   fail before the order is created with customer-safe messages.
 - Open the dormant browser checkout while payments are disabled and confirm it
   shows WhatsApp-only guidance instead of a buyer-details form.
+- Open that buyer in Customers → Orders. Confirm the dropship order appears in
+  the same filtered list as existing customer orders and can be fulfilled from
+  there. Confirm an order notification opens this customer Orders tab.
 
 ### Payment and snapshots
 
@@ -203,13 +226,17 @@ The digital-payment checks require an approved test account and
   reserve, converted landed cost, fee, selling price and margin snapshots.
 - Replay the webhook and confirm one paid transition, no wallet credit and no
   manual Sales document (post-approval only).
+- With `FEATURE_ONLINE_SALES_ENABLED=false`, open Sales → Online and confirm the
+  Spaza One payments-partner coming-soon explanation appears with no date
+  filters or misleading empty online-sales report.
 
 ### Seller fulfilment
 
-- Confirm the paid order shows CJ SKU, variant, delivery service, buyer address,
-  supplier breakdown and snapshot margin.
+- Confirm the paid order shows supplier SKU, variant, delivery service, buyer
+  address, supplier breakdown and snapshot margin. CJ is visible only within
+  the operational Supplier details section.
 - Place the order in CJ using the buyer address and seller funding; select
-  “I ordered this from CJ”.
+  “Mark supplier order as placed”.
 - Mark it shipped with carrier/tracking, then delivered. Confirm invalid state
   skips are rejected and buyer/seller notification attempts are recorded.
 

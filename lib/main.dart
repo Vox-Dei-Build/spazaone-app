@@ -196,6 +196,7 @@ void _pushCustomerAccountWhenReady({
   required String customerId,
   required String customerName,
   String? mobileNumber,
+  required int initialTabIndex,
 }) {
   void push() {
     navigatorKey.currentState?.push(
@@ -204,7 +205,7 @@ void _pushCustomerAccountWhenReady({
           customerName: customerName,
           customerId: customerId,
           mobileNumber: mobileNumber,
-          initialTabIndex: 2,
+          initialTabIndex: initialTabIndex,
         ),
       ),
     );
@@ -222,6 +223,7 @@ Future<void> _openCustomerFromMessageNotification(
   Uri? uri,
   Map<String, dynamic> data,
 ) async {
+  final initialTabIndex = customerNotificationTabIndex(data);
   final query = uri?.queryParameters ?? const <String, String>{};
   final customerId = _firstNotificationString([
     data['customerId'],
@@ -267,6 +269,7 @@ Future<void> _openCustomerFromMessageNotification(
             customerData['number'],
             payloadCustomerNumber,
           ]),
+          initialTabIndex: initialTabIndex,
         );
         return;
       }
@@ -276,6 +279,7 @@ Future<void> _openCustomerFromMessageNotification(
           customerId: customerId,
           customerName: payloadCustomerName,
           mobileNumber: payloadCustomerNumber,
+          initialTabIndex: initialTabIndex,
         );
         return;
       }
@@ -301,6 +305,7 @@ Future<void> _openCustomerFromMessageNotification(
             customerData['number'],
             normalizedNumber,
           ]),
+          initialTabIndex: initialTabIndex,
         );
         return;
       }
@@ -322,6 +327,16 @@ Future<void> _openCustomerFromMessageNotification(
       reason: 'customer message notification navigation failed',
     );
   }
+}
+
+@visibleForTesting
+int customerNotificationTabIndex(Map<String, dynamic> data) {
+  final notificationType = _notificationString(data['notificationType']);
+  final action = _notificationString(data['action']);
+  return notificationType == 'commerce_order' ||
+          action == 'open_customer_orders'
+      ? 1
+      : 2;
 }
 
 /// Routes a notification tap to the correct screen.
@@ -449,6 +464,10 @@ void _onInitialMessage(RemoteMessage? message) {
 
 Future<void> _initializeDeferredServices() async {
   try {
+    if (FirebaseEnvironment.useEmulators) {
+      await ReviewPromptService.instance.init();
+      return;
+    }
     await SMSMessages.loadTemplates();
     await ReviewPromptService.instance.init();
     await setupFlutterNotifications();
@@ -529,7 +548,9 @@ Future<void> _initializeCoreServices() async {
     await _initializeRemoteConfigAndSmartlook();
   }
 
-  await FeatureFlags.loadFlags();
+  if (!FirebaseEnvironment.useEmulators) {
+    await FeatureFlags.loadFlags();
+  }
 
   await Hive.initFlutter();
   if (!Hive.isAdapterRegistered(0)) {
@@ -553,6 +574,7 @@ Future<void> _initializeCoreServices() async {
   // captured. We accept that trade-off because Crashlytics needs Firebase
   // initialised first.
   await ConsentService.instance.init();
+  if (FirebaseEnvironment.useEmulators) return;
   await CrashService.instance.init();
   await CrashService.instance.applyConsent(ConsentService.instance.state);
   await TelemetryService.instance.init();
@@ -725,7 +747,12 @@ class MyApp extends StatefulWidget {
     WalletPage.id: (context) => const WalletPage(),
     PrivacyPage.id: (context) => const PrivacyPage(),
     PromotionsPage.id: (context) => const PromotionsPage(),
-    StockPage.id: (context) => const StockPage(initialTab: 2),
+    StockPage.id: (context) => const StockPage(),
+    // Compatibility for notification payloads sent by the first internal
+    // dropshipping build. Orders now live on the customer, so stale taps land
+    // safely on Customers instead of reopening the removed Products tab.
+    StockPage.legacyCommerceOrdersId: (context) =>
+        const BusinessNameGate(child: Dashboard()),
   };
 
   static Set<String> get knownRoutes => _routes.keys.toSet();
@@ -795,6 +822,7 @@ class _MyAppState extends State<MyApp> {
     }
     final storeBootstrap = StoreSession.instance.bootstrap();
     unawaited(storeBootstrap);
+    if (FirebaseEnvironment.useEmulators) return;
     if (_permissionCheckScheduled) return;
     _permissionCheckScheduled = true;
 

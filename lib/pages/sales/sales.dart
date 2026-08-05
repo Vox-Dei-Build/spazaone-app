@@ -12,6 +12,7 @@ import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
+import 'package:pasella/utils/feature_flags.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
@@ -250,27 +251,29 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                               const _SalesMeaningHint(),
                               const SizedBox(height: LayoutConstants.spaceMd),
                             ],
-
-                            DateFilterBar(
-                              selectedDay: _selectedDay,
-                              startDate: _startDate,
-                              endDate: _endDate,
-                              onDaySelect: (d) {
-                                _onDateSelected(d);
-                                if (_selectedSalesView == SalesViewType.cash) {
-                                  salesVM.updateSelectedDate(d);
-                                }
-                              },
-                              onRangeSelect: (s, e) {
-                                _onDateRangeSelected(s, e);
-                                if (_selectedSalesView == SalesViewType.cash) {
-                                  salesVM.updateSelectedDateRange(s, e);
-                                }
-                              },
-                              onClear: _clearDateFilter,
-                            ),
-
-                            // CASH-ONLY stats card: also loose flex
+                            if (_selectedSalesView == SalesViewType.cash ||
+                                FeatureFlags.enableOnlineSales) ...[
+                              DateFilterBar(
+                                selectedDay: _selectedDay,
+                                startDate: _startDate,
+                                endDate: _endDate,
+                                onDaySelect: (d) {
+                                  _onDateSelected(d);
+                                  if (_selectedSalesView ==
+                                      SalesViewType.cash) {
+                                    salesVM.updateSelectedDate(d);
+                                  }
+                                },
+                                onRangeSelect: (s, e) {
+                                  _onDateRangeSelected(s, e);
+                                  if (_selectedSalesView ==
+                                      SalesViewType.cash) {
+                                    salesVM.updateSelectedDateRange(s, e);
+                                  }
+                                },
+                                onClear: _clearDateFilter,
+                              ),
+                            ],
                             if (_selectedSalesView == SalesViewType.cash) ...[
                               SalesStatsCard(
                                 viewModel: salesVM,
@@ -279,9 +282,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                 endDate: _endDate,
                               ),
                             ],
-
                             SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-
                             Expanded(
                               child: _selectedSalesView == SalesViewType.cash
                                   ? SafeArea(
@@ -312,23 +313,24 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                         },
                                       ),
                                     )
-                                  : SafeArea(
-                                      top: false,
-                                      left: false,
-                                      right: false,
-                                      bottom: true,
-                                      child: OnlineSalesList(
-                                        key: ValueKey<String>(
-                                          '${_selectedDay?.toIso8601String() ?? ''}|'
-                                          '${_startDate?.toIso8601String() ?? ''}|'
-                                          '${_endDate?.toIso8601String() ?? ''}',
-                                        ),
-                                        selectedDay: _selectedDay,
-                                        startDate: _startDate,
-                                        endDate: _endDate,
-                                        // If Online list scrolls, add a similar bottom padding prop there too.
-                                      ),
-                                    ),
+                                  : FeatureFlags.enableOnlineSales
+                                      ? SafeArea(
+                                          top: false,
+                                          left: false,
+                                          right: false,
+                                          bottom: true,
+                                          child: OnlineSalesList(
+                                            key: ValueKey<String>(
+                                              '${_selectedDay?.toIso8601String() ?? ''}|'
+                                              '${_startDate?.toIso8601String() ?? ''}|'
+                                              '${_endDate?.toIso8601String() ?? ''}',
+                                            ),
+                                            selectedDay: _selectedDay,
+                                            startDate: _startDate,
+                                            endDate: _endDate,
+                                          ),
+                                        )
+                                      : const _OnlineSalesComingSoon(),
                             ),
                           ],
                         ),
@@ -411,6 +413,70 @@ class _SalesMeaningHint extends StatelessWidget {
                   height: 1.25,
                   color: Colors.black87,
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OnlineSalesComingSoon extends StatelessWidget {
+  const _OnlineSalesComingSoon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(LayoutConstants.spaceLg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.payments_outlined,
+                size: 38,
+                color: Colors.green,
+              ),
+            ),
+            const SizedBox(height: LayoutConstants.spaceLg),
+            const Text(
+              'Online sales are coming soon',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: LayoutConstants.spaceSm),
+            Text(
+              'Spaza One is partnering with a payments provider so customer '
+              'orders can be paid and recorded automatically.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 15,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: LayoutConstants.spaceMd),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(LayoutConstants.spaceMd),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'For now, continue taking orders on WhatsApp, confirming '
+                'payments with customers and recording completed sales '
+                'manually.',
+                textAlign: TextAlign.center,
+                style: TextStyle(height: 1.35),
               ),
             ),
           ],

@@ -34,4 +34,14 @@ void main() {
     expect(FeatureFlags.enableMultiStoreOperators, isFalse);
     expect(FeatureFlags.multiStoreOperatorsEnabled.value, isFalse);
   });
+
+  test('online sales stay hidden until the provider flag is enabled', () {
+    FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
+    expect(FeatureFlags.enableOnlineSales, isFalse);
+
+    FeatureFlags.applyFlagsForTesting(
+      _FakeRemoteConfig({'FEATURE_ONLINE_SALES_ENABLED': true}),
+    );
+    expect(FeatureFlags.enableOnlineSales, isTrue);
+  });
 }

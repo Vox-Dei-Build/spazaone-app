@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  catalogProductWithZaDelivery,
   convertUsdMinorToZarMinor,
   normalizeCjAccessToken,
   normalizeCjProductDetails,
@@ -104,4 +105,65 @@ test("CJ product details sanitize descriptions, images and variant pricing", () 
   ]);
   assert.equal(product.variants[0].productCostUsdMinor, 325);
   assert.equal(product.variants[0].estimatedProductCostMinor, 6026);
+});
+
+test("catalogue eligibility exposes only the verified ZA variant preview", () => {
+  const product = {
+    productId: "cj-product-1",
+    productSku: "CJ-ONE",
+    title: "Rechargeable lamp",
+    image: "https://example.test/lamp.jpg",
+    category: "Home",
+    productCostUsdMinor: 250,
+    estimatedProductCostMinor: 4635,
+  };
+  const details = {
+    productId: product.productId,
+    productSku: product.productSku,
+    title: product.title,
+    description: "",
+    images: [product.image],
+    category: product.category,
+    status: "3",
+    variants: [],
+    fx,
+  };
+  const variant = {
+    variantId: "variant-za",
+    productId: product.productId,
+    sku: "CJ-ONE-ZA",
+    name: "Black",
+    option: "Black",
+    image: product.image,
+    productCostUsdMinor: 250,
+    estimatedProductCostMinor: 4635,
+  };
+  const eligible = catalogProductWithZaDelivery(product, {
+    product: details,
+    variant,
+    originCountryCode: "CN",
+    stock: 20,
+    logisticName: "CJPacket",
+    logisticAging: "12-20",
+    productCostUsdMinor: 250,
+    shippingCostUsdMinor: 500,
+    productCostMinor: 4635,
+    shippingCostMinor: 9270,
+    landedCostMinor: 13905,
+    currency: "ZAR",
+    fx,
+    verifiedAt: "2026-08-04T10:00:00.000Z",
+  });
+
+  assert.equal(eligible.deliverableVariantId, "variant-za");
+  assert.equal(eligible.estimatedDeliveryCostMinor, 9270);
+  assert.equal(eligible.estimatedLandedCostMinor, 13905);
+  assert.throws(
+    () =>
+      catalogProductWithZaDelivery(
+        { ...product, productId: "different-product" },
+        { ...eligible, product: details, variant },
+      ),
+    /CJ_PRODUCT_MISMATCH/,
+  );
 });

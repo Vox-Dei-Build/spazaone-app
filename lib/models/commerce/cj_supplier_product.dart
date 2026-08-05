@@ -37,6 +37,11 @@ class CjCatalogProduct {
     required this.category,
     required this.productCostUsdMinor,
     required this.estimatedProductCostMinor,
+    required this.deliverableVariantId,
+    required this.estimatedDeliveryCostMinor,
+    required this.estimatedLandedCostMinor,
+    required this.logisticAging,
+    required this.deliveryVerifiedAt,
   });
 
   final String id;
@@ -46,16 +51,26 @@ class CjCatalogProduct {
   final String category;
   final int productCostUsdMinor;
   final int estimatedProductCostMinor;
+  final String deliverableVariantId;
+  final int estimatedDeliveryCostMinor;
+  final int estimatedLandedCostMinor;
+  final String logisticAging;
+  final String deliveryVerifiedAt;
 
   factory CjCatalogProduct.fromJson(Map<String, dynamic> data) =>
       CjCatalogProduct(
         id: data['productId']?.toString() ?? '',
         sku: data['productSku']?.toString() ?? '',
-        title: data['title']?.toString() ?? 'CJdropshipping product',
+        title: data['title']?.toString() ?? 'Supplier product',
         image: data['image']?.toString() ?? '',
         category: data['category']?.toString() ?? '',
         productCostUsdMinor: _asInt(data['productCostUsdMinor']),
         estimatedProductCostMinor: _asInt(data['estimatedProductCostMinor']),
+        deliverableVariantId: data['deliverableVariantId']?.toString() ?? '',
+        estimatedDeliveryCostMinor: _asInt(data['estimatedDeliveryCostMinor']),
+        estimatedLandedCostMinor: _asInt(data['estimatedLandedCostMinor']),
+        logisticAging: data['logisticAging']?.toString() ?? '',
+        deliveryVerifiedAt: data['deliveryVerifiedAt']?.toString() ?? '',
       );
 }
 
@@ -82,7 +97,7 @@ class CjProductDetails {
       CjProductDetails(
         id: data['productId']?.toString() ?? '',
         sku: data['productSku']?.toString() ?? '',
-        title: data['title']?.toString() ?? 'CJdropshipping product',
+        title: data['title']?.toString() ?? 'Supplier product',
         description: data['description']?.toString() ?? '',
         images: (data['images'] as List? ?? const [])
             .map((value) => value.toString())

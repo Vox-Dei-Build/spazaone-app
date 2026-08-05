@@ -108,7 +108,7 @@ export const createDropshipListing = functions
         images,
         cost: baseCostMinor / 100,
         sellingPrice: sellPriceMinor / 100,
-        company: "CJdropshipping",
+        company: "Spaza One supplier",
         group: quote.product.category || "Dropship",
         whatsappListed: true,
         supplierId: "cj_dropshipping",

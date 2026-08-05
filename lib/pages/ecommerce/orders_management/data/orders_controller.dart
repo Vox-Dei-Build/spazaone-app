@@ -33,6 +33,7 @@ import 'dart:async';
 import 'package:pasella/services/store_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/models/sales/order_model.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/order_filters.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/orders_repository.dart';
@@ -42,6 +43,20 @@ import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 /// time). Insertion order is preserved (newest first) because we
 /// construct it from a list already sorted by `createdAt desc`.
 typedef OrdersByDate = LinkedHashMapEntries;
+
+@visibleForTesting
+OrderModel commerceOrderListModel(CommerceOrder order) => OrderModel(
+      id: order.id,
+      status: order.status,
+      total: order.amountDueMinor / 100,
+      itemsCount: 1,
+      createdAt: order.createdAt,
+      type: 'Dropship',
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      collected: order.status == 'delivered',
+      source: 'commerce',
+    );
 
 class LinkedHashMapEntries {
   final List<MapEntry<DateTime, List<OrderModel>>> entries;
@@ -84,8 +99,25 @@ class OrdersController extends ChangeNotifier {
 
   /// Unfiltered server result. We hold onto it so client-side filter
   /// changes don't require another round-trip.
-  List<OrderModel> _allOrders = const [];
-  List<OrderModel> get allOrders => _allOrders;
+  List<OrderModel> _legacyOrders = const [];
+  List<OrderModel> _commerceOrderModels = const [];
+  Map<String, CommerceOrder> _commerceOrdersById = const {};
+
+  List<OrderModel> get allOrders => [
+        ..._legacyOrders,
+        ..._commerceOrderModels,
+      ];
+
+  CommerceOrder? commerceOrderFor(String orderId) =>
+      _commerceOrdersById[orderId];
+
+  void setCommerceOrders(List<CommerceOrder> orders) {
+    if (_disposed) return;
+    _commerceOrdersById = {for (final order in orders) order.id: order};
+    _commerceOrderModels =
+        orders.map(commerceOrderListModel).toList(growable: false);
+    notifyListeners();
+  }
 
   bool _disposed = false;
   Timer? _searchDebounce;
@@ -96,7 +128,7 @@ class OrdersController extends ChangeNotifier {
   /// a date sink to the bottom in stable order.
   List<OrderModel> get filtered {
     final list = applyClientFilters(
-      _allOrders,
+      allOrders,
       filter: _filter,
       query: _query,
       range: _range,
@@ -149,7 +181,7 @@ class OrdersController extends ChangeNotifier {
       OrderFilterGroup.bnpl: 0,
       OrderFilterGroup.delivery: 0,
     };
-    for (final o in _allOrders) {
+    for (final o in allOrders) {
       counts[OrderFilterGroup.all] = counts[OrderFilterGroup.all]! + 1;
       final s = computeStatus(o);
       if (s == OrderStatus.pending) {
@@ -181,7 +213,7 @@ class OrdersController extends ChangeNotifier {
 
   Future<void> load({bool forceServer = false}) async {
     if (_disposed) return;
-    if (forceServer || _allOrders.isEmpty) {
+    if (forceServer || _legacyOrders.isEmpty) {
       _loading = true;
       _error = null;
       notifyListeners();
@@ -193,7 +225,7 @@ class OrdersController extends ChangeNotifier {
           customerId: _customerId,
         );
         if (_disposed) return;
-        _allOrders = fetched;
+        _legacyOrders = fetched;
         _error = null;
       } catch (e, st) {
         if (kDebugMode) {

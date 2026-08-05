@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/services/store_session.dart';
+import 'package:pasella/utils/phone_util.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -90,16 +91,29 @@ class CommerceService {
     );
   }
 
-  Stream<List<CommerceOrder>> watchOrders() {
+  Stream<List<CommerceOrder>> watchOrders({
+    String? customerId,
+    String? customerPhone,
+  }) {
     final sellerId = StoreSession.instance.storeId;
     if (sellerId.isEmpty) return const Stream.empty();
+    final wantedCustomerId = customerId?.trim() ?? '';
+    final wantedPhone = normalizePhoneNumber(customerPhone);
     return _firestore
         .collection('commerceOrders')
         .where('sellerId', isEqualTo: sellerId)
         .snapshots()
         .map((snapshot) {
       final orders =
-          snapshot.docs.map(CommerceOrder.fromDocument).toList(growable: false);
+          snapshot.docs.map(CommerceOrder.fromDocument).where((order) {
+        if (wantedCustomerId.isEmpty && wantedPhone.isEmpty) return true;
+        if (wantedCustomerId.isNotEmpty &&
+            order.customerId == wantedCustomerId) {
+          return true;
+        }
+        return wantedPhone.isNotEmpty &&
+            normalizePhoneNumber(order.buyerPhone) == wantedPhone;
+      }).toList(growable: false);
       orders.sort((a, b) {
         final aTime = a.createdAt?.millisecondsSinceEpoch ?? 0;
         final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;

@@ -32,6 +32,14 @@ export type CjCatalogProduct = {
   estimatedProductCostMinor: number;
 };
 
+export type CjZaEligibleProduct = CjCatalogProduct & {
+  deliverableVariantId: string;
+  estimatedDeliveryCostMinor: number;
+  estimatedLandedCostMinor: number;
+  logisticAging: string;
+  deliveryVerifiedAt: string;
+};
+
 export type CjVariant = {
   variantId: string;
   productId: string;
@@ -581,19 +589,17 @@ async function freightOptions(
   );
 }
 
-export async function quoteCjVariant(input: {
-  productId: string;
+async function quoteCjVariantWithProduct(input: {
+  product: CjProductDetails;
   variantId: string;
   postalCode?: string;
 }): Promise<CjLandedQuote> {
-  const [product, variantValue] = await Promise.all([
-    getCjProductDetails(input.productId),
-    cjRequest({
-      method: "GET",
-      url: "/product/variant/queryByVid",
-      params: { vid: input.variantId, features: "enable_inventory" },
-    }),
-  ]);
+  const product = input.product;
+  const variantValue = await cjRequest({
+    method: "GET",
+    url: "/product/variant/queryByVid",
+    params: { vid: input.variantId, features: "enable_inventory" },
+  });
   const variantData = object(variantValue);
   if (product.status && product.status !== "3") {
     throw new Error("CJ_PRODUCT_UNAVAILABLE");
@@ -645,5 +651,76 @@ export async function quoteCjVariant(input: {
     currency: "ZAR",
     fx: product.fx,
     verifiedAt: new Date().toISOString(),
+  };
+}
+
+export async function quoteCjVariant(input: {
+  productId: string;
+  variantId: string;
+  postalCode?: string;
+}): Promise<CjLandedQuote> {
+  const product = await getCjProductDetails(input.productId);
+  return quoteCjVariantWithProduct({
+    product,
+    variantId: input.variantId,
+    postalCode: input.postalCode,
+  });
+}
+
+/**
+ * Finds a current in-stock variant with at least one freight route to ZA.
+ * A small variant sample keeps catalogue searches bounded; listing creation
+ * and checkout still re-quote the seller/buyer-selected variant.
+ */
+export async function findCjProductZaDelivery(
+  productId: string,
+  maxVariants = 2,
+): Promise<CjLandedQuote> {
+  const product = await getCjProductDetails(productId);
+  if (product.status && product.status !== "3") {
+    throw new Error("CJ_PRODUCT_UNAVAILABLE");
+  }
+  const variants = product.variants.slice(0, Math.max(1, maxVariants));
+  const attempts = await Promise.allSettled(
+    variants.map((variant) =>
+      quoteCjVariantWithProduct({ product, variantId: variant.variantId }),
+    ),
+  );
+  const quotes = attempts
+    .filter(
+      (attempt): attempt is PromiseFulfilledResult<CjLandedQuote> =>
+        attempt.status === "fulfilled",
+    )
+    .map((attempt) => attempt.value)
+    .sort((a, b) => a.landedCostMinor - b.landedCostMinor);
+  if (quotes.length) return quotes[0];
+
+  const providerFailure = attempts.find(
+    (attempt) =>
+      attempt.status === "rejected" &&
+      ![
+        "CJ_NO_SHIPPING_TO_ZA",
+        "CJ_OUT_OF_STOCK",
+        "CJ_VARIANT_INVALID",
+      ].includes(attempt.reason instanceof Error ? attempt.reason.message : ""),
+  );
+  if (providerFailure?.status === "rejected") throw providerFailure.reason;
+  throw new Error("CJ_NO_SHIPPING_TO_ZA");
+}
+
+export function catalogProductWithZaDelivery(
+  product: CjCatalogProduct,
+  quote: CjLandedQuote,
+): CjZaEligibleProduct {
+  if (quote.product.productId !== product.productId) {
+    throw new Error("CJ_PRODUCT_MISMATCH");
+  }
+  return {
+    ...product,
+    deliverableVariantId: quote.variant.variantId,
+    estimatedDeliveryCostMinor: quote.shippingCostMinor,
+    estimatedLandedCostMinor: quote.landedCostMinor,
+    logisticAging: quote.logisticAging,
+    deliveryVerifiedAt: quote.verifiedAt,
   };
 }

@@ -83,7 +83,7 @@ export const updateCommerceOrder = functions.https.onCall(
     ) {
       throw new functions.https.HttpsError(
         "invalid-argument",
-        "Add the CJ order number after placing the supplier order.",
+        "Add the supplier order number after placing the order.",
       );
     }
     if (action === "mark_shipped" && !trackingNumber) {
@@ -175,6 +175,7 @@ export const updateCommerceOrder = functions.https.onCall(
         notice = {
           orderId,
           sellerId,
+          customerId: String(currentData.customerId ?? ""),
           buyerName: String(currentData.buyer?.name ?? "Customer"),
           buyerPhone: String(currentData.buyer?.phone ?? ""),
           status: next,

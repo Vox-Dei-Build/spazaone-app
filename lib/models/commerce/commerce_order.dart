@@ -4,6 +4,7 @@ class CommerceOrder {
   const CommerceOrder({
     required this.id,
     required this.sellerId,
+    required this.customerId,
     required this.status,
     required this.paymentStatus,
     required this.paymentMethod,
@@ -34,6 +35,7 @@ class CommerceOrder {
 
   final String id;
   final String sellerId;
+  final String customerId;
   final String status;
   final String paymentStatus;
   final String paymentMethod;
@@ -83,6 +85,7 @@ class CommerceOrder {
     return CommerceOrder(
       id: document.id,
       sellerId: data['sellerId']?.toString() ?? '',
+      customerId: data['customerId']?.toString() ?? '',
       status: data['status']?.toString() ?? 'pending_payment',
       paymentStatus: data['paymentStatus']?.toString() ?? 'pending',
       paymentMethod: data['paymentMethod']?.toString() ?? 'paystack',

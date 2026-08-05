@@ -134,12 +134,12 @@ For a device-level rehearsal, start the full local emulator suite with project
 
 ```bash
 firebase emulators:start \
-  --project demo-spazaone-multistore \
+  --project pasella-ledger \
   --only auth,firestore,functions,storage
 
 flutter run \
   --dart-define=USE_FIREBASE_EMULATORS=true \
-  --dart-define=FIREBASE_EMULATOR_PROJECT_ID=demo-spazaone-multistore \
+  --dart-define=FIREBASE_EMULATOR_PROJECT_ID=pasella-ledger \
   --dart-define=FIREBASE_EMULATOR_HOST=10.0.2.2 \
   --dart-define=ENABLE_MULTI_STORE_OPERATORS=true
 ```
