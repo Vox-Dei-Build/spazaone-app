@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
 import 'package:pasella/pages/ledger/widgets/customer_tab.dart';
+import 'package:pasella/pages/ledger/widgets/shop_link_action.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_tab_bar_with_filter.dart';
@@ -40,12 +41,7 @@ class LedgerMainContent extends StatelessWidget {
           children: [
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             PageHeader(
-              actionWidget: IconButton(
-                icon: Icon(
-                  Icons.link_rounded,
-                  color: Colors.black,
-                  size: SizeConfig.imageSizeMultiplier * 5,
-                ),
+              actionWidget: ShopLinkAction(
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -55,7 +51,6 @@ class LedgerMainContent extends StatelessWidget {
                     ),
                   );
                 },
-                tooltip: 'WhatsApp ordering link',
               ),
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
