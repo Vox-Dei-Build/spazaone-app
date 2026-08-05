@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  calculateCjRequestSlot,
   catalogProductWithZaDelivery,
   convertUsdMinorToZarMinor,
   createRequestScheduler,
@@ -46,6 +47,31 @@ test("supplier requests are serialized and continue after a failed request", asy
   assert.equal(starts.length, 3);
   assert.ok(starts[1] - starts[0] >= 15);
   assert.ok(starts[2] - starts[1] >= 15);
+});
+
+test("global CJ request slots reserve one interval without delaying an idle queue", () => {
+  assert.deepEqual(calculateCjRequestSlot(10_000, 0, 1_100, 30_000), {
+    slotAtMs: 10_000,
+    nextAllowedAtMs: 11_100,
+    waitMs: 0,
+  });
+  assert.deepEqual(calculateCjRequestSlot(10_000, 12_500, 1_100, 30_000), {
+    slotAtMs: 12_500,
+    nextAllowedAtMs: 13_600,
+    waitMs: 2_500,
+  });
+});
+
+test("global CJ request slots fail closed when the shared queue is too deep", () => {
+  assert.deepEqual(calculateCjRequestSlot(10_000, 40_000, 1_100, 30_000), {
+    slotAtMs: 40_000,
+    nextAllowedAtMs: 41_100,
+    waitMs: 30_000,
+  });
+  assert.throws(
+    () => calculateCjRequestSlot(10_000, 40_001, 1_100, 30_000),
+    /CJ_RATE_LIMITED/,
+  );
 });
 
 test("USD/ZAR rates accept both documented Frankfurter response shapes", () => {

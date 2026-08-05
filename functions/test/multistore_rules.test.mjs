@@ -108,6 +108,17 @@ beforeEach(async () => {
         amountDueMinor: 14000,
         marginMinor: 3418,
       }),
+      setDoc(doc(db, "supplierCatalogProducts/cj_productA"), {
+        active: true,
+        title: "Supplier product",
+      }),
+      setDoc(doc(db, "supplierCatalogJobs/jobA"), {
+        status: "pending",
+      }),
+      setDoc(doc(db, "supplierCatalogDemand/queryA"), { count: 1 }),
+      setDoc(doc(db, "supplierIntegrationState/cjRequestGate"), {
+        nextAllowedAtMs: 1,
+      }),
     ]);
   });
 });
@@ -123,6 +134,21 @@ test("legacy owner keeps access to own nested data but not another store", async
     setDoc(doc(db, "users/storeA/products/product1"), { name: "Bread" }),
   );
   await assertFails(getDoc(doc(db, "users/storeB/customers/customerB")));
+});
+
+test("supplier catalogue internals remain server-only", async () => {
+  for (const db of [
+    env.authenticatedContext("storeA").firestore(),
+    env.authenticatedContext("admin-user", { isAdmin: true }).firestore(),
+    env.unauthenticatedContext().firestore(),
+  ]) {
+    await assertFails(getDoc(doc(db, "supplierCatalogProducts/cj_productA")));
+    await assertFails(getDoc(doc(db, "supplierCatalogJobs/jobA")));
+    await assertFails(getDoc(doc(db, "supplierCatalogDemand/queryA")));
+    await assertFails(
+      getDoc(doc(db, "supplierIntegrationState/cjRequestGate")),
+    );
+  }
 });
 
 test("active operator can use assigned store and disabled membership cannot", async () => {

@@ -33,12 +33,14 @@ class CommerceService {
   Future<CjCatalogPage> searchCjCatalog({
     String query = '',
     int page = 1,
+    String cursor = '',
   }) async {
     final result =
         await _functions.httpsCallable('searchCjSupplierCatalog').call({
       'storeId': StoreSession.instance.storeId,
       'query': query,
       'page': page,
+      if (cursor.isNotEmpty) 'cursor': cursor,
     });
     return CjCatalogPage.fromJson(
         Map<String, dynamic>.from(result.data as Map));
@@ -55,23 +57,6 @@ class CommerceService {
         'preferredVariantId': preferredVariantId,
     });
     return CjProductDetails.fromJson(
-      Map<String, dynamic>.from(result.data as Map),
-    );
-  }
-
-  Future<CjLandedQuote> quoteCjVariant({
-    required String productId,
-    required String variantId,
-    String postalCode = '',
-  }) async {
-    final result =
-        await _functions.httpsCallable('quoteCjSupplierVariant').call({
-      'storeId': StoreSession.instance.storeId,
-      'productId': productId,
-      'variantId': variantId,
-      if (postalCode.isNotEmpty) 'postalCode': postalCode,
-    });
-    return CjLandedQuote.fromJson(
       Map<String, dynamic>.from(result.data as Map),
     );
   }

@@ -173,6 +173,26 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // The automatically materialised supplier catalogue, refresh jobs, demand
+    // aggregates and global provider gate are server-owned. Sellers access the
+    // catalogue only through authenticated callables so supplier snapshots and
+    // queue priority cannot be forged from a client.
+    match /supplierCatalogProducts/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierCatalogJobs/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierCatalogDemand/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierIntegrationState/{document=**} {
+      allow read, write: if false;
+    }
+
     // Capability cache contains phone-number delivery capability but no
     // customer ledger data. Keep authenticated compatibility until it moves
     // behind a callable; unauthenticated access is denied.

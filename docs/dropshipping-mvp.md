@@ -8,25 +8,39 @@ catalog in the normal seller flow.
 
 - CJdropshipping is accessed only by Cloud Functions. `CJ_API_KEY` stays in
   Cloud Secret Manager and is exchanged server-side for CJ access tokens.
-- Sellers browse the Spaza One Catalogue through authenticated callable
-  functions. Search candidates are freight-checked to South Africa on the
-  server and only products with a currently deliverable variant are returned.
-  Positive eligibility is cached for 30 minutes and negative eligibility for
-  15 minutes in the server-only `supplierCatalogEligibility` collection.
-  Opening a product rechecks the cached variant and automatically tries a small
-  set of alternatives when it has stopped shipping. Listing creation and order
-  creation always re-quote; the cache is never a price or availability
-  guarantee. Product details, variants, stock and freight are never accepted
-  from the Flutter client.
+- Sellers browse a server-owned materialised catalogue in
+  `supplierCatalogProducts`. Search, category browsing, product opening and
+  listing creation read this cache and make **zero** CJ requests. The app shows
+  one South Africa delivery-ready option per product; unverified alternatives
+  are not offered. Listing creation accepts only that cached product/variant
+  identifier and the seller's markup, then copies the server-owned cost
+  snapshot into the listing.
+- `supplierCatalogJobs` is an idempotent background discovery/refresh queue.
+  `syncCjSupplierCatalog` processes demand, stale refreshes and rotating broad
+  categories without administrator curation. It rotates through up to ten CJ
+  result pages per query, refreshes positive products after 72 hours and
+  negative results after 24 hours. New seller searches can request background
+  discovery, limited per store so one account cannot exhaust the supplier
+  allowance.
+- The worker and the order quote path share a Firestore transaction gate in
+  `supplierIntegrationState`, enforcing the CJ account limit across all Cloud
+  Functions instances. Worker retries use leases and exponential backoff. A
+  single bounded job runs every five minutes and a conservative 25,000-point
+  UTC daily reserve leaves at least half the base allowance for real buyer
+  orders. Catalogue requests therefore scale independently of CJ's request
+  limit.
+- Catalogue search uses prefix tokens, categories and cursor pagination.
+  Multi-word search deliberately uses the longest word as the primary broad
+  match, allowing sellers to discover nearby results without a third-party
+  search service. Released apps retain bounded page-number compatibility.
 - CJ returns product and freight prices in USD. The backend obtains a current
   USD/ZAR reference rate, applies the configured FX reserve (3% by default),
   and performs integer-minor-unit conversions server-side. It accepts both
   documented Frankfurter response formats, caches a valid rate and fails closed
   when neither source has a recent rate.
-- CJ requests are serialized above the provider's one-request-per-second limit
-  and a throttled response receives one jittered retry. Catalogue live checks
-  and variant fallbacks are sequential so an upstream throttle is never
-  mistaken for an unavailable product inside one Functions instance.
+- Transient supplier, network and rate-limit failures never become cached
+  “not deliverable” results. Only explicit stock/product/no-route failures can
+  deactivate a catalogue product.
 - `users/{storeId}/products/{productId}` remains the compatible seller product
   projection. CJ listings add `supplierId`, `sourceProductId`,
   `sourceVariantId`, `supplierSku`, product/delivery cost estimates,
@@ -47,10 +61,10 @@ catalog in the normal seller flow.
   `payments/paystackCommerce/processed/{reference}` deduplicates verified
   Paystack callbacks. Both are server-only.
 
-The catalog listing price is an estimate. When the buyer supplies a South
-African postal code, the server obtains a new CJ stock/freight quote, reapplies
-the seller's fixed markup, validates the margin, and snapshots the order.
-Historical orders are never repriced.
+The catalogue and listing price is an estimate. When the buyer supplies a South
+African postal code, the server obtains one authoritative CJ stock/freight
+quote, reapplies the seller's fixed markup, validates the margin, and snapshots
+the order. Historical orders are never repriced.
 
 ## Compliance and payment activation gate
 
@@ -85,10 +99,14 @@ and sales reporting are coming soon; Cash sales continue unchanged.
 
 ## Security boundary
 
-- Catalog search, product detail, freight quote and listing creation callables
-  require authentication and active access to the selected store.
+- Catalogue search, cached product detail, legacy quote compatibility and
+  listing creation callables require authentication and active access to the
+  selected store. Catalogue/cache/queue/gate documents deny every client read
+  and write, including administrators using the app client.
 - Listing creation accepts only CJ product/variant identifiers and a markup.
-  The backend retrieves every product, image, stock, cost, freight and FX value.
+  The backend ignores client prices and reads product, image, cost, freight and
+  FX values from the verified server snapshot. A live quote is still required
+  when a buyer order is created.
 - The authenticated bot endpoint accepts listing, buyer and address details but
   ignores any client amount, cost, margin, seller or supplier values. It checks
   the bot secret, confirms that the listing belongs to the routed shop and
@@ -158,15 +176,17 @@ completed, the store owner records it and the order becomes `refunded`.
   Confirm Paystack only as part of the approved activation release.
   Notification failure is recorded but does not roll back payment or
   fulfilment state.
-- Deploy Functions and Firestore rules together. No migration of manual Sales,
-  existing products, stock or wallets is required.
+- Roll out in two stages: deploy the server-only catalogue rules and scheduled
+  worker first, let the default categories warm, then switch the catalogue
+  callables and release the app. This avoids an empty cold catalogue. No
+  migration of manual Sales, existing products, stock or wallets is required.
 
 ## Manual QA checklist
 
 ### Before payment approval
 
-- Leave `COMMERCE_PAYMENTS_ENABLED` unset or false and confirm CJ catalog search
-  and live quotes work.
+- Leave `COMMERCE_PAYMENTS_ENABLED` unset or false and confirm catalogue search,
+  product opening and listing creation work without live supplier requests.
 - Create and share a seller listing; confirm the shared link opens the Spaza One
   WhatsApp bot with `shop <code> order 1 <product>` prefilled.
 - Send the message and confirm the bot asks for the South African address in
@@ -184,19 +204,20 @@ The digital-payment checks require an approved test account and
 ### Seller catalog and listing
 
 - Sign in as a store owner and active operator; open Products → Catalogue.
-- Search several categories and confirm every returned card says South Africa
-  delivery is available. Products with no current ZA freight route must not be
-  returned. Confirm category chips, global search, landed-cost sorting and
-  delivery-time sorting all remain usable. Confirm a repeated search uses the
-  server eligibility cache.
-- Confirm `supplierCatalogEligibility` cannot be read or written by a client
-  and no supplier credentials are exposed.
-- Select a product and confirm it opens with a server-verified variant, current
-  landed cost and a visible Add product footer above Android system navigation.
-- Switch variants and confirm Spaza One refreshes stock, product cost, South
-  African freight, logistics and delivery estimate. When the new option has no
-  stock or no South African route, confirm the last working option remains
-  selected and can still be listed.
+- Search several categories and confirm every returned card has a recent South
+  Africa delivery estimate. Confirm category chips, broad global search,
+  landed-cost sorting, delivery-time sorting and cursor pagination all remain
+  usable with more than 150 cached products.
+- Confirm `supplierCatalogProducts`, `supplierCatalogJobs`,
+  `supplierCatalogDemand`, and `supplierIntegrationState` cannot be read or
+  written by a client and no supplier credentials are exposed.
+- Select a product and confirm it opens immediately with one delivery-ready
+  option, its landed-cost estimate and a visible Add product footer above the
+  Android system navigation. It must never show “Product needs a fresh check”.
+- Confirm opening products and adding a listing do not call CJ. Simulate a
+  transient CJ/rate-limit error in the worker and confirm it retries without
+  marking the product unavailable. Confirm an explicit no-route result is
+  hidden and scheduled for a later refresh.
 - Enter a markup and confirm estimated selling price, payment fee and margin.
 - With manual payments, confirm any positive markup is accepted and the payment
   fee snapshot is zero. With digital payments enabled, confirm markup below the
@@ -272,3 +293,10 @@ and reconcile supplier cancellations and disputes. Fully automatic ordering
 requires an explicit funding model: a prefunded Spaza One CJ balance, seller
 wallet deduction, or another approved settlement arrangement. Existing order
 price/margin snapshots must remain immutable when automation is added.
+
+Catalogue browsing no longer depends on CJ throughput, but each real buyer
+order still needs a live supplier quote. Before order volume approaches the
+account's physical request/point allowance, upgrade the CJ API tier or move
+order quoting to an idempotent asynchronous reservation flow. A managed search
+index can later add typo tolerance and relevance ranking without changing the
+server-owned catalogue or order snapshot model.

@@ -9,12 +9,18 @@ class CjCatalogPage {
     required this.products,
     required this.page,
     required this.totalPages,
+    required this.hasMore,
+    required this.nextCursor,
+    required this.catalogueRefreshing,
     required this.digitalPaymentsEnabled,
   });
 
   final List<CjCatalogProduct> products;
   final int page;
   final int totalPages;
+  final bool hasMore;
+  final String nextCursor;
+  final bool catalogueRefreshing;
   final bool digitalPaymentsEnabled;
 
   factory CjCatalogPage.fromJson(Map<String, dynamic> data) => CjCatalogPage(
@@ -24,6 +30,10 @@ class CjCatalogPage {
             .toList(growable: false),
         page: _asInt(data['page']),
         totalPages: _asInt(data['totalPages']),
+        hasMore: data['hasMore'] == true ||
+            _asInt(data['page']) < _asInt(data['totalPages']),
+        nextCursor: data['nextCursor']?.toString() ?? '',
+        catalogueRefreshing: data['catalogueRefreshing'] == true,
         digitalPaymentsEnabled: data['digitalPaymentsEnabled'] == true,
       );
 }
@@ -198,4 +208,98 @@ class CjLandedQuote {
       fxBufferBps: _asInt(fx['bufferBps']),
     );
   }
+}
+
+enum CjListingEstimateSource { recommendedQuote, catalogSnapshot }
+
+class CjListingEstimate {
+  const CjListingEstimate({
+    required this.variant,
+    required this.quote,
+    required this.source,
+  });
+
+  final CjVariant variant;
+  final CjLandedQuote quote;
+  final CjListingEstimateSource source;
+
+  bool get usesCatalogSnapshot =>
+      source == CjListingEstimateSource.catalogSnapshot;
+}
+
+CjVariant? _variantWithId(List<CjVariant> variants, String id) {
+  for (final variant in variants) {
+    if (variant.id == id) return variant;
+  }
+  return null;
+}
+
+/// Resolves the single delivery-verified option shown when creating a listing.
+///
+/// Newer servers include a current recommended quote. During a rolling backend
+/// release, older servers return only product details; in that case the
+/// catalogue card already contains the last verified South Africa variant and
+/// cost snapshot. Using that snapshot avoids a second supplier request merely
+/// for opening the sheet. Listing creation remains server-priced and is the
+/// authoritative availability check.
+CjListingEstimate? resolveCjListingEstimate({
+  required CjCatalogProduct catalogProduct,
+  required CjProductDetails details,
+}) {
+  if (details.id.isEmpty || details.id != catalogProduct.id) return null;
+  final recommendedQuote = details.recommendedQuote;
+  final recommendedVariantId = recommendedQuote?.variant.id ?? '';
+  final recommendedProductId = recommendedQuote?.variant.productId ?? '';
+  final usableRecommendedQuote = recommendedQuote != null &&
+      recommendedVariantId.isNotEmpty &&
+      recommendedQuote.productCostMinor > 0 &&
+      recommendedQuote.shippingCostMinor >= 0 &&
+      recommendedQuote.landedCostMinor > 0 &&
+      (recommendedProductId.isEmpty ||
+          recommendedProductId == catalogProduct.id);
+  if (usableRecommendedQuote) {
+    return CjListingEstimate(
+      variant: _variantWithId(details.variants, recommendedVariantId) ??
+          recommendedQuote.variant,
+      quote: recommendedQuote,
+      source: CjListingEstimateSource.recommendedQuote,
+    );
+  }
+
+  final cachedVariantId = catalogProduct.deliverableVariantId;
+  final usableCatalogSnapshot = cachedVariantId.isNotEmpty &&
+      catalogProduct.estimatedProductCostMinor > 0 &&
+      catalogProduct.estimatedDeliveryCostMinor >= 0 &&
+      catalogProduct.estimatedLandedCostMinor ==
+          catalogProduct.estimatedProductCostMinor +
+              catalogProduct.estimatedDeliveryCostMinor;
+  if (!usableCatalogSnapshot) return null;
+
+  final cachedVariant = _variantWithId(details.variants, cachedVariantId) ??
+      CjVariant(
+        id: cachedVariantId,
+        productId: catalogProduct.id,
+        sku: '',
+        name: 'Recommended option',
+        option: '',
+        image: catalogProduct.image,
+        productCostUsdMinor: catalogProduct.productCostUsdMinor,
+        estimatedProductCostMinor: catalogProduct.estimatedProductCostMinor,
+      );
+  return CjListingEstimate(
+    variant: cachedVariant,
+    quote: CjLandedQuote(
+      variant: cachedVariant,
+      originCountryCode: '',
+      stock: 0,
+      logisticName: '',
+      logisticAging: catalogProduct.logisticAging,
+      productCostMinor: catalogProduct.estimatedProductCostMinor,
+      shippingCostMinor: catalogProduct.estimatedDeliveryCostMinor,
+      landedCostMinor: catalogProduct.estimatedLandedCostMinor,
+      fxRateMicros: 0,
+      fxBufferBps: 0,
+    ),
+    source: CjListingEstimateSource.catalogSnapshot,
+  );
 }

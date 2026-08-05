@@ -3,6 +3,43 @@ import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/services/commerce_service.dart';
 
 void main() {
+  CjCatalogProduct catalogProduct({
+    String deliverableVariantId = 'variant-za',
+    int productCostMinor = 10000,
+    int deliveryCostMinor = 5000,
+    int landedCostMinor = 15000,
+  }) {
+    return CjCatalogProduct.fromJson({
+      'productId': 'product-1',
+      'productSku': 'LAMP-1',
+      'title': 'Lamp',
+      'image': 'https://example.com/lamp.jpg',
+      'productCostUsdMinor': 600,
+      'estimatedProductCostMinor': productCostMinor,
+      'deliverableVariantId': deliverableVariantId,
+      'estimatedDeliveryCostMinor': deliveryCostMinor,
+      'estimatedLandedCostMinor': landedCostMinor,
+      'logisticAging': '8-14 days',
+      'deliveryVerifiedAt': '2026-08-05T10:00:00.000Z',
+    });
+  }
+
+  test('catalog page keeps background-refresh and cursor metadata', () {
+    final page = CjCatalogPage.fromJson({
+      'products': const [],
+      'page': 1,
+      'totalPages': 3,
+      'hasMore': true,
+      'nextCursor': 'cj_product_11',
+      'catalogueRefreshing': true,
+      'digitalPaymentsEnabled': false,
+    });
+
+    expect(page.hasMore, isTrue);
+    expect(page.nextCursor, 'cj_product_11');
+    expect(page.catalogueRefreshing, isTrue);
+  });
+
   test('dropship sharing opens the bot with shop and product context', () {
     final orderingUrl = CommerceService.buildProductOrderingUrl(
       baseUrl: Uri.parse(
@@ -80,5 +117,139 @@ void main() {
     expect(details.recommendedVariantId, 'variant-za');
     expect(details.recommendedQuote?.variant.id, 'variant-za');
     expect(details.recommendedQuote?.landedCostMinor, 15000);
+  });
+
+  test(
+      'old product response uses the catalog snapshot without a live quote dependency',
+      () {
+    final details = CjProductDetails.fromJson({
+      'productId': 'product-1',
+      'title': 'Lamp',
+      'variants': [
+        {
+          'variantId': 'variant-other',
+          'productId': 'product-1',
+          'option': 'White',
+        },
+        {
+          'variantId': 'variant-za',
+          'productId': 'product-1',
+          'option': 'Black',
+        },
+      ],
+    });
+
+    expect(details.recommendedVariantId, isEmpty);
+    expect(details.recommendedQuote, isNull);
+
+    final estimate = resolveCjListingEstimate(
+      catalogProduct: catalogProduct(),
+      details: details,
+    );
+
+    expect(estimate, isNotNull);
+    expect(estimate!.usesCatalogSnapshot, isTrue);
+    expect(estimate.variant.id, 'variant-za');
+    expect(estimate.variant.label, 'Black');
+    expect(estimate.quote.productCostMinor, 10000);
+    expect(estimate.quote.shippingCostMinor, 5000);
+    expect(estimate.quote.landedCostMinor, 15000);
+  });
+
+  test('new product response prefers its recommended quote', () {
+    final details = CjProductDetails.fromJson({
+      'productId': 'product-1',
+      'title': 'Lamp',
+      'recommendedVariantId': 'variant-current',
+      'variants': [
+        {
+          'variantId': 'variant-za',
+          'productId': 'product-1',
+          'option': 'Black',
+        },
+        {
+          'variantId': 'variant-current',
+          'productId': 'product-1',
+          'option': 'Green',
+        },
+      ],
+      'recommendedQuote': {
+        'variant': {
+          'variantId': 'variant-current',
+          'productId': 'product-1',
+          'option': 'Green',
+        },
+        'stock': 12,
+        'productCostMinor': 11000,
+        'shippingCostMinor': 6000,
+        'landedCostMinor': 17000,
+        'fx': {'rateMicros': 16440800, 'bufferBps': 300},
+      },
+    });
+
+    final estimate = resolveCjListingEstimate(
+      catalogProduct: catalogProduct(),
+      details: details,
+    );
+
+    expect(estimate, isNotNull);
+    expect(estimate!.source, CjListingEstimateSource.recommendedQuote);
+    expect(estimate.variant.id, 'variant-current');
+    expect(estimate.quote.landedCostMinor, 17000);
+    expect(estimate.quote.stock, 12);
+  });
+
+  test('unchecked alternate variants are not substituted for cached option',
+      () {
+    final details = CjProductDetails.fromJson({
+      'productId': 'product-1',
+      'title': 'Lamp',
+      'variants': [
+        {
+          'variantId': 'variant-other',
+          'productId': 'product-1',
+          'option': 'White',
+        },
+      ],
+    });
+
+    final estimate = resolveCjListingEstimate(
+      catalogProduct: catalogProduct(),
+      details: details,
+    );
+
+    expect(estimate, isNotNull);
+    expect(estimate!.variant.id, 'variant-za');
+    expect(estimate.variant.label, 'Recommended option');
+    expect(estimate.variant.id, isNot('variant-other'));
+  });
+
+  test('invalid recommendation falls back only to a positive catalog snapshot',
+      () {
+    final details = CjProductDetails.fromJson({
+      'productId': 'product-1',
+      'title': 'Lamp',
+      'recommendedQuote': {
+        'variant': {
+          'variantId': 'variant-wrong-product',
+          'productId': 'product-2',
+        },
+        'productCostMinor': 100,
+        'shippingCostMinor': 100,
+        'landedCostMinor': 200,
+      },
+    });
+
+    final fallback = resolveCjListingEstimate(
+      catalogProduct: catalogProduct(),
+      details: details,
+    );
+    final unavailable = resolveCjListingEstimate(
+      catalogProduct: catalogProduct(landedCostMinor: 0),
+      details: details,
+    );
+
+    expect(fallback?.source, CjListingEstimateSource.catalogSnapshot);
+    expect(unavailable, isNull);
   });
 }

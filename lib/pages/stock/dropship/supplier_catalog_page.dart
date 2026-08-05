@@ -51,8 +51,11 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   String? _error;
   int _page = 1;
   int _totalPages = 1;
+  final Map<int, String> _pageCursors = {};
+  bool _hasMore = false;
   int _categoryIndex = 0;
   _CatalogSort _sort = _CatalogSort.recommended;
+  bool _catalogueRefreshing = false;
   bool _digitalPaymentsEnabled = false;
 
   String get _query {
@@ -89,6 +92,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
 
   Future<void> _load({int page = 1}) async {
     FocusManager.instance.primaryFocus?.unfocus();
+    if (page <= 1) _pageCursors.clear();
     setState(() {
       _loading = true;
       _error = null;
@@ -97,12 +101,18 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
       final result = await _commerce.searchCjCatalog(
         query: _query,
         page: page,
+        cursor: _pageCursors[page] ?? '',
       );
       if (!mounted) return;
       setState(() {
         _products = result.products;
         _page = result.page <= 0 ? page : result.page;
         _totalPages = result.totalPages <= 0 ? 1 : result.totalPages;
+        _hasMore = result.hasMore;
+        if (result.nextCursor.isNotEmpty) {
+          _pageCursors[result.page + 1] = result.nextCursor;
+        }
+        _catalogueRefreshing = result.catalogueRefreshing;
         _digitalPaymentsEnabled = result.digitalPaymentsEnabled;
         _loading = false;
       });
@@ -204,7 +214,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Only products with a recent South Africa delivery option are shown. Price and delivery are checked again before you add one.',
+                    'Browse by category or search all Spaza One supplier products. Every product shown already has a recent South Africa delivery estimate.',
                     style: TextStyle(fontSize: 12, height: 1.3),
                   ),
                 ),
@@ -231,6 +241,16 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
       );
     }
     if (_products.isEmpty) {
+      if (_catalogueRefreshing) {
+        return _CatalogMessage(
+          icon: Icons.inventory_2_outlined,
+          title: 'Adding matching products',
+          message:
+              'Spaza One is adding delivery-ready matches in the background. You can keep using the app and try again in a few minutes.',
+          actionLabel: 'Refresh results',
+          action: () => _load(page: 1),
+        );
+      }
       final hasMore = _page < _totalPages;
       return _CatalogMessage(
         icon: Icons.search_off_outlined,
@@ -307,7 +327,9 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                     previous: _page > 1 ? () => _load(page: _page - 1) : null,
                     next: _page < _totalPages
                         ? () => _load(page: _page + 1)
-                        : null,
+                        : _hasMore
+                            ? () => _load(page: _page + 1)
+                            : null,
                   );
                 }
                 return _SupplierProductCard(
@@ -503,12 +525,10 @@ class _CjListingSheet extends StatefulWidget {
 class _CjListingSheetState extends State<_CjListingSheet> {
   final _commerce = CommerceService();
   final _markup = TextEditingController();
-  CjProductDetails? _details;
   CjVariant? _variant;
-  CjVariant? _checkingVariant;
   CjLandedQuote? _quote;
+  bool _usesCatalogSnapshot = false;
   bool _loadingDetails = true;
-  bool _loadingQuote = false;
   bool _saving = false;
   String? _error;
 
@@ -520,11 +540,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       : 0;
   int get _netMarginMinor => _markupMinor - _feeMinor;
   bool get _canCreate =>
-      !_saving &&
-      !_loadingQuote &&
-      _quote != null &&
-      _markupMinor > 0 &&
-      _netMarginMinor >= 0;
+      !_saving && _quote != null && _markupMinor > 0 && _netMarginMinor >= 0;
 
   @override
   void initState() {
@@ -548,27 +564,23 @@ class _CjListingSheetState extends State<_CjListingSheet> {
         widget.product.id,
         preferredVariantId: widget.product.deliverableVariantId,
       );
-      final quote = details.recommendedQuote;
+      final estimate = resolveCjListingEstimate(
+        catalogProduct: widget.product,
+        details: details,
+      );
       if (!mounted) return;
-      if (details.variants.isEmpty || quote == null) {
+      if (estimate == null) {
         setState(() {
           _loadingDetails = false;
           _error =
-              'No South Africa delivery option is available right now. Try another product.';
+              'This product does not have a recent South Africa price and delivery estimate. Try another product.';
         });
         return;
       }
-      final recommendedId = details.recommendedVariantId.isNotEmpty
-          ? details.recommendedVariantId
-          : quote.variant.id;
-      final recommended = details.variants.firstWhere(
-        (variant) => variant.id == recommendedId,
-        orElse: () => quote.variant,
-      );
       setState(() {
-        _details = details;
-        _variant = recommended;
-        _quote = quote;
+        _variant = estimate.variant;
+        _quote = estimate.quote;
+        _usesCatalogSnapshot = estimate.usesCatalogSnapshot;
         _loadingDetails = false;
       });
     } catch (error) {
@@ -580,45 +592,13 @@ class _CjListingSheetState extends State<_CjListingSheet> {
     }
   }
 
-  Future<void> _checkVariant(CjVariant candidate) async {
-    final previous = _variant;
-    setState(() {
-      _checkingVariant = candidate;
-      _loadingQuote = true;
-      _error = null;
-    });
-    try {
-      final quote = await _commerce.quoteCjVariant(
-        productId: widget.product.id,
-        variantId: candidate.id,
-      );
-      if (!mounted || _checkingVariant?.id != candidate.id) return;
-      setState(() {
-        _variant = candidate;
-        _quote = quote;
-        _checkingVariant = null;
-        _loadingQuote = false;
-      });
-    } catch (error) {
-      if (!mounted || _checkingVariant?.id != candidate.id) return;
-      final message = commerceErrorMessage(error);
-      final optionUnavailable = message.toLowerCase().contains('variant') ||
-          message.toLowerCase().contains('stock') ||
-          message.toLowerCase().contains('delivered');
-      setState(() {
-        _checkingVariant = null;
-        _loadingQuote = false;
-        _error = optionUnavailable && previous != null
-            ? '${candidate.label} is not available for South Africa right now. We kept ${previous.label} selected.'
-            : message;
-      });
-    }
-  }
-
   Future<void> _create() async {
     final variant = _variant;
     if (variant == null || !_canCreate) return;
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
       final result = await _commerce.createListing(
         supplierProductId: widget.product.id,
@@ -628,8 +608,10 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       if (mounted) Navigator.pop(context, result);
     } catch (error) {
       if (mounted) {
-        showCommerceError(context, error);
-        setState(() => _saving = false);
+        setState(() {
+          _saving = false;
+          _error = commerceErrorMessage(error);
+        });
       }
     }
   }
@@ -726,62 +708,57 @@ class _CjListingSheetState extends State<_CjListingSheet> {
     if (_loadingDetails) {
       return const _QuoteLoading();
     }
-    if (_details == null || _quote == null) {
+    if (_variant == null || _quote == null) {
       return _CatalogMessage(
         icon: Icons.inventory_2_outlined,
-        title: 'Product needs a fresh check',
-        message: _error ??
-            'Spaza One could not confirm price and delivery for this product.',
-        actionLabel: 'Check again',
+        title: 'Product unavailable right now',
+        message:
+            _error ?? 'Spaza One could not load a verified product option.',
+        actionLabel: 'Try again',
         action: _loadDetails,
       );
     }
+
+    final deliveryDetails = <String>[
+      _deliveryEstimate(_quote!.logisticAging),
+      if (!_usesCatalogSnapshot && _quote!.stock > 0)
+        '${_quote!.stock} in stock',
+    ].join(' · ');
 
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       children: [
-        const _VerifiedVariantNotice(),
+        _VerifiedVariantNotice(usesCatalogSnapshot: _usesCatalogSnapshot),
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          value: _variant?.id,
-          isExpanded: true,
+        InputDecorator(
           decoration: const InputDecoration(
-            labelText: 'Product option',
+            labelText: 'Delivery-ready product option',
             border: OutlineInputBorder(),
           ),
-          items: _details!.variants
-              .map(
-                (variant) => DropdownMenuItem(
-                  value: variant.id,
-                  child: Text(
-                    variant.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _variant!.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              )
-              .toList(growable: false),
-          onChanged: _saving || _loadingQuote
-              ? null
-              : (id) {
-                  final matches =
-                      _details!.variants.where((item) => item.id == id);
-                  if (matches.isEmpty || matches.first.id == _variant?.id) {
-                    return;
-                  }
-                  _checkVariant(matches.first);
-                },
-        ),
-        if (_loadingQuote) ...[
-          const SizedBox(height: 10),
-          const LinearProgressIndicator(),
-          const SizedBox(height: 6),
-          Text(
-            'Checking ${_checkingVariant?.label ?? 'this option'} for South Africa…',
-            style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.verified_outlined,
+                color: Color(0xFF258541),
+                size: 21,
+              ),
+            ],
           ),
-        ],
+        ),
+        const SizedBox(height: 7),
+        Text(
+          'Spaza One shows the delivery-ready option already verified for this product.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
         if (_error != null) ...[
           const SizedBox(height: 12),
           Container(
@@ -817,7 +794,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
           child: Column(
             children: [
               _PriceRow(
-                label: 'Product cost',
+                label: 'Estimated product cost',
                 value: CurrencyUtil.format(_quote!.productCostMinor / 100),
               ),
               _PriceRow(
@@ -826,7 +803,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               ),
               const Divider(),
               _PriceRow(
-                label: 'Landed cost',
+                label: 'Estimated landed cost',
                 value: CurrencyUtil.format(_quote!.landedCostMinor / 100),
                 emphasized: true,
               ),
@@ -838,7 +815,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '${_deliveryEstimate(_quote!.logisticAging)} · ${_quote!.stock} in stock',
+                      deliveryDetails,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
@@ -931,7 +908,9 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _markupMinor > 0 ? 'Customer price' : 'Add your markup',
+                  _markupMinor > 0
+                      ? 'Estimated customer price'
+                      : 'Add your markup',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 Text(
@@ -962,7 +941,9 @@ class _CjListingSheetState extends State<_CjListingSheet> {
 }
 
 class _VerifiedVariantNotice extends StatelessWidget {
-  const _VerifiedVariantNotice();
+  const _VerifiedVariantNotice({required this.usesCatalogSnapshot});
+
+  final bool usesCatalogSnapshot;
 
   @override
   Widget build(BuildContext context) {
@@ -972,14 +953,17 @@ class _VerifiedVariantNotice extends StatelessWidget {
         color: const Color(0xFFEAF6ED),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.check_circle_outline, color: Color(0xFF258541), size: 20),
-          SizedBox(width: 8),
+          const Icon(Icons.check_circle_outline,
+              color: Color(0xFF258541), size: 20),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'This option is in stock with delivery to South Africa.',
-              style: TextStyle(
+              usesCatalogSnapshot
+                  ? 'Ready to add. This option has a recent South Africa delivery estimate.'
+                  : 'Ready to add. This option currently has delivery to South Africa.',
+              style: const TextStyle(
                 color: Color(0xFF1E6833),
                 fontWeight: FontWeight.w600,
               ),
@@ -1005,12 +989,12 @@ class _QuoteLoading extends StatelessWidget {
             CircularProgressIndicator(),
             SizedBox(height: 16),
             Text(
-              'Checking current stock, price and South Africa delivery…',
+              'Loading the delivery-ready product option…',
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 6),
             Text(
-              'This can take a few seconds.',
+              'Your catalogue estimate will be ready in a moment.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
@@ -1034,7 +1018,7 @@ class _CatalogueLoading extends StatelessWidget {
             CircularProgressIndicator(),
             SizedBox(height: 14),
             Text(
-              'Finding products that deliver to South Africa…',
+              'Loading delivery-ready products…',
               textAlign: TextAlign.center,
             ),
           ],

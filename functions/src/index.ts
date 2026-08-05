@@ -93,6 +93,7 @@ export {
   getCjSupplierProduct,
   quoteCjSupplierVariant,
 } from "./commerce/cjCatalog";
+export { syncCjSupplierCatalog } from "./commerce/cjCatalogWorker";
 export { createDropshipListing } from "./commerce/createDropshipListing";
 export {
   createCommerceOrder,

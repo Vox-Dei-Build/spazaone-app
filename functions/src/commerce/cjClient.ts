@@ -1,4 +1,5 @@
 import axios from "axios";
+import { db } from "../config/main";
 
 const CJ_API_BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 const FX_API_URLS = [
@@ -8,6 +9,8 @@ const FX_API_URLS = [
 const REQUEST_TIMEOUT_MS = 15_000;
 const CJ_REQUEST_INTERVAL_MS = 1_100;
 const CJ_RATE_LIMIT_RETRY_MS = 1_500;
+const CJ_GLOBAL_RATE_PATH = "supplierIntegrationState/cjRequestGate";
+const CJ_MAX_QUEUE_MS = 30_000;
 const TOKEN_SAFETY_MS = 5 * 60 * 1000;
 const FX_CACHE_MS = 60 * 60 * 1000;
 const FX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -113,7 +116,65 @@ export function createRequestScheduler(intervalMs: number) {
 // CJ enforces one request per second for this integration. Keep every request,
 // including token exchange, on the same queue so a single function instance
 // never creates the burst that previously made valid variants look unavailable.
-const scheduleCjRequest = createRequestScheduler(CJ_REQUEST_INTERVAL_MS);
+const scheduleLocalCjRequest = createRequestScheduler(CJ_REQUEST_INTERVAL_MS);
+
+export function calculateCjRequestSlot(
+  nowMs: number,
+  nextAllowedAtMs: number,
+  intervalMs = CJ_REQUEST_INTERVAL_MS,
+  maxQueueMs = CJ_MAX_QUEUE_MS,
+): { slotAtMs: number; nextAllowedAtMs: number; waitMs: number } {
+  const safeNext = Number.isSafeInteger(nextAllowedAtMs)
+    ? nextAllowedAtMs
+    : nowMs;
+  const slotAtMs = Math.max(nowMs, safeNext);
+  const waitMs = slotAtMs - nowMs;
+  if (waitMs > maxQueueMs) throw new Error("CJ_RATE_LIMITED");
+  return {
+    slotAtMs,
+    nextAllowedAtMs: slotAtMs + intervalMs,
+    waitMs,
+  };
+}
+
+async function reserveGlobalCjRequestSlot(): Promise<void> {
+  const gateRef = db.doc(CJ_GLOBAL_RATE_PATH);
+  let waitMs = 0;
+  try {
+    await db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(gateRef);
+      const nowMs = Date.now();
+      const slot = calculateCjRequestSlot(
+        nowMs,
+        Number(snapshot.data()?.nextAllowedAtMs ?? nowMs),
+      );
+      waitMs = slot.waitMs;
+      tx.set(
+        gateRef,
+        {
+          supplierId: "cj_dropshipping",
+          nextAllowedAtMs: slot.nextAllowedAtMs,
+          updatedAtMs: nowMs,
+          schemaVersion: 1,
+        },
+        { merge: true },
+      );
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("CJ_")) throw error;
+    throw new Error("CJ_COORDINATION_UNAVAILABLE");
+  }
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+}
+
+async function scheduleCjRequest<T>(task: () => Promise<T>): Promise<T> {
+  return scheduleLocalCjRequest(async () => {
+    await reserveGlobalCjRequestSlot();
+    return task();
+  });
+}
 
 function object(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -671,9 +732,16 @@ async function freightOptions(
         .filter((option): option is FreightOption => option !== null);
     }),
   );
-  return results.flatMap((result) =>
+  const options = results.flatMap((result) =>
     result.status === "fulfilled" ? result.value : [],
   );
+  if (!options.length) {
+    const transientFailure = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (transientFailure) throw transientFailure.reason;
+  }
+  return options;
 }
 
 async function quoteCjVariantWithProduct(input: {

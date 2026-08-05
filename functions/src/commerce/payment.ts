@@ -120,13 +120,26 @@ function publicMessage(error: unknown): string {
     return "This product has just gone out of stock.";
   if (code === "CJ_NO_SHIPPING_TO_ZA")
     return "This product cannot currently be delivered to that address.";
-  if (code.startsWith("CJ_FX") || code === "CJ_UNAVAILABLE")
+  if (
+    code.startsWith("CJ_FX") ||
+    [
+      "CJ_UNAVAILABLE",
+      "CJ_RATE_LIMITED",
+      "CJ_COORDINATION_UNAVAILABLE",
+      "CJ_AUTH_FAILED",
+    ].includes(code)
+  )
     return "Live supplier pricing is temporarily unavailable. Please try again.";
   if (code === "PAYSTACK_NOT_CONFIGURED")
     return "Online payments are unavailable.";
   if (responseStatus === 401 || responseStatus === 403)
     return "Online payments are temporarily unavailable.";
   return "Spaza One could not start payment. Please try again.";
+}
+
+function publicStatus(error: unknown): number {
+  const code = error instanceof Error ? error.message : "";
+  return code.startsWith("CJ_") ? 503 : 400;
 }
 
 /** Log provider failures without serializing request headers or credentials. */
@@ -186,7 +199,11 @@ function commerceOrderReturnUrl(
 
 /** Public endpoint that creates an order and initializes its own payment. */
 export const createCommerceOrder = functions
-  .runWith({ secrets: ["CJ_API_KEY", "PASELLA_BOT_TOKEN"] })
+  .runWith({
+    secrets: ["CJ_API_KEY", "PASELLA_BOT_TOKEN"],
+    timeoutSeconds: 120,
+    memory: "512MB",
+  })
   .https.onRequest(async (req, res) => {
     cors(res);
     if (req.method === "OPTIONS") {
@@ -567,7 +584,7 @@ export const createCommerceOrder = functions
       res.status(200).json({ authorizationUrl });
     } catch (error) {
       logCommerceError("createCommerceOrder failed", error);
-      res.status(400).json({ error: publicMessage(error) });
+      res.status(publicStatus(error)).json({ error: publicMessage(error) });
     }
   });
 

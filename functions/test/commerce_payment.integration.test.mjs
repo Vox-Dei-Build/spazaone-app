@@ -9,6 +9,16 @@ import {
 } from "../lib/commerce/payment.js";
 import { commerceCheckout } from "../lib/commerce/checkoutPage.js";
 
+const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "");
+const emulatorProject = String(
+  process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? "",
+);
+if (!emulatorHost || !emulatorProject.startsWith("demo-")) {
+  throw new Error(
+    "Refusing commerce integration test without a demo Firestore emulator.",
+  );
+}
+
 const requireModule = createRequire(import.meta.url);
 const axios = requireModule("axios");
 const db = admin.firestore();

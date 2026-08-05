@@ -2,9 +2,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
 import { commerceCheckoutUrl } from "./checkoutUrl";
+import { getCachedCatalogDocument } from "./cjCatalogRepository";
 import { priceCommerceOrder, requireMinorUnits } from "./domain";
-import { quoteCjVariant } from "./cjClient";
-import { publicCjError } from "./cjCatalog";
 import { commercePaymentsEnabled } from "./readiness";
 
 function cleanText(value: unknown, field: string, max: number): string {
@@ -20,7 +19,7 @@ function cleanText(value: unknown, field: string, max: number): string {
 
 /** Creates a seller product plus the immutable server-priced projection. */
 export const createDropshipListing = functions
-  .runWith({ secrets: ["CJ_API_KEY"] })
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onCall(async (data, context) => {
     const storeId = cleanText(data?.storeId, "storeId", 128);
     const supplierProductId = cleanText(
@@ -51,16 +50,19 @@ export const createDropshipListing = functions
       );
     }
 
-    let quote;
-    try {
-      quote = await quoteCjVariant({
-        productId: supplierProductId,
-        variantId: supplierVariantId,
-      });
-    } catch (error) {
-      console.error("createDropshipListing CJ quote failed", error);
-      throw publicCjError(error);
+    const cached = await getCachedCatalogDocument(supplierProductId);
+    if (
+      !cached ||
+      cached.deliverableVariantId !== supplierVariantId ||
+      cached.recommendedQuote.variant.variantId !== supplierVariantId
+    ) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "That product option is being refreshed. Choose another product for now.",
+      );
     }
+    const quote = cached.recommendedQuote;
+    const product = cached.details;
 
     const baseCostMinor = quote.landedCostMinor;
     const sellPriceMinor = baseCostMinor + markupMinor;
@@ -77,14 +79,14 @@ export const createDropshipListing = functions
       );
     }
     const variantLabel = quote.variant.option || quote.variant.name;
-    const title = `${quote.product.title}${
+    const title = `${product.title}${
       variantLabel ? ` · ${variantLabel}` : ""
     }`.slice(0, 160);
-    const images = [quote.variant.image, ...quote.product.images]
+    const images = [quote.variant.image, ...product.images]
       .filter(Boolean)
       .filter((image, index, all) => all.indexOf(image) === index)
       .slice(0, 8);
-    const description = quote.product.description;
+    const description = product.description;
     const shippingNotes = [
       quote.logisticAging
         ? `Estimated ${quote.logisticAging} days via ${quote.logisticName}.`
@@ -109,7 +111,7 @@ export const createDropshipListing = functions
         cost: baseCostMinor / 100,
         sellingPrice: sellPriceMinor / 100,
         company: "Spaza One supplier",
-        group: quote.product.category || "Dropship",
+        group: product.category || "Dropship",
         whatsappListed: true,
         supplierId: "cj_dropshipping",
         sourceProductId: supplierProductId,
