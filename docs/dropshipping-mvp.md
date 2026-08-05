@@ -17,7 +17,7 @@ catalog in the normal seller flow.
   snapshot into the listing.
 - `supplierCatalogJobs` is an idempotent background discovery/refresh queue.
   `syncCjSupplierCatalog` processes demand, stale refreshes and rotating broad
-  categories without administrator curation. It rotates through up to ten CJ
+  categories without administrator curation. It rotates through up to fifty CJ
   result pages per query, refreshes positive products after 72 hours and
   negative results after 24 hours. New seller searches can request background
   discovery, limited per store so one account cannot exhaust the supplier
@@ -25,9 +25,11 @@ catalog in the normal seller flow.
 - The worker and the order quote path share a Firestore transaction gate in
   `supplierIntegrationState`, enforcing the CJ account limit across all Cloud
   Functions instances. Worker retries use leases and exponential backoff. A
-  single bounded job runs every five minutes and a conservative 25,000-point
-  UTC daily reserve leaves at least half the base allowance for real buyer
-  orders. Catalogue requests therefore scale independently of CJ's request
+  single bounded job runs every five minutes and a 36,000-point UTC daily
+  catalogue budget leaves 14,000 of CJ's current 50,000 base points for real
+  buyer orders. A broad category receives a fair discovery slot every two
+  hours, while the app reads 24 cached products at a time and appends more via
+  a cursor. Catalogue requests therefore scale independently of CJ's request
   limit.
 - Catalogue search uses prefix tokens, categories and cursor pagination.
   Multi-word search deliberately uses the longest word as the primary broad
@@ -213,8 +215,8 @@ The digital-payment checks require an approved test account and
 - Sign in as a store owner and active operator; open Products → Catalogue.
 - Search several categories and confirm every returned card has a recent South
   Africa delivery estimate. Confirm category chips, broad global search,
-  landed-cost sorting, delivery-time sorting and cursor pagination all remain
-  usable with more than 150 cached products.
+  landed-cost sorting, delivery-time sorting and cumulative cursor-based “Load
+  more products” all remain usable with more than 150 cached products.
 - Confirm `supplierCatalogProducts`, `supplierCatalogJobs`,
   `supplierCatalogDemand`, and `supplierIntegrationState` cannot be read or
   written by a client and no supplier credentials are exposed.

@@ -178,3 +178,30 @@ test("catalog token normalization is case-insensitive and bounded", () => {
   assert.ok(tokens.includes("rechargeable"));
   assert.ok(tokens.length <= 240);
 });
+
+test("core product fields stay searchable after many discovery synonyms", () => {
+  const { product, quote } = fixture({
+    title: "Rechargeable camping lantern",
+    category: "Outdoor lighting",
+  });
+  const document = buildCatalogCacheDocument(
+    product,
+    quote,
+    2_000,
+    "portable travel equipment bundle",
+    [
+      "seasonal bestseller collection",
+      "summer holiday accessories",
+      "lightweight adventure equipment",
+      "family camping essentials",
+      "outdoor recreation supplies",
+      "rechargeable emergency products",
+      "weekend travel collection",
+      "popular gift recommendations",
+    ],
+  );
+
+  assert.ok(document.searchTokens.length <= 240);
+  assert.ok(document.searchTokens.includes("lantern"));
+  assert.ok(document.searchTokens.includes("outdoor"));
+});

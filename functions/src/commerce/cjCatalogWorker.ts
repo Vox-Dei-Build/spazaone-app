@@ -22,8 +22,12 @@ const RETRY_BASE_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const MAX_JOBS_PER_RUN = 1;
 const MAX_RUN_MS = 90 * 1000;
-const DAILY_CATALOG_POINT_BUDGET = 25_000;
+// CJ currently grants 50,000 base points per UTC day. Keep 14,000 points
+// outside catalogue work for buyer/order quotes while allowing the bounded
+// five-minute worker to run throughout the day.
+export const DAILY_CATALOG_POINT_BUDGET = 36_000;
 const CATALOG_BUDGET_PATH = "supplierIntegrationState/cjCatalogBudget";
+export const ROTATING_DISCOVERY_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_DISCOVERY_QUERIES = [
   "popular",
   "fashion",
@@ -50,6 +54,18 @@ export function estimatedCatalogJobPoints(kind: CatalogJob["kind"]): number {
   // 10 for each detail, variant, stock or freight request. A refresh is bounded
   // to two attempted variants and four possible stock origins.
   return kind === "discover_query" ? 50 : 130;
+}
+
+export function catalogRefreshPriority(discoveryPriority: number): number {
+  return Math.min(35, discoveryPriority - 5);
+}
+
+export function catalogQueueOrder(
+  rotatingDiscoveryQueued: boolean,
+): readonly CatalogJob["queueBand"][] {
+  return rotatingDiscoveryQueued
+    ? ["demand", "background", "refresh"]
+    : ["demand", "refresh", "background"];
 }
 
 function asCatalogProduct(value: unknown): CjCatalogProduct | null {
@@ -142,10 +158,16 @@ async function recoverDueRetryJobs(nowMs: number): Promise<void> {
   await batch.commit();
 }
 
-async function claimNextJob(): Promise<ClaimedJob | null> {
+async function claimNextJob(
+  queueOrder: readonly CatalogJob["queueBand"][] = [
+    "demand",
+    "refresh",
+    "background",
+  ],
+): Promise<ClaimedJob | null> {
   const nowMs = Date.now();
   await Promise.all([recoverExpiredJobs(nowMs), recoverDueRetryJobs(nowMs)]);
-  for (const queueBand of ["demand", "refresh", "background"] as const) {
+  for (const queueBand of queueOrder) {
     const snapshot = await db
       .collection(CATALOG_JOBS_COLLECTION)
       .where("pendingQueueBand", "==", queueBand)
@@ -359,7 +381,10 @@ async function processDiscovery(job: ClaimedJob): Promise<void> {
       enqueueProductRefresh({
         product: product as unknown as Record<string, unknown>,
         query: job.value.query,
-        priority: job.value.priority - 5,
+        // A seller search itself stays in the demand band, while its bounded
+        // per-product verification work joins the refresh band. This prevents
+        // one 24-product result page from delaying every later seller search.
+        priority: catalogRefreshPriority(job.value.priority),
       }),
     ),
   );
@@ -379,42 +404,43 @@ async function processJob(job: ClaimedJob): Promise<void> {
   throw new Error("CJ_CATALOG_JOB_INVALID");
 }
 
-async function enqueueRotatingDiscovery(): Promise<void> {
+async function enqueueRotatingDiscovery(nowMs: number): Promise<boolean> {
   const stateRef = db.doc(WORKER_STATE_PATH);
-  const index = await db.runTransaction(async (tx) => {
+  const query = await db.runTransaction(async (tx) => {
     const snapshot = await tx.get(stateRef);
+    const nextDiscoveryAtMs = Number(snapshot.data()?.nextDiscoveryAtMs ?? 0);
+    if (nextDiscoveryAtMs > nowMs) return "";
     const current = Number(snapshot.data()?.discoveryIndex ?? 0);
     const safe = Number.isSafeInteger(current) && current >= 0 ? current : 0;
     tx.set(
       stateRef,
       {
         discoveryIndex: (safe + 1) % DEFAULT_DISCOVERY_QUERIES.length,
-        updatedAtMs: Date.now(),
+        nextDiscoveryAtMs: nowMs + ROTATING_DISCOVERY_INTERVAL_MS,
+        updatedAtMs: nowMs,
         schemaVersion: 1,
       },
       { merge: true },
     );
-    return safe % DEFAULT_DISCOVERY_QUERIES.length;
+    return DEFAULT_DISCOVERY_QUERIES[safe % DEFAULT_DISCOVERY_QUERIES.length];
   });
-  await enqueueCatalogDemand(DEFAULT_DISCOVERY_QUERIES[index]);
+  if (!query) return false;
+  return enqueueCatalogDemand(query);
 }
 
 export async function runCjCatalogWorkerOnce() {
   const startedAtMs = Date.now();
   let processed = 0;
   let failed = 0;
-  let bootstrapped = false;
   await enqueueStaleProductRefreshes(startedAtMs);
+  const rotatingDiscoveryQueued = await enqueueRotatingDiscovery(startedAtMs);
   while (
     processed + failed < MAX_JOBS_PER_RUN &&
     Date.now() - startedAtMs < MAX_RUN_MS
   ) {
-    let job = await claimNextJob();
-    if (!job && !bootstrapped) {
-      bootstrapped = true;
-      await enqueueRotatingDiscovery();
-      job = await claimNextJob();
-    }
+    // Give the two-hour rotating browse seed one fair slot ahead of routine
+    // refreshes. Seller-demand discovery remains first.
+    const job = await claimNextJob(catalogQueueOrder(rotatingDiscoveryQueued));
     if (!job) break;
     if (!(await reserveCatalogBudget(job))) {
       await deferForCatalogBudget(job);

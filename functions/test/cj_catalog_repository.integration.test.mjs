@@ -4,6 +4,7 @@ import admin from "firebase-admin";
 import { buildCatalogCacheDocument } from "../lib/commerce/cjCatalogCache.js";
 import {
   catalogJobId,
+  advanceCatalogDiscoveryPage,
   enqueueCatalogDemand,
   enqueueProductRefresh,
   searchCachedCatalog,
@@ -90,14 +91,14 @@ before(async () => {
     ),
   );
   const batch = db.batch();
-  for (let index = 0; index < 25; index += 1) {
+  for (let index = 0; index < 49; index += 1) {
     batch.set(
       collection.doc(`cj_product_${String(index).padStart(2, "0")}`),
       cachedProduct(index),
     );
   }
-  const inactive = cachedProduct(25);
-  batch.set(collection.doc("cj_product_25"), {
+  const inactive = cachedProduct(49);
+  batch.set(collection.doc("cj_product_49"), {
     ...inactive,
     active: false,
     activeSearchTokens: [],
@@ -118,12 +119,12 @@ test("catalog search cursor pages are stable and exclude inactive products", asy
   const cursorSecond = await searchCachedCatalog("lamp", 2, first.nextCursor);
   const legacySecond = await searchCachedCatalog("lamp", 2);
 
-  assert.equal(first.totalProducts, 25);
+  assert.equal(first.totalProducts, 49);
   assert.equal(first.totalPages, 3);
-  assert.equal(first.products.length, 12);
+  assert.equal(first.products.length, 24);
   assert.equal(first.hasMore, true);
   assert.ok(first.nextCursor);
-  assert.equal(cursorSecond.products.length, 12);
+  assert.equal(cursorSecond.products.length, 24);
   assert.equal(cursorSecond.hasMore, true);
   assert.deepEqual(
     cursorSecond.products.map((product) => product.productId),
@@ -139,10 +140,23 @@ test("catalog search cursor pages are stable and exclude inactive products", asy
   );
   assert.equal(
     [...first.products, ...cursorSecond.products].some(
-      (product) => product.productId === "product_25",
+      (product) => product.productId === "product_49",
     ),
     false,
   );
+});
+
+test("catalog discovery advances beyond the old ten-page ceiling", async () => {
+  await advanceCatalogDiscoveryPage("Kitchen", 10, 50);
+  // Demand IDs are intentionally hashed; query by its normalized public value
+  // so this test does not duplicate the hashing implementation.
+  let matching = await demand.where("query", "==", "kitchen").get();
+  assert.equal(matching.size, 1);
+  assert.equal(matching.docs[0].data().nextSupplierPage, 11);
+
+  await advanceCatalogDiscoveryPage("Kitchen", 50, 50);
+  matching = await demand.where("query", "==", "kitchen").get();
+  assert.equal(matching.docs[0].data().nextSupplierPage, 1);
 });
 
 test("catalog jobs expose a single-field pending queue selector", async () => {

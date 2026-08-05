@@ -159,12 +159,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Attached product'), findsOneWidget);
+    expect(find.text('Ready to send'), findsOneWidget);
+    expect(find.text('Product'), findsOneWidget);
     expect(find.text('Fresh bread'), findsOneWidget);
-    expect(
-      find.text('The Order on WhatsApp button will open this shop.'),
-      findsOneWidget,
-    );
+    expect(find.text('In WhatsApp catalogue'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -242,11 +240,12 @@ void main() {
     );
 
     expect(find.text('WhatsApp product card'), findsOneWidget);
+    expect(find.text('Call 0648370009 to order.'), findsNothing);
+    await tester.tap(find.text('SMS').last);
+    await tester.pump();
     expect(find.text('Call 0648370009 to order.'), findsOneWidget);
     expect(
-      find.text(
-        'Each recipient receives WhatsApp if available, otherwise SMS.',
-      ),
+      find.text('WhatsApp first · SMS if unavailable'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);

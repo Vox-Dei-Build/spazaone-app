@@ -9,6 +9,7 @@ class CjCatalogPage {
     required this.products,
     required this.page,
     required this.totalPages,
+    required this.totalProducts,
     required this.hasMore,
     required this.nextCursor,
     required this.catalogueRefreshing,
@@ -18,6 +19,7 @@ class CjCatalogPage {
   final List<CjCatalogProduct> products;
   final int page;
   final int totalPages;
+  final int totalProducts;
   final bool hasMore;
   final String nextCursor;
   final bool catalogueRefreshing;
@@ -30,6 +32,7 @@ class CjCatalogPage {
             .toList(growable: false),
         page: _asInt(data['page']),
         totalPages: _asInt(data['totalPages']),
+        totalProducts: _asInt(data['totalProducts']),
         hasMore: data['hasMore'] == true ||
             _asInt(data['page']) < _asInt(data['totalPages']),
         nextCursor: data['nextCursor']?.toString() ?? '',

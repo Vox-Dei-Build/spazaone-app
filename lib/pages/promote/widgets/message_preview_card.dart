@@ -5,19 +5,29 @@ import 'package:pasella/constants/layout_constants.dart';
 class MessagePreviewCard extends StatelessWidget {
   final String content;
   final String? mediaUrl;
+  final bool compact;
 
   const MessagePreviewCard({
     Key? key,
     required this.content,
     this.mediaUrl,
+    this.compact = false,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: compact ? 0 : 2,
+      margin: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
+      color: compact ? Theme.of(context).colorScheme.surface : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(compact ? 16 : 12),
+        side: compact
+            ? BorderSide(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.35),
+              )
+            : BorderSide.none,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -25,13 +35,13 @@ class MessagePreviewCard extends StatelessWidget {
             GestureDetector(
               onTap: () => _openImagePreview(context, mediaUrl!),
               child: ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(12),
-                  topRight: Radius.circular(12),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(compact ? 16 : 12),
+                  topRight: Radius.circular(compact ? 16 : 12),
                 ),
                 child: Image.network(
                   mediaUrl!,
-                  height: 160,
+                  height: compact ? 112 : 160,
                   width: double.infinity,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) =>
@@ -40,12 +50,14 @@ class MessagePreviewCard extends StatelessWidget {
               ),
             ),
           Padding(
-            padding: LayoutConstants.padding10Horizontal,
+            padding: compact
+                ? const EdgeInsets.all(14)
+                : LayoutConstants.padding10Horizontal,
             child: Text(
               content,
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.8,
-                height: 1.5,
+                fontSize: SizeConfig.textMultiplier * (compact ? 1.65 : 1.8),
+                height: compact ? 1.35 : 1.5,
               ),
             ),
           ),

@@ -22,11 +22,21 @@ class PromotionBottomAction extends StatelessWidget {
       curve: Curves.easeOut,
       padding: EdgeInsets.only(bottom: keyboardInset),
       child: Material(
-        color: theme.scaffoldBackgroundColor,
+        color: theme.colorScheme.surface,
+        elevation: 10,
+        shadowColor: Colors.black.withValues(alpha: 0.12),
         child: SafeArea(
           top: false,
           minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: child,
+          // A bottomNavigationBar receives a loose vertical constraint. A
+          // child Column with its default MainAxisSize.max will otherwise
+          // consume the entire scaffold and push the page body off-screen.
+          // The wallet footer used by the review step is one such Column.
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [child],
+          ),
         ),
       ),
     );

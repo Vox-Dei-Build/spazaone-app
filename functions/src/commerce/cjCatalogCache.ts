@@ -6,7 +6,10 @@ import type {
   CjZaEligibleProduct,
 } from "./cjClient";
 
-export const CATALOG_PAGE_SIZE = 12;
+// Match the supplier's original browse page so sellers do not have to page
+// after only a handful of rows. This is still a Firestore-only read; it does
+// not increase CJ traffic.
+export const CATALOG_PAGE_SIZE = 24;
 export const CATALOG_REFRESH_MS = 72 * 60 * 60 * 1000;
 export const CATALOG_NEGATIVE_REFRESH_MS = 24 * 60 * 60 * 1000;
 
@@ -146,12 +149,15 @@ export function buildCatalogCacheDocument(
     .filter((value, index, all) => all.indexOf(value) === index)
     .slice(-8);
   const searchTokens = catalogSearchTokens(
-    sourceQueries.join(" "),
     canonicalProduct.title,
     canonicalProduct.category,
     canonicalProduct.productSku,
     quote.variant.option,
     quote.variant.name,
+    // Demand queries are useful synonyms, but core product fields must be
+    // tokenised first so a long query history cannot crowd the title/category
+    // out of Firestore's bounded token array.
+    sourceQueries.join(" "),
   );
   return {
     ...canonicalProduct,

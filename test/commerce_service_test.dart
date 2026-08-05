@@ -44,6 +44,7 @@ void main() {
       'products': const [],
       'page': 1,
       'totalPages': 3,
+      'totalProducts': 61,
       'hasMore': true,
       'nextCursor': 'cj_product_11',
       'catalogueRefreshing': true,
@@ -51,6 +52,7 @@ void main() {
     });
 
     expect(page.hasMore, isTrue);
+    expect(page.totalProducts, 61);
     expect(page.nextCursor, 'cj_product_11');
     expect(page.catalogueRefreshing, isTrue);
   });

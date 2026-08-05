@@ -17,7 +17,11 @@ const CATALOG_DEMAND_COLLECTION = "supplierCatalogDemand";
 const DEMAND_REFRESH_MS = 6 * 60 * 60 * 1000;
 const SELLER_DISCOVERY_LIMIT_PER_DAY = 6;
 const REFRESH_QUEUE_LEASE_MS = 6 * 60 * 60 * 1000;
-const MAX_SUPPLIER_PAGES_PER_QUERY = 10;
+// Discovery advances one page per bounded background job. A wider ceiling
+// grows useful searches over time without adding any supplier calls to the
+// seller's browse request.
+export const MAX_SUPPLIER_PAGES_PER_QUERY = 50;
+export const CATALOG_DISCOVERY_TARGET = CATALOG_PAGE_SIZE * 4;
 
 export type CatalogJobKind = "discover_query" | "refresh_product";
 export type CatalogQueueBand = "demand" | "refresh" | "background";
@@ -281,12 +285,12 @@ export async function enqueueProductRefresh(input: {
         .slice(-8);
       if (sourceQuery && !existingSourceQueries.includes(sourceQuery)) {
         const searchTokens = catalogSearchTokens(
-          sourceQueries.join(" "),
           String(cached?.title ?? ""),
           String(cached?.category ?? ""),
           String(cached?.productSku ?? ""),
           String(cached?.recommendedQuote?.variant.option ?? ""),
           String(cached?.recommendedQuote?.variant.name ?? ""),
+          sourceQueries.join(" "),
         );
         tx.set(
           cacheRef,

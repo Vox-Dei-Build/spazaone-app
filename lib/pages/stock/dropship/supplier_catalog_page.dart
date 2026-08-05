@@ -6,9 +6,14 @@ import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 class SupplierCatalogPage extends StatefulWidget {
-  const SupplierCatalogPage({super.key, this.onListingCreated});
+  const SupplierCatalogPage({
+    super.key,
+    this.onListingCreated,
+    this.searchCatalog,
+  });
 
   final VoidCallback? onListingCreated;
+  final CjCatalogSearch? searchCatalog;
 
   @override
   State<SupplierCatalogPage> createState() => _SupplierCatalogPageState();
@@ -47,14 +52,37 @@ int _firstDeliveryDay(String aging) {
 int dropshipMarkupMinor(String value) =>
     ((double.tryParse(value.replaceAll(',', '.')) ?? 0) * 100).round();
 
+typedef CjCatalogSearch = Future<CjCatalogPage> Function({
+  required String query,
+  required int page,
+  required String cursor,
+});
+
+List<CjCatalogProduct> mergeCjCatalogPages(
+  List<CjCatalogProduct> current,
+  List<CjCatalogProduct> incoming,
+) {
+  final byId = <String, CjCatalogProduct>{
+    for (final product in current) product.id: product,
+  };
+  for (final product in incoming) {
+    byId[product.id] = product;
+  }
+  return byId.values.toList(growable: false);
+}
+
 class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   final _search = TextEditingController();
-  final _commerce = CommerceService();
+  late final CjCatalogSearch _searchCatalog;
   List<CjCatalogProduct> _products = const [];
   bool _loading = true;
+  bool _loadingMore = false;
+  int _loadGeneration = 0;
   String? _error;
+  String? _loadMoreError;
   int _page = 1;
   int _totalPages = 1;
+  int _totalProducts = 0;
   final Map<int, String> _pageCursors = {};
   bool _hasMore = false;
   int _categoryIndex = 0;
@@ -85,6 +113,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   @override
   void initState() {
     super.initState();
+    _searchCatalog = widget.searchCatalog ?? CommerceService().searchCjCatalog;
     _load();
   }
 
@@ -96,22 +125,34 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
 
   Future<void> _load({int page = 1}) async {
     FocusManager.instance.primaryFocus?.unfocus();
-    if (page <= 1) _pageCursors.clear();
+    final loadingMore = page > 1;
+    final generation = ++_loadGeneration;
+    final query = _query;
+    if (!loadingMore) _pageCursors.clear();
     setState(() {
-      _loading = true;
-      _error = null;
+      if (loadingMore) {
+        _loadingMore = true;
+        _loadMoreError = null;
+      } else {
+        _loading = true;
+        _error = null;
+      }
     });
     try {
-      final result = await _commerce.searchCjCatalog(
-        query: _query,
+      final result = await _searchCatalog(
+        query: query,
         page: page,
         cursor: _pageCursors[page] ?? '',
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _products = result.products;
+        _products = loadingMore
+            ? mergeCjCatalogPages(_products, result.products)
+            : result.products;
         _page = result.page <= 0 ? page : result.page;
         _totalPages = result.totalPages <= 0 ? 1 : result.totalPages;
+        _totalProducts =
+            result.totalProducts > 0 ? result.totalProducts : _products.length;
         _hasMore = result.hasMore;
         if (result.nextCursor.isNotEmpty) {
           _pageCursors[result.page + 1] = result.nextCursor;
@@ -119,29 +160,52 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         _catalogueRefreshing = result.catalogueRefreshing;
         _digitalPaymentsEnabled = result.digitalPaymentsEnabled;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _error = commerceErrorMessage(error);
-        _loading = false;
+        if (loadingMore) {
+          _loadMoreError = commerceErrorMessage(error);
+          _loadingMore = false;
+        } else {
+          _error = commerceErrorMessage(error);
+          _loading = false;
+        }
       });
     }
   }
 
   void _selectCategory(int index) {
-    if (_loading || index == _categoryIndex && _search.text.isEmpty) return;
+    if (_loading ||
+        _loadingMore ||
+        index == _categoryIndex && _search.text.isEmpty) {
+      return;
+    }
     _search.clear();
     setState(() => _categoryIndex = index);
     _load();
   }
 
   void _searchProducts() {
-    if (_loading) return;
+    if (_loading || _loadingMore) return;
     if (_search.text.trim().isNotEmpty) {
       setState(() => _categoryIndex = 0);
     }
     _load();
+  }
+
+  void _onSearchChanged(String _) {
+    // A seller can start typing while a page request is still in flight.
+    // Invalidate that request immediately so products from the previous query
+    // can never be painted under the new search text.
+    setState(() {
+      if (_loading || _loadingMore) {
+        _loadGeneration += 1;
+        _loading = false;
+        _loadingMore = false;
+      }
+    });
   }
 
   @override
@@ -152,13 +216,14 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 7),
           child: TextField(
             controller: _search,
+            enabled: !_loading,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: 'Search supplier products',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: IconButton(
                 tooltip: 'Search',
-                onPressed: _loading ? null : _searchProducts,
+                onPressed: _loading || _loadingMore ? null : _searchProducts,
                 icon: const Icon(Icons.arrow_forward_rounded),
               ),
               filled: true,
@@ -181,7 +246,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                 ),
               ),
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: _onSearchChanged,
             onSubmitted: (_) => _searchProducts(),
           ),
         ),
@@ -263,7 +328,9 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             children: [
               Expanded(
                 child: Text(
-                  '${products.length} ${products.length == 1 ? 'product' : 'products'}',
+                  _totalProducts > products.length
+                      ? '${products.length} of $_totalProducts products'
+                      : '${products.length} ${products.length == 1 ? 'product' : 'products'}',
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
               ),
@@ -292,7 +359,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: () => _load(page: _page),
+            onRefresh: () => _load(page: 1),
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -308,6 +375,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => _SupplierProductCard(
+                        key: Key('supplier-product-${products[index].id}'),
                         product: products[index],
                         digitalPaymentsEnabled: _digitalPaymentsEnabled,
                         onListingCreated: widget.onListingCreated,
@@ -319,11 +387,12 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
-                    child: _Pagination(
-                      page: _page,
-                      totalPages: _totalPages,
-                      previous: _page > 1 ? () => _load(page: _page - 1) : null,
-                      next: _page < _totalPages || _hasMore
+                    child: _LoadMoreProducts(
+                      loadedProducts: products.length,
+                      totalProducts: _totalProducts,
+                      loading: _loadingMore,
+                      error: _loadMoreError,
+                      onPressed: _page < _totalPages || _hasMore
                           ? () => _load(page: _page + 1)
                           : null,
                     ),
@@ -340,6 +409,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
 
 class _SupplierProductCard extends StatelessWidget {
   const _SupplierProductCard({
+    super.key,
     required this.product,
     required this.digitalPaymentsEnabled,
     required this.onListingCreated,
@@ -973,45 +1043,61 @@ class _CatalogueLoading extends StatelessWidget {
   }
 }
 
-class _Pagination extends StatelessWidget {
-  const _Pagination({
-    required this.page,
-    required this.totalPages,
-    required this.previous,
-    required this.next,
+class _LoadMoreProducts extends StatelessWidget {
+  const _LoadMoreProducts({
+    required this.loadedProducts,
+    required this.totalProducts,
+    required this.loading,
+    required this.error,
+    required this.onPressed,
   });
 
-  final int page;
-  final int totalPages;
-  final VoidCallback? previous;
-  final VoidCallback? next;
+  final int loadedProducts;
+  final int totalProducts;
+  final bool loading;
+  final String? error;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: previous,
-              icon: const Icon(Icons.chevron_left),
-              label: const Text('Previous'),
-            ),
+    if (onPressed == null && error == null) {
+      return Text(
+        '$loadedProducts products loaded',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+    return Column(
+      children: [
+        if (error != null) ...[
+          Text(
+            'Could not load more products.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Text('$page / $totalPages'),
-          ),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: next,
-              icon: const Icon(Icons.chevron_right),
-              label: const Text('Next'),
-            ),
-          ),
+          const SizedBox(height: 8),
         ],
-      ),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            key: const Key('catalog-load-more'),
+            onPressed: loading ? null : onPressed,
+            icon: loading
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.add_rounded),
+            label: Text(
+              loading
+                  ? 'Loading products…'
+                  : totalProducts > loadedProducts
+                      ? 'Load more products'
+                      : 'Try again',
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

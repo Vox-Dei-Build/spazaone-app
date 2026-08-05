@@ -474,9 +474,11 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           orElse: () => {},
         );
         final content = template['channels']?['whatsapp']?['templateContent'];
+        final smsContent = template['channels']?['sms']?['templateContent'];
         final mediaUrl = template['channels']?['whatsapp']?['mediaUrl'];
         return ReviewAndPricingStep(
           templateContent: content,
+          smsContent: smsContent,
           mediaUrl: mediaUrl,
           shopName: vm.shopName,
           sendWhatsApp: sendWhatsApp,
