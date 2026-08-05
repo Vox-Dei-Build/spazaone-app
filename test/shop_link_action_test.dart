@@ -26,7 +26,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Shop link'), findsOneWidget);
+    expect(find.text('Shop'), findsOneWidget);
     expect(find.byType(FaIcon), findsOneWidget);
     expect(
       tester.widget<FaIcon>(find.byType(FaIcon)).icon,
@@ -42,7 +42,9 @@ void main() {
     expect(semantics.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('Shop link'));
+    expect(tester.getSize(find.byType(ShopLinkAction)), const Size(48, 48));
+
+    await tester.tap(find.text('Shop'));
     expect(taps, 1);
   });
 }

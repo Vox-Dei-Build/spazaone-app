@@ -26,27 +26,36 @@ class ShopLinkAction extends StatelessWidget {
       excludeSemantics: true,
       child: Tooltip(
         message: 'Open your WhatsApp ordering link',
-        child: TextButton.icon(
-          onPressed: onPressed,
-          icon: const FaIcon(
-            FontAwesomeIcons.whatsapp,
-            size: 17,
-          ),
-          label: const Text('Shop link'),
-          style: TextButton.styleFrom(
-            foregroundColor: primary,
-            backgroundColor: primary.withValues(alpha: 0.08),
-            minimumSize: const Size(0, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            visualDensity: VisualDensity.compact,
-            tapTargetSize: MaterialTapTargetSize.padded,
-            shape: RoundedRectangleBorder(
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Material(
+            color: primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: onPressed,
               borderRadius: BorderRadius.circular(14),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.1,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FaIcon(
+                    FontAwesomeIcons.whatsapp,
+                    size: 18,
+                    color: primary,
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    'Shop',
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: primary,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
