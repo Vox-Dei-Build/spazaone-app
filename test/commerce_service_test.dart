@@ -3,6 +3,21 @@ import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/services/commerce_service.dart';
 
 void main() {
+  test('debug catalogue routing stays isolated from stable callables', () {
+    expect(
+      dropshipCallableName('searchCjSupplierCatalog', useV2: false),
+      'searchCjSupplierCatalog',
+    );
+    expect(
+      dropshipCallableName('searchCjSupplierCatalog', useV2: true),
+      'searchCjSupplierCatalogV2',
+    );
+    expect(
+      dropshipCallableName('createDropshipListing', useV2: true),
+      'createDropshipListingV2',
+    );
+  });
+
   CjCatalogProduct catalogProduct({
     String deliverableVariantId = 'variant-za',
     int productCostMinor = 10000,

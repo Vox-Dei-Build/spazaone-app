@@ -90,11 +90,16 @@ export * from "./ecommerce/getMerchantCatalogBotHttp";
 /* ---- Dropshipping commerce (separate from manual Sales) ---- */
 export {
   searchCjSupplierCatalog,
+  searchCjSupplierCatalog as searchCjSupplierCatalogV2,
   getCjSupplierProduct,
+  getCjSupplierProduct as getCjSupplierProductV2,
   quoteCjSupplierVariant,
 } from "./commerce/cjCatalog";
 export { syncCjSupplierCatalog } from "./commerce/cjCatalogWorker";
-export { createDropshipListing } from "./commerce/createDropshipListing";
+export {
+  createDropshipListing,
+  createDropshipListing as createDropshipListingV2,
+} from "./commerce/createDropshipListing";
 export {
   createCommerceOrder,
   verifyCommercePaystackTransaction,

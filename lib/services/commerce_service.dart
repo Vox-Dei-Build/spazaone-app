@@ -8,6 +8,14 @@ import 'package:pasella/utils/phone_util.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+const _useDropshipCatalogV2 = bool.fromEnvironment(
+  'DROPSHIP_CATALOG_V2',
+  defaultValue: false,
+);
+
+String dropshipCallableName(String stableName, {bool? useV2}) =>
+    (useV2 ?? _useDropshipCatalogV2) ? '${stableName}V2' : stableName;
+
 class DropshipListingResult {
   const DropshipListingResult({
     required this.listingId,
@@ -35,8 +43,9 @@ class CommerceService {
     int page = 1,
     String cursor = '',
   }) async {
-    final result =
-        await _functions.httpsCallable('searchCjSupplierCatalog').call({
+    final result = await _functions
+        .httpsCallable(dropshipCallableName('searchCjSupplierCatalog'))
+        .call({
       'storeId': StoreSession.instance.storeId,
       'query': query,
       'page': page,
@@ -50,7 +59,9 @@ class CommerceService {
     String productId, {
     String preferredVariantId = '',
   }) async {
-    final result = await _functions.httpsCallable('getCjSupplierProduct').call({
+    final result = await _functions
+        .httpsCallable(dropshipCallableName('getCjSupplierProduct'))
+        .call({
       'storeId': StoreSession.instance.storeId,
       'productId': productId,
       if (preferredVariantId.isNotEmpty)
@@ -66,8 +77,9 @@ class CommerceService {
     required String supplierVariantId,
     required int markupMinor,
   }) async {
-    final result =
-        await _functions.httpsCallable('createDropshipListing').call({
+    final result = await _functions
+        .httpsCallable(dropshipCallableName('createDropshipListing'))
+        .call({
       'storeId': StoreSession.instance.storeId,
       'supplierProductId': supplierProductId,
       'supplierVariantId': supplierVariantId,
