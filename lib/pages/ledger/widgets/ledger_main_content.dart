@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
 import 'package:pasella/pages/ledger/widgets/customer_tab.dart';
-import 'package:pasella/pages/ledger/widgets/shop_link_action.dart';
-import 'package:pasella/pages/settings/share/share.dart';
-import 'package:pasella/shared/widgets/page_header.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_tab_bar_with_filter.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
+import 'package:pasella/shared/widgets/primary_workspace_header.dart';
 import 'package:provider/provider.dart';
 
 class LedgerMainContent extends StatelessWidget {
@@ -40,18 +38,8 @@ class LedgerMainContent extends StatelessWidget {
         return Column(
           children: [
             SizedBox(height: SizeConfig.heightMultiplier * 2),
-            PageHeader(
-              actionWidget: ShopLinkAction(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SharePage(
-                        source: 'customers_header',
-                      ),
-                    ),
-                  );
-                },
-              ),
+            const PrimaryWorkspaceHeader(
+              shareSource: 'customers_header',
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             LedgerTabBarWithFilter(tabIndexNotifier: tabIndexNotifier),

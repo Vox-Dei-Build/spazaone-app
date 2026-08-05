@@ -13,7 +13,7 @@ class ConnectivityIndicator extends StatefulWidget {
   const ConnectivityIndicator({super.key});
 
   @override
-  _ConnectivityIndicatorState createState() => _ConnectivityIndicatorState();
+  State<ConnectivityIndicator> createState() => _ConnectivityIndicatorState();
 }
 
 class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
@@ -49,7 +49,7 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
     try {
       result = await _connectivity.checkConnectivity();
     } catch (e) {
-      print("Couldn't check connectivity status: $e");
+      debugPrint("Couldn't check connectivity status: $e");
     }
     if (!mounted) return;
     return _updateConnectionStatus(result);
@@ -122,15 +122,24 @@ class _ConnectivityIndicatorState extends State<ConnectivityIndicator> {
             ? 'Online — changes can sync to the cloud.'
             : 'Offline — changes stay on this device until Spaza One can reach the cloud.';
 
-    return Tooltip(
-      message: tooltip,
-      triggerMode: TooltipTriggerMode.tap,
-      showDuration: const Duration(seconds: 3),
-      child: Icon(
-        icon,
-        color: color,
-        size: SizeConfig.imageSizeMultiplier * 5,
-        semanticLabel: label,
+    return Semantics(
+      label: label,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: tooltip,
+        triggerMode: TooltipTriggerMode.tap,
+        showDuration: const Duration(seconds: 3),
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Icon(
+              icon,
+              color: color,
+              size: SizeConfig.imageSizeMultiplier * 5,
+            ),
+          ),
+        ),
       ),
     );
   }

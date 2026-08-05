@@ -9,6 +9,7 @@ import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
+import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
@@ -158,16 +159,20 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
               child: Column(
                 children: [
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  SalesPageHeader(
-                    showMarketingHelp: _mainController.index == 1,
-                  ),
+                  const SalesPageHeader(),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  TabBar(
+                  ContextualTabBar(
                     controller: _mainController,
                     labelStyle: TextStyle(
                       fontSize: SizeConfig.textMultiplier * 1.8,
                     ),
-                    tabs: const [Tab(text: 'Sales'), Tab(text: 'Marketing')],
+                    tabs: const [
+                      Tab(text: 'Sales'),
+                      Tab(text: 'Marketing'),
+                    ],
+                    action: SalesHelpAction(
+                      showMarketingHelp: _mainController.index == 1,
+                    ),
                   ),
                   Expanded(
                     child: TabBarView(

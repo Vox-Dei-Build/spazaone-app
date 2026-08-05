@@ -4,8 +4,9 @@ import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
+import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
-import 'package:pasella/shared/widgets/page_header.dart';
+import 'package:pasella/shared/widgets/primary_workspace_header.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
@@ -81,76 +82,12 @@ class _StockPageState extends State<StockPage>
                   child: Column(
                     children: [
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      // Stock is the only page that needs BOTH a search
-                      // shortcut and a help/tutorial shortcut. Rendering
-                      // both as inline icons inside PageHeader pushed the
-                      // header into overflow on iPhone-class widths
-                      // (PageHeader was sized for ~360dp Android; iPhone
-                      // metrics for IconButton + the cumulative natural
-                      // width of brand + 2 page icons + wallet pill +
-                      // settings + connectivity tipped over). Collapse
-                      // the two page-scoped actions into a single kebab
-                      // menu so PageHeader still renders one inline
-                      // action slot like every other page does.
-                      //
-                      // PAS-UX-rel #5: the kebab lives in PageHeader's
-                      // `actionWidget` slot (mid-row, just left of the
-                      // wallet pill) so that Customers / Products /
-                      // Sales all expose their page-scoped action in
-                      // the same horizontal position. Putting it in
-                      // `trailingWidget` (after the connectivity
-                      // indicator) caused the wallet/settings/
-                      // connectivity cluster to visually shift as the
-                      // user navigated between the three tabs.
-                      PageHeader(
-                        actionWidget: PopupMenuButton<_StockHeaderAction>(
-                          tooltip: 'More',
-                          icon: Icon(
-                            Icons.more_vert,
-                            color: Colors.black,
-                            size: SizeConfig.imageSizeMultiplier * 5,
-                          ),
-                          onSelected: (action) {
-                            switch (action) {
-                              case _StockHeaderAction.search:
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const GlobalSearchPage(),
-                                  ),
-                                );
-                                break;
-                              case _StockHeaderAction.help:
-                                _openTutorial();
-                                break;
-                            }
-                          },
-                          itemBuilder: (context) =>
-                              const <PopupMenuEntry<_StockHeaderAction>>[
-                            PopupMenuItem(
-                              value: _StockHeaderAction.search,
-                              child: ListTile(
-                                leading: Icon(Icons.search),
-                                title: Text('Search products'),
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: _StockHeaderAction.help,
-                              child: ListTile(
-                                leading: Icon(Icons.help_outline),
-                                title: Text('How to capture stock'),
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                              ),
-                            ),
-                          ],
-                        ),
+                      const PrimaryWorkspaceHeader(
+                        shareSource: 'products_header',
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      TabBar(
+                      ContextualTabBar(
                         controller: _tabController,
-                        isScrollable: false,
                         labelPadding: EdgeInsets.zero,
                         labelStyle: TextStyle(
                           fontSize: SizeConfig.textMultiplier * 1.45,
@@ -158,14 +95,23 @@ class _StockPageState extends State<StockPage>
                         ),
                         unselectedLabelStyle: TextStyle(
                           fontSize: SizeConfig.textMultiplier * 1.45,
-                          fontWeight: FontWeight
-                              .normal, // Font weight for unselected tabs
+                          fontWeight: FontWeight.normal,
                         ),
                         tabs: const [
                           Tab(text: 'PRODUCTS'),
                           Tab(text: 'CATALOGUE'),
                           Tab(text: 'REPORT'),
                         ],
+                        action: _StockToolsMenu(
+                          onSearch: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const GlobalSearchPage(),
+                              ),
+                            );
+                          },
+                          onHelp: _openTutorial,
+                        ),
                       ),
                       Expanded(
                         child: TabBarView(
@@ -261,3 +207,59 @@ class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
 /// Kept private to this file because it has no meaning outside the
 /// header's PopupMenuButton selection.
 enum _StockHeaderAction { search, help }
+
+class _StockToolsMenu extends StatelessWidget {
+  const _StockToolsMenu({
+    required this.onSearch,
+    required this.onHelp,
+  });
+
+  final VoidCallback onSearch;
+  final VoidCallback onHelp;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: PopupMenuButton<_StockHeaderAction>(
+        tooltip: 'Product tools',
+        icon: Icon(
+          Icons.more_horiz_rounded,
+          color: Colors.black87,
+          size: SizeConfig.imageSizeMultiplier * 5,
+        ),
+        onSelected: (action) {
+          switch (action) {
+            case _StockHeaderAction.search:
+              onSearch();
+              break;
+            case _StockHeaderAction.help:
+              onHelp();
+              break;
+          }
+        },
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: _StockHeaderAction.search,
+            child: ListTile(
+              leading: Icon(Icons.search),
+              title: Text('Search products'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
+          ),
+          PopupMenuItem(
+            value: _StockHeaderAction.help,
+            child: ListTile(
+              leading: Icon(Icons.help_outline),
+              title: Text('How to capture stock'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
