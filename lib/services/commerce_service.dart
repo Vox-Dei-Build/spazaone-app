@@ -160,6 +160,21 @@ String commerceErrorMessage(Object error) {
   return 'Spaza One could not complete that action. Please try again.';
 }
 
+/// Whether a product-details enrichment failure is safe to retry later.
+///
+/// Catalogue cards already contain a bounded, server-verified snapshot. Only
+/// provider capacity or transport failures may temporarily fall back to it;
+/// authentication, permission, not-found, failed-precondition and unknown
+/// errors fail closed because they may be authoritative.
+bool isTransientCommerceDetailsError(Object error) {
+  if (error is! FirebaseFunctionsException) return false;
+  return const {
+    'unavailable',
+    'deadline-exceeded',
+    'resource-exhausted',
+  }.contains(error.code);
+}
+
 String friendlyCommerceErrorMessage(String? providerMessage) {
   final message = providerMessage?.trim() ?? '';
   if (message.isEmpty) {

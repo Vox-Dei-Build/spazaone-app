@@ -22,6 +22,14 @@ const REFRESH_QUEUE_LEASE_MS = 6 * 60 * 60 * 1000;
 // seller's browse request.
 export const MAX_SUPPLIER_PAGES_PER_QUERY = 50;
 export const CATALOG_DISCOVERY_TARGET = CATALOG_PAGE_SIZE * 4;
+// First-page and cursor callers scan at most ten raw catalogue pages per
+// request. Legacy page-number callers after page one may need to rescan from
+// the beginning to skip *usable* rather than raw rows, so they receive a
+// separately bounded twenty-page budget. A one-document raw probe can follow
+// either cap to distinguish real exhaustion without skipping that document.
+// Neither path calls CJ or introduces a Firestore index dependency.
+export const CATALOG_CURSOR_SCAN_LIMIT = CATALOG_PAGE_SIZE * 10;
+export const CATALOG_LEGACY_SCAN_LIMIT = CATALOG_PAGE_SIZE * 20;
 
 export type CatalogJobKind = "discover_query" | "refresh_product";
 export type CatalogQueueBand = "demand" | "refresh" | "background";
@@ -65,45 +73,132 @@ export function catalogProductRef(productId: string) {
   return db.doc(`${CATALOG_COLLECTION}/cj_${productId}`);
 }
 
+export function catalogSearchNeedsDiscovery(result: {
+  totalProducts: number;
+  totalProductsExact: boolean;
+  scanLimited: boolean;
+  hasMore: boolean;
+  products: readonly unknown[];
+}): boolean {
+  return (
+    result.scanLimited ||
+    (result.totalProductsExact &&
+      result.totalProducts < CATALOG_DISCOVERY_TARGET) ||
+    (!result.hasMore && result.products.length < CATALOG_PAGE_SIZE)
+  );
+}
+
 export async function searchCachedCatalog(
   query: string,
   page: number,
   cursor = "",
 ) {
+  const nowMs = Date.now();
   const words = catalogQueryWords(query);
   const primary = [...words].sort((a, b) => b.length - a.length)[0];
   const collection = db.collection(CATALOG_COLLECTION);
   const catalogQuery = primary
     ? collection.where("activeSearchTokens", "array-contains", primary)
     : collection.where("active", "==", true);
-  const countSnapshot = await catalogQuery.count().get();
-  const totalProducts = Number(countSnapshot.data().count ?? 0);
-  const totalPages = Math.max(1, Math.ceil(totalProducts / CATALOG_PAGE_SIZE));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  let pageQuery = catalogQuery.orderBy(FieldPath.documentId());
-  if (cursor) {
-    pageQuery = pageQuery.startAfter(cursor);
-  } else if (safePage > 1) {
-    // Released apps know only page numbers. Keep their path compatible while
-    // new apps use the cursor response and avoid billed deep offsets.
-    pageQuery = pageQuery.offset((safePage - 1) * CATALOG_PAGE_SIZE);
+  const safePage = Math.max(1, page);
+  const usableToSkip = cursor ? 0 : (safePage - 1) * CATALOG_PAGE_SIZE;
+  const scanLimit =
+    cursor || safePage === 1
+      ? CATALOG_CURSOR_SCAN_LIMIT
+      : CATALOG_LEGACY_SCAN_LIMIT;
+  const products: ReturnType<typeof catalogPreview>[] = [];
+  let skippedUsable = 0;
+  let usableScanned = 0;
+  let rawDocumentsRead = 0;
+  let lastProcessedRawId = cursor;
+  let pageEndCursor = "";
+  let foundUsableLookahead = false;
+  let exhausted = false;
+  let rawProbePerformed = false;
+
+  while (rawDocumentsRead < scanLimit && !foundUsableLookahead && !exhausted) {
+    const batchLimit = Math.min(
+      CATALOG_PAGE_SIZE,
+      scanLimit - rawDocumentsRead,
+    );
+    let batchQuery = catalogQuery
+      .orderBy(FieldPath.documentId())
+      .limit(batchLimit);
+    if (lastProcessedRawId) {
+      batchQuery = batchQuery.startAfter(lastProcessedRawId);
+    }
+    const snapshot = await batchQuery.get();
+    rawDocumentsRead += snapshot.size;
+    if (snapshot.empty) {
+      exhausted = true;
+      break;
+    }
+
+    for (const document of snapshot.docs) {
+      lastProcessedRawId = document.id;
+      const value = document.data() as Partial<CjCatalogCacheDocument>;
+      if (!isUsableCatalogDocument(value, nowMs)) continue;
+      usableScanned += 1;
+      if (skippedUsable < usableToSkip) {
+        skippedUsable += 1;
+        continue;
+      }
+      if (products.length < CATALOG_PAGE_SIZE) {
+        products.push(catalogPreview(value));
+        if (products.length === CATALOG_PAGE_SIZE) {
+          pageEndCursor = document.id;
+        }
+        continue;
+      }
+      foundUsableLookahead = true;
+      break;
+    }
+    if (!foundUsableLookahead && snapshot.size < batchLimit) {
+      exhausted = true;
+    }
   }
-  const snapshot = await pageQuery.limit(CATALOG_PAGE_SIZE + 1).get();
-  const pageDocuments = snapshot.docs.slice(0, CATALOG_PAGE_SIZE);
-  const products = pageDocuments
-    .map((doc) => doc.data() as Partial<CjCatalogCacheDocument>)
-    .filter(isUsableCatalogDocument)
-    .map(catalogPreview);
-  const hasMore = snapshot.docs.length > CATALOG_PAGE_SIZE;
+
+  if (!foundUsableLookahead && !exhausted && rawDocumentsRead >= scanLimit) {
+    rawProbePerformed = true;
+    let probeQuery = catalogQuery.orderBy(FieldPath.documentId()).limit(1);
+    if (lastProcessedRawId) {
+      probeQuery = probeQuery.startAfter(lastProcessedRawId);
+    }
+    const probe = await probeQuery.get();
+    rawDocumentsRead += probe.size;
+    // Do not process or advance past a present probe: it may be the next
+    // usable row and belongs to the continuation request.
+    exhausted = probe.empty;
+  }
+
+  const scanLimited = !foundUsableLookahead && !exhausted;
+  const hasMore = foundUsableLookahead || scanLimited;
+  const nextCursor = hasMore
+    ? foundUsableLookahead
+      ? pageEndCursor
+      : lastProcessedRawId
+    : "";
+  // A cursor begins mid-collection, so it cannot prove a global exact count.
+  // A bounded scan also cannot. Zero explicitly means unknown to released app
+  // clients, while the lower bound remains available to newer diagnostics.
+  const totalProductsExact = !cursor && exhausted;
+  const totalProducts = totalProductsExact ? usableScanned : 0;
+  const usableProductsLowerBound = usableScanned;
+  const totalPages = totalProductsExact
+    ? Math.max(1, Math.ceil(totalProducts / CATALOG_PAGE_SIZE))
+    : safePage + (hasMore ? 1 : 0);
   return {
     products,
     page: safePage,
     totalPages,
     totalProducts,
+    totalProductsExact,
+    usableProductsLowerBound,
     hasMore,
-    nextCursor: hasMore
-      ? String(pageDocuments[pageDocuments.length - 1]?.id ?? "")
-      : "",
+    nextCursor,
+    scanLimited,
+    rawDocumentsRead,
+    rawProbePerformed,
   };
 }
 

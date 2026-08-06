@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCatalogCacheDocument,
+  CATALOG_SNAPSHOT_MAX_AGE_MS,
+  catalogSnapshotIsFresh,
   catalogDetailsPayload,
   catalogQueryWords,
   catalogSearchTokens,
@@ -111,7 +113,56 @@ test("catalog cache snapshots the verified ZA quote and promotes its variant", (
   assert.equal(payload.variants[0].variantId, "variant-black");
   assert.equal(payload.recommendedQuote.landedCostMinor, 13_905);
   assert.equal(payload.catalogueSnapshot, true);
-  assert.equal(isUsableCatalogDocument(document), true);
+  assert.equal(
+    isUsableCatalogDocument(
+      document,
+      Date.parse(document.deliveryVerifiedAt) + 24 * 60 * 60 * 1000,
+    ),
+    true,
+  );
+});
+
+test("catalog snapshots have a bounded seven-day delivery grace", () => {
+  const { document } = fixture();
+  const verifiedAtMs = Date.parse(document.deliveryVerifiedAt);
+
+  assert.equal(CATALOG_SNAPSHOT_MAX_AGE_MS, 7 * 24 * 60 * 60 * 1000);
+  assert.equal(
+    catalogSnapshotIsFresh(
+      document.deliveryVerifiedAt,
+      verifiedAtMs + CATALOG_SNAPSHOT_MAX_AGE_MS,
+    ),
+    true,
+  );
+  assert.equal(
+    isUsableCatalogDocument(
+      document,
+      verifiedAtMs + CATALOG_SNAPSHOT_MAX_AGE_MS,
+    ),
+    true,
+  );
+  assert.equal(
+    isUsableCatalogDocument(
+      document,
+      verifiedAtMs + CATALOG_SNAPSHOT_MAX_AGE_MS + 1,
+    ),
+    false,
+  );
+  assert.equal(isUsableCatalogDocument(document, verifiedAtMs - 1), false);
+  assert.equal(
+    isUsableCatalogDocument({
+      ...document,
+      deliveryVerifiedAt: "not-a-date",
+    }),
+    false,
+  );
+  assert.equal(
+    isUsableCatalogDocument({
+      ...document,
+      deliveryVerifiedAt: new Date(verifiedAtMs + 1).toISOString(),
+    }),
+    false,
+  );
 });
 
 test("catalog cache rejects mismatched products and unusable prices", () => {

@@ -14,6 +14,9 @@ class CjCatalogPage {
     required this.nextCursor,
     required this.catalogueRefreshing,
     required this.digitalPaymentsEnabled,
+    this.totalProductsExact = true,
+    this.usableProductsLowerBound = 0,
+    this.scanLimited = false,
   });
 
   final List<CjCatalogProduct> products;
@@ -24,6 +27,9 @@ class CjCatalogPage {
   final String nextCursor;
   final bool catalogueRefreshing;
   final bool digitalPaymentsEnabled;
+  final bool totalProductsExact;
+  final int usableProductsLowerBound;
+  final bool scanLimited;
 
   factory CjCatalogPage.fromJson(Map<String, dynamic> data) => CjCatalogPage(
         products: (data['products'] as List? ?? const [])
@@ -38,6 +44,14 @@ class CjCatalogPage {
         nextCursor: data['nextCursor']?.toString() ?? '',
         catalogueRefreshing: data['catalogueRefreshing'] == true,
         digitalPaymentsEnabled: data['digitalPaymentsEnabled'] == true,
+        // Older Functions responses calculated and exposed a total directly.
+        // New bounded scans mark unknown totals explicitly instead of treating
+        // stale raw Firestore rows as sellable products.
+        totalProductsExact: data.containsKey('totalProductsExact')
+            ? data['totalProductsExact'] == true
+            : true,
+        usableProductsLowerBound: _asInt(data['usableProductsLowerBound']),
+        scanLimited: data['scanLimited'] == true,
       );
 }
 
@@ -237,6 +251,84 @@ CjVariant? _variantWithId(List<CjVariant> variants, String id) {
   return null;
 }
 
+/// Hard safety ceiling for a catalogue delivery quote.
+///
+/// The worker normally refreshes positive quotes every 72 hours. Seven days
+/// provides a bounded grace period for a delayed worker without allowing an
+/// indefinitely old stock/freight result to be presented as verified.
+const Duration cjCatalogSnapshotMaximumAge = Duration(days: 7);
+
+bool isCjCatalogSnapshotFresh(
+  String deliveryVerifiedAt, {
+  DateTime? now,
+}) {
+  final verifiedAt = DateTime.tryParse(deliveryVerifiedAt)?.toUtc();
+  final current = (now ?? DateTime.now()).toUtc();
+  if (verifiedAt == null || verifiedAt.isAfter(current)) return false;
+  return current.difference(verifiedAt) <= cjCatalogSnapshotMaximumAge;
+}
+
+/// Builds the listing estimate already verified for a catalogue card.
+///
+/// The catalogue endpoint returns only products backed by a positive cached
+/// stock and South Africa freight quote. Opening a product may fetch richer
+/// details (such as the option label), but that second request is not an
+/// availability check and must not invalidate the verified card when it is
+/// slow or temporarily unavailable. Listing creation still validates this
+/// exact product/variant against the server cache before writing anything.
+CjListingEstimate? resolveCjCatalogSnapshotEstimate({
+  required CjCatalogProduct catalogProduct,
+  CjVariant? verifiedVariant,
+  DateTime? now,
+}) {
+  final cachedVariantId = catalogProduct.deliverableVariantId;
+  final usableCatalogSnapshot = catalogProduct.id.isNotEmpty &&
+      cachedVariantId.isNotEmpty &&
+      catalogProduct.estimatedProductCostMinor > 0 &&
+      catalogProduct.estimatedDeliveryCostMinor >= 0 &&
+      catalogProduct.estimatedLandedCostMinor ==
+          catalogProduct.estimatedProductCostMinor +
+              catalogProduct.estimatedDeliveryCostMinor &&
+      isCjCatalogSnapshotFresh(
+        catalogProduct.deliveryVerifiedAt,
+        now: now,
+      );
+  if (!usableCatalogSnapshot) return null;
+
+  final candidate = verifiedVariant;
+  final cachedVariant = candidate != null &&
+          candidate.id == cachedVariantId &&
+          (candidate.productId.isEmpty ||
+              candidate.productId == catalogProduct.id)
+      ? candidate
+      : CjVariant(
+          id: cachedVariantId,
+          productId: catalogProduct.id,
+          sku: '',
+          name: 'Recommended option',
+          option: '',
+          image: catalogProduct.image,
+          productCostUsdMinor: catalogProduct.productCostUsdMinor,
+          estimatedProductCostMinor: catalogProduct.estimatedProductCostMinor,
+        );
+  return CjListingEstimate(
+    variant: cachedVariant,
+    quote: CjLandedQuote(
+      variant: cachedVariant,
+      originCountryCode: '',
+      stock: 0,
+      logisticName: '',
+      logisticAging: catalogProduct.logisticAging,
+      productCostMinor: catalogProduct.estimatedProductCostMinor,
+      shippingCostMinor: catalogProduct.estimatedDeliveryCostMinor,
+      landedCostMinor: catalogProduct.estimatedLandedCostMinor,
+      fxRateMicros: 0,
+      fxBufferBps: 0,
+    ),
+    source: CjListingEstimateSource.catalogSnapshot,
+  );
+}
+
 /// Resolves the single delivery-verified option shown when creating a listing.
 ///
 /// Newer servers include a current recommended quote. During a rolling backend
@@ -248,8 +340,15 @@ CjVariant? _variantWithId(List<CjVariant> variants, String id) {
 CjListingEstimate? resolveCjListingEstimate({
   required CjCatalogProduct catalogProduct,
   required CjProductDetails details,
+  DateTime? now,
 }) {
   if (details.id.isEmpty || details.id != catalogProduct.id) return null;
+  if (!isCjCatalogSnapshotFresh(
+    catalogProduct.deliveryVerifiedAt,
+    now: now,
+  )) {
+    return null;
+  }
   final recommendedQuote = details.recommendedQuote;
   final recommendedVariantId = recommendedQuote?.variant.id ?? '';
   final recommendedProductId = recommendedQuote?.variant.productId ?? '';
@@ -269,40 +368,12 @@ CjListingEstimate? resolveCjListingEstimate({
     );
   }
 
-  final cachedVariantId = catalogProduct.deliverableVariantId;
-  final usableCatalogSnapshot = cachedVariantId.isNotEmpty &&
-      catalogProduct.estimatedProductCostMinor > 0 &&
-      catalogProduct.estimatedDeliveryCostMinor >= 0 &&
-      catalogProduct.estimatedLandedCostMinor ==
-          catalogProduct.estimatedProductCostMinor +
-              catalogProduct.estimatedDeliveryCostMinor;
-  if (!usableCatalogSnapshot) return null;
-
-  final cachedVariant = _variantWithId(details.variants, cachedVariantId) ??
-      CjVariant(
-        id: cachedVariantId,
-        productId: catalogProduct.id,
-        sku: '',
-        name: 'Recommended option',
-        option: '',
-        image: catalogProduct.image,
-        productCostUsdMinor: catalogProduct.productCostUsdMinor,
-        estimatedProductCostMinor: catalogProduct.estimatedProductCostMinor,
-      );
-  return CjListingEstimate(
-    variant: cachedVariant,
-    quote: CjLandedQuote(
-      variant: cachedVariant,
-      originCountryCode: '',
-      stock: 0,
-      logisticName: '',
-      logisticAging: catalogProduct.logisticAging,
-      productCostMinor: catalogProduct.estimatedProductCostMinor,
-      shippingCostMinor: catalogProduct.estimatedDeliveryCostMinor,
-      landedCostMinor: catalogProduct.estimatedLandedCostMinor,
-      fxRateMicros: 0,
-      fxBufferBps: 0,
+  return resolveCjCatalogSnapshotEstimate(
+    catalogProduct: catalogProduct,
+    now: now,
+    verifiedVariant: _variantWithId(
+      details.variants,
+      catalogProduct.deliverableVariantId,
     ),
-    source: CjListingEstimateSource.catalogSnapshot,
   );
 }

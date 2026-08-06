@@ -12,6 +12,10 @@ import type {
 export const CATALOG_PAGE_SIZE = 24;
 export const CATALOG_REFRESH_MS = 72 * 60 * 60 * 1000;
 export const CATALOG_NEGATIVE_REFRESH_MS = 24 * 60 * 60 * 1000;
+// Positive quotes normally refresh every 72 hours. Allow a bounded grace
+// period for delayed workers, but never expose or sell from an indefinitely
+// old South Africa stock/freight result.
+export const CATALOG_SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type CjQuoteSnapshot = Omit<CjLandedQuote, "product">;
 
@@ -49,6 +53,18 @@ function quoteIsInternallyConsistent(
     Number.isSafeInteger(quote.landedCostMinor) &&
     Number(quote.landedCostMinor) ===
       Number(quote.productCostMinor) + Number(quote.shippingCostMinor)
+  );
+}
+
+export function catalogSnapshotIsFresh(
+  deliveryVerifiedAt: unknown,
+  nowMs = Date.now(),
+): boolean {
+  const verifiedAtMs = Date.parse(String(deliveryVerifiedAt ?? ""));
+  return (
+    Number.isFinite(verifiedAtMs) &&
+    verifiedAtMs <= nowMs &&
+    nowMs - verifiedAtMs <= CATALOG_SNAPSHOT_MAX_AGE_MS
   );
 }
 
@@ -184,12 +200,15 @@ export function buildCatalogCacheDocument(
 
 export function isUsableCatalogDocument(
   value: Partial<CjCatalogCacheDocument>,
+  nowMs = Date.now(),
 ): value is CjCatalogCacheDocument {
   return (
     value.active === true &&
     Boolean(value.productId) &&
     Boolean(value.deliverableVariantId) &&
     Number(value.estimatedLandedCostMinor) > 0 &&
+    value.deliveryVerifiedAt === value.recommendedQuote?.verifiedAt &&
+    catalogSnapshotIsFresh(value.deliveryVerifiedAt, nowMs) &&
     value.deliverableVariantId === value.recommendedQuote?.variant.variantId &&
     quoteIsInternallyConsistent(
       String(value.productId ?? ""),

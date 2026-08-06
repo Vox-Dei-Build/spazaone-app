@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
@@ -7,6 +8,11 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
+
+class _FunctionsError extends FirebaseFunctionsException {
+  _FunctionsError(String code)
+      : super(code: code, message: 'Supplier details failed');
+}
 
 void main() {
   CjCatalogProduct supplierProduct(int index) => CjCatalogProduct(
@@ -21,7 +27,10 @@ void main() {
         estimatedDeliveryCostMinor: 900,
         estimatedLandedCostMinor: 2700,
         logisticAging: '8-14 days',
-        deliveryVerifiedAt: '2026-08-05T10:00:00.000Z',
+        deliveryVerifiedAt: DateTime.now()
+            .toUtc()
+            .subtract(const Duration(hours: 1))
+            .toIso8601String(),
       );
 
   test('catalog pages append without duplicating products', () {
@@ -82,6 +91,102 @@ void main() {
 
     expect(requestedPages, [1, 2]);
     expect(find.text('30 products'), findsOneWidget);
+  });
+
+  testWidgets('unknown catalogue total still labels continuation as load more',
+      (tester) async {
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async =>
+        CjCatalogPage(
+          products: [supplierProduct(80)],
+          page: 1,
+          totalPages: 2,
+          totalProducts: 0,
+          totalProductsExact: false,
+          usableProductsLowerBound: 2,
+          hasMore: true,
+          nextCursor: 'raw_after_product_80',
+          catalogueRefreshing: true,
+          digitalPaymentsEnabled: false,
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('catalog-load-more')),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+
+    expect(find.text('1 product'), findsOneWidget);
+    expect(find.text('Load more products'), findsOneWidget);
+    expect(find.text('Try again'), findsNothing);
+  });
+
+  testWidgets('empty bounded scan continues from its server cursor',
+      (tester) async {
+    final requests = <({int page, String cursor})>[];
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async {
+      requests.add((page: page, cursor: cursor));
+      if (page == 1) {
+        return const CjCatalogPage(
+          products: [],
+          page: 1,
+          totalPages: 2,
+          totalProducts: 0,
+          totalProductsExact: false,
+          scanLimited: true,
+          hasMore: true,
+          nextCursor: 'last_checked_stale_raw_doc',
+          catalogueRefreshing: true,
+          digitalPaymentsEnabled: false,
+        );
+      }
+      return CjCatalogPage(
+        products: [supplierProduct(81)],
+        page: 2,
+        totalPages: 2,
+        totalProducts: 0,
+        totalProductsExact: false,
+        usableProductsLowerBound: 1,
+        hasMore: false,
+        nextCursor: '',
+        catalogueRefreshing: true,
+        digitalPaymentsEnabled: false,
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('More products available'), findsOneWidget);
+    expect(find.text('Adding matching products'), findsNothing);
+    await tester.tap(find.text('Continue loading products'));
+    await tester.pumpAndSettle();
+
+    expect(requests, [
+      (page: 1, cursor: ''),
+      (page: 2, cursor: 'last_checked_stale_raw_doc'),
+    ]);
+    expect(
+      find.byKey(const Key('supplier-product-product-81')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('catalogue ignores an old load-more response after a new search',
@@ -154,6 +259,101 @@ void main() {
     expect(find.byKey(const Key('supplier-product-product-2')), findsNothing);
     expect(
         find.byKey(const Key('supplier-product-product-99')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'verified catalogue card stays addable when details enrichment fails',
+      (tester) async {
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async =>
+        CjCatalogPage(
+          products: [supplierProduct(1)],
+          page: 1,
+          totalPages: 1,
+          totalProducts: 1,
+          hasMore: false,
+          nextCursor: '',
+          catalogueRefreshing: false,
+          digitalPaymentsEnabled: false,
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SupplierCatalogPage(
+            searchCatalog: search,
+            loadProductDetails: (_, __) async =>
+                throw _FunctionsError('unavailable'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('supplier-product-product-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Product unavailable right now'), findsNothing);
+    expect(find.byKey(const Key('dropship-markup-field')), findsOneWidget);
+    expect(find.text('Recommended option'), findsOneWidget);
+    expect(find.text('Add product'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('dropship-markup-field')),
+      '25.00',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    final addButton = tester.widget<ElevatedButton>(
+      find.widgetWithText(ElevatedButton, 'Add product'),
+    );
+    expect(addButton.onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('authoritative product not-found invalidates the listing sheet',
+      (tester) async {
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async =>
+        CjCatalogPage(
+          products: [supplierProduct(2)],
+          page: 1,
+          totalPages: 1,
+          totalProducts: 1,
+          hasMore: false,
+          nextCursor: '',
+          catalogueRefreshing: false,
+          digitalPaymentsEnabled: false,
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SupplierCatalogPage(
+            searchCatalog: search,
+            loadProductDetails: (_, __) async =>
+                throw _FunctionsError('not-found'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('supplier-product-product-2')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Product unavailable right now'), findsOneWidget);
+    expect(find.byKey(const Key('dropship-markup-field')), findsNothing);
+    expect(find.widgetWithText(ElevatedButton, 'Add product'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

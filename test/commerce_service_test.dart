@@ -1,8 +1,16 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/services/commerce_service.dart';
 
+class _FunctionsError extends FirebaseFunctionsException {
+  _FunctionsError(String code)
+      : super(code: code, message: 'Supplier details failed');
+}
+
 void main() {
+  final testNow = DateTime.utc(2026, 8, 6, 10);
+
   test('debug catalogue routing stays isolated from stable callables', () {
     expect(
       dropshipCallableName('searchCjSupplierCatalog', useV2: false),
@@ -15,6 +23,10 @@ void main() {
     expect(
       dropshipCallableName('createDropshipListing', useV2: true),
       'createDropshipListingV2',
+    );
+    expect(
+      dropshipCallableName('getCjSupplierProduct', useV2: true),
+      'getCjSupplierProductV2',
     );
   });
 
@@ -47,6 +59,9 @@ void main() {
       'totalProducts': 61,
       'hasMore': true,
       'nextCursor': 'cj_product_11',
+      'totalProductsExact': false,
+      'usableProductsLowerBound': 25,
+      'scanLimited': true,
       'catalogueRefreshing': true,
       'digitalPaymentsEnabled': false,
     });
@@ -54,6 +69,9 @@ void main() {
     expect(page.hasMore, isTrue);
     expect(page.totalProducts, 61);
     expect(page.nextCursor, 'cj_product_11');
+    expect(page.totalProductsExact, isFalse);
+    expect(page.usableProductsLowerBound, 25);
+    expect(page.scanLimited, isTrue);
     expect(page.catalogueRefreshing, isTrue);
   });
 
@@ -78,6 +96,27 @@ void main() {
       ),
       'That variant is currently out of stock.',
     );
+  });
+
+  test('only explicit temporary callable failures preserve a cached quote', () {
+    for (final code in [
+      'unavailable',
+      'deadline-exceeded',
+      'resource-exhausted',
+    ]) {
+      expect(isTransientCommerceDetailsError(_FunctionsError(code)), isTrue);
+    }
+    for (final code in [
+      'not-found',
+      'failed-precondition',
+      'permission-denied',
+      'unauthenticated',
+      'internal',
+      'unknown',
+    ]) {
+      expect(isTransientCommerceDetailsError(_FunctionsError(code)), isFalse);
+    }
+    expect(isTransientCommerceDetailsError(StateError('unknown')), isFalse);
   });
 
   test('product details retain the server-verified variant and quote', () {
@@ -137,6 +176,7 @@ void main() {
     final estimate = resolveCjListingEstimate(
       catalogProduct: catalogProduct(),
       details: details,
+      now: testNow,
     );
 
     expect(estimate, isNotNull);
@@ -146,6 +186,72 @@ void main() {
     expect(estimate.quote.productCostMinor, 10000);
     expect(estimate.quote.shippingCostMinor, 5000);
     expect(estimate.quote.landedCostMinor, 15000);
+  });
+
+  test('verified catalogue card is immediately usable without product details',
+      () {
+    final estimate = resolveCjCatalogSnapshotEstimate(
+      catalogProduct: catalogProduct(),
+      now: testNow,
+    );
+
+    expect(estimate, isNotNull);
+    expect(estimate!.usesCatalogSnapshot, isTrue);
+    expect(estimate.variant.id, 'variant-za');
+    expect(estimate.variant.productId, 'product-1');
+    expect(estimate.quote.productCostMinor, 10000);
+    expect(estimate.quote.shippingCostMinor, 5000);
+    expect(estimate.quote.landedCostMinor, 15000);
+  });
+
+  test('catalogue snapshot fails closed when its landed price is inconsistent',
+      () {
+    expect(
+      resolveCjCatalogSnapshotEstimate(
+        catalogProduct: catalogProduct(landedCostMinor: 14999),
+        now: testNow,
+      ),
+      isNull,
+    );
+    expect(
+      resolveCjCatalogSnapshotEstimate(
+        catalogProduct: catalogProduct(deliverableVariantId: ''),
+        now: testNow,
+      ),
+      isNull,
+    );
+  });
+
+  test('catalogue delivery snapshot has a deterministic seven-day ceiling', () {
+    final verifiedAt = DateTime.utc(2026, 8, 5, 10);
+    expect(cjCatalogSnapshotMaximumAge, const Duration(days: 7));
+    expect(
+      isCjCatalogSnapshotFresh(
+        verifiedAt.toIso8601String(),
+        now: verifiedAt.add(cjCatalogSnapshotMaximumAge),
+      ),
+      isTrue,
+    );
+    expect(
+      isCjCatalogSnapshotFresh(
+        verifiedAt.toIso8601String(),
+        now: verifiedAt
+            .add(cjCatalogSnapshotMaximumAge)
+            .add(const Duration(milliseconds: 1)),
+      ),
+      isFalse,
+    );
+    expect(
+      isCjCatalogSnapshotFresh(
+        verifiedAt.add(const Duration(milliseconds: 1)).toIso8601String(),
+        now: verifiedAt,
+      ),
+      isFalse,
+    );
+    expect(
+      isCjCatalogSnapshotFresh('not-a-date', now: verifiedAt),
+      isFalse,
+    );
   });
 
   test('new product response prefers its recommended quote', () {
@@ -182,6 +288,7 @@ void main() {
     final estimate = resolveCjListingEstimate(
       catalogProduct: catalogProduct(),
       details: details,
+      now: testNow,
     );
 
     expect(estimate, isNotNull);
@@ -208,6 +315,7 @@ void main() {
     final estimate = resolveCjListingEstimate(
       catalogProduct: catalogProduct(),
       details: details,
+      now: testNow,
     );
 
     expect(estimate, isNotNull);
@@ -235,10 +343,12 @@ void main() {
     final fallback = resolveCjListingEstimate(
       catalogProduct: catalogProduct(),
       details: details,
+      now: testNow,
     );
     final unavailable = resolveCjListingEstimate(
       catalogProduct: catalogProduct(landedCostMinor: 0),
       details: details,
+      now: testNow,
     );
 
     expect(fallback?.source, CjListingEstimateSource.catalogSnapshot);

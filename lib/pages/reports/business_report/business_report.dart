@@ -10,6 +10,7 @@ import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/report_date_filter_bar.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
+import 'package:pasella/shared/widgets/secondary_view_picker.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
@@ -146,71 +147,29 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                   children: [
                     Padding(
                       padding: EdgeInsets.symmetric(
-                        vertical: SizeConfig.heightMultiplier * 1,
+                        vertical: SizeConfig.heightMultiplier * 0.5,
                       ),
-                      child: Theme(
-                        data: Theme.of(context).copyWith(
-                          segmentedButtonTheme: SegmentedButtonThemeData(
-                            style: ButtonStyle(
-                              backgroundColor:
-                                  WidgetStateProperty.resolveWith<Color?>(
-                                      (Set<WidgetState> states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return Colors.green; // <-- Your active color
-                                }
-                                return Colors.white; // <-- Inactive bg
-                              }),
-                              foregroundColor:
-                                  WidgetStateProperty.resolveWith<Color?>(
-                                      (Set<WidgetState> states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return Colors
-                                      .white; // Text/icon color for active
-                                }
-                                return Colors
-                                    .black87; // Text/icon color for inactive
-                              }),
-                            ),
+                      child: SecondaryViewPicker<ReportView>(
+                        key: const ValueKey('customer-report-view-picker'),
+                        semanticLabel: 'Report view',
+                        value: _selectedView,
+                        options: const [
+                          SecondaryViewOption(
+                            value: ReportView.summary,
+                            label: 'Date view',
+                            icon: Icons.receipt_long_outlined,
                           ),
-                        ),
-                        child: SegmentedButton<ReportView>(
-                          segments: <ButtonSegment<ReportView>>[
-                            ButtonSegment(
-                              value: ReportView.summary,
-                              label: Text(
-                                'Date View',
-                                style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.5,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              icon: Icon(
-                                Icons.receipt_long,
-                                size: SizeConfig.textMultiplier * 1.5,
-                              ),
-                            ),
-                            ButtonSegment(
-                              value: ReportView.payLater,
-                              label: Text(
-                                'Summary',
-                                style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.5,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              icon: Icon(
-                                Icons.payment,
-                                size: SizeConfig.textMultiplier * 1.5,
-                              ),
-                            ),
-                          ],
-                          selected: <ReportView>{_selectedView},
-                          onSelectionChanged: (Set<ReportView> newSelection) {
-                            setState(() {
-                              _selectedView = newSelection.first;
-                            });
-                          },
-                        ),
+                          SecondaryViewOption(
+                            value: ReportView.payLater,
+                            label: 'Summary',
+                            icon: Icons.account_balance_wallet_outlined,
+                          ),
+                        ],
+                        onSelected: (view) {
+                          setState(() {
+                            _selectedView = view;
+                          });
+                        },
                       ),
                     ),
                     if (_selectedView == ReportView.summary) ...[

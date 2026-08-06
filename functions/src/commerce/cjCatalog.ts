@@ -2,7 +2,7 @@ import { functions } from "../config/main";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
 import { quoteCjVariant } from "./cjClient";
 import {
-  CATALOG_DISCOVERY_TARGET,
+  catalogSearchNeedsDiscovery,
   enqueueCatalogDemand,
   getCachedCatalogDocument,
   getCachedCatalogProduct,
@@ -116,7 +116,7 @@ export const searchCjSupplierCatalog = catalogRuntime.https.onCall(
       // Keep advancing the supplier search well beyond a single app page.
       // The queue is store-throttled and processed in the background, so this
       // broadens the cache without reintroducing browse-time CJ checks.
-      if (result.totalProducts < CATALOG_DISCOVERY_TARGET) {
+      if (catalogSearchNeedsDiscovery(result)) {
         catalogueRefreshing = await enqueueCatalogDemand(query, {
           requesterStoreId: String(input.storeId ?? ""),
         });

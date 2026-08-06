@@ -10,6 +10,7 @@ import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
+import 'package:pasella/shared/widgets/secondary_view_picker.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
@@ -181,89 +182,42 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                         // --- SALES ---
                         Column(
                           children: [
-                            SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            Theme(
-                              data: Theme.of(context).copyWith(
-                                segmentedButtonTheme: SegmentedButtonThemeData(
-                                  style: ButtonStyle(
-                                    backgroundColor:
-                                        WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => states.contains(
-                                        WidgetState.selected,
-                                      )
-                                          ? Colors.green
-                                          : Colors.white,
-                                    ),
-                                    foregroundColor:
-                                        WidgetStateProperty.resolveWith<Color?>(
-                                      (states) => states.contains(
-                                        WidgetState.selected,
-                                      )
-                                          ? Colors.white
-                                          : Colors.black87,
-                                    ),
-                                  ),
+                            SizedBox(height: SizeConfig.heightMultiplier * 1),
+                            SecondaryViewPicker<SalesViewType>(
+                              key: const ValueKey('sales-view-picker'),
+                              semanticLabel: 'Sales view',
+                              value: _selectedSalesView,
+                              options: const [
+                                SecondaryViewOption(
+                                  value: SalesViewType.cash,
+                                  label: 'Cash',
+                                  icon: Icons.payments_outlined,
                                 ),
-                              ),
-                              child: SegmentedButton<SalesViewType>(
-                                segments: [
-                                  ButtonSegment(
-                                    value: SalesViewType.cash,
-                                    label: Text(
-                                      'Cash',
-                                      style: TextStyle(
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 1.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    icon: Icon(
-                                      Icons.attach_money,
-                                      size: SizeConfig.textMultiplier * 1.5,
-                                    ),
-                                  ),
-                                  ButtonSegment(
-                                    value: SalesViewType.online,
-                                    label: Text(
-                                      'Online',
-                                      style: TextStyle(
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 1.5,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    icon: Icon(
-                                      Icons.wifi,
-                                      size: SizeConfig.textMultiplier * 1.5,
-                                    ),
-                                  ),
-                                ],
-                                selected: {_selectedSalesView},
-                                onSelectionChanged: (val) {
-                                  setState(() {
-                                    _selectedSalesView = val.first;
-                                  });
-                                  if (_selectedSalesView ==
-                                      SalesViewType.cash) {
-                                    // refresh using current date/range selection
-                                    if (_selectedDay != null) {
-                                      _salesVM.updateSelectedDate(
-                                        _selectedDay!,
-                                      );
-                                    } else if (_startDate != null &&
-                                        _endDate != null) {
-                                      _salesVM.updateSelectedDateRange(
-                                        _startDate!,
-                                        _endDate!,
-                                      );
-                                    } else {
-                                      _salesVM.updateSelectedDate(
-                                        DateTime.now(),
-                                      );
-                                    }
+                                SecondaryViewOption(
+                                  value: SalesViewType.online,
+                                  label: 'Online',
+                                  icon: Icons.language_rounded,
+                                ),
+                              ],
+                              onSelected: (view) {
+                                setState(() {
+                                  _selectedSalesView = view;
+                                });
+                                if (_selectedSalesView == SalesViewType.cash) {
+                                  // Refresh using the current date/range.
+                                  if (_selectedDay != null) {
+                                    _salesVM.updateSelectedDate(_selectedDay!);
+                                  } else if (_startDate != null &&
+                                      _endDate != null) {
+                                    _salesVM.updateSelectedDateRange(
+                                      _startDate!,
+                                      _endDate!,
+                                    );
+                                  } else {
+                                    _salesVM.updateSelectedDate(DateTime.now());
                                   }
-                                },
-                              ),
+                                }
+                              },
                             ),
                             if (_selectedSalesView == SalesViewType.cash ||
                                 FeatureFlags.enableOnlineSales) ...[

@@ -10,10 +10,12 @@ class SupplierCatalogPage extends StatefulWidget {
     super.key,
     this.onListingCreated,
     this.searchCatalog,
+    this.loadProductDetails,
   });
 
   final VoidCallback? onListingCreated;
   final CjCatalogSearch? searchCatalog;
+  final CjProductDetailsLoader? loadProductDetails;
 
   @override
   State<SupplierCatalogPage> createState() => _SupplierCatalogPageState();
@@ -58,6 +60,11 @@ typedef CjCatalogSearch = Future<CjCatalogPage> Function({
   required String cursor,
 });
 
+typedef CjProductDetailsLoader = Future<CjProductDetails> Function(
+  String productId,
+  String preferredVariantId,
+);
+
 List<CjCatalogProduct> mergeCjCatalogPages(
   List<CjCatalogProduct> current,
   List<CjCatalogProduct> incoming,
@@ -83,6 +90,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   int _page = 1;
   int _totalPages = 1;
   int _totalProducts = 0;
+  bool _totalProductsExact = true;
   final Map<int, String> _pageCursors = {};
   bool _hasMore = false;
   int _categoryIndex = 0;
@@ -151,8 +159,10 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             : result.products;
         _page = result.page <= 0 ? page : result.page;
         _totalPages = result.totalPages <= 0 ? 1 : result.totalPages;
-        _totalProducts =
-            result.totalProducts > 0 ? result.totalProducts : _products.length;
+        _totalProductsExact = result.totalProductsExact;
+        _totalProducts = result.totalProductsExact && result.totalProducts > 0
+            ? result.totalProducts
+            : _products.length;
         _hasMore = result.hasMore;
         if (result.nextCursor.isNotEmpty) {
           _pageCursors[result.page + 1] = result.nextCursor;
@@ -289,6 +299,15 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
       );
     }
     if (_products.isEmpty) {
+      if (_hasMore || _page < _totalPages) {
+        return _CatalogMessage(
+          icon: Icons.inventory_2_outlined,
+          title: 'More products available',
+          message: 'Continue to the next delivery-ready results.',
+          actionLabel: 'Continue loading products',
+          action: () => _load(page: _page + 1),
+        );
+      }
       if (_catalogueRefreshing) {
         return _CatalogMessage(
           icon: Icons.inventory_2_outlined,
@@ -299,19 +318,13 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           action: () => _load(page: 1),
         );
       }
-      final hasMore = _page < _totalPages;
       return _CatalogMessage(
         icon: Icons.search_off_outlined,
         title: 'No delivery-ready matches',
         message:
             'Try a broader product name or choose another category. Availability changes throughout the day.',
-        actionLabel:
-            hasMore ? 'Check the next products' : 'Explore all products',
+        actionLabel: 'Explore all products',
         action: () {
-          if (hasMore) {
-            _load(page: _page + 1);
-            return;
-          }
           _search.clear();
           setState(() => _categoryIndex = 0);
           _load();
@@ -328,7 +341,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             children: [
               Expanded(
                 child: Text(
-                  _totalProducts > products.length
+                  _totalProductsExact && _totalProducts > products.length
                       ? '${products.length} of $_totalProducts products'
                       : '${products.length} ${products.length == 1 ? 'product' : 'products'}',
                   style: Theme.of(context).textTheme.labelLarge,
@@ -379,6 +392,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                         product: products[index],
                         digitalPaymentsEnabled: _digitalPaymentsEnabled,
                         onListingCreated: widget.onListingCreated,
+                        loadProductDetails: widget.loadProductDetails,
                       ),
                       childCount: products.length,
                     ),
@@ -392,6 +406,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                       totalProducts: _totalProducts,
                       loading: _loadingMore,
                       error: _loadMoreError,
+                      hasMore: _hasMore,
                       onPressed: _page < _totalPages || _hasMore
                           ? () => _load(page: _page + 1)
                           : null,
@@ -413,11 +428,13 @@ class _SupplierProductCard extends StatelessWidget {
     required this.product,
     required this.digitalPaymentsEnabled,
     required this.onListingCreated,
+    required this.loadProductDetails,
   });
 
   final CjCatalogProduct product;
   final bool digitalPaymentsEnabled;
   final VoidCallback? onListingCreated;
+  final CjProductDetailsLoader? loadProductDetails;
 
   Future<void> _select(BuildContext context) async {
     final result = await showModalBottomSheet<DropshipListingResult>(
@@ -428,6 +445,7 @@ class _SupplierProductCard extends StatelessWidget {
       builder: (_) => _CjListingSheet(
         product: product,
         digitalPaymentsEnabled: digitalPaymentsEnabled,
+        loadProductDetails: loadProductDetails,
       ),
     );
     if (result == null || !context.mounted) return;
@@ -572,24 +590,26 @@ class _CjListingSheet extends StatefulWidget {
   const _CjListingSheet({
     required this.product,
     required this.digitalPaymentsEnabled,
+    required this.loadProductDetails,
   });
 
   final CjCatalogProduct product;
   final bool digitalPaymentsEnabled;
+  final CjProductDetailsLoader? loadProductDetails;
 
   @override
   State<_CjListingSheet> createState() => _CjListingSheetState();
 }
 
 class _CjListingSheetState extends State<_CjListingSheet> {
-  final _commerce = CommerceService();
+  CommerceService? _commerce;
   final _markup = TextEditingController();
   final _markupFocus = FocusNode();
   final _markupFieldKey = GlobalKey();
   CjVariant? _variant;
   CjLandedQuote? _quote;
   bool _usesCatalogSnapshot = false;
-  bool _loadingDetails = true;
+  bool _loadingDetails = false;
   bool _saving = false;
   String? _error;
 
@@ -601,10 +621,18 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   int get _netMarginMinor => _markupMinor - _feeMinor;
   bool get _canCreate =>
       !_saving && _quote != null && _markupMinor > 0 && _netMarginMinor >= 0;
+  CommerceService get _commerceService => _commerce ??= CommerceService();
 
   @override
   void initState() {
     super.initState();
+    final cachedEstimate = resolveCjCatalogSnapshotEstimate(
+      catalogProduct: widget.product,
+    );
+    _variant = cachedEstimate?.variant;
+    _quote = cachedEstimate?.quote;
+    _usesCatalogSnapshot = cachedEstimate?.usesCatalogSnapshot ?? false;
+    _loadingDetails = cachedEstimate == null;
     _loadDetails();
   }
 
@@ -616,15 +644,23 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   }
 
   Future<void> _loadDetails() async {
-    setState(() {
-      _loadingDetails = true;
-      _error = null;
-    });
+    final hasVerifiedSnapshot = _quote != null && _variant != null;
+    if (!hasVerifiedSnapshot) {
+      setState(() {
+        _loadingDetails = true;
+        _error = null;
+      });
+    }
     try {
-      final details = await _commerce.getCjProduct(
-        widget.product.id,
-        preferredVariantId: widget.product.deliverableVariantId,
-      );
+      final details = widget.loadProductDetails == null
+          ? await _commerceService.getCjProduct(
+              widget.product.id,
+              preferredVariantId: widget.product.deliverableVariantId,
+            )
+          : await widget.loadProductDetails!(
+              widget.product.id,
+              widget.product.deliverableVariantId,
+            );
       final estimate = resolveCjListingEstimate(
         catalogProduct: widget.product,
         details: details,
@@ -632,6 +668,9 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       if (!mounted) return;
       if (estimate == null) {
         setState(() {
+          _variant = null;
+          _quote = null;
+          _usesCatalogSnapshot = false;
           _loadingDetails = false;
           _error =
               'This product does not have a recent South Africa price and delivery estimate. Try another product.';
@@ -646,7 +685,15 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       });
     } catch (error) {
       if (!mounted) return;
+      // Only a clearly transient enrichment failure may retain the bounded
+      // cached ZA quote. Authoritative and unknown errors fail closed.
+      if (hasVerifiedSnapshot && isTransientCommerceDetailsError(error)) {
+        return;
+      }
       setState(() {
+        _variant = null;
+        _quote = null;
+        _usesCatalogSnapshot = false;
         _loadingDetails = false;
         _error = commerceErrorMessage(error);
       });
@@ -661,7 +708,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       _error = null;
     });
     try {
-      final result = await _commerce.createListing(
+      final result = await _commerceService.createListing(
         supplierProductId: widget.product.id,
         supplierVariantId: variant.id,
         markupMinor: _markupMinor,
@@ -1049,6 +1096,7 @@ class _LoadMoreProducts extends StatelessWidget {
     required this.totalProducts,
     required this.loading,
     required this.error,
+    required this.hasMore,
     required this.onPressed,
   });
 
@@ -1056,6 +1104,7 @@ class _LoadMoreProducts extends StatelessWidget {
   final int totalProducts;
   final bool loading;
   final String? error;
+  final bool hasMore;
   final VoidCallback? onPressed;
 
   @override
@@ -1091,7 +1140,7 @@ class _LoadMoreProducts extends StatelessWidget {
             label: Text(
               loading
                   ? 'Loading products…'
-                  : totalProducts > loadedProducts
+                  : error == null && (hasMore || totalProducts > loadedProducts)
                       ? 'Load more products'
                       : 'Try again',
             ),
