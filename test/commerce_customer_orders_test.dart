@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/orders_controller.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
+import 'package:pasella/services/commerce_service.dart';
 
 void main() {
   test('dropship order is normalized into the customer Orders list', () {
@@ -58,6 +59,41 @@ void main() {
         paymentStatus: 'paid',
       ),
       OrderStatus.cancelled,
+    );
+  });
+
+  test('a supplier-order stream failure never resolves to no orders', () {
+    expect(
+      resolveOrdersTruthSurface(
+        legacyLoading: false,
+        commerceLoading: false,
+        legacyError: null,
+        commerceError: StateError('offline'),
+        hasOrders: false,
+      ),
+      OrdersTruthSurface.error,
+    );
+  });
+
+  test('cached supplier-order snapshots remain visibly unverified', () {
+    const snapshot = CommerceOrdersSnapshot(orders: [], isFromCache: true);
+    expect(snapshot.isAuthoritative, isFalse);
+    expect(
+      commerceOrdersSnapshotError(isFromCache: snapshot.isFromCache),
+      isA<CommerceOrdersCacheUnverified>(),
+    );
+  });
+
+  test('loaded orders remain visible when one source is temporarily down', () {
+    expect(
+      resolveOrdersTruthSurface(
+        legacyLoading: false,
+        commerceLoading: false,
+        legacyError: StateError('callable unavailable'),
+        commerceError: null,
+        hasOrders: true,
+      ),
+      OrdersTruthSurface.content,
     );
   });
 }

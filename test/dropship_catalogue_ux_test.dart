@@ -262,9 +262,84 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('failed new search retry restarts from page one', (tester) async {
+    final requests = <({String query, int page, String cursor})>[];
+    var failedLampSearch = false;
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async {
+      requests.add((query: query, page: page, cursor: cursor));
+      if (query == 'lamp') {
+        if (!failedLampSearch) {
+          failedLampSearch = true;
+          throw Exception('connection lost');
+        }
+        return CjCatalogPage(
+          products: [supplierProduct(99)],
+          page: 1,
+          totalPages: 1,
+          totalProducts: 1,
+          hasMore: false,
+          nextCursor: '',
+          catalogueRefreshing: false,
+          digitalPaymentsEnabled: false,
+        );
+      }
+      return CjCatalogPage(
+        products: [supplierProduct(page)],
+        page: page,
+        totalPages: 2,
+        totalProducts: 2,
+        hasMore: page == 1,
+        nextCursor: page == 1 ? 'page-one-cursor' : '',
+        catalogueRefreshing: false,
+        digitalPaymentsEnabled: false,
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('catalog-load-more')),
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.byKey(const Key('catalog-load-more')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'lamp');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.text('Could not refresh products'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(requests.sublist(requests.length - 2), [
+      (query: 'lamp', page: 1, cursor: ''),
+      (query: 'lamp', page: 1, cursor: ''),
+    ]);
+    expect(
+      find.byKey(const Key('supplier-product-product-99')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
       'verified catalogue card stays addable when details enrichment fails',
       (tester) async {
+    tester.view.physicalSize = const Size(360, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     Future<CjCatalogPage> search({
       required String query,
       required int page,
@@ -302,13 +377,24 @@ void main() {
     expect(find.byKey(const Key('dropship-markup-field')), findsOneWidget);
     expect(find.text('Recommended option'), findsOneWidget);
     expect(find.text('Add product'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const Key('dropship-markup-field')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('dropship-markup-field')));
+    await tester.pump();
     await tester.enterText(
       find.byKey(const Key('dropship-markup-field')),
       '25.00',
     );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    tester.testTextInput.hide();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    addTearDown(tester.view.resetViewInsets);
     await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(ElevatedButton, 'Add product').hitTestable(),
+      findsOneWidget,
+    );
     final addButton = tester.widget<ElevatedButton>(
       find.widgetWithText(ElevatedButton, 'Add product'),
     );
@@ -387,7 +473,12 @@ void main() {
     expect(field.decoration?.filled, isTrue);
     expect(field.decoration?.prefixText, 'R ');
     expect(field.decoration?.hintText, '0.00');
+    expect(field.textInputAction, TextInputAction.done);
     expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('dropship-markup-field')));
+    await tester.pump();
+    expect(find.byKey(const Key('dropship-markup-done')), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('dropship-markup-field')),
@@ -395,6 +486,11 @@ void main() {
     );
     expect(latest, '123,45');
     expect(dropshipMarkupMinor(latest), 12345);
+
+    await tester.tap(find.byKey(const Key('dropship-markup-done')));
+    await tester.pump();
+    expect(find.byKey(const Key('dropship-markup-done')), findsNothing);
+    expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
   });
 
   testWidgets('dropship product uses the standard Promote affordance',

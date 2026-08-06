@@ -9,7 +9,7 @@ import { notifyCommerceOrder } from "./notifications";
 import { priceCommerceOrder, requireMinorUnits } from "./domain";
 import { CjLandedQuote, quoteCjVariant } from "./cjClient";
 import { verifyPaystackSignature } from "../payments/paystack/paystackSecurity";
-import { formatPhoneNumber } from "../utils/phoneUtils";
+import { formatPhoneNumber, normalizePhoneNumber } from "../utils/phoneUtils";
 import { commercePaymentsEnabled } from "./readiness";
 import { verifyBotRequest } from "../security/requestAuth";
 
@@ -81,6 +81,33 @@ function parseAddress(value: unknown): AddressInput {
     value && typeof value === "object"
       ? (value as Record<string, unknown>)
       : {};
+  const rawProvince = clean(input.province, "ADDRESS_PROVINCE", 100);
+  const provinceKey = rawProvince.toLowerCase().replace(/[^a-z]/g, "");
+  const province = new Map<string, string>([
+    ["easterncape", "Eastern Cape"],
+    ["ec", "Eastern Cape"],
+    ["freestate", "Free State"],
+    ["fs", "Free State"],
+    ["gauteng", "Gauteng"],
+    ["gp", "Gauteng"],
+    ["kwazulunatal", "KwaZulu-Natal"],
+    ["kzn", "KwaZulu-Natal"],
+    ["limpopo", "Limpopo"],
+    ["lp", "Limpopo"],
+    ["mpumalanga", "Mpumalanga"],
+    ["mp", "Mpumalanga"],
+    ["northerncape", "Northern Cape"],
+    ["nc", "Northern Cape"],
+    ["northwest", "North West"],
+    ["nw", "North West"],
+    ["westerncape", "Western Cape"],
+    ["wc", "Western Cape"],
+  ]).get(provinceKey);
+  const postalCode = clean(input.postalCode, "ADDRESS_POSTAL_CODE", 12);
+  if (!province) throw new Error("ADDRESS_PROVINCE_INVALID");
+  if (!/^\d{4}$/.test(postalCode)) {
+    throw new Error("ADDRESS_POSTAL_CODE_INVALID");
+  }
   return {
     line1: clean(input.line1, "ADDRESS_LINE1", 160),
     line2: String(input.line2 ?? "")
@@ -88,10 +115,35 @@ function parseAddress(value: unknown): AddressInput {
       .slice(0, 160),
     suburb: clean(input.suburb, "ADDRESS_SUBURB", 100),
     city: clean(input.city, "ADDRESS_CITY", 100),
-    province: clean(input.province, "ADDRESS_PROVINCE", 100),
-    postalCode: clean(input.postalCode, "ADDRESS_POSTAL_CODE", 12),
+    province,
+    postalCode,
     country: "ZA",
   };
+}
+
+function requireSingleItemQuantity(value: unknown): void {
+  if (value === undefined || value === null || value === "") return;
+  const quantity = Number(value);
+  if (!Number.isInteger(quantity) || quantity !== 1) {
+    throw new Error("QUANTITY_INVALID");
+  }
+}
+
+async function requireBoundBotCustomer(args: {
+  sellerId: string;
+  customerId: string;
+  buyerPhone: string;
+}): Promise<void> {
+  const customer = await db
+    .doc(`users/${args.sellerId}/customers/${args.customerId}`)
+    .get();
+  const storedPhone = normalizePhoneNumber(
+    String(customer.data()?.number ?? ""),
+  );
+  const buyerPhone = normalizePhoneNumber(args.buyerPhone);
+  if (!customer.exists || !storedPhone || storedPhone !== buyerPhone) {
+    throw new Error("CUSTOMER_BINDING_INVALID");
+  }
 }
 
 function paystackSecret(): string {
@@ -175,6 +227,50 @@ function checkoutAttemptId(listingId: string, value: unknown): string {
   return createHash("sha256").update(`${listingId}:${attempt}`).digest("hex");
 }
 
+function assertReusableOrderIdentity(
+  value: FirebaseFirestore.DocumentData | undefined,
+  expected: {
+    listingId: string;
+    paymentMethod: "manual" | "paystack";
+    buyer: BuyerInput;
+    whatsappBotOrder: boolean;
+    sellerId: string;
+    customerId: string;
+  },
+): void {
+  if (!value) throw new Error("CHECKOUT_ATTEMPT_IDENTITY_INVALID");
+  const buyer =
+    value.buyer && typeof value.buyer === "object" ? value.buyer : {};
+  const storedPhone = normalizePhoneNumber(String(buyer.phone ?? ""));
+  const expectedPhone = normalizePhoneNumber(expected.buyer.phone);
+  const expectedChannel = expected.whatsappBotOrder ? "whatsapp" : "web";
+  if (
+    String(value.listingId ?? "") !== expected.listingId ||
+    String(value.paymentMethod ?? "") !== expected.paymentMethod ||
+    String(value.orderChannel ?? "") !== expectedChannel ||
+    !storedPhone ||
+    storedPhone !== expectedPhone
+  ) {
+    throw new Error("CHECKOUT_ATTEMPT_IDENTITY_INVALID");
+  }
+  if (expected.whatsappBotOrder) {
+    if (
+      String(value.sellerId ?? "") !== expected.sellerId ||
+      String(value.customerId ?? "") !== expected.customerId
+    ) {
+      throw new Error("CUSTOMER_BINDING_INVALID");
+    }
+    return;
+  }
+  if (
+    String(buyer.email ?? "")
+      .trim()
+      .toLowerCase() !== expected.buyer.email
+  ) {
+    throw new Error("CHECKOUT_ATTEMPT_IDENTITY_INVALID");
+  }
+}
+
 function commerceFunctionUrl(functionName: string): string {
   const projectId = String(
     process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? "",
@@ -225,13 +321,26 @@ export const createCommerceOrder = functions
         });
         return;
       }
-      const paymentMethod = digitalPaymentsEnabled ? "paystack" : "manual";
+      const paymentMethod: "paystack" | "manual" = digitalPaymentsEnabled
+        ? "paystack"
+        : "manual";
+      requireSingleItemQuantity(req.body?.quantity);
       const listingId = clean(req.body?.listingId, "LISTING", 128);
       const buyer = parseBuyer(req.body?.buyer, digitalPaymentsEnabled);
       const deliveryAddress = parseAddress(req.body?.deliveryAddress);
       const expectedSellerId = whatsappBotOrder
         ? clean(req.body?.merchantId, "MERCHANT", 128)
         : "";
+      const botCustomerId = whatsappBotOrder
+        ? clean(req.body?.customerId, "CUSTOMER", 128)
+        : "";
+      if (whatsappBotOrder) {
+        await requireBoundBotCustomer({
+          sellerId: expectedSellerId,
+          customerId: botCustomerId,
+          buyerPhone: buyer.phone,
+        });
+      }
       const attemptRef = db.doc(
         `commerceCheckoutAttempts/${checkoutAttemptId(
           listingId,
@@ -241,6 +350,14 @@ export const createCommerceOrder = functions
       const candidateOrderRef = db.collection("commerceOrders").doc();
       const checkoutToken = randomBytes(32).toString("hex");
       const listingRef = db.doc(`commerceListings/${listingId}`);
+      const reuseIdentity = {
+        listingId,
+        paymentMethod,
+        buyer,
+        whatsappBotOrder,
+        sellerId: expectedSellerId,
+        customerId: botCustomerId,
+      };
 
       const existingAttempt = await attemptRef.get();
       if (existingAttempt.exists) {
@@ -249,6 +366,7 @@ export const createCommerceOrder = functions
         const existingOrder = await db
           .doc(`commerceOrders/${existingOrderId}`)
           .get();
+        assertReusableOrderIdentity(existingOrder.data(), reuseIdentity);
         if (existingOrder.data()?.paymentMethod === "manual") {
           const existingToken = String(attemptData.checkoutToken ?? "");
           if (!existingToken) {
@@ -421,11 +539,7 @@ export const createCommerceOrder = functions
           ),
           paymentMethod,
           orderChannel: whatsappBotOrder ? "whatsapp" : "web",
-          customerId: whatsappBotOrder
-            ? String(req.body?.customerId ?? "")
-                .trim()
-                .slice(0, 128)
-            : null,
+          customerId: whatsappBotOrder ? botCustomerId : null,
           buyerPaymentPreference: whatsappBotOrder
             ? String(req.body?.paymentPreference ?? "manual")
                 .trim()
@@ -474,6 +588,7 @@ export const createCommerceOrder = functions
       const orderRef = db.doc(`commerceOrders/${reserved.orderId}`);
       if (!reserved.created) {
         const existing = await orderRef.get();
+        assertReusableOrderIdentity(existing.data(), reuseIdentity);
         if (existing.data()?.paymentMethod === "manual") {
           if (!reserved.checkoutToken) {
             res.status(409).json({
@@ -591,6 +706,9 @@ export const createCommerceOrder = functions
 export async function applyVerifiedCommercePayment(
   transaction: VerifiedPaystackTransaction,
 ): Promise<{ deduped: boolean; orderId: string }> {
+  if (!commercePaymentsEnabled()) {
+    throw new Error("COMMERCE_PAYMENTS_DISABLED");
+  }
   const metadata = transaction.metadata ?? {};
   if (String(metadata.purpose ?? "") !== "commerce_order") {
     throw new Error("PURPOSE_MISMATCH");
@@ -615,12 +733,15 @@ export async function applyVerifiedCommercePayment(
       tx.get(processedRef),
       tx.get(orderRef),
     ]);
-    if (processed.exists) {
-      deduped = true;
-      return;
-    }
     if (!order.exists) throw new Error("ORDER_NOT_FOUND");
     const data = order.data() ?? {};
+    if (
+      String(data.paymentMethod ?? "") !== "paystack" ||
+      String(data.payment?.provider ?? "") !== "paystack" ||
+      String(data.payment?.reference ?? "") !== reference
+    ) {
+      throw new Error("PAYMENT_BINDING_MISMATCH");
+    }
     if (Number(data.amountDueMinor) !== amountMinor) {
       throw new Error("AMOUNT_MISMATCH");
     }
@@ -629,6 +750,18 @@ export async function applyVerifiedCommercePayment(
       String(data.listingId) !== String(metadata.listingId)
     ) {
       throw new Error("METADATA_MISMATCH");
+    }
+    if (processed.exists) {
+      const processedData = processed.data() ?? {};
+      if (
+        String(processedData.orderId ?? "") !== orderId ||
+        Number(processedData.amountMinor) !== amountMinor ||
+        String(processedData.currency ?? "").toUpperCase() !== "ZAR"
+      ) {
+        throw new Error("PROCESSED_PAYMENT_MISMATCH");
+      }
+      deduped = true;
+      return;
     }
     if (data.paymentStatus === "paid") {
       if (String(data.payment?.reference ?? "") !== reference) {
@@ -694,6 +827,10 @@ export const verifyCommercePaystackTransaction = functions.https.onRequest(
   async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+    if (!commercePaymentsEnabled()) {
+      res.status(503).json({ error: "Commerce payments are not enabled" });
       return;
     }
     try {

@@ -31,6 +31,28 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Flutter passes --dart-define values to Gradle as comma-separated base64.
+// Decode only the emulator switch so native Firebase Messaging is disabled
+// before FirebaseApp starts in isolated QA builds. Ordinary debug builds keep
+// push registration enabled for physical-device testing.
+def dartDefineValues = [:]
+if (project.hasProperty('dart-defines')) {
+    project.property('dart-defines').toString().split(',').each { encoded ->
+        if (!encoded) return
+        def decoded = new String(encoded.decodeBase64(), 'UTF-8')
+        def separator = decoded.indexOf('=')
+        if (separator > 0) {
+            dartDefineValues[decoded.substring(0, separator)] =
+                decoded.substring(separator + 1)
+        }
+    }
+}
+def firebaseMessagingAutoInitEnabled =
+    dartDefineValues['USE_FIREBASE_EMULATORS'] != 'true'
+def firebaseInitProviderEnabled = firebaseMessagingAutoInitEnabled
+def firebaseEmulatorCleartextEnabled =
+    dartDefineValues['USE_FIREBASE_EMULATORS'] == 'true'
+
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -64,6 +86,12 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
+        manifestPlaceholders.firebaseInitProviderEnabled =
+            firebaseInitProviderEnabled.toString()
+        manifestPlaceholders.firebaseMessagingAutoInitEnabled =
+            firebaseMessagingAutoInitEnabled.toString()
+        manifestPlaceholders.firebaseEmulatorCleartextEnabled =
+            firebaseEmulatorCleartextEnabled.toString()
     }
 
     signingConfigs {

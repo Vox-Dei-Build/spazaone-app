@@ -1,5 +1,12 @@
 import { db, functions } from "../config/main";
-import { authorizeCallableMerchantOrBot } from "../security/requestAuth";
+import {
+  authorizeCallableMerchantOrBot,
+  verifyBotRequest,
+} from "../security/requestAuth";
+import {
+  orderCreatedAtMillis,
+  presentCommerceOrder,
+} from "../commerce/orderPresentation";
 
 /**
  * List orders (sales) for a customer with normalized fields for UI.
@@ -25,6 +32,7 @@ export const getCustomerOrders = functions
         );
       }
 
+      const botRequest = verifyBotRequest(context.rawRequest);
       const qs = await db
         .collection("users")
         .doc(merchantId)
@@ -34,7 +42,7 @@ export const getCustomerOrders = functions
         .limit(50)
         .get();
 
-      const orders = qs.docs.map((d) => {
+      const legacyOrders = qs.docs.map((d) => {
         const s: any = d.data() || {};
 
         // Normalize counts/amount
@@ -57,6 +65,7 @@ export const getCustomerOrders = functions
 
         return {
           id: d.id,
+          source: "legacy",
           status: s.status || "pending",
           total,
           itemsCount,
@@ -72,6 +81,28 @@ export const getCustomerOrders = functions
           collectedAt, // Timestamp | string | null
         };
       });
+
+      // The Flutter customer page already subscribes to commerceOrders in
+      // real time. Include supplier orders here only for the authenticated
+      // WhatsApp backend, otherwise the app would render each order twice.
+      const commerceOrders = botRequest
+        ? (
+            await db
+              .collection("commerceOrders")
+              .where("sellerId", "==", merchantId)
+              .where("customerId", "==", customerId)
+              .orderBy("createdAt", "desc")
+              .limit(50)
+              .get()
+          ).docs.map((doc) => presentCommerceOrder(doc.id, doc.data()))
+        : [];
+
+      const orders = [...legacyOrders, ...commerceOrders]
+        .sort(
+          (left, right) =>
+            orderCreatedAtMillis(right) - orderCreatedAtMillis(left),
+        )
+        .slice(0, 50);
 
       return { orders };
     } catch (error: any) {

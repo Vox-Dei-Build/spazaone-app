@@ -1,5 +1,6 @@
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { MulticastMessage } from "firebase-admin/messaging";
 
 const ADD_CUSTOMER_ROUTE = "/addContactPage";
@@ -172,7 +173,7 @@ async function markAddCustomerNudgeSent(
       notificationNudges: {
         addCustomer: {
           count: currentCount + 1,
-          lastSentAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastSentAt: FieldValue.serverTimestamp(),
         },
       },
     },
@@ -194,11 +195,11 @@ async function removeBadTokens(
   badTokens: string[],
 ): Promise<void> {
   const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
-    fcmTokens: admin.firestore.FieldValue.arrayRemove(...badTokens),
+    fcmTokens: FieldValue.arrayRemove(...badTokens),
   };
 
   if (userData.fcmToken && badTokens.includes(String(userData.fcmToken))) {
-    update.fcmToken = admin.firestore.FieldValue.delete();
+    update.fcmToken = FieldValue.delete();
   }
 
   await userRef.set(update, { merge: true });

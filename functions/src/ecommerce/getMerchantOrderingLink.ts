@@ -1,5 +1,5 @@
-import * as admin from "firebase-admin";
 import { randomBytes } from "crypto";
+import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { formatPhoneNumber } from "../utils/phoneUtils";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
@@ -62,8 +62,8 @@ export async function ensureMerchantOrderingLink(
         pasellaWhatsappNumber: result.pasellaWhatsappNumber,
         orderingUrl: result.orderingUrl,
         fallbackText: result.fallbackText,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       },
     },
     { merge: true },
@@ -108,8 +108,8 @@ export const getMerchantOrderingLink = functions.https.onCall(
           whatsappOrdering: {
             ...(existing ?? {}),
             status: "revoked",
-            revokedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            revokedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           },
         },
         { merge: true },
@@ -145,8 +145,8 @@ export const getMerchantOrderingLink = functions.https.onCall(
           pasellaWhatsappNumber: result.pasellaWhatsappNumber,
           orderingUrl: result.orderingUrl,
           fallbackText: result.fallbackText,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
       },
       { merge: true },
@@ -168,8 +168,8 @@ async function createUniqueCode(merchantId: string): Promise<string> {
         status: "active",
         type: "whatsapp_ordering",
         useCount: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
       return true;
     });
@@ -186,8 +186,8 @@ async function revokeCode(code: string, merchantId: string): Promise<void> {
     {
       merchantId,
       status: "revoked",
-      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      revokedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },
   );
@@ -229,6 +229,9 @@ function buildResult(
 export function configuredPasellaWhatsappNumber(): string {
   const cfg = functions.config();
   return (
+    process.env.ORDERING_WHATSAPP_NUMBER ||
+    process.env.TWILIO_CUSTOMER_WHATSAPP_NUMBER ||
+    process.env.TWILIO_NUMBER ||
     cfg.ordering?.whatsapp_number ||
     cfg.twilio?.customer_whatsapp_number ||
     cfg.twilio?.number ||

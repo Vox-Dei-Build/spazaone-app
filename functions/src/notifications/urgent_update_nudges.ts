@@ -271,10 +271,10 @@ async function removeBadTokens(
   badTokens: string[],
 ): Promise<void> {
   const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> = {
-    fcmTokens: admin.firestore.FieldValue.arrayRemove(...badTokens),
+    fcmTokens: FieldValue.arrayRemove(...badTokens),
   };
   if (typeof data.fcmToken === "string" && badTokens.includes(data.fcmToken)) {
-    update.fcmToken = admin.firestore.FieldValue.delete();
+    update.fcmToken = FieldValue.delete();
   }
   await userRef.update(update);
 }

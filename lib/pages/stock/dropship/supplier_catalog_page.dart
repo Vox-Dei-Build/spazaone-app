@@ -136,7 +136,13 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     final loadingMore = page > 1;
     final generation = ++_loadGeneration;
     final query = _query;
-    if (!loadingMore) _pageCursors.clear();
+    if (!loadingMore) {
+      _pageCursors.clear();
+      // A fresh query/category always starts a new result set. Resetting the
+      // visible page immediately also guarantees that a failed refresh cannot
+      // leave its Retry action pointing at stale pagination.
+      _page = 1;
+    }
     setState(() {
       if (loadingMore) {
         _loadingMore = true;
@@ -295,7 +301,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         title: 'Could not refresh products',
         message: _error!,
         actionLabel: 'Try again',
-        action: () => _load(page: _page),
+        action: _load,
       );
     }
     if (_products.isEmpty) {
@@ -757,7 +763,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               children: [
                 _sheetHeader(context),
                 Expanded(child: _sheetBody(context)),
-                if (_quote != null && !keyboardOpen) _bottomAction(context),
+                if (_quote != null) _bottomAction(context),
               ],
             ),
           ),
@@ -1190,7 +1196,7 @@ class _ProductImage extends StatelessWidget {
 /// Spaza One's global form theme uses underlines. This field deliberately
 /// overrides every border state so it continues to read as editable when it
 /// is not focused.
-class DropshipMarkupField extends StatelessWidget {
+class DropshipMarkupField extends StatefulWidget {
   const DropshipMarkupField({
     super.key,
     required this.controller,
@@ -1203,12 +1209,58 @@ class DropshipMarkupField extends StatelessWidget {
   final FocusNode? focusNode;
 
   @override
+  State<DropshipMarkupField> createState() => _DropshipMarkupFieldState();
+}
+
+class _DropshipMarkupFieldState extends State<DropshipMarkupField> {
+  late FocusNode _focusNode;
+  late bool _ownsFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachFocusNode(widget.focusNode);
+  }
+
+  @override
+  void didUpdateWidget(covariant DropshipMarkupField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode == widget.focusNode) return;
+    _detachFocusNode();
+    _attachFocusNode(widget.focusNode);
+  }
+
+  void _attachFocusNode(FocusNode? externalFocusNode) {
+    _ownsFocusNode = externalFocusNode == null;
+    _focusNode = externalFocusNode ?? FocusNode();
+    _focusNode.addListener(_handleFocusChanged);
+  }
+
+  void _detachFocusNode() {
+    _focusNode.removeListener(_handleFocusChanged);
+    if (_ownsFocusNode) _focusNode.dispose();
+  }
+
+  void _handleFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _finishEditing() => _focusNode.unfocus();
+
+  @override
+  void dispose() {
+    _detachFocusNode();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return TextField(
       key: const Key('dropship-markup-field'),
-      controller: controller,
-      focusNode: focusNode,
+      controller: widget.controller,
+      focusNode: _focusNode,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      textInputAction: TextInputAction.done,
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,2}')),
       ],
@@ -1216,7 +1268,13 @@ class DropshipMarkupField extends StatelessWidget {
         labelText: 'Profit markup',
         hintText: '0.00',
         prefixText: 'R ',
-        suffixIcon: const Icon(Icons.edit_outlined, size: 20),
+        suffixIcon: _focusNode.hasFocus
+            ? TextButton(
+                key: const Key('dropship-markup-done'),
+                onPressed: _finishEditing,
+                child: const Text('Done'),
+              )
+            : const Icon(Icons.edit_outlined, size: 20),
         filled: true,
         fillColor: const Color(0xFFF7F9F8),
         border: OutlineInputBorder(
@@ -1234,7 +1292,8 @@ class DropshipMarkupField extends StatelessWidget {
           ),
         ),
       ),
-      onChanged: onChanged,
+      onChanged: widget.onChanged,
+      onSubmitted: (_) => _finishEditing(),
     );
   }
 }

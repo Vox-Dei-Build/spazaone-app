@@ -1,5 +1,5 @@
 import { db, functions } from "../config/main";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 /**
  * HTTP endpoint to set an item's quantity in a cart.
@@ -102,7 +102,7 @@ export const updateCartItemQuantity = functions.https.onRequest(
             {
               quantity,
               ...(prevItem.details ? { details: prevItem.details } : {}),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true },
           );
@@ -115,7 +115,7 @@ export const updateCartItemQuantity = functions.https.onRequest(
             total: newTotal,
             itemsCount: newCount,
             currency: "ZAR",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           },
           { merge: true },
         );

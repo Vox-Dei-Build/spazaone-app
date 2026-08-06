@@ -1,7 +1,33 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- The INTERNET permission is required for development. Specifically,
          the Flutter tool needs it to communicate with the running application
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!--
+      Emulator QA builds initialise Firebase explicitly from Dart so they can
+      use a `demo-*` project namespace. The provider is disabled only when the
+      Flutter build carries USE_FIREBASE_EMULATORS=true. Ordinary physical-
+      device debug builds keep native Firebase initialisation enabled.
+
+      This override exists only in src/debug. The production/release manifest
+      keeps FirebaseInitProvider unchanged.
+    -->
+    <application
+        android:usesCleartextTraffic="${firebaseEmulatorCleartextEnabled}">
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            android:enabled="${firebaseInitProviderEnabled}" />
+
+        <!-- This placeholder is false only when the Flutter build carries
+             USE_FIREBASE_EMULATORS=true; normal device-debug builds keep FCM. -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="${firebaseMessagingAutoInitEnabled}"
+            tools:replace="android:value" />
+
+    </application>
 </manifest>

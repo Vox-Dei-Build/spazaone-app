@@ -2,11 +2,17 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/config/firebase_environment.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/show_toast.dart';
 
 class FCMService {
+  @visibleForTesting
+  static bool messagingEnabled({bool? emulatorMode}) {
+    return !(emulatorMode ?? FirebaseEnvironment.useEmulators);
+  }
+
   @visibleForTesting
   static bool shouldPromptForPermission(AuthorizationStatus status) {
     return status == AuthorizationStatus.notDetermined;
@@ -16,6 +22,7 @@ class FCMService {
   /// received a decision yet. This keeps the prompt contextual without
   /// repeatedly interrupting merchants who already declined it.
   Future<void> requestPermissionIfNeeded(BuildContext context) async {
+    if (!messagingEnabled()) return;
     try {
       final settings =
           await FirebaseMessaging.instance.getNotificationSettings();
@@ -42,6 +49,7 @@ class FCMService {
   }
 
   Future<void> requestPermission(BuildContext context) async {
+    if (!messagingEnabled()) return;
     FirebaseMessaging messaging = FirebaseMessaging.instance;
 
     NotificationSettings settings = await messaging.requestPermission(
@@ -72,32 +80,32 @@ class FCMService {
   }
 
   Future<void> handleToken() async {
-    // Obtain the new token
-    String? newToken = await FirebaseMessaging.instance.getToken();
-
-    // Check if the token is not null
-    if (newToken != null) {
+    if (!messagingEnabled()) return;
+    try {
+      // Token registration is best-effort. A Firebase Installations or network
+      // failure must never block store switching, store creation, or login.
+      final newToken = await FirebaseMessaging.instance.getToken();
+      if (newToken == null) {
+        print('FCM Token is null. Cannot store token.');
+        return;
+      }
       if (StoreSession.instance.storeId.isEmpty) {
         print('User is not logged in. Cannot store FCM token.');
         return;
       }
-
-      try {
-        await _writeTokenToAssignedStores(newToken);
-      } catch (error, stack) {
-        // Non-fatal: the next launch retries token registration.
-        await CrashService.instance.recordNonFatal(
-          error,
-          stack,
-          reason: 'fcm handleToken update failed',
-        );
-      }
-    } else {
-      print('FCM Token is null. Cannot store token.');
+      await _writeTokenToAssignedStores(newToken);
+    } catch (error, stack) {
+      // Non-fatal: the next launch retries token registration.
+      await CrashService.instance.recordNonFatal(
+        error,
+        stack,
+        reason: 'fcm handleToken update failed',
+      );
     }
   }
 
   void listenToTokenRefresh(context) {
+    if (!messagingEnabled()) return;
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
       // Never print device tokens; they are credentials for a notification
       // destination and should not enter logs or crash reports.
@@ -107,6 +115,7 @@ class FCMService {
   }
 
   Future<void> updateTokenOnServer(String newToken, context) async {
+    if (!messagingEnabled()) return;
     try {
       if (StoreSession.instance.storeId.isNotEmpty) {
         await _writeTokenToAssignedStores(newToken);

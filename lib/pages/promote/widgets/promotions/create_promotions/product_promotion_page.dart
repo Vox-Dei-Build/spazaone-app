@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/customer_selection/customer_selection_step.dart';
@@ -130,6 +131,41 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
     vm.promoBreakdown = estimate;
     vm.totalPrice = (estimate['total'] as num).toDouble();
     setState(() => _step = _ProductPromotionStep.review);
+  }
+
+  Future<void> _addCustomerForPromotion() async {
+    final added = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const AddContactPage(
+          returnToCallerAfterSave: true,
+          requireMobileNumber: true,
+        ),
+      ),
+    );
+    if (added != true || !mounted) return;
+
+    setState(() => _loading = true);
+    final vm = context.read<PromotionsViewModel>();
+    try {
+      await vm.fetchCustomers();
+      if (!mounted) return;
+      await vm.loadWhatsAppCapability();
+      if (!mounted) return;
+      final filtered = vm.filterCustomersForChannels(
+        sendWhatsApp: true,
+        sendSMS: true,
+      );
+      final recommended = PromotionsViewModel.recommendedCustomers(
+        filtered.eligible,
+      );
+      vm.selectCustomerIds(
+        recommended.map((customer) => customer['id'] as String),
+      );
+      _allCustomers = recommended.isNotEmpty &&
+          recommended.length == filtered.eligible.length;
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _saveAndSend() async {
@@ -329,6 +365,7 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
       sendSMS: true,
       hiddenNotWhatsAppCount: filtered.hiddenNotWhatsApp,
       unknownWhatsAppCount: filtered.unknownIncluded,
+      onAddCustomer: _addCustomerForPromotion,
       onAllCustomersChanged: (selected) {
         setState(() => _allCustomers = selected);
         if (selected) {

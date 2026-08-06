@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import { Timestamp } from "firebase-admin/firestore";
 import { CurrencyUtil } from "../utils/currencyUtil";
 import {
   fetchAndFormatPhoneNumber,
@@ -104,7 +105,7 @@ class MessagingNotificationService {
           .collection("reminders")
           .add({
             message,
-            dateSent: admin.firestore.Timestamp.now(),
+            dateSent: Timestamp.now(),
           });
       }
     } catch (e) {

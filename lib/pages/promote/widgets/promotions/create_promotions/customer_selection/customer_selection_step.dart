@@ -14,6 +14,7 @@ class CustomerSelectionStep extends StatelessWidget {
   final Set<String> selectedCustomerIds;
   final ValueChanged<bool> onAllCustomersChanged;
   final ValueChanged<String> onCustomerToggle;
+  final VoidCallback onAddCustomer;
 
   /// Number of customers filtered out of the *full* numbered-customer
   /// list because they have no phone number. Shown as an inline
@@ -49,6 +50,7 @@ class CustomerSelectionStep extends StatelessWidget {
     required this.selectedCustomerIds,
     required this.onAllCustomersChanged,
     required this.onCustomerToggle,
+    required this.onAddCustomer,
     this.hiddenWithoutNumberCount = 0,
     this.sendWhatsApp = true,
     this.sendSMS = false,
@@ -89,6 +91,27 @@ class CustomerSelectionStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (customers.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(heading,
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: SizeConfig.textMultiplier * 2)),
+          Expanded(
+            child: _EmptyCustomerSelection(
+              hiddenWithoutNumberCount: hiddenWithoutNumberCount,
+              hiddenNotWhatsAppCount: hiddenNotWhatsAppCount,
+              sendWhatsApp: sendWhatsApp,
+              sendSMS: sendSMS,
+              onAddCustomer: onAddCustomer,
+            ),
+          ),
+        ],
+      );
+    }
+
     final channelBanner = _channelBannerText();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -258,6 +281,79 @@ class CustomerSelectionStep extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyCustomerSelection extends StatelessWidget {
+  const _EmptyCustomerSelection({
+    required this.hiddenWithoutNumberCount,
+    required this.hiddenNotWhatsAppCount,
+    required this.sendWhatsApp,
+    required this.sendSMS,
+    required this.onAddCustomer,
+  });
+
+  final int hiddenWithoutNumberCount;
+  final int hiddenNotWhatsAppCount;
+  final bool sendWhatsApp;
+  final bool sendSMS;
+  final VoidCallback onAddCustomer;
+
+  String get _message {
+    if (hiddenWithoutNumberCount > 0) {
+      final count = hiddenWithoutNumberCount;
+      return count == 1
+          ? '1 customer needs a mobile number. Update them in Customers or add someone new.'
+          : '$count customers need mobile numbers. Update them in Customers or add someone new.';
+    }
+    if (sendWhatsApp && !sendSMS && hiddenNotWhatsAppCount > 0) {
+      return 'Your saved customers cannot receive this WhatsApp promotion. Add someone new or choose SMS.';
+    }
+    return 'Add a customer with a mobile number to continue.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+        child: Column(
+          key: const Key('promotion-empty-customers'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 36,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No customers ready',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              key: const Key('promotion-add-customer'),
+              onPressed: onAddCustomer,
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+              label: const Text('Add customer'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

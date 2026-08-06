@@ -556,11 +556,18 @@ Future<void> _initializeCoreServices() async {
   // Feature flags must be ready before MyApp selects its initial route. The
   // bootstrap surface remains visible while this potentially network-backed
   // work completes.
-  if (kReleaseMode) {
+  if (kReleaseMode && !FirebaseEnvironment.useEmulators) {
     await _initializeRemoteConfigAndSmartlook();
   }
 
-  if (!FirebaseEnvironment.useEmulators) {
+  if (FirebaseEnvironment.useEmulators) {
+    // Remote Config is deliberately unavailable in production-isolated QA.
+    // Require every release-relevant flag as a compile-time value before
+    // MyApp chooses its initial route.
+    FeatureFlags.applyEmulatorQaProfile(
+      EmulatorQaFeatureProfile.fromEnvironment(),
+    );
+  } else {
     await FeatureFlags.loadFlags();
   }
 

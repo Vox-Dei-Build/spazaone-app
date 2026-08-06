@@ -2,8 +2,7 @@
  * @function getShopContextBotHttp
  * @description HTTP endpoint for Botpress to gate WhatsApp shopping. Prefers merchantId from bot.
  */
-import * as admin from "firebase-admin";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
 import { requireBotRequest } from "../security/requestAuth";
@@ -80,14 +79,14 @@ async function findOrCreateMerchantCustomerId(args: {
       remarks: "No transactions yet",
       status: "PAID",
       type: "Payment",
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: FieldValue.serverTimestamp(),
     },
     balance: 0,
     isNPA: false,
     source: "whatsapp_ordering_link",
     sourceRefCode: args.sourceRefCode || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   return customerRef.id;
 }
@@ -99,9 +98,9 @@ async function markRefCodeUsed(refCode: string | undefined): Promise<void> {
     .doc(refCode)
     .set(
       {
-        useCount: admin.firestore.FieldValue.increment(1),
-        lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        useCount: FieldValue.increment(1),
+        lastUsedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );

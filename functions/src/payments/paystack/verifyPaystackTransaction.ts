@@ -1,7 +1,7 @@
 // Paystack webhook: validates the provider signature and uses only metadata
 // returned by Paystack's verification API before crediting a store.
 import { functions, db } from "../../config/main";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import axios from "axios";
 import * as path from "path";
 import * as dotenv from "dotenv";
@@ -146,7 +146,7 @@ export const verifyPaystackTransaction = functions.https.onRequest(
         purpose === "sale"
           ? db.doc(`users/${merchantId}/wallet/current`)
           : campaignWalletRef(campaignWallet.walletStoreId);
-      const now = admin.firestore.FieldValue.serverTimestamp();
+      const now = FieldValue.serverTimestamp();
       let deduped = false;
 
       await db.runTransaction(async (tx) => {
@@ -191,8 +191,7 @@ export const verifyPaystackTransaction = functions.https.onRequest(
             tx.set(
               walletRef,
               {
-                salesVirtualBalance:
-                  admin.firestore.FieldValue.increment(netToMerchant),
+                salesVirtualBalance: FieldValue.increment(netToMerchant),
                 updatedAt: now,
               },
               { merge: true },

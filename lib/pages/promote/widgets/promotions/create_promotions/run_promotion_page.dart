@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/customer_selection/customer_selection_step.dart';
@@ -208,6 +209,36 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
       setState(() {
         currentStep = RunPromotionStep.values[currentStep.index - 1];
       });
+    }
+  }
+
+  Future<void> _addCustomerForPromotion() async {
+    final added = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const AddContactPage(
+          returnToCallerAfterSave: true,
+          requireMobileNumber: true,
+        ),
+      ),
+    );
+    if (added != true || !mounted) return;
+
+    setState(() => calculating = true);
+    final vm = context.read<PromotionsViewModel>();
+    try {
+      await vm.fetchCustomers();
+      if (!mounted) return;
+      await vm.loadWhatsAppCapability();
+      if (!mounted) return;
+      if (allCustomers) {
+        final filtered = vm.filterCustomersForChannels(
+          sendWhatsApp: sendWhatsApp,
+          sendSMS: sendSMS,
+        );
+        vm.selectAllFromEligible(filtered.eligible);
+      }
+    } finally {
+      if (mounted) setState(() => calculating = false);
     }
   }
 
@@ -454,6 +485,7 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
           hiddenNotWhatsAppCount: filtered.hiddenNotWhatsApp,
           unknownWhatsAppCount: filtered.unknownIncluded,
           selectedCustomerIds: vm.selectedCustomerIds.toSet(),
+          onAddCustomer: _addCustomerForPromotion,
           onAllCustomersChanged: (val) {
             setState(() {
               allCustomers = val;

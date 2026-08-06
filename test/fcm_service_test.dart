@@ -22,4 +22,9 @@ void main() {
       isFalse,
     );
   });
+
+  test('messaging is disabled only for production-isolated emulator QA', () {
+    expect(FCMService.messagingEnabled(emulatorMode: true), isFalse);
+    expect(FCMService.messagingEnabled(emulatorMode: false), isTrue);
+  });
 }

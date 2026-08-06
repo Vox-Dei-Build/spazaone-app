@@ -67,8 +67,9 @@ class AddContactViewModel extends ChangeNotifier {
 
   Future<void> addCustomerToFirestore(
     BuildContext context,
-    AppModel model,
-  ) async {
+    AppModel model, {
+    bool returnToCallerAfterSave = false,
+  }) async {
     if (!_contactConsentAccepted) {
       showSnackbar(
         context,
@@ -315,6 +316,10 @@ class AddContactViewModel extends ChangeNotifier {
             ? 'Customer added. You can add a number later via "Edit Customer".'
             : 'Customer added.';
         showSnackbar(context, messenger, Colors.green);
+        if (returnToCallerAfterSave) {
+          Navigator.of(context).pop(true);
+          return;
+        }
         if (isFirstCustomer) {
           // PAS-UX-09: first-customer fast-path. Replace the AddContact
           // route with the new customer's management page so the

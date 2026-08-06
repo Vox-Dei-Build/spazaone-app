@@ -51,4 +51,47 @@ void main() {
     );
     expect(FeatureFlags.enableOnlineSales, isTrue);
   });
+
+  test('emulator QA profile applies every release-relevant value together', () {
+    final profile = EmulatorQaFeatureProfile.fromValues(const {
+      EmulatorQaFeatureProfile.multiStoreKey: 'true',
+      EmulatorQaFeatureProfile.numberFirstKey: 'false',
+      EmulatorQaFeatureProfile.deferConsentKey: 'false',
+      EmulatorQaFeatureProfile.otpAutosubmitKey: 'false',
+      EmulatorQaFeatureProfile.otpResendKey: 'false',
+      EmulatorQaFeatureProfile.onlineSalesKey: 'false',
+      EmulatorQaFeatureProfile.onboardingIntroKey: 'true',
+    });
+
+    FeatureFlags.applyEmulatorQaProfile(profile);
+
+    expect(FeatureFlags.enableMultiStoreOperators, isTrue);
+    expect(FeatureFlags.multiStoreOperatorsEnabled.value, isTrue);
+    expect(FeatureFlags.enableNumberFirstOnboarding, isFalse);
+    expect(FeatureFlags.enableDeferAuthConsent, isFalse);
+    expect(FeatureFlags.enableOtpAutosubmit, isFalse);
+    expect(FeatureFlags.enableOtpResendInDialog, isFalse);
+    expect(FeatureFlags.enableOnlineSales, isFalse);
+    expect(FeatureFlags.enableMerchantOnboardingIntro, isTrue);
+  });
+
+  test('emulator QA profile refuses missing or ambiguous values', () {
+    expect(
+      () => EmulatorQaFeatureProfile.fromValues(const {}),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains(EmulatorQaFeatureProfile.multiStoreKey),
+        ),
+      ),
+    );
+
+    expect(
+      () => EmulatorQaFeatureProfile.fromValues(const {
+        EmulatorQaFeatureProfile.multiStoreKey: 'yes',
+      }),
+      throwsStateError,
+    );
+  });
 }

@@ -26,6 +26,17 @@ class DropshipListingResult {
   final String checkoutUrl;
 }
 
+class CommerceOrdersSnapshot {
+  const CommerceOrdersSnapshot({
+    required this.orders,
+    required this.isFromCache,
+  });
+
+  final List<CommerceOrder> orders;
+  final bool isFromCache;
+  bool get isAuthoritative => !isFromCache;
+}
+
 class CommerceService {
   CommerceService({
     FirebaseFunctions? functions,
@@ -94,15 +105,28 @@ class CommerceService {
   Stream<List<CommerceOrder>> watchOrders({
     String? customerId,
     String? customerPhone,
+  }) =>
+      watchOrdersState(
+        customerId: customerId,
+        customerPhone: customerPhone,
+      ).map((snapshot) => snapshot.orders);
+
+  Stream<CommerceOrdersSnapshot> watchOrdersState({
+    String? customerId,
+    String? customerPhone,
   }) {
     final sellerId = StoreSession.instance.storeId;
-    if (sellerId.isEmpty) return const Stream.empty();
+    if (sellerId.isEmpty) {
+      return Stream.value(
+        const CommerceOrdersSnapshot(orders: [], isFromCache: false),
+      );
+    }
     final wantedCustomerId = customerId?.trim() ?? '';
     final wantedPhone = normalizePhoneNumber(customerPhone);
     return _firestore
         .collection('commerceOrders')
         .where('sellerId', isEqualTo: sellerId)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
       final orders =
           snapshot.docs.map(CommerceOrder.fromDocument).where((order) {
@@ -119,7 +143,10 @@ class CommerceService {
         final bTime = b.createdAt?.millisecondsSinceEpoch ?? 0;
         return bTime.compareTo(aTime);
       });
-      return orders;
+      return CommerceOrdersSnapshot(
+        orders: orders,
+        isFromCache: snapshot.metadata.isFromCache,
+      );
     });
   }
 

@@ -121,10 +121,12 @@ and sales reporting are coming soon; Cash sales continue unchanged.
   digital-payment release and does not expose a manual order form.
 - Buyer payment initialization is a dedicated commerce operation. It does not
   call wallet top-up endpoints, credit a wallet, or write a manual Sale.
-- The Paystack webhook validates the exact raw-body SHA-512 signature,
-  re-verifies the reference with Paystack, checks success, ZAR, amount, order,
-  seller and listing metadata, and applies `paid` in one Firestore transaction
-  with its processed-reference marker.
+- A verified Paystack event still fails closed unless the commerce-payment gate
+  is enabled and the stored order was initialized as Paystack with the exact
+  provider and reference. It then checks ZAR, amount, order, seller and listing
+  metadata and applies `paid` in one Firestore transaction with its
+  processed-reference marker. A manual WhatsApp order can never pass this
+  boundary.
 - Sellers and active store operators can read only their store's orders. Direct
   client writes to canonical listings, orders, checkout attempts, payment
   markers and supplier integration state are denied.
@@ -168,25 +170,39 @@ completed, the store owner records it and the order becomes `refunded`.
 - Keep `COMMERCE_PAYMENTS_ENABLED=false` in production until Spaza One has
   completed compliance approval and Paystack onboarding. Manual order requests
   continue working with the flag off.
+- The dedicated `verifyCommercePaystackTransaction` endpoint is deliberately
+  not exported from `functions/src/index.ts` and must not appear in the scoped
+  manual-MVP deploy list. Enabling an environment variable alone is not an
+  approved payment launch.
+- Before the manual-MVP release, verify the deployed Functions inventory also
+  has no `verifyCommercePaystackTransaction`. Removing a source export does not
+  delete an older deployed Function; if one exists, its explicit removal is a
+  separate production action requiring the normal identity, backup and
+  action-time approval gate.
 - Keep `FEATURE_ONLINE_SALES_ENABLED=false` until approved automatic payment
   collection and reconciliation are ready. The previous Online reporting code
   remains intact behind this switch.
 - After approval, configure the Paystack secret through Secret Manager, verify
-  test-mode checkout/webhooks/refunds, then set
-  `COMMERCE_PAYMENTS_ENABLED=true` in a controlled release.
-- The existing `verifyPaystackTransaction` webhook dispatches verified
-  `commerce_order` events into the isolated commerce transaction before any
-  wallet/Sales code. Leave the shared Paystack webhook URL in place.
+  test-mode checkout/webhooks/refunds, explicitly re-export and scope-deploy
+  `verifyCommercePaystackTransaction`, then set
+  `COMMERCE_PAYMENTS_ENABLED=true` in the same controlled release.
+- The existing `verifyPaystackTransaction` webhook may receive a verified
+  `commerce_order` event through the account's shared webhook URL, but the
+  commerce gate and stored Paystack binding are still mandatory before it can
+  reach the isolated order transition. It never falls through to wallet/Sales
+  mutation.
 - Confirm Twilio, WhatsApp and SMS credentials are available to Functions.
   Confirm Paystack only as part of the approved activation release.
   Notification failure is recorded but does not roll back payment or
   fulfilment state.
-- Roll out in two stages: deploy the server-only catalogue rules, catalogue
-  functions, scheduled worker and promotion-image proxy first; let the default
-  categories warm and smoke-test a supplier-product promotion image, then
-  release the app. This avoids an empty cold catalogue or placeholder images
-  in WhatsApp promotions. No migration of manual Sales, existing products,
-  stock or wallets is required.
+- Roll out the coupled backend in this order: deploy the two managed
+  `commerceOrders` indexes and wait until both are `READY`; publish and verify
+  the updated WhatsApp bot with its commerce source guards; then deploy only
+  the scoped catalogue, commerce-order/tracking and promotion-image Functions.
+  Never expose commerce orders to the older bot, which could route reorder or
+  cancellation through legacy Sales. Let the default categories warm and
+  smoke-test a supplier-product promotion image before releasing the app. No
+  migration of manual Sales, existing products, stock or wallets is required.
 
 ## Manual QA checklist
 

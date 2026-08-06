@@ -1,6 +1,7 @@
 // functions/src/http/cancelOrder.ts
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { getMerchantFcmTokens } from "./onSaleCancelledNotify";
 
 /**
@@ -43,7 +44,7 @@ export const cancelOrder = functions.https.onRequest(async (req, res) => {
       .collection("carts")
       .doc(customerId);
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     await db.runTransaction(async (tx) => {
       // ── READS (no writes here)
@@ -85,7 +86,7 @@ export const cancelOrder = functions.https.onRequest(async (req, res) => {
         lastClearedBecause: "order_cancelled",
         updatedAt: now,
         // remove any lock flag
-        lock: admin.firestore.FieldValue.delete(),
+        lock: FieldValue.delete(),
       };
 
       if (cartSnap.exists) {

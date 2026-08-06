@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { after, before, test } from "node:test";
 import admin from "firebase-admin";
 import {
+  applyVerifiedCommercePayment,
   createCommerceOrder,
   verifyCommercePaystackTransaction,
 } from "../lib/commerce/payment.js";
@@ -38,7 +39,7 @@ async function clear() {
   }
 }
 
-function verified(reference, amount = 14_000) {
+function verified(reference, amount = 14_000, metadataOverrides = {}) {
   return {
     status: "success",
     reference,
@@ -52,6 +53,7 @@ function verified(reference, amount = 14_000) {
       orderId: "order-1",
       sellerId: "seller-1",
       listingId: "listing-1",
+      ...metadataOverrides,
     },
   };
 }
@@ -80,11 +82,64 @@ function responseRecorder() {
   };
 }
 
-async function sendVerifiedWebhook(reference, amount = 14_000) {
+async function seedManualListing() {
+  await db.doc("commerceListings/listing-manual").set({
+    sellerId: "seller-1",
+    sellerProductId: "seller-product-manual",
+    supplierId: "manual-supplier",
+    supplierProductId: "supplier-product-manual",
+    baseCostMinor: 10_000,
+    sellPriceMinor: 14_000,
+    title: "Manual dropship product",
+    images: [],
+    active: true,
+    fulfilmentMode: "manual_supplier_order",
+  });
+}
+
+function manualOrderRequest(overrides = {}) {
+  return {
+    method: "POST",
+    body: {
+      listingId: "listing-manual",
+      merchantId: "seller-1",
+      customerId: "customer-1",
+      orderChannel: "whatsapp",
+      paymentPreference: "transfer",
+      checkoutAttemptId: "attempt-manual",
+      buyer: {
+        name: "Manual Buyer",
+        phone: "0820000000",
+      },
+      deliveryAddress: {
+        line1: "1 Private Road",
+        suburb: "Woodstock",
+        city: "Cape Town",
+        province: "Western Cape",
+        postalCode: "7925",
+      },
+      ...overrides,
+    },
+    get(name) {
+      return name.toLowerCase() === "x-pasella-bot-token"
+        ? botSecret
+        : undefined;
+    },
+  };
+}
+
+async function sendVerifiedWebhook(
+  reference,
+  amount = 14_000,
+  metadataOverrides = {},
+) {
   const body = { event: "charge.success", data: { reference } };
   const rawBody = Buffer.from(JSON.stringify(body));
   axios.defaults.adapter = async (config) => ({
-    data: { status: true, data: verified(reference, amount) },
+    data: {
+      status: true,
+      data: verified(reference, amount, metadataOverrides),
+    },
     status: 200,
     statusText: "OK",
     headers: {},
@@ -118,9 +173,16 @@ before(async () => {
     status: "pending_payment",
     paymentStatus: "pending",
     fulfilmentStatus: "pending",
+    paymentMethod: "paystack",
+    payment: { provider: "paystack", reference: "commerce-ref-1" },
     amountDueMinor: 14_000,
     marginMinor: 3_418,
     statusHistory: [],
+  });
+  await db.doc("users/seller-1/customers/customer-1").set({
+    name: "Manual Buyer",
+    number: "0820000000",
+    category: "Customer",
   });
 });
 
@@ -134,18 +196,7 @@ after(async () => {
 });
 
 test("WhatsApp bot creates an isolated manual order without a payment provider", async () => {
-  await db.doc("commerceListings/listing-manual").set({
-    sellerId: "seller-1",
-    sellerProductId: "seller-product-manual",
-    supplierId: "manual-supplier",
-    supplierProductId: "supplier-product-manual",
-    baseCostMinor: 10_000,
-    sellPriceMinor: 14_000,
-    title: "Manual dropship product",
-    images: [],
-    active: true,
-    fulfilmentMode: "manual_supplier_order",
-  });
+  await seedManualListing();
   const orderCountBefore = (await db.collection("commerceOrders").get()).size;
   let providerCalled = false;
   axios.defaults.adapter = async () => {
@@ -155,33 +206,7 @@ test("WhatsApp bot creates an isolated manual order without a payment provider",
   process.env.COMMERCE_PAYMENTS_ENABLED = "false";
   const response = responseRecorder();
   const duplicateResponse = responseRecorder();
-  const request = {
-    method: "POST",
-    body: {
-      listingId: "listing-manual",
-      merchantId: "seller-1",
-      customerId: "customer-1",
-      orderChannel: "whatsapp",
-      paymentPreference: "transfer",
-      checkoutAttemptId: "attempt-manual",
-      buyer: {
-        name: "Manual Buyer",
-        phone: "0820000000",
-      },
-      deliveryAddress: {
-        line1: "1 Private Road",
-        suburb: "Woodstock",
-        city: "Cape Town",
-        province: "Western Cape",
-        postalCode: "7925",
-      },
-    },
-    get(name) {
-      return name.toLowerCase() === "x-pasella-bot-token"
-        ? botSecret
-        : undefined;
-    },
-  };
+  const request = manualOrderRequest();
   try {
     await createCommerceOrder(request, response);
     await createCommerceOrder(request, duplicateResponse);
@@ -221,6 +246,113 @@ test("WhatsApp bot creates an isolated manual order without a payment provider",
   assert.equal(orders.docs[0].get("buyer.email"), "");
 });
 
+test("a reused checkout attempt cannot cross customer identity", async () => {
+  await seedManualListing();
+  await db.doc("users/seller-1/customers/customer-2").set({
+    name: "Second Buyer Record",
+    number: "0820000000",
+    category: "Customer",
+  });
+  const attempt = "attempt-customer-race";
+  const firstResponse = responseRecorder();
+  const secondResponse = responseRecorder();
+  process.env.COMMERCE_PAYMENTS_ENABLED = "false";
+  try {
+    await Promise.all([
+      createCommerceOrder(
+        manualOrderRequest({ checkoutAttemptId: attempt }),
+        firstResponse,
+      ),
+      createCommerceOrder(
+        manualOrderRequest({
+          checkoutAttemptId: attempt,
+          customerId: "customer-2",
+        }),
+        secondResponse,
+      ),
+    ]);
+  } finally {
+    process.env.COMMERCE_PAYMENTS_ENABLED = "true";
+  }
+
+  assert.deepEqual(
+    [firstResponse.statusCode, secondResponse.statusCode].sort(),
+    [200, 400],
+  );
+  const successful =
+    firstResponse.statusCode === 200 ? firstResponse : secondResponse;
+  const order = await db.doc(`commerceOrders/${successful.body.orderId}`).get();
+  assert.equal(order.exists, true);
+  assert.equal(
+    order.get("customerId"),
+    firstResponse.statusCode === 200 ? "customer-1" : "customer-2",
+  );
+});
+
+test("WhatsApp order rejects a customer id bound to another phone", async () => {
+  await seedManualListing();
+  const before = (await db.collection("commerceOrders").get()).size;
+  const response = responseRecorder();
+  process.env.COMMERCE_PAYMENTS_ENABLED = "false";
+  try {
+    await createCommerceOrder(
+      manualOrderRequest({
+        checkoutAttemptId: "attempt-customer-mismatch",
+        buyer: { name: "Wrong Buyer", phone: "0830000000" },
+      }),
+      response,
+    );
+  } finally {
+    process.env.COMMERCE_PAYMENTS_ENABLED = "true";
+  }
+  assert.equal(response.statusCode, 400);
+  assert.equal((await db.collection("commerceOrders").get()).size, before);
+});
+
+test("manual supplier orders reject client quantities above one", async () => {
+  await seedManualListing();
+  const before = (await db.collection("commerceOrders").get()).size;
+  const response = responseRecorder();
+  process.env.COMMERCE_PAYMENTS_ENABLED = "false";
+  try {
+    await createCommerceOrder(
+      manualOrderRequest({
+        checkoutAttemptId: "attempt-quantity-tamper",
+        quantity: 2,
+      }),
+      response,
+    );
+  } finally {
+    process.env.COMMERCE_PAYMENTS_ENABLED = "true";
+  }
+  assert.equal(response.statusCode, 400);
+  assert.equal((await db.collection("commerceOrders").get()).size, before);
+});
+
+test("manual supplier orders require a valid South African address", async () => {
+  await seedManualListing();
+  const response = responseRecorder();
+  process.env.COMMERCE_PAYMENTS_ENABLED = "false";
+  try {
+    await createCommerceOrder(
+      manualOrderRequest({
+        checkoutAttemptId: "attempt-invalid-address",
+        deliveryAddress: {
+          line1: "1 Private Road",
+          suburb: "Woodstock",
+          city: "Cape Town",
+          province: "Atlantis",
+          postalCode: "12345",
+        },
+      }),
+      response,
+    );
+  } finally {
+    process.env.COMMERCE_PAYMENTS_ENABLED = "true";
+  }
+  assert.equal(response.statusCode, 400);
+});
+
 test("manual buyer ordering is not exposed as a public web form", async () => {
   process.env.COMMERCE_PAYMENTS_ENABLED = "false";
   const response = responseRecorder();
@@ -238,6 +370,89 @@ test("manual buyer ordering is not exposed as a public web form", async () => {
   assert.doesNotMatch(response.body, /<form/i);
   assert.doesNotMatch(response.body, /Paystack/i);
   assert.doesNotMatch(response.body, /pay securely/i);
+});
+
+test("a verified provider event cannot pay a manual WhatsApp order", async () => {
+  await db.doc("commerceOrders/manual-webhook-order").set({
+    sellerId: "seller-1",
+    listingId: "listing-manual",
+    customerId: "customer-1",
+    buyer: { name: "Manual Buyer", phone: "0820000000" },
+    status: "pending_payment",
+    paymentStatus: "awaiting_manual_confirmation",
+    fulfilmentStatus: "pending",
+    paymentMethod: "manual",
+    payment: { provider: "manual", reference: "manual-reference" },
+    amountDueMinor: 14_000,
+    statusHistory: [],
+  });
+
+  const response = await sendVerifiedWebhook(
+    "provider-ref-for-manual-order",
+    14_000,
+    {
+      orderId: "manual-webhook-order",
+      listingId: "listing-manual",
+    },
+  );
+  assert.equal(response.statusCode, 400);
+  const order = await db.doc("commerceOrders/manual-webhook-order").get();
+  assert.equal(order.get("status"), "pending_payment");
+  assert.equal(order.get("paymentStatus"), "awaiting_manual_confirmation");
+  assert.equal(
+    (
+      await db
+        .doc(
+          "payments/paystackCommerce/processed/provider-ref-for-manual-order",
+        )
+        .get()
+    ).exists,
+    false,
+  );
+});
+
+test("the disabled payment gate rejects even a Paystack-bound verified event", async () => {
+  const reference = "provider-ref-while-disabled";
+  await db.doc("commerceOrders/disabled-paystack-order").set({
+    sellerId: "seller-1",
+    listingId: "listing-disabled",
+    buyer: { name: "Digital Buyer", phone: "0820000000" },
+    status: "pending_payment",
+    paymentStatus: "pending",
+    fulfilmentStatus: "pending",
+    paymentMethod: "paystack",
+    payment: { provider: "paystack", reference },
+    amountDueMinor: 14_000,
+    statusHistory: [],
+  });
+  const event = verified(reference, 14_000, {
+    orderId: "disabled-paystack-order",
+    listingId: "listing-disabled",
+  });
+
+  process.env.COMMERCE_PAYMENTS_ENABLED = "false";
+  try {
+    await assert.rejects(
+      applyVerifiedCommercePayment(event),
+      /COMMERCE_PAYMENTS_DISABLED/,
+    );
+    const response = await sendVerifiedWebhook(reference, 14_000, {
+      orderId: "disabled-paystack-order",
+      listingId: "listing-disabled",
+    });
+    assert.equal(response.statusCode, 503);
+  } finally {
+    process.env.COMMERCE_PAYMENTS_ENABLED = "true";
+  }
+
+  const order = await db.doc("commerceOrders/disabled-paystack-order").get();
+  assert.equal(order.get("status"), "pending_payment");
+  assert.equal(order.get("paymentStatus"), "pending");
+  assert.equal(
+    (await db.doc(`payments/paystackCommerce/processed/${reference}`).get())
+      .exists,
+    false,
+  );
 });
 
 test("CJ checkout ignores client pricing and snapshots the live landed quote", async () => {
@@ -429,7 +644,7 @@ test("amount mismatch cannot mark another pending order paid", async () => {
       status: "pending_payment",
       paymentStatus: "pending",
       fulfilmentStatus: "pending",
-      "payment.reference": admin.firestore.FieldValue.delete(),
+      payment: { provider: "paystack", reference: "commerce-ref-bad" },
       statusHistory: [],
     },
     { merge: true },

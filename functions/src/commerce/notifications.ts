@@ -7,6 +7,7 @@ import {
   removeInvalidStoreNotificationTokens,
 } from "../notifications/storeNotificationTokens";
 import { formatPhoneNumber } from "../utils/phoneUtils";
+import { buyerSafeTrackingCarrier } from "./orderPresentation";
 
 type OrderNotice = {
   orderId: string;
@@ -42,7 +43,10 @@ function statusMessage(order: OrderNotice): string {
     case "submitted_for_fulfilment":
       return `Spaza One: Order ${reference} was submitted for fulfilment.`;
     case "shipped": {
-      const tracking = [order.trackingCarrier, order.trackingNumber]
+      const tracking = [
+        buyerSafeTrackingCarrier(order.trackingCarrier),
+        order.trackingNumber,
+      ]
         .filter(Boolean)
         .join(" ");
       return (

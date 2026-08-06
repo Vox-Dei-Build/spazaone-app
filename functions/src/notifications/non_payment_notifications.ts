@@ -1,5 +1,6 @@
 import { functions, db } from "../config/main";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 type ShopOwner = {
   id: string;
@@ -191,7 +192,7 @@ async function removeInvalidToken(shopOwnerId: string) {
       .collection("shopOwners")
       .doc(shopOwnerId);
     await shopOwnerRef.update({
-      fcmToken: admin.firestore.FieldValue.delete(),
+      fcmToken: FieldValue.delete(),
     });
     console.log(`Invalid FCM token removed for shop owner: ${shopOwnerId}`);
   } catch (error) {

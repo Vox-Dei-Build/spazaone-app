@@ -16,12 +16,27 @@ import 'package:pasella/config/size_config.dart';
 import 'package:provider/provider.dart';
 import 'package:rxdart/rxdart.dart';
 
+@visibleForTesting
+bool customerSnapshotIsUnverified({
+  required bool isFromCache,
+  required bool isEmpty,
+}) =>
+    isFromCache && isEmpty;
+
+class _CustomerCacheUnverified implements Exception {
+  const _CustomerCacheUnverified();
+}
+
 class EntityTab extends StatefulWidget {
   final String category;
   final String emptyAsset;
   final String emptyText;
   final ValueNotifier<String?> searchTextNotifier;
   final ValueNotifier<bool> hasCustomersNotifier;
+
+  /// Optional source override used by focused widget tests. Production keeps
+  /// the Firestore-backed stream below.
+  final Stream<List<CustomerWithTransactions>> Function()? entitiesStream;
 
   /// PAS-UX: optional external scroll controller. When provided, the
   /// inner `SingleChildScrollView` attaches to it so a parent (e.g.
@@ -53,6 +68,7 @@ class EntityTab extends StatefulWidget {
     required this.emptyAsset,
     required this.emptyText,
     required this.hasCustomersNotifier,
+    this.entitiesStream,
     this.scrollController,
     this.emptyCtaLabel,
     this.onEmptyCtaTap,
@@ -67,6 +83,7 @@ class EntityTab extends StatefulWidget {
 
 class _EntityTabState extends State<EntityTab> {
   List<CustomerWithTransactions> allEntities = [];
+  int _streamGeneration = 0;
 
   @override
   void initState() {
@@ -90,71 +107,6 @@ class _EntityTabState extends State<EntityTab> {
     setState(() {});
   }
 
-  /* Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
-    final String currentUserId = StoreSession.instance.storeId;
-
-    if (currentUserId.isEmpty) {
-      return Stream.value([]);
-    }
-
-    Query query = FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUserId)
-        .collection('customers')
-        .where("category", isEqualTo: widget.category);
-
-    final customersStream =
-        query.orderBy("lastTransaction.date", descending: true).snapshots();
-
-    final unreadMessagesStream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(currentUserId)
-        .snapshots()
-        .map((snapshot) {
-      if (!snapshot.exists || snapshot.data()?['unreadMessages'] == null) {
-        return <Map<String,
-            dynamic>>[]; // ✅ Always return a properly typed empty list
-      }
-      return (snapshot.data()?['unreadMessages'] as List<dynamic>)
-          .map((msg) =>
-              msg as Map<String, dynamic>) // ✅ Explicitly cast each item
-          .toList();
-    });
-
-    // ✅ Combine both streams so that unread messages update in real-time
-    return Rx.combineLatest2<QuerySnapshot, List<Map<String, dynamic>>,
-        List<CustomerWithTransactions>>(
-      customersStream,
-      unreadMessagesStream,
-      (customerSnapshot, unreadMessages) =>
-          customerSnapshot.docs.map((customerDoc) {
-        final customerData = customerDoc.data() as Map<String, dynamic>;
-        double balance = customerData['balance']?.toDouble() ?? 0.0;
-
-        // ✅ Filter unread messages for this specific customer
-        int unreadCount = unreadMessages
-            .where((msg) => msg['customerNumber'] == customerData['number'])
-            .length;
-
-        return CustomerWithTransactions(
-          customer: Customer.fromMap({
-            'id': customerDoc.id,
-            'name': formatStringToCamelCase(customerData['name']),
-            'number': customerData['number'],
-            'category': customerData['category'],
-            'lastTransaction': customerData['lastTransaction'],
-            'balance': balance,
-            'isNPA': customerData['isNPA'],
-            'profileImageUrl': customerData['profileImageUrl'],
-          }),
-          transactions: [],
-          unreadCount: unreadCount, // ✅ UI updates when unread messages change
-        );
-      }).toList(), // ✅ Ensure this function returns a List<CustomerWithTransactions>
-    );
-  }
- */
-
   Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
     final String currentUserId = StoreSession.instance.storeId;
     if (currentUserId.isEmpty) return Stream.value([]);
@@ -165,8 +117,9 @@ class _EntityTabState extends State<EntityTab> {
         .collection('customers')
         .where("category", isEqualTo: widget.category);
 
-    final customersStream =
-        query.orderBy("lastTransaction.date", descending: true).snapshots();
+    final customersStream = query
+        .orderBy("lastTransaction.date", descending: true)
+        .snapshots(includeMetadataChanges: true);
 
     final unreadMessagesStream = FirebaseFirestore.instance
         .collection('users')
@@ -185,57 +138,66 @@ class _EntityTabState extends State<EntityTab> {
         List<CustomerWithTransactions>>(
       customersStream,
       unreadMessagesStream,
-      (customerSnapshot, unreadMessages) =>
-          customerSnapshot.docs.map((customerDoc) {
-        final customerData = customerDoc.data() as Map<String, dynamic>;
-        final double balance =
-            (customerData['balance'] as num?)?.toDouble() ?? 0.0;
+      (customerSnapshot, unreadMessages) {
+        if (customerSnapshotIsUnverified(
+          isFromCache: customerSnapshot.metadata.isFromCache,
+          isEmpty: customerSnapshot.docs.isEmpty,
+        )) {
+          throw const _CustomerCacheUnverified();
+        }
+        return customerSnapshot.docs.map((customerDoc) {
+          final customerData = customerDoc.data() as Map<String, dynamic>;
+          final double balance =
+              (customerData['balance'] as num?)?.toDouble() ?? 0.0;
 
-        // 🔵 Chat unread per customer (existing)
-        // V1 truth-surface: only count inbound customer messages toward
-        // the unread badge — outbound bot mirrors share the same array
-        // but should not ring the bell. Entries flagged `isRead: true`
-        // by `markMessagesAsRead` must also be excluded so the badge
-        // actually clears after the merchant opens the chat.
-        final chatUnread = unreadMessages
-            .where(
-              (msg) =>
-                  msg['customerNumber'] == customerData['number'] &&
-                  (msg['direction'] == null ||
-                      msg['direction'].toString().toLowerCase() == 'inbound') &&
-                  msg['isRead'] != true,
-            )
-            .length;
+          // 🔵 Chat unread per customer (existing)
+          // V1 truth-surface: only count inbound customer messages toward
+          // the unread badge — outbound bot mirrors share the same array
+          // but should not ring the bell. Entries flagged `isRead: true`
+          // by `markMessagesAsRead` must also be excluded so the badge
+          // actually clears after the merchant opens the chat.
+          final chatUnread = unreadMessages
+              .where(
+                (msg) =>
+                    msg['customerNumber'] == customerData['number'] &&
+                    (msg['direction'] == null ||
+                        msg['direction'].toString().toLowerCase() ==
+                            'inbound') &&
+                    msg['isRead'] != true,
+              )
+              .length;
 
-        // 🟠 Orders unread per customer (NEW)
-        final int ordersUnread =
-            (customerData['ordersUnreadCount'] as int?) ?? 0;
+          // 🟠 Orders unread per customer (NEW)
+          final int ordersUnread =
+              (customerData['ordersUnreadCount'] as int?) ?? 0;
 
-        // ✅ Single badge shows combined unread (messages + orders)
-        final int combinedUnread = chatUnread + ordersUnread;
+          // ✅ Single badge shows combined unread (messages + orders)
+          final int combinedUnread = chatUnread + ordersUnread;
 
-        return CustomerWithTransactions(
-          customer: Customer.fromMap({
-            'id': customerDoc.id,
-            'name': formatStringToCamelCase(customerData['name']),
-            'number': customerData['number'],
-            'category': customerData['category'],
-            'lastTransaction': customerData['lastTransaction'],
-            'balance': balance,
-            'isNPA': balance < 0,
-            'profileImageUrl': customerData['profileImageUrl'],
-          }),
-          transactions: [],
-          unreadCount: combinedUnread, // 👈 now includes orders
-        );
-      }).toList(),
+          return CustomerWithTransactions(
+            customer: Customer.fromMap({
+              'id': customerDoc.id,
+              'name': formatStringToCamelCase(customerData['name']),
+              'number': customerData['number'],
+              'category': customerData['category'],
+              'lastTransaction': customerData['lastTransaction'],
+              'balance': balance,
+              'isNPA': balance < 0,
+              'profileImageUrl': customerData['profileImageUrl'],
+            }),
+            transactions: [],
+            unreadCount: combinedUnread,
+          );
+        }).toList();
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final currentUserId = StoreSession.instance.storeId;
+    final currentUserId =
+        widget.entitiesStream == null ? StoreSession.instance.storeId : '';
     final dataModel = context.watch<AppModel>();
     return Scaffold(
       body: Padding(
@@ -245,12 +207,53 @@ class _EntityTabState extends State<EntityTab> {
         child: StreamBuilder<List<CustomerWithTransactions>>(
           key: ValueKey(
             dataModel.selectedSortByFilter +
-                dataModel.reminderDateFilter.toString(),
+                dataModel.reminderDateFilter.toString() +
+                _streamGeneration.toString(),
           ),
-          stream: streamEntitiesWithTransactions(),
+          stream:
+              widget.entitiesStream?.call() ?? streamEntitiesWithTransactions(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
+            }
+
+            // A failed Firestore read is not an empty customer list. Surface
+            // the connection problem before examining data so a transient
+            // error can never masquerade as first-run onboarding.
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.imageSizeMultiplier * 8,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cloud_off_outlined, size: 32),
+                      SizedBox(height: SizeConfig.heightMultiplier),
+                      const Text(
+                        'Could not load customers.',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Check your connection and try again.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        key: const ValueKey('customer-stream-retry'),
+                        onPressed: () {
+                          setState(() => _streamGeneration++);
+                        },
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
             }
 
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -350,15 +353,6 @@ class _EntityTabState extends State<EntityTab> {
                       ],
                     ],
                   ),
-                ),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return const Center(
-                child: Text(
-                  'Could not load customers. Check your connection and try again.',
-                  textAlign: TextAlign.center,
                 ),
               );
             }

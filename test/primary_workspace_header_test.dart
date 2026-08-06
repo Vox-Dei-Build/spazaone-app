@@ -1,9 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
+import 'package:pasella/shared/widgets/page_header.dart';
+import 'package:pasella/shared/widgets/wallet_balance_pill.dart';
 
 void main() {
   const storeName = 'Koekie Food Security and General Dealer';
+
+  for (final width in <double>[320, 360, 384, 393, 411]) {
+    for (final textScale in <double>[1, 2]) {
+      testWidgets(
+        'primary chrome protects brand at ${width.toInt()}dp and ${textScale}x text',
+        (tester) async {
+          tester.view.physicalSize = Size(width, 180);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: MediaQueryData(
+                  size: Size(width, 180),
+                  textScaler: TextScaler.linear(textScale),
+                ),
+                child: Scaffold(
+                  body: PageHeader(
+                    actionWidget: IconButton(
+                      onPressed: () {},
+                      icon: const Icon(Icons.help_outline),
+                    ),
+                    walletWidget: const WalletBalancePill(
+                      presentation: WalletBalancePresentation(
+                        balance: 0,
+                        salesBalance: 25,
+                        isShared: true,
+                      ),
+                    ),
+                    connectivityWidget: const SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Icon(Icons.cloud_done_outlined),
+                    ),
+                    onSettingsTap: () {},
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          expect(tester.takeException(), isNull);
+          final brand = find.byKey(const ValueKey('page-header-brand'));
+          final wallet = find.byKey(const ValueKey('page-header-wallet'));
+          expect(brand, findsOneWidget);
+          expect(wallet, findsOneWidget);
+          expect(tester.getSize(brand).width, greaterThanOrEqualTo(74));
+          expect(tester.getSize(wallet).width, lessThanOrEqualTo(96));
+          expect(find.bySemanticsLabel('Spaza One'), findsOneWidget);
+          expect(
+            find.bySemanticsLabel(
+              RegExp('shared campaign credits.*Low balance.*Top Up'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.byIcon(Icons.account_balance_wallet_outlined),
+            findsOneWidget,
+          );
+          expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+        },
+      );
+    }
+  }
 
   for (final width in <double>[320, 360, 384]) {
     for (final textScale in <double>[1, 1.3, 2]) {

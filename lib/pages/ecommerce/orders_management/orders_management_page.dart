@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
-import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/models/sales/order_model.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/order_filters.dart';
@@ -53,7 +52,7 @@ class OrdersManagementPage extends StatefulWidget {
 
 class _OrdersManagementPageState extends State<OrdersManagementPage> {
   late final OrdersController _controller;
-  late final StreamSubscription<List<CommerceOrder>> _commerceOrdersSub;
+  StreamSubscription<CommerceOrdersSnapshot>? _commerceOrdersSub;
   final _searchCtl = TextEditingController();
   final _scroll = ScrollController();
 
@@ -74,17 +73,7 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
       ),
       customerId: widget.customerId,
     );
-    _commerceOrdersSub = CommerceService()
-        .watchOrders(
-      customerId: widget.customerId,
-      customerPhone: widget.mobileNumber,
-    )
-        .listen(
-      _controller.setCommerceOrders,
-      onError: (Object error, StackTrace stack) {
-        debugPrint('Customer supplier orders stream failed: $error');
-      },
-    );
+    _watchCommerceOrders();
     // Fire-and-forget initial load. The controller flips `loading` on
     // before the first frame is built so the skeleton renders.
     _controller.load();
@@ -94,9 +83,35 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
   void dispose() {
     _searchCtl.dispose();
     _scroll.dispose();
-    _commerceOrdersSub.cancel();
+    _commerceOrdersSub?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _watchCommerceOrders() {
+    _commerceOrdersSub?.cancel();
+    _controller.beginCommerceLoad();
+    _commerceOrdersSub = CommerceService()
+        .watchOrdersState(
+      customerId: widget.customerId,
+      customerPhone: widget.mobileNumber,
+    )
+        .listen(
+      (snapshot) => _controller.setCommerceOrders(
+        snapshot.orders,
+        isFromCache: snapshot.isFromCache,
+      ),
+      onError: (Object error, StackTrace stack) {
+        debugPrint('Customer supplier orders stream failed: $error');
+        _controller.setCommerceError(error);
+      },
+      onDone: _controller.completeCommerceLoad,
+    );
+  }
+
+  Future<void> _refreshAll() async {
+    _watchCommerceOrders();
+    await _controller.refresh();
   }
 
   Future<void> _pickDateRange() async {
@@ -120,7 +135,7 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
       value: _controller,
       child: Consumer<OrdersController>(
         builder: (context, ctrl, _) {
-          final isFirstLoad = ctrl.loading && ctrl.allOrders.isEmpty;
+          final isFirstLoad = ctrl.truthSurface == OrdersTruthSurface.loading;
           return Column(
             children: [
               // Filter chips
@@ -178,10 +193,38 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
 
               const Divider(height: 1, color: kHighLightColor),
 
+              if (ctrl.hasAnyError && ctrl.allOrders.isNotEmpty)
+                Material(
+                  color: Colors.orange.withValues(alpha: 0.10),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.cloud_off_outlined,
+                          size: 18,
+                          color: Colors.orange.shade900,
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Some orders may be missing.',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _refreshAll,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
               // List body
               Expanded(
                 child: RefreshIndicator(
-                  onRefresh: ctrl.refresh,
+                  onRefresh: _refreshAll,
                   child: _buildBody(context, ctrl),
                 ),
               ),
@@ -193,23 +236,26 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
   }
 
   Widget _buildBody(BuildContext context, OrdersController ctrl) {
-    if (ctrl.loading && ctrl.allOrders.isEmpty) {
+    if (ctrl.truthSurface == OrdersTruthSurface.loading) {
       return ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: 6,
         itemBuilder: (_, __) => const OrderSkeleton(),
       );
     }
-    if (ctrl.error != null && ctrl.allOrders.isEmpty) {
+    if (ctrl.truthSurface == OrdersTruthSurface.error) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           SizedBox(height: SizeConfig.heightMultiplier * 4),
-          const EmptyStateOnboarding(
+          EmptyStateOnboarding(
             icon: Icons.cloud_off_outlined,
             headline: "Couldn't load orders",
             subtitle:
                 'Check your connection and pull down to refresh, or try again in a moment.',
+            ctaLabel: 'Try again',
+            ctaIcon: Icons.refresh_rounded,
+            onCtaTap: _refreshAll,
           ),
         ],
       );

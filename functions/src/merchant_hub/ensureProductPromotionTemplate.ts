@@ -1,4 +1,4 @@
-import { firestore } from "firebase-admin";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { ensureMerchantOrderingLink } from "../ecommerce/getMerchantOrderingLink";
 import { submitWhatsAppTemplateDocument } from "./submitWhatsAppTemplate";
@@ -85,9 +85,7 @@ export const ensureProductPromotionTemplate = functions.https.onCall(
       const current = snap.data();
       const whatsapp = current?.channels?.whatsapp;
       const status = String(whatsapp?.approvalStatus || "draft").toLowerCase();
-      const startedAt = whatsapp?.submissionStartedAt as
-        | firestore.Timestamp
-        | undefined;
+      const startedAt = whatsapp?.submissionStartedAt as Timestamp | undefined;
       const leaseIsFresh =
         startedAt != null && Date.now() - startedAt.toMillis() < 5 * 60 * 1000;
 
@@ -102,7 +100,7 @@ export const ensureProductPromotionTemplate = functions.https.onCall(
           whatsapp?.twilioTemplateId === configuredContentSid;
         if (alreadyConfigured) return;
 
-        const now = firestore.FieldValue.serverTimestamp();
+        const now = FieldValue.serverTimestamp();
         const approvedTemplate = {
           userId: "__pasella_system__",
           name: "Product promotion",
@@ -157,7 +155,7 @@ export const ensureProductPromotionTemplate = functions.https.onCall(
       }
 
       const attempt = Number(current?.submissionAttempt || 0) + 1;
-      const now = firestore.FieldValue.serverTimestamp();
+      const now = FieldValue.serverTimestamp();
       const base = {
         userId: "__pasella_system__",
         name: "Product promotion",
@@ -226,9 +224,9 @@ export const ensureProductPromotionTemplate = functions.https.onCall(
         systemSourceTemplateId: GLOBAL_PRODUCT_PROMOTION_TEMPLATE_ID,
         submissionManagedBy: "global_product_promotion_binding",
         templateKind: PRODUCT_PROMOTION_TEMPLATE_KIND,
-        updatedAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
         ...(!merchantBindingExists && {
-          createdAt: firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
         }),
         channels: {
           whatsapp: {

@@ -38,7 +38,21 @@ import 'package:url_launcher/url_launcher.dart';
 ///     coverage — nothing is saved without consent — with less legal-first
 ///     framing.
 class AddContactPage extends StatelessWidget {
-  const AddContactPage({super.key});
+  const AddContactPage({
+    super.key,
+    this.returnToCallerAfterSave = false,
+    this.requireMobileNumber = false,
+  });
+
+  /// Promotion recovery keeps the seller in the flow after saving instead
+  /// of replacing this route with Dashboard, which is the normal customer
+  /// creation behaviour.
+  final bool returnToCallerAfterSave;
+
+  /// Promotions need a reachable customer. The normal customer ledger still
+  /// permits walk-in customers without a number.
+  final bool requireMobileNumber;
+
   static const id = '/addContactPage';
 
   Future<void> _openPrivacyPolicy(BuildContext context) async {
@@ -186,13 +200,19 @@ class AddContactPage extends StatelessWidget {
                                 child: CustomTextField(
                                   hintText: 'Enter an SA mobile number',
                                   prefixIcon: Icons.call_outlined,
-                                  label: 'Mobile Number (Optional)',
+                                  label: requireMobileNumber
+                                      ? 'Mobile Number *'
+                                      : 'Mobile Number (Optional)',
                                   textInputType: TextInputType.number,
                                   maxLength: 10,
                                   controller: viewModel.numberController,
                                   validator: (value) {
                                     final v = value?.trim() ?? '';
-                                    if (v.isEmpty) return null;
+                                    if (v.isEmpty) {
+                                      return requireMobileNumber
+                                          ? 'A mobile number is required for promotions.'
+                                          : null;
+                                    }
                                     if (!isValidSAPhoneNumber(v)) {
                                       return kSAOnlyPhoneMessage;
                                     }
@@ -220,6 +240,8 @@ class AddContactPage extends StatelessWidget {
                                     await viewModel.addCustomerToFirestore(
                                       context,
                                       model,
+                                      returnToCallerAfterSave:
+                                          returnToCallerAfterSave,
                                     );
                                   }
                                 },

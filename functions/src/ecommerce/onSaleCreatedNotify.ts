@@ -33,6 +33,7 @@
 
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { AndroidConfig, MulticastMessage } from "firebase-admin/messaging";
 import { sendMerchantOrderSmsFallback } from "../utils/merchantOrderSmsFallback";
 import {
@@ -81,7 +82,7 @@ export const onSaleCreatedNotify = functions.firestore
       const data = fresh.data() || {};
       if (data.notifiedPlacedAt) return false;
       tx.update(saleRef, {
-        notifiedPlacedAt: admin.firestore.FieldValue.serverTimestamp(),
+        notifiedPlacedAt: FieldValue.serverTimestamp(),
       });
       return true;
     });

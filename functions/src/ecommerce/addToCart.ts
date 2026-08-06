@@ -1,5 +1,5 @@
 import { db, functions } from "../config/main";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 type AddToCartBody = {
   merchantId: string;
@@ -101,7 +101,7 @@ export const addToCart = functions.https.onRequest(async (req, res) => {
             image: product.image ?? null,
             description: product.description ?? "",
           },
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );
@@ -113,7 +113,7 @@ export const addToCart = functions.https.onRequest(async (req, res) => {
           total: newTotal,
           itemsCount: newCount,
           currency: "ZAR",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );

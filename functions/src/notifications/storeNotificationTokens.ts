@@ -1,4 +1,4 @@
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../config/main";
 
 function addTokens(target: Set<string>, data: FirebaseFirestore.DocumentData) {
@@ -51,9 +51,9 @@ export async function removeInvalidStoreNotificationTokens(
     const scalar = legacy.data()?.fcmToken;
     await legacy.ref.set(
       {
-        fcmTokens: admin.firestore.FieldValue.arrayRemove(...unique),
+        fcmTokens: FieldValue.arrayRemove(...unique),
         ...(typeof scalar === "string" && unique.includes(scalar)
-          ? { fcmToken: admin.firestore.FieldValue.delete() }
+          ? { fcmToken: FieldValue.delete() }
           : {}),
       },
       { merge: true },
@@ -68,9 +68,9 @@ export async function removeInvalidStoreNotificationTokens(
     batch.set(
       member.ref,
       {
-        fcmTokens: admin.firestore.FieldValue.arrayRemove(...unique),
+        fcmTokens: FieldValue.arrayRemove(...unique),
         ...(typeof scalar === "string" && unique.includes(scalar)
-          ? { fcmToken: admin.firestore.FieldValue.delete() }
+          ? { fcmToken: FieldValue.delete() }
           : {}),
       },
       { merge: true },

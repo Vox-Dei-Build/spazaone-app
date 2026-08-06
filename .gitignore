@@ -15,6 +15,12 @@
 *.env
 !.env.example
 !**/.env.example
+# Firebase emulator secret overrides are local-only too. These files can use
+# the `.secret.local` convention even though they are not named `.env`.
+.secret
+.secret.*
+**/.secret
+**/.secret.*
 .atom/
 .build/
 .buildlog/

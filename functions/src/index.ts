@@ -102,9 +102,11 @@ export {
 } from "./commerce/createDropshipListing";
 export {
   createCommerceOrder,
-  verifyCommercePaystackTransaction,
   getCommerceOrderStatus,
 } from "./commerce/payment";
+// `verifyCommercePaystackTransaction` deliberately remains unexported for the
+// WhatsApp/manual-payment MVP. Re-export it only in the controlled provider-
+// compliance release; the shared legacy webhook is independently gated.
 export { commerceCheckout } from "./commerce/checkoutPage";
 export { updateCommerceOrder } from "./commerce/updateCommerceOrder";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";

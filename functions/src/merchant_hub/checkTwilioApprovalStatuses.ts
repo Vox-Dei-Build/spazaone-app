@@ -1,6 +1,7 @@
 import { functions, db } from "../config/main";
 import axios from "axios";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { AndroidConfig } from "firebase-admin/messaging";
 
 async function notifyMerchant(args: {
@@ -157,8 +158,8 @@ exports.checkTwilioApprovalStatuses = functions.pubsub
                   "channels.whatsapp.rejectionReason":
                     status === "rejected"
                       ? wa.rejection_reason || "Not provided."
-                      : admin.firestore.FieldValue.delete(),
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                      : FieldValue.delete(),
+                  updatedAt: FieldValue.serverTimestamp(),
                 });
               }
               await batch.commit();

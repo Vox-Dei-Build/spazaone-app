@@ -1,7 +1,7 @@
 // functions/src/http/updateOrderPayment.ts
 import { db, functions } from "../config/main";
 import { authorizeCallableMerchantOrBot } from "../security/requestAuth";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import {
   buildPaymentReceiptPatch,
   isPaymentAlreadyRecorded,
@@ -100,7 +100,7 @@ async function finalizeInventoryOnce(opts: {
       const hasQuantity = snap.get("quantity") !== undefined;
       if (hasQuantity) {
         tx.update(snap.ref, {
-          quantity: admin.firestore.FieldValue.increment(-q),
+          quantity: FieldValue.increment(-q),
         });
       }
     }
@@ -112,8 +112,8 @@ async function finalizeInventoryOnce(opts: {
       {
         total: 0,
         itemsCount: 0,
-        lock: admin.firestore.FieldValue.delete(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lock: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
@@ -121,8 +121,8 @@ async function finalizeInventoryOnce(opts: {
     // 3) Mark sale as inventory finalized
     tx.update(saleRef, {
       inventoryFinalized: true,
-      inventoryFinalizedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      inventoryFinalizedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
   });
 }
@@ -262,10 +262,7 @@ export const updateOrderPayment = functions.https.onCall(
               .doc(merchantId)
               .collection("carts")
               .doc(customerId);
-            await cartDoc.set(
-              { lock: admin.firestore.FieldValue.delete() },
-              { merge: true },
-            );
+            await cartDoc.set({ lock: FieldValue.delete() }, { merge: true });
           }
           break;
         }
@@ -301,8 +298,8 @@ export const updateOrderPayment = functions.https.onCall(
           // up exactly where they left off after fixing the dispatch.
           patch = {
             ...patch,
-            driver: admin.firestore.FieldValue.delete(),
-            driverAssignedAt: admin.firestore.FieldValue.delete(),
+            driver: FieldValue.delete(),
+            driverAssignedAt: FieldValue.delete(),
             driverUnassignedAt: now,
             driverUnassignedBy: context.auth?.uid || merchantId,
           };
@@ -454,10 +451,7 @@ export const updateOrderPayment = functions.https.onCall(
             .doc(merchantId)
             .collection("carts")
             .doc(customerId);
-          await cartDoc.set(
-            { lock: admin.firestore.FieldValue.delete() },
-            { merge: true },
-          );
+          await cartDoc.set({ lock: FieldValue.delete() }, { merge: true });
           break;
         }
       }

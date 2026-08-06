@@ -1,6 +1,6 @@
 // functions/src/http/finalizeOnlinePaid.ts
 import { db, functions } from "../config/main";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 /**
  * Finalizes the inventory and clears the customer's cart for a given order.
@@ -38,7 +38,7 @@ async function finalizeInventoryOnce(
     .collection("carts")
     .doc(customerId);
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (tx) => {
     // ── PHASE A: READS (no writes here)
@@ -96,7 +96,7 @@ async function finalizeInventoryOnce(
     for (const pr of productReads) {
       if (pr.hasQtyField && pr.qty > 0) {
         tx.update(pr.ref, {
-          quantity: admin.firestore.FieldValue.increment(-pr.qty),
+          quantity: FieldValue.increment(-pr.qty),
           updatedAt: now,
         });
       }
@@ -116,7 +116,7 @@ async function finalizeInventoryOnce(
       total: 0,
       discounts: 0,
       tax: 0,
-      lock: admin.firestore.FieldValue.delete(),
+      lock: FieldValue.delete(),
       lastClearedBecause: "online_payment_finalized",
       updatedAt: now,
     };

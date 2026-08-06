@@ -99,6 +99,54 @@ definitions:
         # clone path used by subsequent steps. PWD is canonical.
         printf '%s' "$DOTENV_FILE" > .env
         echo ".env written ($(wc -c < .env) bytes) to $(pwd)/.env"
+        # Fail closed if a valid secret file belongs to an old/deleted Firebase
+        # app or another entity. Never print credential values.
+        python3 - <<'PY'
+        import json
+        import plistlib
+        from pathlib import Path
+
+        values = {}
+        for raw in Path('.env').read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+
+        expected = {
+            'FIREBASE_ANDROID_PROJECT_ID': 'pasella-ledger',
+            'FIREBASE_ANDROID_APP_ID':
+                '1:716158514645:android:a4f2b4756aafcebbe5795c',
+            'FIREBASE_IOS_PROJECT_ID': 'pasella-ledger',
+            'FIREBASE_IOS_APP_ID':
+                '1:716158514645:ios:17eba128d70a92a7e5795c',
+            'FIREBASE_IOS_BUNDLE_ID': 'com.tsepo.pasella',
+        }
+        mismatches = [key for key, value in expected.items()
+                      if values.get(key) != value]
+
+        with open('ios/GoogleService-Info.plist', 'rb') as handle:
+            plist = plistlib.load(handle)
+        crashlytics = json.loads(
+            Path('ios/firebase_app_id_file.json').read_text()
+        )
+        if plist.get('PROJECT_ID') != 'pasella-ledger':
+            mismatches.append('ios plist project')
+        if plist.get('BUNDLE_ID') != 'com.tsepo.pasella':
+            mismatches.append('ios plist bundle')
+        if plist.get('GOOGLE_APP_ID') != expected['FIREBASE_IOS_APP_ID']:
+            mismatches.append('ios plist app')
+        if crashlytics.get('FIREBASE_PROJECT_ID') != 'pasella-ledger':
+            mismatches.append('Crashlytics project')
+        if crashlytics.get('GOOGLE_APP_ID') != expected['FIREBASE_IOS_APP_ID']:
+            mismatches.append('Crashlytics app')
+        if mismatches:
+            raise SystemExit(
+                '::error:: Firebase identity mismatch: ' + ', '.join(mismatches)
+            )
+        print('Firebase .env, iOS plist and Crashlytics identity verified.')
+        PY
 
     - &materialise_google_services_json
       name: Materialise android/app/google-services.json from secure env var
@@ -147,6 +195,27 @@ definitions:
           echo "::error:: Decoded google-services.json is not valid JSON. Re-encode the source file and update the env var."
           exit 1
         fi
+        python3 - <<'PY'
+        import json
+
+        config = json.load(open('android/app/google-services.json'))
+        if config.get('project_info', {}).get('project_id') != 'pasella-ledger':
+            raise SystemExit('::error:: Android Firebase project mismatch.')
+        expected_app_id = '1:716158514645:android:a4f2b4756aafcebbe5795c'
+        matching = [
+            client for client in config.get('client', [])
+            if client.get('client_info', {})
+                     .get('android_client_info', {})
+                     .get('package_name') == 'com.tsepo.pasella'
+            and client.get('client_info', {}).get('mobilesdk_app_id')
+                == expected_app_id
+        ]
+        if len(matching) != 1:
+            raise SystemExit(
+                '::error:: Android Firebase app/package identity mismatch.'
+            )
+        print('Android Firebase project, app and package identity verified.')
+        PY
         # Diagnostics: print absolute path + size + first key, so if
         # the build still fails at processReleaseGoogleServices we
         # have evidence of where the file actually landed and can
@@ -255,8 +324,7 @@ definitions:
       name: Firebase Functions checks
       script: |
         npm --prefix functions ci --prefer-offline
-        npm --prefix functions run test:commerce
-        npm --prefix functions run test:promotion-image
+        npm --prefix functions run test:ci
 
 workflows:
   android-release:
@@ -358,6 +426,7 @@ workflows:
           # key.properties) will produce a release-signed bundle
           # without any local file shuffling.
           flutter build appbundle --release \
+            --dart-define=USE_FIREBASE_EMULATORS=false \
             --dart-define=DROPSHIP_CATALOG_V2=true
       - name: Verify 16 KB page-size compliance
         script: |
@@ -522,6 +591,7 @@ workflows:
             exit 1
           fi
           flutter build ipa --release \
+            --dart-define=USE_FIREBASE_EMULATORS=false \
             --dart-define=DROPSHIP_CATALOG_V2=true \
             --export-options-plist="$HOME/export_options.plist"
       - name: Verify IPA privacy manifests are valid

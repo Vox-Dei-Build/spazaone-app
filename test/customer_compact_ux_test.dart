@@ -2,11 +2,75 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
+import 'package:pasella/models/common/app_model.dart';
+import 'package:pasella/models/customer/customer_model.dart';
+import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/shared/widgets/channel_capability_badge.dart';
+import 'package:provider/provider.dart';
 
 void main() {
+  test('cached empty customer snapshots are not first-run truth', () {
+    expect(
+      customerSnapshotIsUnverified(isFromCache: true, isEmpty: true),
+      isTrue,
+    );
+    expect(
+      customerSnapshotIsUnverified(isFromCache: false, isEmpty: true),
+      isFalse,
+    );
+    expect(
+      customerSnapshotIsUnverified(isFromCache: true, isEmpty: false),
+      isFalse,
+    );
+  });
+
+  testWidgets('customer connection errors cannot look like an empty account', (
+    tester,
+  ) async {
+    final search = ValueNotifier<String?>(null);
+    final hasCustomers = ValueNotifier<bool>(true);
+    addTearDown(search.dispose);
+    addTearDown(hasCustomers.dispose);
+    var attempts = 0;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppModel>(
+        create: (_) => AppModel(),
+        child: MaterialApp(
+          home: EntityTab(
+            category: 'Customer',
+            emptyAsset: 'assets/images/customer.png',
+            emptyText: 'Add your first customer',
+            searchTextNotifier: search,
+            hasCustomersNotifier: hasCustomers,
+            entitiesStream: () {
+              attempts++;
+              return attempts == 1
+                  ? Stream<List<CustomerWithTransactions>>.error(
+                      StateError('offline'),
+                    )
+                  : Stream<List<CustomerWithTransactions>>.value(
+                      const <CustomerWithTransactions>[],
+                    );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not load customers.'), findsOneWidget);
+    expect(find.text('Add your first customer'), findsNothing);
+    expect(hasCustomers.value, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('customer-stream-retry')));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(find.text('Add your first customer'), findsOneWidget);
+  });
+
   testWidgets('customer row shows channel capability without a text pill', (
     tester,
   ) async {

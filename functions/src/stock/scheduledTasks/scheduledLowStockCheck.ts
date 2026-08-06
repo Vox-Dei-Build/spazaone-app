@@ -1,5 +1,6 @@
 import { functions, db } from "../../config/main";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 /**
  * Scheduled function to check for low stock every 24 hours.
@@ -41,7 +42,7 @@ exports.scheduledLowStockCheck = functions.pubsub
                 await notificationsRef.add({
                   title: "Low Stock Alert",
                   body: `${product.name} has only ${product.quantity} items left.`,
-                  timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                  timestamp: FieldValue.serverTimestamp(),
                 });
                 console.log(
                   `Notification added for product: ${product.name}, user: ${userId}`,

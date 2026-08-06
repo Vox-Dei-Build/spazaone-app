@@ -27,6 +27,7 @@ void main() {
                 selectedCustomerIds: const {'customer-1'},
                 onAllCustomersChanged: (_) {},
                 onCustomerToggle: (_) {},
+                onAddCustomer: () {},
                 sendWhatsApp: true,
                 sendSMS: true,
               ),
@@ -40,6 +41,53 @@ void main() {
     expect(find.text('All with a phone number'), findsOneWidget);
     expect(find.textContaining('WhatsApp will be used'), findsNothing);
     expect(find.byIcon(Icons.info_outline), findsNothing);
+  });
+
+  testWidgets('empty recipient step offers a compact add-customer recovery',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var addCustomerRequested = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            SizeConfig().init(context);
+            return Scaffold(
+              body: CustomerSelectionStep(
+                allCustomers: false,
+                customers: const [],
+                selectedCustomerIds: const {},
+                hiddenWithoutNumberCount: 2,
+                recommendationText: 'Recommended customers appear first.',
+                onAllCustomersChanged: (_) {},
+                onCustomerToggle: (_) {},
+                onAddCustomer: () => addCustomerRequested = true,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('promotion-empty-customers')), findsOneWidget);
+    expect(find.text('No customers ready'), findsOneWidget);
+    expect(
+      find.text(
+        '2 customers need mobile numbers. Update them in Customers or add someone new.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('All customers'), findsNothing);
+    expect(find.text('Recommended customers appear first.'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('promotion-add-customer')));
+    expect(addCustomerRequested, isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('promotion setup uses compact section copy', (tester) async {

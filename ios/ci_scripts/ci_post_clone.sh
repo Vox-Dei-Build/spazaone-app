@@ -46,6 +46,13 @@ flutter config --no-analytics
 flutter precache --ios
 flutter pub get
 
+# Xcode Cloud is a backup CI path, not a release authority. Keep any archive it
+# produces behaviorally aligned with the canonical Codemagic build instead of
+# silently compiling the stable V1 catalogue aliases.
+flutter build ios --config-only --release \
+  --dart-define=DROPSHIP_CATALOG_V2=true \
+  --dart-define=USE_FIREBASE_EMULATORS=false
+
 # This release already uses the same App Store privacy-manifest workaround in
 # Codemagic. Apply it before CocoaPods resolves the plugin in Xcode Cloud too.
 ./scripts/strip_badger_privacy.sh

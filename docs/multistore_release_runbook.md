@@ -137,25 +137,127 @@ dependency audits must have zero critical and zero high findings. Moderate
 vendor findings in the Botpress SDK/ADK are recorded separately and are not a
 reason to force an untested major-version change into this release.
 
-For a device-level rehearsal, start the full local emulator suite with project
-`demo-spazaone-multistore`, then compile an isolated debug build:
+For an Android emulator device-level rehearsal, use only the local project
+`demo-spazaone-qa`. Never use `pasella-ledger` as an emulator namespace: the
+root `.firebaserc` points at production, so every command below carries an
+explicit `--project` or `GCLOUD_PROJECT` value.
+
+Use Node 20, matching `functions/package.json`, and Java 21 for the Firestore
+emulator. Verify both versions before starting:
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+export PATH="/opt/homebrew/opt/node@20/bin:/opt/homebrew/opt/openjdk@21/bin:$PATH"
+node --version
+java -version
+npm --prefix functions run build
+```
+
+The Functions emulator loads `functions/.env` automatically. Before starting,
+create ignored `functions/.env.local` and `functions/.secret.local` files that
+override every populated local production credential. Do not copy real values.
+Use inert values such as:
+
+```dotenv
+# functions/.env.local (ignored; emulator only)
+COMMERCE_PAYMENTS_ENABLED=false
+ACTIVATION_NUDGES_ENABLED=false
+ACTIVATION_NUDGES_DRY_RUN=true
+PAYSTACK_SECRET_KEY=sk_test_emulator_disabled
+PAYSTACK_TEST_SECRET_KEY=sk_test_emulator_disabled
+TWILIO_SID=<YOUR_TWILIO_ACCOUNT_SID>
+TWILIO_TOKEN=emulator-disabled
+TWILIO_ACCOUNT_SID=<YOUR_TWILIO_ACCOUNT_SID>
+TWILIO_NUMBER=+27000000000
+TWILIO_MERCHANT_MESSAGING_SERVICE_SID=<YOUR_MERCHANT_MESSAGING_SERVICE_SID>
+TWILIO_CUSTOMER_MESSAGING_SERVICE_SID=<YOUR_CUSTOMER_MESSAGING_SERVICE_SID>
+EMAIL_ADMINLOGIN=emulator-disabled
+EMAIL_ADMINPASS=emulator-disabled
+WHATSAPP_SENDER_NUMBER_ID=emulator-disabled
+```
+
+```dotenv
+# functions/.secret.local (ignored; emulator only)
+CJ_API_KEY=emulator-disabled
+PASELLA_BOT_TOKEN=emulator-only-qa
+TWILIO_AUTH_TOKEN=emulator-disabled
+BOTPRESS_API_TOKEN=emulator-disabled
+```
+
+These values prevent real provider authentication; they do not make external
+messaging or payment calls meaningful. Do not test actual Twilio, Botpress,
+CJ, or Paystack dispatch in this lane. Pub/Sub is intentionally omitted so the
+scheduled CJ worker cannot run.
+
+Start the isolated suite from the repository root:
 
 ```bash
 firebase emulators:start \
-  --project pasella-ledger \
+  --config firebase.json \
+  --project demo-spazaone-qa \
   --only auth,firestore,functions,storage
-
-flutter run \
-  --dart-define=USE_FIREBASE_EMULATORS=true \
-  --dart-define=FIREBASE_EMULATOR_PROJECT_ID=pasella-ledger \
-  --dart-define=FIREBASE_EMULATOR_HOST=10.0.2.2 \
-  --dart-define=ENABLE_MULTI_STORE_OPERATORS=true
 ```
 
-Use `127.0.0.1` instead of `10.0.2.2` for an iOS simulator or desktop target.
-The compile-time switch changes the Firebase project namespace and routes both
-SDK callables and raw HTTP Function URLs to localhost. It cannot be activated
-remotely in a production binary.
+In a second terminal, seed only the local emulators. The script hard-refuses a
+non-loopback host, a missing emulator, conflicting project IDs, or any project
+that does not begin with `demo-`:
+
+```bash
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 \
+QA_FIREBASE_PROJECT_ID=demo-spazaone-qa \
+GCLOUD_PROJECT=demo-spazaone-qa \
+GOOGLE_CLOUD_PROJECT=demo-spazaone-qa \
+npm --prefix functions run seed:qa
+```
+
+The seed creates two named stores for one local seller, one customer, one
+seller-owned comparison product, and twelve fresh schema-v2 South
+Africa-deliverable catalogue products. It upserts only deterministic `qa-*`
+documents and contains no credentials.
+
+The QA feature defines below are an explicit snapshot of the production Remote
+Config read on 6 August 2026: multi-store exists and is `true`; number-first,
+deferred consent, OTP auto-submit/resend and Online Sales are absent/false;
+merchant onboarding intro uses its `true` default. Re-read production Remote
+Config and update every value together if that release state changes.
+
+```bash
+flutter run -d emulator-5554 \
+  --dart-define=USE_FIREBASE_EMULATORS=true \
+  --dart-define=FIREBASE_EMULATOR_PROJECT_ID=demo-spazaone-qa \
+  --dart-define=FIREBASE_EMULATOR_HOST=10.0.2.2 \
+  --dart-define=DROPSHIP_CATALOG_V2=true \
+  --dart-define=QA_FEATURE_MULTI_STORE_OPERATORS=true \
+  --dart-define=QA_FEATURE_NUMBER_FIRST_ONBOARDING=false \
+  --dart-define=QA_FEATURE_DEFER_AUTH_CONSENT=false \
+  --dart-define=QA_FEATURE_OTP_AUTOSUBMIT=false \
+  --dart-define=QA_FEATURE_OTP_RESEND_IN_DIALOG=false \
+  --dart-define=QA_FEATURE_ONLINE_SALES=false \
+  --dart-define=QA_FEATURE_MERCHANT_ONBOARDING_INTRO=true
+```
+
+The Auth emulator does not inherit Firebase Console test-phone codes. It
+generates a random six-digit code, so `123456` is not guaranteed. After the app
+requests a code, read the latest pending local code with:
+
+```bash
+curl -fsS \
+  http://127.0.0.1:9099/emulator/v1/projects/demo-spazaone-qa/verificationCodes \
+  | /usr/bin/python3 -c \
+    'import json,sys; print(json.load(sys.stdin)["verificationCodes"][-1]["code"])'
+```
+
+Use `0648370009` to sign into the seeded existing seller, or another valid SA
+test number to exercise brand-new registration. This isolated harness is
+Android-only: iOS native Firebase/APNs initialisation still reads the tracked
+production plist before Dart starts, so do not claim or run iOS simulator QA
+with these defines. The compile-time switch changes the Android Firebase
+project namespace and routes SDK callables and raw HTTP Function URLs to
+localhost. The app fails closed if the project is not `demo-*`, the host is
+not local, the initialized app does not match that demo project, or any QA
+feature define is missing.
 
 The migration test verifies dry-run inertness, additive execution, owner-token
 copying, rollback by run ID, and byte-for-byte preservation of the legacy user
@@ -171,7 +273,10 @@ local build/test toolchains are excluded from deployed production packages.
 
 ## Production rollout
 
-1. Keep the feature flag off. Freeze unrelated Firebase/rules deployments.
+1. Keep `COMMERCE_PAYMENTS_ENABLED=false` and
+   `FEATURE_ONLINE_SALES_ENABLED=false`. Leave multi-store standard-on with its
+   Remote Config parameter available only as an emergency rollback switch.
+   Freeze unrelated Firebase/rules deployments.
 2. Confirm the selected Firebase project is exactly `pasella-ledger`.
 3. Create a managed Firestore export to a dated, retention-protected bucket:
 
@@ -184,11 +289,75 @@ local build/test toolchains are excluded from deployed production packages.
    Do not continue until the export reports success and a restore operator has
    verified the output prefix.
 
-4. Deploy Functions first, explicitly scoped. Start with only the six additive
-   callables; no released app invokes these names yet:
+4. Deploy the two `commerceOrders` indexes before any Function can query the
+   combined WhatsApp order stream. All Firebase mutations on this Mac must run
+   through the registered Vox Dei authority checkout and `codex-guard`; Delta
+   is a post-release backup only. First verify the resolved Firebase account and
+   target without writing:
 
    ```bash
-   firebase deploy --project pasella-ledger --only \
+   /Users/admin/.codex/identity-governance/bin/codex-guard \
+     firebase-deploy --project spaza-one --dry-run -- \
+     --only firestore:indexes
+   ```
+
+   After explicit action-time production confirmation, repeat without
+   `--dry-run`. Then inspect only the coupled collection group:
+
+   ```bash
+   gcloud firestore indexes composite list \
+     --project pasella-ledger \
+     --database='(default)' \
+     --filter='COLLECTION_GROUP:commerceOrders'
+   ```
+
+   Gate: both query shapes from `firestore.indexes.json` must be present and
+   report `READY`: `sellerId + customerId + createdAt`, and
+   `sellerId + customerId + status + createdAt`. Do not deploy the bot-facing
+   Functions while either index is creating or absent.
+
+5. Publish and verify the updated WhatsApp customer bot from the Vox Dei bot
+   authority. Confirm its `PASELLA_BACKEND_TOKEN` still matches the registered
+   Functions `PASELLA_BOT_TOKEN` secret without printing either value, and run
+   the commerce source-guard QA. The bot must distinguish `source=commerce`
+   from legacy Sales before the Functions below can expose supplier orders.
+
+6. Deploy only the manual dropshipping MVP Functions. Verify the guarded target
+   first with `--dry-run`, obtain explicit action-time production confirmation,
+   then repeat the same command without `--dry-run`:
+
+   ```bash
+   /Users/admin/.codex/identity-governance/bin/codex-guard \
+     firebase-deploy --project spaza-one --dry-run -- \
+     --only \
+functions:searchCjSupplierCatalogV2,\
+functions:getCjSupplierProductV2,\
+functions:createDropshipListingV2,\
+functions:syncCjSupplierCatalog,\
+functions:productPromotionImage,\
+functions:createCommerceOrder,\
+functions:updateCommerceOrder,\
+functions:getCustomerOrders,\
+functions:getOpenSale,\
+functions:getSaleStatus
+   ```
+
+   Do not deploy `commerceCheckout`, `getCommerceOrderStatus`, or
+   `verifyCommercePaystackTransaction` in this manual-payment release. Keep
+   `COMMERCE_PAYMENTS_ENABLED=false` until payment-provider compliance is
+   approved. Let the scheduled catalogue worker warm the default categories,
+   smoke-test a supplier-product promotion image, then run the bot HTTP and
+   commerce integration suites against the deployed contract.
+
+7. Deploy the multi-store Functions, explicitly scoped. Start with only the six
+   additive callables; no released app invokes these names yet. Run the guarded
+   command with `--dry-run` first and remove it only after explicit action-time
+   confirmation:
+
+   ```bash
+   /Users/admin/.codex/identity-governance/bin/codex-guard \
+     firebase-deploy --project spaza-one --dry-run -- \
+     --only \
      functions:bootstrapStoreAccess,\
 functions:createStore,\
 functions:inviteStoreOperator,\
@@ -197,12 +366,14 @@ functions:cancelStoreOperatorInvite,\
 functions:removeStoreOperator
    ```
 
-   Smoke-test those callables while the feature flag remains off. Then deploy
+   Smoke-test those callables before promoting the store binaries. Then deploy
    only the existing functions whose store authorization, payment binding,
    notification routing, or bot selection changed:
 
    ```bash
-   firebase deploy --project pasella-ledger --only \
+   /Users/admin/.codex/identity-governance/bin/codex-guard \
+     firebase-deploy --project spaza-one --dry-run -- \
+     --only \
      functions:addPayment,\
 functions:calculateUserBalance,\
 functions:generateCashflowImpactReport,\
@@ -233,7 +404,7 @@ functions:heartbeatMerchantApp
    Do not use `--only functions`: that would redeploy unrelated production
    schedules, webhooks, and bots from the shared Functions bundle.
 
-5. Run a production **dry-run** and archive its JSON output:
+8. Run a production **dry-run** and archive its JSON output:
 
    ```bash
    cd functions
@@ -243,7 +414,7 @@ functions:heartbeatMerchantApp
    Gate: `scanned == planned + skipped`; no unexpected user count change;
    `existingUserDocumentsModified == 0`.
 
-6. Execute only after two people compare the dry-run count with the console:
+9. Execute only after two people compare the dry-run count with the console:
 
    ```bash
    MULTISTORE_PRODUCTION_CONFIRM=pasella-ledger \
@@ -253,27 +424,30 @@ functions:heartbeatMerchantApp
 
    Save the returned `runId` immediately.
 
-7. Sample at least ten migrated owners, including stores with missing optional
+10. Sample at least ten migrated owners, including stores with missing optional
    fields. Verify the `users/{uid}` document did not change and each owner has
    two active membership mirrors.
-8. Deploy Firestore and Storage rules explicitly:
+11. Deploy Firestore and Storage rules explicitly. Run the guarded command with
+    `--dry-run` first and remove it only after explicit action-time confirmation:
 
    ```bash
-   firebase deploy --project pasella-ledger --only firestore:rules,storage
+   /Users/admin/.codex/identity-governance/bin/codex-guard \
+     firebase-deploy --project spaza-one --dry-run -- \
+     --only firestore:rules,storage
    ```
 
-9. Verify both deployed Botpress bots remain customer-commerce bots and that
-   their existing multi-shop customer route never defaults when several
-   merchant candidates exist. Do not publish the prepared operator integration
-   into either customer bot. Execute the source QA in
-   `docs/botpress_multistore_contract.md`; a dedicated operator bot can be
-   piloted later after the backend is deployed.
-10. Distribute `4.4.0+76` to internal testers. Add a Remote Config condition
-    matching the exact `4.4.0` app version and platform, with default `false`
-    and conditional value `true`. At this point only internal testers can
-    receive that version, which makes the condition the pilot boundary. Do not
-    start store rollout until pilot QA is signed off.
-11. Roll out 5% → 25% → 100%, holding at least two hours at each early stage.
+12. Verify both deployed Botpress bots remain customer-commerce bots and that
+    their existing multi-shop customer route never defaults when several
+    merchant candidates exist. Do not publish the prepared operator integration
+    into either customer bot. Execute the source QA in
+    `docs/botpress_multistore_contract.md`; a dedicated operator bot can be
+    piloted later after the backend is deployed.
+13. Distribute `4.6.2+82` through CodeMagic to Play Internal and TestFlight.
+    Confirm `FEATURE_MULTI_STORE_OPERATORS_ENABLED=true` (or absent, which uses
+    the app's standard-on default) and remove any obsolete version-specific
+    `4.4.0` pilot condition. Do not start store rollout until the integrated
+    dropshipping, promotion, customer-order and multi-store QA is signed off.
+14. Roll out 5% → 25% → 100%, holding at least two hours at each early stage.
 
 ## Monitoring gates
 

@@ -1,5 +1,5 @@
 import { db, functions } from "../config/main";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 /**
  * HTTP endpoint to remove a product (entirely) from a customer's cart.
@@ -77,7 +77,7 @@ export const removeFromCart = functions.https.onRequest(async (req, res) => {
           total: newTotal,
           itemsCount: newCount,
           currency: "ZAR",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );

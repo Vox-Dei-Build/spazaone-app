@@ -3,6 +3,83 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:pasella/config/remote_config.dart';
 
+/// Exact feature state used by production-isolated local device QA.
+///
+/// Every value is required as a compile-time define. This prevents a missing
+/// Remote Config fetch from silently turning an emulator run into a different
+/// product experience from the release being tested.
+@immutable
+class EmulatorQaFeatureProfile {
+  const EmulatorQaFeatureProfile({
+    required this.multiStoreOperators,
+    required this.numberFirstOnboarding,
+    required this.deferAuthConsent,
+    required this.otpAutosubmit,
+    required this.otpResendInDialog,
+    required this.onlineSales,
+    required this.merchantOnboardingIntro,
+  });
+
+  static const multiStoreKey = 'QA_FEATURE_MULTI_STORE_OPERATORS';
+  static const numberFirstKey = 'QA_FEATURE_NUMBER_FIRST_ONBOARDING';
+  static const deferConsentKey = 'QA_FEATURE_DEFER_AUTH_CONSENT';
+  static const otpAutosubmitKey = 'QA_FEATURE_OTP_AUTOSUBMIT';
+  static const otpResendKey = 'QA_FEATURE_OTP_RESEND_IN_DIALOG';
+  static const onlineSalesKey = 'QA_FEATURE_ONLINE_SALES';
+  static const onboardingIntroKey = 'QA_FEATURE_MERCHANT_ONBOARDING_INTRO';
+
+  static const _multiStoreValue = String.fromEnvironment(multiStoreKey);
+  static const _numberFirstValue = String.fromEnvironment(numberFirstKey);
+  static const _deferConsentValue = String.fromEnvironment(deferConsentKey);
+  static const _otpAutosubmitValue = String.fromEnvironment(otpAutosubmitKey);
+  static const _otpResendValue = String.fromEnvironment(otpResendKey);
+  static const _onlineSalesValue = String.fromEnvironment(onlineSalesKey);
+  static const _onboardingIntroValue =
+      String.fromEnvironment(onboardingIntroKey);
+
+  final bool multiStoreOperators;
+  final bool numberFirstOnboarding;
+  final bool deferAuthConsent;
+  final bool otpAutosubmit;
+  final bool otpResendInDialog;
+  final bool onlineSales;
+  final bool merchantOnboardingIntro;
+
+  factory EmulatorQaFeatureProfile.fromEnvironment() {
+    return EmulatorQaFeatureProfile.fromValues(const {
+      multiStoreKey: _multiStoreValue,
+      numberFirstKey: _numberFirstValue,
+      deferConsentKey: _deferConsentValue,
+      otpAutosubmitKey: _otpAutosubmitValue,
+      otpResendKey: _otpResendValue,
+      onlineSalesKey: _onlineSalesValue,
+      onboardingIntroKey: _onboardingIntroValue,
+    });
+  }
+
+  @visibleForTesting
+  factory EmulatorQaFeatureProfile.fromValues(Map<String, String> values) {
+    bool requiredBool(String key) {
+      final value = values[key]?.trim().toLowerCase() ?? '';
+      if (value == 'true') return true;
+      if (value == 'false') return false;
+      throw StateError(
+        'Emulator QA requires --dart-define=$key=true|false.',
+      );
+    }
+
+    return EmulatorQaFeatureProfile(
+      multiStoreOperators: requiredBool(multiStoreKey),
+      numberFirstOnboarding: requiredBool(numberFirstKey),
+      deferAuthConsent: requiredBool(deferConsentKey),
+      otpAutosubmit: requiredBool(otpAutosubmitKey),
+      otpResendInDialog: requiredBool(otpResendKey),
+      onlineSales: requiredBool(onlineSalesKey),
+      merchantOnboardingIntro: requiredBool(onboardingIntroKey),
+    );
+  }
+}
+
 class FeatureFlags {
   static bool enableTopUp = true;
   static bool enableTransactionHistory = true;
@@ -30,10 +107,6 @@ class FeatureFlags {
   static bool enableMultiStoreOperators = true;
   static final ValueNotifier<bool> multiStoreOperatorsEnabled =
       ValueNotifier<bool>(true);
-  static const bool _forceMultiStoreForEmulator = bool.fromEnvironment(
-    'ENABLE_MULTI_STORE_OPERATORS',
-    defaultValue: false,
-  );
   static StreamSubscription<Set<String>>? _remoteConfigSubscription;
 
   /// Allows newly created stores to join the owner's campaign-credit wallet.
@@ -93,6 +166,17 @@ class FeatureFlags {
     _applyFlags(rc);
   }
 
+  static void applyEmulatorQaProfile(EmulatorQaFeatureProfile profile) {
+    enableMultiStoreOperators = profile.multiStoreOperators;
+    multiStoreOperatorsEnabled.value = profile.multiStoreOperators;
+    enableNumberFirstOnboarding = profile.numberFirstOnboarding;
+    enableDeferAuthConsent = profile.deferAuthConsent;
+    enableOtpAutosubmit = profile.otpAutosubmit;
+    enableOtpResendInDialog = profile.otpResendInDialog;
+    enableOnlineSales = profile.onlineSales;
+    enableMerchantOnboardingIntro = profile.merchantOnboardingIntro;
+  }
+
   static void _applyFlags(RemoteConfigBoolReader rc) {
     enableTopUp = rc.getBool('FEATURE_TOP_UP_ENABLED', defaultValue: true);
     enableTransactionHistory = rc.getBool(
@@ -133,11 +217,10 @@ class FeatureFlags {
       'FEATURE_ONLINE_SALES_ENABLED',
       defaultValue: false,
     );
-    enableMultiStoreOperators = _forceMultiStoreForEmulator ||
-        rc.getBool(
-          'FEATURE_MULTI_STORE_OPERATORS_ENABLED',
-          defaultValue: true,
-        );
+    enableMultiStoreOperators = rc.getBool(
+      'FEATURE_MULTI_STORE_OPERATORS_ENABLED',
+      defaultValue: true,
+    );
     multiStoreOperatorsEnabled.value = enableMultiStoreOperators;
     enableSharedCampaignCreditsEnrollment = rc.getBool(
       'FEATURE_SHARED_CAMPAIGN_CREDITS_ENROLLMENT_ENABLED',

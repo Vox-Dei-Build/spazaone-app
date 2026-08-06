@@ -36,6 +36,14 @@ bool shouldHoldDashboardForConsent({
 }) =>
     !consent.hasDecided || !consentSurfaceCompleted;
 
+@visibleForTesting
+bool shouldShowMerchantOnboardingIntroForStore({
+  required bool introSeen,
+  required bool hasCustomers,
+  required bool hasProducts,
+}) =>
+    !introSeen && !hasCustomers && !hasProducts;
+
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
 
@@ -144,8 +152,46 @@ class _DashboardState extends State<Dashboard> {
     final seen = box.get(seenKey, defaultValue: false) as bool;
     if (seen) return;
 
+    // The local "seen" key is absent after reinstalling the app and for
+    // operators opening an established store on a new device. Check the
+    // store itself before showing first-customer onboarding so durable
+    // merchant data, rather than one device's storage, decides whether this
+    // is genuinely a new store.
+    try {
+      final activeStoreId = StoreSession.instance.storeId.trim();
+      final storeRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(activeStoreId.isEmpty ? userId : activeStoreId);
+      final activity = await Future.wait([
+        storeRef.collection('customers').limit(1).get(),
+        storeRef.collection('products').limit(1).get(),
+      ]);
+      final shouldShow = shouldShowMerchantOnboardingIntroForStore(
+        introSeen: seen,
+        hasCustomers: activity[0].docs.isNotEmpty,
+        hasProducts: activity[1].docs.isNotEmpty,
+      );
+      if (!shouldShow) {
+        // This terminal marker also releases the notification-permission
+        // sequence, which waits for every enabled first-run surface to end.
+        await box.put(seenKey, true);
+        return;
+      }
+    } catch (error) {
+      // Never guess that an established merchant is new when Firestore is
+      // temporarily unavailable. Leave the key unset so a later app launch
+      // can evaluate the store again.
+      debugPrint('Merchant onboarding eligibility check failed: $error');
+      return;
+    }
+
+    if (!mounted) return;
+    final modalContext = context;
+    if (!await _waitUntilCurrentRoute()) return;
+    if (!modalContext.mounted) return;
+
     final action = await showModalBottomSheet<MerchantOnboardingIntroAction>(
-      context: context,
+      context: modalContext,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(

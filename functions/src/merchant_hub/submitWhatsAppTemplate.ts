@@ -1,6 +1,11 @@
 import { functions } from "../config/main";
 import axios, { AxiosError } from "axios";
-import { firestore } from "firebase-admin";
+import {
+  DocumentData,
+  DocumentReference,
+  DocumentSnapshot,
+  FieldValue,
+} from "firebase-admin/firestore";
 import { configuredPasellaWhatsappNumber } from "../ecommerce/getMerchantOrderingLink";
 
 /**
@@ -133,8 +138,8 @@ function productPromotionOrderUrl(): string {
  * product-promotion provisioner.
  */
 export async function submitWhatsAppTemplateDocument(
-  templateRef: firestore.DocumentReference,
-  templateData: firestore.DocumentData,
+  templateRef: DocumentReference,
+  templateData: DocumentData,
   templateId: string,
 ): Promise<void> {
   const whatsapp = templateData?.channels?.whatsapp;
@@ -270,8 +275,8 @@ export async function submitWhatsAppTemplateDocument(
       "channels.whatsapp.providerTemplateName": createPayload.friendly_name,
       "channels.whatsapp.twilioTemplateId": sid,
       "channels.whatsapp.approvalStatus": "submitted",
-      "channels.whatsapp.submissionError": firestore.FieldValue.delete(),
-      "channels.whatsapp.submittedAt": firestore.FieldValue.serverTimestamp(),
+      "channels.whatsapp.submissionError": FieldValue.delete(),
+      "channels.whatsapp.submittedAt": FieldValue.serverTimestamp(),
     });
   } catch (error: any) {
     const err = error as AxiosError;
@@ -300,7 +305,7 @@ export async function submitWhatsAppTemplateDocument(
  */
 export const submitWhatsAppTemplate = functions.firestore
   .document("messagingTemplates/{templateId}")
-  .onCreate(async (snap: firestore.DocumentSnapshot, context) => {
+  .onCreate(async (snap: DocumentSnapshot, context) => {
     const templateData = snap.data();
     if (
       templateData?.systemManaged === true ||

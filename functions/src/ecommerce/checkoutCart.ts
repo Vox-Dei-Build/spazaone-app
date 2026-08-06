@@ -1,6 +1,6 @@
 // functions/src/http/checkoutCart.ts
 import { db, functions } from "../config/main";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { computeCartSig } from "./cartSig";
 
 type PaymentType = "Cash" | "Online" | "BNPL" | string;
@@ -179,7 +179,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       (pid) => (productsMap[pid] = Number(quantities[pid] || 0)),
     );
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
     const isOrderRequest = orderRequest === true;
     const initialStatus = isOrderRequest
       ? "pending_merchant_review"
@@ -295,20 +295,16 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
               .doc(os.id);
             tx.update(prevRef, {
               status: "cancelled",
-              cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+              cancelledAt: FieldValue.serverTimestamp(),
               cancelledReason: "CART_CHANGED",
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
             });
             const cartDoc = db
               .collection("users")
               .doc(merchantId)
               .collection("carts")
               .doc(customerId);
-            tx.set(
-              cartDoc,
-              { lock: admin.firestore.FieldValue.delete() },
-              { merge: true },
-            );
+            tx.set(cartDoc, { lock: FieldValue.delete() }, { merge: true });
           });
         }
       }
@@ -381,7 +377,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
             saleId: saleRef.id,
             status: initialStatus,
             cartSig,
-            lockedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lockedAt: FieldValue.serverTimestamp(),
           },
         },
         { merge: true },

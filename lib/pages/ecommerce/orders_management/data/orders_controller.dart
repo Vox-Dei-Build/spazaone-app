@@ -44,6 +44,32 @@ import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 /// construct it from a list already sorted by `createdAt desc`.
 typedef OrdersByDate = LinkedHashMapEntries;
 
+enum OrdersTruthSurface { loading, error, empty, content }
+
+class CommerceOrdersCacheUnverified implements Exception {
+  const CommerceOrdersCacheUnverified();
+}
+
+@visibleForTesting
+Object? commerceOrdersSnapshotError({required bool isFromCache}) =>
+    isFromCache ? const CommerceOrdersCacheUnverified() : null;
+
+@visibleForTesting
+OrdersTruthSurface resolveOrdersTruthSurface({
+  required bool legacyLoading,
+  required bool commerceLoading,
+  required Object? legacyError,
+  required Object? commerceError,
+  required bool hasOrders,
+}) {
+  if (hasOrders) return OrdersTruthSurface.content;
+  if (legacyError != null || commerceError != null) {
+    return OrdersTruthSurface.error;
+  }
+  if (legacyLoading || commerceLoading) return OrdersTruthSurface.loading;
+  return OrdersTruthSurface.empty;
+}
+
 @visibleForTesting
 OrderModel commerceOrderListModel(CommerceOrder order) => OrderModel(
       id: order.id,
@@ -97,6 +123,22 @@ class OrdersController extends ChangeNotifier {
   Object? _error;
   Object? get error => _error;
 
+  bool _commerceLoading = true;
+  bool get commerceLoading => _commerceLoading;
+
+  Object? _commerceError;
+  Object? get commerceError => _commerceError;
+
+  bool get hasAnyError => _error != null || _commerceError != null;
+
+  OrdersTruthSurface get truthSurface => resolveOrdersTruthSurface(
+        legacyLoading: _loading,
+        commerceLoading: _commerceLoading,
+        legacyError: _error,
+        commerceError: _commerceError,
+        hasOrders: allOrders.isNotEmpty,
+      );
+
   /// Unfiltered server result. We hold onto it so client-side filter
   /// changes don't require another round-trip.
   List<OrderModel> _legacyOrders = const [];
@@ -111,11 +153,36 @@ class OrdersController extends ChangeNotifier {
   CommerceOrder? commerceOrderFor(String orderId) =>
       _commerceOrdersById[orderId];
 
-  void setCommerceOrders(List<CommerceOrder> orders) {
+  void setCommerceOrders(
+    List<CommerceOrder> orders, {
+    bool isFromCache = false,
+  }) {
     if (_disposed) return;
+    _commerceLoading = false;
+    _commerceError = commerceOrdersSnapshotError(isFromCache: isFromCache);
     _commerceOrdersById = {for (final order in orders) order.id: order};
     _commerceOrderModels =
         orders.map(commerceOrderListModel).toList(growable: false);
+    notifyListeners();
+  }
+
+  void beginCommerceLoad() {
+    if (_disposed) return;
+    _commerceLoading = true;
+    _commerceError = null;
+    notifyListeners();
+  }
+
+  void completeCommerceLoad() {
+    if (_disposed || !_commerceLoading) return;
+    _commerceLoading = false;
+    notifyListeners();
+  }
+
+  void setCommerceError(Object error) {
+    if (_disposed) return;
+    _commerceLoading = false;
+    _commerceError = error;
     notifyListeners();
   }
 
