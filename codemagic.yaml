@@ -99,6 +99,17 @@ definitions:
         # clone path used by subsequent steps. PWD is canonical.
         printf '%s' "$DOTENV_FILE" > .env
         echo ".env written ($(wc -c < .env) bytes) to $(pwd)/.env"
+        # The legacy CodeMagic credential group still contains stale mobile
+        # Firebase app IDs. Keep its secrets untouched, but normalize the
+        # non-secret identity fields from the registered production project
+        # before the validation below and before Flutter consumes .env.
+        cat >> .env <<'EOF'
+FIREBASE_ANDROID_PROJECT_ID=pasella-ledger
+FIREBASE_ANDROID_APP_ID=1:716158514645:android:a4f2b4756aafcebbe5795c
+FIREBASE_IOS_PROJECT_ID=pasella-ledger
+FIREBASE_IOS_APP_ID=1:716158514645:ios:17eba128d70a92a7e5795c
+FIREBASE_IOS_BUNDLE_ID=com.tsepo.pasella
+EOF
         # Fail closed if a valid secret file belongs to an old/deleted Firebase
         # app or another entity. Never print credential values.
         python3 - <<'PY'
