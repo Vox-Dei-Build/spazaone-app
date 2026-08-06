@@ -336,18 +336,21 @@ functions:createDropshipListingV2,\
 functions:syncCjSupplierCatalog,\
 functions:productPromotionImage,\
 functions:createCommerceOrder,\
+functions:verifyCommercePaystackTransaction,\
 functions:updateCommerceOrder,\
 functions:getCustomerOrders,\
 functions:getOpenSale,\
 functions:getSaleStatus
    ```
 
-   Do not deploy `commerceCheckout`, `getCommerceOrderStatus`, or
-   `verifyCommercePaystackTransaction` in this manual-payment release. Keep
-   `COMMERCE_PAYMENTS_ENABLED=false` until payment-provider compliance is
-   approved. Let the scheduled catalogue worker warm the default categories,
-   smoke-test a supplier-product promotion image, then run the bot HTTP and
-   commerce integration suites against the deployed contract.
+   Keep `verifyCommercePaystackTransaction` deployed so the existing Paystack
+   integration is preserved, but keep `COMMERCE_PAYMENTS_ENABLED=false` until
+   payment-provider compliance is approved. With the gate closed the endpoint
+   returns 503 and cannot mark an order paid. Do not deploy `commerceCheckout`
+   or `getCommerceOrderStatus` for the WhatsApp-only manual-payment release.
+   Let the scheduled catalogue worker warm the default categories, smoke-test
+   a supplier-product promotion image, then run the bot HTTP and commerce
+   integration suites against the deployed contract.
 
 7. Deploy the multi-store Functions, explicitly scoped. Start with only the six
    additive callables; no released app invokes these names yet. Run the guarded

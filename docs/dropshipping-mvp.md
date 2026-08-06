@@ -170,20 +170,15 @@ completed, the store owner records it and the order becomes `refunded`.
 - Keep `COMMERCE_PAYMENTS_ENABLED=false` in production until Spaza One has
   completed compliance approval and Paystack onboarding. Manual order requests
   continue working with the flag off.
-- The dedicated `verifyCommercePaystackTransaction` endpoint is deliberately
-  not exported from `functions/src/index.ts` and must not appear in the scoped
-  manual-MVP deploy list. Enabling an environment variable alone is not an
-  approved payment launch.
-- Before the manual-MVP release, verify the deployed Functions inventory also
-  has no `verifyCommercePaystackTransaction`. Removing a source export does not
-  delete an older deployed Function; if one exists, its explicit removal is a
-  separate production action requiring the normal identity, backup and
-  action-time approval gate.
+- Keep the dedicated `verifyCommercePaystackTransaction` endpoint exported so
+  the existing Paystack integration is preserved. While compliance is pending,
+  it returns `503 COMMERCE_PAYMENTS_DISABLED` and cannot move an order to paid.
+  Enabling an environment variable alone is not an approved payment launch.
 - Keep `FEATURE_ONLINE_SALES_ENABLED=false` until approved automatic payment
   collection and reconciliation are ready. The previous Online reporting code
   remains intact behind this switch.
 - After approval, configure the Paystack secret through Secret Manager, verify
-  test-mode checkout/webhooks/refunds, explicitly re-export and scope-deploy
+  test-mode checkout/webhooks/refunds, scope-deploy the already exported
   `verifyCommercePaystackTransaction`, then set
   `COMMERCE_PAYMENTS_ENABLED=true` in the same controlled release.
 - The existing `verifyPaystackTransaction` webhook may receive a verified
