@@ -39,7 +39,7 @@ class ProfilePage extends StatelessWidget {
                           const CircleAvatar(
                             radius: 45.0,
                             backgroundImage:
-                                AssetImage('assets/images/user.png'),
+                                AssetImage('assets/images/user.jpg'),
                           ),
                           Positioned(
                             right: -3,

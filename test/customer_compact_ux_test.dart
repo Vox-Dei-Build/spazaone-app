@@ -41,7 +41,7 @@ void main() {
         child: MaterialApp(
           home: EntityTab(
             category: 'Customer',
-            emptyAsset: 'assets/images/customer.png',
+            emptyAsset: 'assets/images/customer.webp',
             emptyText: 'Add your first customer',
             searchTextNotifier: search,
             hasCustomersNotifier: hasCustomers,

@@ -110,12 +110,11 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // R8 currently breaks startup before Dart runs on Android release
-            // builds (FlutterActivity -> FlutterEngineGroup -> MethodChannel
-            // null messenger crash). Keep release builds unobfuscated until
-            // plugin-specific keep rules are proven in QA.
-            shrinkResources false
-            minifyEnabled false
+            // Keep the Play download small. The app-specific rules preserve
+            // Flutter's engine/channel and plugin entry points that previously
+            // caused the release-only startup crash when R8 removed them.
+            shrinkResources true
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (keystorePropertiesFile.exists() && keystoreProperties['storeFile']) {
                 signingConfig signingConfigs.release

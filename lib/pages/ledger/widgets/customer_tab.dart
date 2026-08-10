@@ -144,7 +144,7 @@ class _CustomerTabState extends State<CustomerTab> {
             searchTextNotifier: widget.searchTextNotifier,
             scrollController: _scrollController,
             category: "Customer",
-            emptyAsset: 'assets/images/customer.png',
+            emptyAsset: 'assets/images/customer.webp',
             emptyText:
                 'Add your first customer so you can record a sale and send a WhatsApp confirmation.',
             hasCustomersNotifier: widget.hasCustomersNotifier,

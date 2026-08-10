@@ -27,7 +27,7 @@ class BusinessBottomSheet extends StatelessWidget {
           SizedBox(height: 12.0),
           BusinessTile(
             isActive: true,
-            imagePath: 'assets/images/user.png',
+            imagePath: 'assets/images/user.jpg',
             businessName: 'Omar',
             userName: 'Vulindlela Supermarket',
           ),

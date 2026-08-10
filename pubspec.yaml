@@ -3,7 +3,7 @@ description: SpazaOne helps South African merchants manage customers, balances, 
 
 publish_to: "none"
 
-version: 4.7.0+86
+version: 4.7.1+87
 
 environment:
   sdk: ">=3.0.5 <4.0.0"
@@ -12,14 +12,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.2
   provider: ^6.0.5
   font_awesome_flutter: ^10.7.0
   firebase_core: ^3.15.2
   firebase_auth: ^5.6.0
   cloud_firestore: ^5.6.0
-  fl_chart: ^0.63.0
-  flutter_launcher_icons: ^0.13.1
   # Replaced discontinued contacts_service (v1 plugin embedding, not Flutter
   # 3.29 / 16 KB page size compatible) with flutter_contacts.
   flutter_contacts: ^1.1.9+2
@@ -32,13 +29,11 @@ dependencies:
   async: ^2.11.0
   rxdart: ^0.27.7
   http: ^0.13.6
-  twilio_flutter: ^0.0.9
   flutter_dotenv: ^5.1.0
   cloud_functions: ^5.5.0
   package_info_plus: ^9.0.1
   firebase_remote_config: ^5.4.0
   firebase_analytics: ^11.5.0
-  change_app_package_name: ^1.1.0
   firebase_messaging: ^15.2.0
   url_launcher: ^6.1.14
   # url_launcher_ios is brought transitively by url_launcher; keeping transitive 6.2.4 for Dart 3.0.6
@@ -53,7 +48,6 @@ dependencies:
   image_picker: ^1.0.7
   shimmer: ^3.0.0
   flutter_image_compress: ^2.3.0
-  sticky_headers: ^0.3.0+2
   table_calendar: ^3.0.9
   flutter_local_notifications: ^17.2.4
   # Replaced abandoned flutter_app_badger 1.5.0 (compileSdk 29, declared
@@ -79,6 +73,8 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^2.0.0
+  change_app_package_name: ^1.1.0
+  flutter_launcher_icons: ^0.13.1
 
 # Override transitive win32 5.0.9 (pulled in by package_info_plus 4.2.0)
 # which uses the removed UnmodifiableUint8ListView and fails to compile on
