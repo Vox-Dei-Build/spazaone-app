@@ -1,12 +1,15 @@
 import { Buffer } from "node:buffer";
-import { SpeechClient } from "@google-cloud/speech";
+import { SpeechClient, v2 } from "@google-cloud/speech";
 import { functions } from "../config/main";
 import { requireBotRequest } from "../security/requestAuth";
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const MEDIA_FETCH_TIMEOUT_MS = 12_000;
 const TRUSTED_MEDIA_HOST = "files.bpcontent.cloud";
-export const GOOGLE_SPEECH_MODEL = "command_and_search" as const;
+const GOOGLE_SPEECH_REGION = "us";
+const GOOGLE_SPEECH_FALLBACK_MODEL = "command_and_search";
+export const GOOGLE_SPEECH_MODEL = "chirp_3" as const;
+export const GOOGLE_SPEECH_LANGUAGE_CODES = ["auto"] as const;
 
 export type VoiceAudioEncoding = "OGG_OPUS" | "WEBM_OPUS";
 
@@ -17,11 +20,13 @@ type RecognizeRequest = {
 
 type RecognizeResponse = {
   results?: Array<{
+    languageCode?: string | null;
     alternatives?: Array<{
       transcript?: string | null;
       confidence?: number | null;
     }> | null;
   }> | null;
+  engine?: "google-speech-v2-chirp3" | "google-speech-v1";
 };
 
 type VoiceTranscriptionDependencies = {
@@ -32,8 +37,9 @@ type VoiceTranscriptionDependencies = {
 type VoiceTranscriptionResult = {
   text: string;
   confidence: number;
-  engine: "google-speech";
-  languageCode: "en-ZA";
+  engine: "google-speech-v2-chirp3" | "google-speech-v1";
+  languageCode: string;
+  languageCodes: string[];
 };
 
 class VoiceTranscriptionError extends Error {
@@ -46,13 +52,31 @@ class VoiceTranscriptionError extends Error {
 }
 
 let speechClient: SpeechClient | undefined;
+let multilingualSpeechClient: v2.SpeechClient | undefined;
 
 function getSpeechClient(): SpeechClient {
   speechClient ??= new SpeechClient();
   return speechClient;
 }
 
-async function recognizeWithGoogle(
+function getMultilingualSpeechClient(): v2.SpeechClient {
+  multilingualSpeechClient ??= new v2.SpeechClient({
+    apiEndpoint: `${GOOGLE_SPEECH_REGION}-speech.googleapis.com`,
+  });
+  return multilingualSpeechClient;
+}
+
+function googleProjectId(): string {
+  const projectId = String(
+    process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? "",
+  ).trim();
+  if (!/^[a-z][a-z0-9-]{4,62}$/.test(projectId)) {
+    throw new Error("google_project_unavailable");
+  }
+  return projectId;
+}
+
+async function recognizeWithGoogleV1(
   request: RecognizeRequest,
 ): Promise<RecognizeResponse> {
   const [response] = await getSpeechClient().recognize({
@@ -60,17 +84,41 @@ async function recognizeWithGoogle(
       encoding: request.encoding,
       sampleRateHertz: 48_000,
       languageCode: "en-ZA",
-      // `latest_short` is not available for South African English. Google
-      // rejects the whole request with INVALID_ARGUMENT when that model is
-      // paired with en-ZA, so every otherwise-valid WhatsApp voice note used
-      // to fail before recognition. `command_and_search` is the supported
-      // short-utterance model for en-ZA.
-      model: GOOGLE_SPEECH_MODEL,
+      model: GOOGLE_SPEECH_FALLBACK_MODEL,
       enableAutomaticPunctuation: true,
     },
     audio: { content: request.audioContent },
   });
-  return response;
+  return { ...response, engine: "google-speech-v1" };
+}
+
+async function recognizeWithGoogle(
+  request: RecognizeRequest,
+): Promise<RecognizeResponse> {
+  try {
+    const projectId = googleProjectId();
+    const [response] = await getMultilingualSpeechClient().recognize({
+      recognizer: `projects/${projectId}/locations/${GOOGLE_SPEECH_REGION}/recognizers/_`,
+      config: {
+        autoDecodingConfig: {},
+        // Chirp 3 automatically detects and transcribes multilingual speech.
+        // This is deliberately not a fixed locale: township voice notes often
+        // switch between English and one or more South African languages.
+        languageCodes: [...GOOGLE_SPEECH_LANGUAGE_CODES],
+        model: GOOGLE_SPEECH_MODEL,
+        features: { enableAutomaticPunctuation: true },
+      },
+      content: request.audioContent,
+    });
+    return { ...response, engine: "google-speech-v2-chirp3" };
+  } catch (error) {
+    // Retain the proven South African English path as an availability fallback
+    // if the V2 multilingual endpoint itself fails. Do not log audio or text.
+    console.warn("[voice-transcription] multilingual recognition failed", {
+      serviceCode: recognitionFailureCode(error),
+    });
+    return recognizeWithGoogleV1(request);
+  }
 }
 
 function recognitionFailureCode(error: unknown): string {
@@ -163,12 +211,23 @@ function confidenceFromResponse(response: RecognizeResponse): number {
     .map((result) => result.alternatives?.[0]?.confidence)
     .filter(
       (confidence): confidence is number =>
-        typeof confidence === "number" && Number.isFinite(confidence),
+        typeof confidence === "number" &&
+        Number.isFinite(confidence) &&
+        confidence > 0,
     );
   if (!values.length) return 0.75;
   const mean =
     values.reduce((total, value) => total + value, 0) / values.length;
   return Math.max(0, Math.min(1, mean));
+}
+
+function languageCodesFromResponse(response: RecognizeResponse): string[] {
+  const detected = (response.results ?? [])
+    .map((result) => String(result.languageCode ?? "").trim())
+    .filter(Boolean);
+  const unique = [...new Set(detected)];
+  if (unique.length) return unique;
+  return response.engine === "google-speech-v1" ? ["en-ZA"] : ["auto"];
 }
 
 export async function transcribeVoiceNoteFromMedia(
@@ -230,11 +289,13 @@ export async function transcribeVoiceNoteFromMedia(
     throw new VoiceTranscriptionError("no_speech_detected", 422);
   }
 
+  const languageCodes = languageCodesFromResponse(recognition);
   return {
     text,
     confidence: confidenceFromResponse(recognition),
-    engine: "google-speech",
-    languageCode: "en-ZA",
+    engine: recognition.engine ?? "google-speech-v2-chirp3",
+    languageCode: languageCodes[0],
+    languageCodes,
   };
 }
 

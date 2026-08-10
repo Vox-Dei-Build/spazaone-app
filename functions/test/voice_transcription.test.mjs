@@ -2,14 +2,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  GOOGLE_SPEECH_LANGUAGE_CODES,
   GOOGLE_SPEECH_MODEL,
   encodingForContentType,
   isTrustedBotpressMediaUrl,
   transcribeVoiceNoteFromMedia,
 } from "../lib/bots/transcribeVoiceNoteBotHttp.js";
 
-it("uses the short-utterance model supported by South African English", () => {
-  assert.equal(GOOGLE_SPEECH_MODEL, "command_and_search");
+it("uses multilingual automatic language detection for township voice notes", () => {
+  assert.equal(GOOGLE_SPEECH_MODEL, "chirp_3");
+  assert.deepEqual(GOOGLE_SPEECH_LANGUAGE_CODES, ["auto"]);
 });
 
 const trustedUrl = "https://files.bpcontent.cloud/voice/customer-note";
@@ -55,8 +57,12 @@ describe("voice-note transcription", () => {
         return {
           results: [
             {
+              languageCode: "xh-ZA",
               alternatives: [
-                { transcript: "Two bags of maize meal", confidence: 0.91 },
+                {
+                  transcript: "Ndicela two bags of maize meal",
+                  confidence: 0.91,
+                },
               ],
             },
           ],
@@ -67,10 +73,42 @@ describe("voice-note transcription", () => {
     assert.equal(recognitionRequest.encoding, "OGG_OPUS");
     assert.deepEqual(recognitionRequest.audioContent, ogg);
     assert.deepEqual(result, {
-      text: "Two bags of maize meal",
+      text: "Ndicela two bags of maize meal",
       confidence: 0.91,
-      engine: "google-speech",
-      languageCode: "en-ZA",
+      engine: "google-speech-v2-chirp3",
+      languageCode: "xh-ZA",
+      languageCodes: ["xh-ZA"],
+    });
+  });
+
+  it("preserves code-switched transcript segments and detected languages", async () => {
+    const ogg = Buffer.concat([Buffer.from("OggS"), Buffer.from([4, 5, 6])]);
+    const result = await transcribeVoiceNoteFromMedia(trustedUrl, {
+      fetchImpl: async () =>
+        new Response(ogg, {
+          status: 200,
+          headers: { "content-type": "audio/ogg" },
+        }),
+      recognize: async () => ({
+        results: [
+          {
+            languageCode: "xh-ZA",
+            alternatives: [{ transcript: "Ndicela two loaves" }],
+          },
+          {
+            languageCode: "en",
+            alternatives: [{ transcript: "please" }],
+          },
+        ],
+      }),
+    });
+
+    assert.deepEqual(result, {
+      text: "Ndicela two loaves please",
+      confidence: 0.75,
+      engine: "google-speech-v2-chirp3",
+      languageCode: "xh-ZA",
+      languageCodes: ["xh-ZA", "en"],
     });
   });
 
