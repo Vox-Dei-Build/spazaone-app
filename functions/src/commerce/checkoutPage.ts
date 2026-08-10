@@ -1,6 +1,7 @@
 import { db, functions } from "../config/main";
 import { commerceApiUrls } from "./payment";
 import { commercePaymentsEnabled } from "./readiness";
+import { ensureMerchantOrderingLink } from "../ecommerce/getMerchantOrderingLink";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -93,7 +94,10 @@ function statusPage(input: {
   return pageShell("Spaza One order", content, script);
 }
 
-function checkoutUnavailablePage(): string {
+function checkoutUnavailablePage(orderingUrl = ""): string {
+  const action = orderingUrl
+    ? `<p><a href="${escapeHtml(orderingUrl)}" style="display:block;border-radius:13px;background:#106c55;color:#fff;text-decoration:none;font-weight:800;padding:15px">Continue on WhatsApp</a></p>`
+    : "";
   return pageShell(
     "Order on WhatsApp · Spaza One",
     `<section class="card status">
@@ -101,6 +105,7 @@ function checkoutUnavailablePage(): string {
       <div class="eyebrow">Spaza One</div>
       <h1>Order through WhatsApp</h1>
       <p class="muted">This shop currently takes orders through its Spaza One WhatsApp ordering link.</p>
+      ${action}
     </section>`,
   );
 }
@@ -205,10 +210,6 @@ export const commerceCheckout = functions.https.onRequest(async (req, res) => {
     res.status(200).send(statusPage({ listingId, orderId, token }));
     return;
   }
-  if (!commercePaymentsEnabled()) {
-    res.status(503).send(checkoutUnavailablePage());
-    return;
-  }
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(listingId)) {
     res
       .status(404)
@@ -231,6 +232,25 @@ export const commerceCheckout = functions.https.onRequest(async (req, res) => {
           '<section class="card status"><h1>Product unavailable</h1><p class="muted">The seller is not offering this item right now.</p></section>',
         ),
       );
+    return;
+  }
+  if (!commercePaymentsEnabled()) {
+    try {
+      const ordering = await ensureMerchantOrderingLink(
+        String(data.sellerId ?? ""),
+      );
+      const url = new URL(ordering.orderingUrl);
+      url.searchParams.set(
+        "text",
+        `shop ${ordering.code}\nproduct ${listingId}`,
+      );
+      res.redirect(302, url.toString());
+    } catch (error) {
+      console.error("commerceCheckout WhatsApp redirect failed", {
+        message: error instanceof Error ? error.message : "error",
+      });
+      res.status(200).send(checkoutUnavailablePage());
+    }
     return;
   }
   const images = Array.isArray(data.images) ? data.images : [];

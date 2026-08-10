@@ -8,6 +8,14 @@ import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/utils/show_toast.dart';
 
+/// Manual cash and Pay Later transactions move stock the merchant already
+/// owns. Supplier-backed dropshipping listings must stay in the commerce-order
+/// flow, where delivery, payment and fulfilment are captured safely.
+List<Product> selectableManualTransactionProducts(
+  Iterable<Product> products,
+) =>
+    products.where((product) => !product.isDropshipListing).toList();
+
 class TransactionViewModel extends ChangeNotifier {
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
   final String userId = StoreSession.instance.storeId;
@@ -47,6 +55,9 @@ class TransactionViewModel extends ChangeNotifier {
   /// previous-transaction picks. Empty list means "no suggestions
   /// surface" — the picker collapses gracefully.
   List<Product> get suggestedProducts => const [];
+
+  /// Optional flow-specific guidance shown above the product picker.
+  String? get productSelectionNotice => null;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   int currentPage = 0;
   int itemsPerPage = 5;
@@ -115,12 +126,11 @@ class TransactionViewModel extends ChangeNotifier {
           .doc(userId)
           .collection('products')
           .get();
-      products = snapshot.docs
-          .map(
-            (doc) =>
-                Product.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-          )
-          .toList();
+      products = selectableManualTransactionProducts(
+        snapshot.docs.map(
+          (doc) => Product.fromMap(doc.data() as Map<String, dynamic>, doc.id),
+        ),
+      );
       filteredProducts = products;
 
       notifyListeners();

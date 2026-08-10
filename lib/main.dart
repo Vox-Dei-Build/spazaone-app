@@ -70,7 +70,10 @@ bool firstRunSurfacesCompleteForNotifications({
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('Handling a background message: ${message.messageId}');
+  final total = int.tryParse(message.data['unreadTotalCount'] ?? '');
+  if (total != null) {
+    await FlutterAppBadgerPlus.updateBadgeCount(total);
+  }
 }
 
 Future<void> setupFlutterNotifications() async {
@@ -122,15 +125,20 @@ Future<void> createNotificationChannel() async {
 }
 
 void showLocalNotification(RemoteMessage message) async {
-  if (message.data.containsKey('unreadOrdersCount')) {
-    final n = int.tryParse(message.data['unreadOrdersCount'] ?? '') ?? 0;
-    FlutterAppBadger.updateBadgeCount(n);
-  }
+  if (message.data.containsKey('unreadTotalCount')) {
+    final n = int.tryParse(message.data['unreadTotalCount'] ?? '') ?? 0;
+    FlutterAppBadgerPlus.updateBadgeCount(n);
+  } else {
+    if (message.data.containsKey('unreadOrdersCount')) {
+      final n = int.tryParse(message.data['unreadOrdersCount'] ?? '') ?? 0;
+      FlutterAppBadgerPlus.updateBadgeCount(n);
+    }
 
-  // (kept) Chats badge count from FCM data
-  if (message.data.containsKey('unreadCount')) {
-    final n = int.tryParse(message.data['unreadCount'] ?? '') ?? 0;
-    FlutterAppBadger.updateBadgeCount(n);
+    // Compatibility for released functions that still send one scalar.
+    if (message.data.containsKey('unreadCount')) {
+      final n = int.tryParse(message.data['unreadCount'] ?? '') ?? 0;
+      FlutterAppBadgerPlus.updateBadgeCount(n);
+    }
   }
 
   const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(

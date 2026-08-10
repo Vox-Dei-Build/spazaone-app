@@ -12,4 +12,7 @@ test("manual MVP keeps the gated commerce Paystack webhook exported", () => {
     typeof deployedExports.verifyCommercePaystackTransaction,
     "function",
   );
+  assert.equal(typeof deployedExports.prepareCommerceCheckout, "function");
+  assert.equal(typeof deployedExports.setSavedSupplierProduct, "function");
+  assert.equal(typeof deployedExports.listSavedSupplierProducts, "function");
 });

@@ -6,7 +6,12 @@ import {
   paymentStatusAfterAction,
   targetStatusForAction,
 } from "./domain";
-import { notifyCommerceOrder } from "./notifications";
+import {
+  CommerceNotificationResult,
+  deliverCommerceOrderNotificationOutbox,
+  enqueueCommerceOrderNotification,
+} from "./notifications";
+import { validatedTrackingUrl } from "./tracking";
 
 function requiredText(value: unknown, field: string, max = 160): string {
   const text = String(value ?? "").trim();
@@ -65,9 +70,16 @@ export const updateCommerceOrder = functions.https.onCall(
       actorRole = access.role;
     }
 
-    const trackingCarrier = optionalText(data?.trackingCarrier, 100);
     const trackingNumber = optionalText(data?.trackingNumber, 160);
-    const trackingUrl = optionalText(data?.trackingUrl, 500);
+    let trackingUrl: string | null;
+    try {
+      trackingUrl = validatedTrackingUrl(data?.trackingUrl);
+    } catch (_) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Tracking link must start with https:// or http:// and be a valid link.",
+      );
+    }
     const supplierOrderId = optionalText(data?.supplierOrderId, 200);
     const manualPaymentNote = optionalText(data?.manualPaymentNote, 200);
     if (action === "confirm_manual_payment" && !manualPaymentNote) {
@@ -83,7 +95,7 @@ export const updateCommerceOrder = functions.https.onCall(
     ) {
       throw new functions.https.HttpsError(
         "invalid-argument",
-        "Add the supplier order number after placing the order.",
+        "Add the delivery order number after placing the order.",
       );
     }
     if (action === "mark_shipped" && !trackingNumber) {
@@ -100,7 +112,7 @@ export const updateCommerceOrder = functions.https.onCall(
       );
     }
 
-    let notice: Parameters<typeof notifyCommerceOrder>[0] | null = null;
+    let notificationId = "";
     let resultStatus = "";
     try {
       await db.runTransaction(async (tx) => {
@@ -151,7 +163,7 @@ export const updateCommerceOrder = functions.https.onCall(
         } else if (action === "mark_shipped") {
           update.shippedAt = now;
           update.tracking = {
-            carrier: trackingCarrier,
+            carrier: "",
             number: trackingNumber,
             url: trackingUrl,
           };
@@ -172,7 +184,7 @@ export const updateCommerceOrder = functions.https.onCall(
           };
         }
         tx.update(orderRef, update);
-        notice = {
+        notificationId = enqueueCommerceOrderNotification(tx, {
           orderId,
           sellerId,
           customerId: String(currentData.customerId ?? ""),
@@ -181,9 +193,9 @@ export const updateCommerceOrder = functions.https.onCall(
           status: next,
           paymentMethod: String(currentData.paymentMethod ?? "paystack"),
           amountDueMinor: Number(currentData.amountDueMinor ?? 0),
-          trackingCarrier: trackingCarrier ?? undefined,
           trackingNumber: trackingNumber ?? undefined,
-        };
+          trackingUrl: trackingUrl ?? undefined,
+        });
         resultStatus = next;
       });
     } catch (error) {
@@ -204,11 +216,20 @@ export const updateCommerceOrder = functions.https.onCall(
       }
       throw error;
     }
-    if (notice) {
-      await notifyCommerceOrder(notice).catch((error) => {
-        console.error("[commerce] status notification failed", error);
-      });
+    let notification: CommerceNotificationResult = {
+      notificationId,
+      customer: "queued",
+      buyerResult: "pending",
+      sellerResult: "pending",
+    };
+    try {
+      notification =
+        await deliverCommerceOrderNotificationOutbox(notificationId);
+    } catch (error) {
+      // The transition and outbox item committed together. A transient send or
+      // result-write failure must not be reported as a customer notification.
+      console.error("[commerce] status notification queued", error);
     }
-    return { orderId, status: resultStatus };
+    return { orderId, status: resultStatus, notification };
   },
 );

@@ -94,6 +94,10 @@ export {
   getCjSupplierProduct,
   getCjSupplierProduct as getCjSupplierProductV2,
   quoteCjSupplierVariant,
+  setSavedSupplierProduct,
+  setSavedSupplierProduct as setSavedSupplierProductV2,
+  listSavedSupplierProducts,
+  listSavedSupplierProducts as listSavedSupplierProductsV2,
 } from "./commerce/cjCatalog";
 export { syncCjSupplierCatalog } from "./commerce/cjCatalogWorker";
 export {
@@ -105,11 +109,13 @@ export {
   verifyCommercePaystackTransaction,
   getCommerceOrderStatus,
 } from "./commerce/payment";
+export { prepareCommerceCheckout } from "./commerce/prepareCommerceCheckout";
 // Keep the Paystack endpoint deployed for forward compatibility, but every
 // commerce payment transition remains fail-closed behind
 // COMMERCE_PAYMENTS_ENABLED and the stored provider/reference binding.
 export { commerceCheckout } from "./commerce/checkoutPage";
 export { updateCommerceOrder } from "./commerce/updateCommerceOrder";
+export { retryCommerceOrderNotifications } from "./commerce/commerceNotificationWorker";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
 /* ---- Multi-store access ---- */
 export * from "./stores/storeManagement";

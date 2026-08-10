@@ -69,6 +69,9 @@ class CjCatalogProduct {
     required this.estimatedLandedCostMinor,
     required this.logisticAging,
     required this.deliveryVerifiedAt,
+    this.catalogQuoteVersion = '',
+    this.saved = false,
+    this.availability = 'available',
   });
 
   final String id;
@@ -83,6 +86,11 @@ class CjCatalogProduct {
   final int estimatedLandedCostMinor;
   final String logisticAging;
   final String deliveryVerifiedAt;
+  final String catalogQuoteVersion;
+  final bool saved;
+  final String availability;
+
+  bool get isAvailable => availability == 'available';
 
   factory CjCatalogProduct.fromJson(Map<String, dynamic> data) =>
       CjCatalogProduct(
@@ -98,6 +106,51 @@ class CjCatalogProduct {
         estimatedLandedCostMinor: _asInt(data['estimatedLandedCostMinor']),
         logisticAging: data['logisticAging']?.toString() ?? '',
         deliveryVerifiedAt: data['deliveryVerifiedAt']?.toString() ?? '',
+        catalogQuoteVersion: data['catalogQuoteVersion']?.toString() ??
+            data['deliveryVerifiedAt']?.toString() ??
+            '',
+        saved: data['saved'] == true,
+        availability: data['availability']?.toString() ?? 'available',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'productId': id,
+        'productSku': sku,
+        'title': title,
+        'image': image,
+        'category': category,
+        'productCostUsdMinor': productCostUsdMinor,
+        'estimatedProductCostMinor': estimatedProductCostMinor,
+        'deliverableVariantId': deliverableVariantId,
+        'estimatedDeliveryCostMinor': estimatedDeliveryCostMinor,
+        'estimatedLandedCostMinor': estimatedLandedCostMinor,
+        'logisticAging': logisticAging,
+        'deliveryVerifiedAt': deliveryVerifiedAt,
+        'catalogQuoteVersion': catalogQuoteVersion,
+        'saved': saved,
+        'availability': availability,
+      };
+
+  CjCatalogProduct copyWith({
+    String? availability,
+    bool? saved,
+  }) =>
+      CjCatalogProduct(
+        id: id,
+        sku: sku,
+        title: title,
+        image: image,
+        category: category,
+        productCostUsdMinor: productCostUsdMinor,
+        estimatedProductCostMinor: estimatedProductCostMinor,
+        deliverableVariantId: deliverableVariantId,
+        estimatedDeliveryCostMinor: estimatedDeliveryCostMinor,
+        estimatedLandedCostMinor: estimatedLandedCostMinor,
+        logisticAging: logisticAging,
+        deliveryVerifiedAt: deliveryVerifiedAt,
+        catalogQuoteVersion: catalogQuoteVersion,
+        saved: saved ?? this.saved,
+        availability: availability ?? this.availability,
       );
 }
 
@@ -315,6 +368,53 @@ CjListingEstimate? resolveCjCatalogSnapshotEstimate({
     variant: cachedVariant,
     quote: CjLandedQuote(
       variant: cachedVariant,
+      originCountryCode: '',
+      stock: 0,
+      logisticName: '',
+      logisticAging: catalogProduct.logisticAging,
+      productCostMinor: catalogProduct.estimatedProductCostMinor,
+      shippingCostMinor: catalogProduct.estimatedDeliveryCostMinor,
+      landedCostMinor: catalogProduct.estimatedLandedCostMinor,
+      fxRateMicros: 0,
+      fxBufferBps: 0,
+    ),
+    source: CjListingEstimateSource.catalogSnapshot,
+  );
+}
+
+/// Opens a product already approved by the server's catalogue search.
+///
+/// Freshness is deliberately not checked against the phone clock. The search
+/// endpoint applies the freshness gate using server time, and listing creation
+/// revalidates the quote version. The app only checks that the received price
+/// and selected option are internally consistent enough to render.
+CjListingEstimate? resolveServerApprovedCatalogEstimate({
+  required CjCatalogProduct catalogProduct,
+}) {
+  final cachedVariantId = catalogProduct.deliverableVariantId;
+  final structurallyUsable = catalogProduct.id.isNotEmpty &&
+      cachedVariantId.isNotEmpty &&
+      catalogProduct.estimatedProductCostMinor > 0 &&
+      catalogProduct.estimatedDeliveryCostMinor >= 0 &&
+      catalogProduct.estimatedLandedCostMinor ==
+          catalogProduct.estimatedProductCostMinor +
+              catalogProduct.estimatedDeliveryCostMinor;
+  if (!structurallyUsable) return null;
+
+  final variant = CjVariant(
+    id: cachedVariantId,
+    productId: catalogProduct.id,
+    sku: '',
+    name: 'Recommended option',
+    option: '',
+    image: catalogProduct.image,
+    productCostUsdMinor: catalogProduct.productCostUsdMinor,
+    estimatedProductCostMinor: catalogProduct.estimatedProductCostMinor,
+  );
+  return CjListingEstimate(
+    variant: variant,
+    quote: CjLandedQuote(
+      variant: variant,
       originCountryCode: '',
       stock: 0,
       logisticName: '',

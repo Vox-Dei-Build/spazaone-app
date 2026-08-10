@@ -141,7 +141,14 @@ class CustomerManagementViewModel extends ChangeNotifier {
       // late events may arrive post-dispose.
       if (_disposed) return;
       if (doc.exists) {
-        ordersUnreadCount = (doc.data()?['ordersUnreadCount'] as int?) ?? 0;
+        final unreadCounts = doc.data()?['unreadCounts'];
+        if (unreadCounts is Map && unreadCounts['messages'] is num) {
+          unreadMessagesCount = (unreadCounts['messages'] as num).toInt();
+        }
+        ordersUnreadCount = unreadCounts is Map &&
+                unreadCounts['orders'] is num
+            ? (unreadCounts['orders'] as num).toInt()
+            : (doc.data()?['ordersUnreadCount'] as int?) ?? 0;
         notifyListeners();
       }
     });

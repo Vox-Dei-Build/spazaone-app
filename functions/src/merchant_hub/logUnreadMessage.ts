@@ -7,6 +7,10 @@ import {
   readStoreNotificationTokens,
   removeInvalidStoreNotificationTokens,
 } from "../notifications/storeNotificationTokens";
+import {
+  appendTruthSurfaceMessage,
+  incrementUnreadCount,
+} from "../notifications/unreadCounts";
 
 type NotificationCustomer = {
   id: string;
@@ -211,14 +215,16 @@ export const logUnreadMessage = functions
 
       const merchantRef = db.collection("users").doc(merchantId);
       const merchantDoc = await merchantRef.get();
-      let unreadCount = 0;
+      if (!merchantDoc.exists) {
+        res.status(404).json({ error: "Merchant not found" });
+        return;
+      }
       let unreadMessages: Array<Record<string, unknown>> = [];
 
       if (merchantDoc.exists) {
         const data = merchantDoc.data();
         unreadMessages =
           (data?.unreadMessages as Array<Record<string, unknown>>) ?? [];
-        unreadCount = (data?.unreadCount as number) ?? 0;
       }
 
       // Idempotency: if the caller supplies an externalId we never persist the
@@ -257,10 +263,9 @@ export const logUnreadMessage = functions
           newTimestampMs,
         });
 
-      // Append the new entry. We keep `customerNumber`, `message`, `timestamp`
-      // for backwards compatibility with the existing app stream and add the
-      // structured fields for the Connect tab's truth-surface renderer.
-      unreadMessages.push({
+      // Keep the released fields and add structured truth-surface metadata.
+      // Inbound persistence is committed atomically with counters below.
+      const messageEntry = {
         customerNumber,
         message,
         timestamp: resolvedTimestamp,
@@ -269,30 +274,51 @@ export const logUnreadMessage = functions
         channel: resolvedChannel,
         kind: resolvedKind,
         ...(externalId ? { externalId } : {}),
-      });
-
-      // Outbound bot replies should NOT ring the merchant's bell — the merchant
-      // already saw their bot reply in the conversation, this is just truth
-      // capture. Only inbound entries advance the unread counter.
-      const nextUnreadCount =
-        resolvedDirection === "inbound" ? unreadCount + 1 : unreadCount;
-
-      await merchantRef.set(
-        {
-          unreadMessages,
-          unreadCount: nextUnreadCount,
-        },
-        { merge: true },
-      );
+      };
 
       // FCM push only fires for inbound (legacy + new customer messages).
       if (resolvedDirection !== "inbound") {
+        const append = await appendTruthSurfaceMessage({
+          merchantId,
+          messageEntry,
+          externalId:
+            typeof externalId === "string" && externalId
+              ? externalId
+              : undefined,
+        });
         res.status(200).json({
-          message: "Outbound reply mirrored to truth surface.",
+          message: append.deduped
+            ? "Duplicate externalId — message already logged."
+            : "Outbound reply mirrored to truth surface.",
           direction: resolvedDirection,
+          deduped: append.deduped,
         });
         return;
       }
+
+      const notificationCustomer = await findCustomerForMessageNotification(
+        merchantId,
+        customerNumber,
+      );
+      const unread = await incrementUnreadCount({
+        merchantId,
+        customerId: notificationCustomer?.id,
+        customerNumber,
+        kind: "messages",
+        eventKey: `message:${String(
+          externalId ||
+            `${resolvedTimestamp}:${customerNumber}:${resolvedKind}:${messageText}`,
+        )}`,
+        messageEntry,
+      });
+      if (unread.deduped) {
+        res.status(200).json({
+          message: "Duplicate externalId — message already logged.",
+          deduped: true,
+        });
+        return;
+      }
+      const nextUnreadCount = unread.merchant.messages;
 
       if (throttlePush) {
         console.log(
@@ -326,22 +352,20 @@ export const logUnreadMessage = functions
         },
       };
 
-      const notificationCustomer = await findCustomerForMessageNotification(
-        merchantId,
-        customerNumber,
-      );
-
       const payload = {
         notification: {
           title: "New Customer Message 📩",
           body: "Tap to open the customer's account.",
         },
         android: androidConfig,
-        data: buildCustomerMessageNotificationData(
-          nextUnreadCount,
-          notificationCustomer,
-          customerNumber,
-        ),
+        data: {
+          ...buildCustomerMessageNotificationData(
+            nextUnreadCount,
+            notificationCustomer,
+            customerNumber,
+          ),
+          unreadTotalCount: String(unread.merchant.total),
+        },
         tokens,
       };
 

@@ -32,18 +32,11 @@ export function isOpenCommerceOrder(value: unknown): boolean {
   ]).has(String(record(value).status ?? "").toLowerCase());
 }
 
-/**
- * Supplier logistics names are operational data, not buyer-facing branding.
- * Keep the tracking number useful while preventing raw CJ provider names from
- * leaking through proactive WhatsApp/SMS status updates.
- */
-export function buyerSafeTrackingCarrier(value: unknown): string {
-  const carrier = String(value ?? "").trim();
-  if (!carrier) return "";
-  if (/(?:^|[^a-z0-9])cj(?:\s*packet|\s*dropshipping|\b)/i.test(carrier)) {
-    return "Spaza One delivery";
-  }
-  return carrier;
+/** Released readers may still call this helper, but partner names are no
+ * longer part of the customer contract. */
+export function buyerSafeTrackingCarrier(_value: unknown): string {
+  void _value;
+  return "";
 }
 
 /**
@@ -59,7 +52,9 @@ export function presentCommerceOrder(
   const rawTracking = record(order.tracking);
   const tracking = Object.keys(rawTracking).length
     ? {
-        carrier: buyerSafeTrackingCarrier(rawTracking.carrier),
+        // Kept as an empty compatibility field for released bot readers. A
+        // delivery partner name is operational data and is never buyer-facing.
+        carrier: "",
         number: String(rawTracking.number ?? ""),
         url: String(rawTracking.url ?? ""),
       }
@@ -74,7 +69,7 @@ export function presentCommerceOrder(
         order.listingId ??
         "",
     );
-    const title = String(item.title ?? "Supplier product");
+    const title = String(item.title ?? "Delivery product");
     return {
       productId,
       quantity: Math.max(1, Math.trunc(finiteNumber(item.quantity) || 1)),
@@ -102,7 +97,7 @@ export function presentCommerceOrder(
     itemsCount: itemsCount || 1,
     items,
     createdAt: order.createdAt ?? null,
-    type: "Dropship",
+    type: "Delivery",
     paymentMethod: String(order.paymentMethod ?? "manual"),
     paymentStatus: String(order.paymentStatus ?? ""),
     fulfilmentStatus: String(order.fulfilmentStatus ?? ""),

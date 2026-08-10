@@ -11,29 +11,20 @@ import 'package:pasella/shared/widgets/wallet_balance_pill.dart';
 ///   2. Page-scoped actions: optional search, optional `actionWidget`
 ///   3. Account/value: wallet balance pill (always visible, with breathing
 ///      room so its rounded shape doesn't visually merge with adjacent icons)
-///   4. System: settings + connectivity status
-///   5. Optional `trailingWidget` — pinned to the true far right of the
-///      header, after the system cluster. Use this when a page has a
-///      contextual action that should read as a system-level affordance
-///      (e.g. the Stock kebab) rather than competing with the wallet
-///      pill in the middle of the row.
+///   4. Optional page-level `trailingWidget`
+///   5. System: connectivity status + Settings. Settings is always the
+///      absolute far-right control, consistently across every page.
 ///
 /// Width strategy: every element renders at its natural size and is sized to
-/// fit comfortably even on narrow Android screens (~360dp). The brand is
-/// intentionally toned down from a hero-sized title to a header-appropriate
-/// size so the always-visible wallet pill, page actions, and system cluster
-/// all fit without ellipsizing or overflow.
+/// fit comfortably even on narrow Android screens (~360dp). The brand uses
+/// the available space instead of leaving a large empty gap, while compacting
+/// just enough on very narrow screens that include a page action.
 class PageHeader extends StatelessWidget {
   final VoidCallback? onSearchTap;
   final Widget? actionWidget;
 
-  /// Optional widget rendered at the true far-right of the header, after
-  /// the system cluster (settings + connectivity).
-  ///
-  /// Use this for page-level overflow menus where the user expectation
-  /// is "the dots are in the corner". `actionWidget` is positioned
-  /// before the wallet pill, which is correct for inline search-style
-  /// affordances but reads off-balance for a three-dot menu.
+  /// Optional page-level widget rendered before connectivity and Settings.
+  /// Settings remains the absolute far-right control.
   final Widget? trailingWidget;
 
   /// Injectable chrome used by narrow-layout widget tests. Production callers
@@ -66,11 +57,19 @@ class PageHeader extends StatelessWidget {
         final compact = constraints.maxWidth <= 440 || scaledBody > 19;
         final iconSize = (SizeConfig.imageSizeMultiplier * 5).clamp(18.0, 22.0);
         final brandWidth = veryNarrow && hasPageAction
-            ? 74.0
-            : compact
-                ? 88.0
-                : 120.0;
-        final walletMaxWidth = veryNarrow ? 80.0 : (compact ? 96.0 : 180.0);
+            ? 96.0
+            : veryNarrow
+                ? 120.0
+                : compact && hasPageAction
+                    ? 116.0
+                    : compact
+                        ? 128.0
+                        : 156.0;
+        final walletMaxWidth = veryNarrow && hasPageAction
+            ? 68.0
+            : veryNarrow
+                ? 76.0
+                : (compact ? 88.0 : 180.0);
         final pillGap = compact ? 3.0 : SizeConfig.imageSizeMultiplier * 2;
         final tightGap = compact ? 0.0 : SizeConfig.imageSizeMultiplier * 0.5;
 
@@ -90,7 +89,7 @@ class PageHeader extends StatelessWidget {
               SizedBox(
                 key: const ValueKey('page-header-brand'),
                 width: brandWidth,
-                height: 30,
+                height: 36,
                 child: Image.asset(
                   'assets/images/spazaone_logo_horizontal.png',
                   fit: BoxFit.contain,
@@ -136,8 +135,18 @@ class PageHeader extends StatelessWidget {
               ),
               SizedBox(width: pillGap),
 
-              // ── System cluster (settings + connectivity) ────────────
+              // ── Optional page-level trailing slot ───────────────
+              if (trailingWidget != null) ...[
+                SizedBox(width: tightGap),
+                compactAction(trailingWidget!),
+              ],
+
+              // ── System cluster; Settings owns the far-right edge ──
+              SizedBox(width: tightGap),
+              connectivityWidget ?? const ConnectivityIndicator(),
+              SizedBox(width: tightGap),
               SizedBox(
+                key: const ValueKey('page-header-settings'),
                 width: 44,
                 height: 44,
                 child: IconButton(
@@ -157,14 +166,6 @@ class PageHeader extends StatelessWidget {
                       const BoxConstraints.tightFor(width: 44, height: 44),
                 ),
               ),
-              SizedBox(width: tightGap),
-              connectivityWidget ?? const ConnectivityIndicator(),
-
-              // ── Optional trailing slot (true far-right) ────────────
-              if (trailingWidget != null) ...[
-                SizedBox(width: tightGap),
-                compactAction(trailingWidget!),
-              ],
             ],
           ),
         );

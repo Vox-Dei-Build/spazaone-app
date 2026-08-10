@@ -90,7 +90,9 @@ class FeatureFlags {
   static bool enableBankingDetails = true;
 
   static bool enableAnonymousGate = false;
-  static bool enableTopUpPaystack = true;
+  // Paystack stays unavailable for v4.7.0. Do not let a stale Remote Config
+  // value expose a payment path that is not part of this release.
+  static bool enableTopUpPaystack = false;
   static bool enableMoveFunds = false;
 
   /// Enables automatic online-sales reporting once Spaza One's payment
@@ -205,10 +207,7 @@ class FeatureFlags {
       'FEATURE_ANONYMOUS_GATE_ENABLED',
       defaultValue: false,
     );
-    enableTopUpPaystack = rc.getBool(
-      'FEATURE_TOP_UP_PAYSTACK_ENABLED',
-      defaultValue: true,
-    );
+    enableTopUpPaystack = false;
     enableMoveFunds = rc.getBool(
       'FEATURE_MOVE_FUNDS_ENABLED',
       defaultValue: false,

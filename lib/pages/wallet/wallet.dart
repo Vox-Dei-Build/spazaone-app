@@ -15,6 +15,241 @@ import 'package:provider/provider.dart';
 
 enum WalletInitialTab { withdraw, topUp, account }
 
+/// Visual summary for the balances merchants use most.
+class BillingBalancePanel extends StatelessWidget {
+  const BillingBalancePanel({
+    super.key,
+    required this.campaignBalance,
+    required this.salesBalance,
+    required this.storeName,
+    required this.sharedCampaignCredits,
+    this.onCampaignTap,
+    this.cashAdvanceBalance,
+  });
+
+  final double campaignBalance;
+  final double salesBalance;
+  final String storeName;
+  final bool sharedCampaignCredits;
+  final VoidCallback? onCampaignTap;
+  final double? cashAdvanceBalance;
+
+  @override
+  Widget build(BuildContext context) {
+    final campaignColor = campaignBalance < 5 && onCampaignTap != null
+        ? Colors.orange.shade800
+        : Colors.green.shade700;
+    final items = <_BillingBalanceItem>[
+      _BillingBalanceItem(
+        label: 'Campaign credits',
+        scope: sharedCampaignCredits ? 'All stores' : null,
+        amount: campaignBalance,
+        icon: Icons.campaign_outlined,
+        color: campaignColor,
+        onTap: onCampaignTap,
+      ),
+      _BillingBalanceItem(
+        label: 'Sales balance',
+        scope: storeName,
+        amount: salesBalance,
+        icon: Icons.account_balance_wallet_outlined,
+        color: Colors.blue.shade700,
+      ),
+      if (cashAdvanceBalance case final amount?)
+        _BillingBalanceItem(
+          label: 'Cash advance',
+          amount: amount,
+          icon: Icons.account_balance_outlined,
+          color: Colors.orange.shade800,
+        ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 154,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _BillingBalanceTile(
+                    key: const ValueKey('billing-balance-campaign'),
+                    item: items[0],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _BillingBalanceTile(
+                    key: const ValueKey('billing-balance-sales'),
+                    item: items[1],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (items.length > 2) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 88,
+              child: _BillingBalanceTile(
+                key: const ValueKey('billing-balance-cash-advance'),
+                item: items[2],
+                horizontal: true,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BillingBalanceItem {
+  const _BillingBalanceItem({
+    required this.label,
+    required this.amount,
+    required this.icon,
+    required this.color,
+    this.scope,
+    this.onTap,
+  });
+
+  final String label;
+  final String? scope;
+  final double amount;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+}
+
+class _BillingBalanceTile extends StatelessWidget {
+  const _BillingBalanceTile({
+    super.key,
+    required this.item,
+    this.horizontal = false,
+  });
+
+  final _BillingBalanceItem item;
+  final bool horizontal;
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = Text(
+      CurrencyUtil.format(item.amount),
+      maxLines: 1,
+      style: TextStyle(
+        fontSize: horizontal ? 21 : 24,
+        height: 1,
+        fontWeight: FontWeight.w800,
+        color: item.color,
+      ),
+    );
+    final content = horizontal
+        ? Row(
+            children: [
+              _BalanceIcon(item: item),
+              const SizedBox(width: 12),
+              Expanded(child: _BalanceLabel(item: item)),
+              const SizedBox(width: 12),
+              FittedBox(fit: BoxFit.scaleDown, child: amount),
+            ],
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _BalanceIcon(item: item),
+                  if (item.onTap != null)
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 20,
+                      color: item.color,
+                    ),
+                ],
+              ),
+              const Spacer(),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: amount,
+              ),
+              const SizedBox(height: 8),
+              _BalanceLabel(item: item),
+            ],
+          );
+
+    return Material(
+      color: item.color.withValues(alpha: .09),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: item.color.withValues(alpha: .18)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: item.onTap,
+        child: Padding(
+          padding: EdgeInsets.all(horizontal ? 14 : 16),
+          child: content,
+        ),
+      ),
+    );
+  }
+}
+
+class _BalanceIcon extends StatelessWidget {
+  const _BalanceIcon({required this.item});
+
+  final _BillingBalanceItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: item.color.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(item.icon, size: 21, color: item.color),
+    );
+  }
+}
+
+class _BalanceLabel extends StatelessWidget {
+  const _BalanceLabel({required this.item});
+
+  final _BillingBalanceItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          item.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        if (item.scope case final scope?)
+          Text(
+            scope,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey.shade700,
+                ),
+          ),
+      ],
+    );
+  }
+}
+
 class WalletPage extends StatefulWidget {
   const WalletPage({
     super.key,
@@ -160,48 +395,24 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _balanceCard(
-                              title: campaignWallet.sharedCampaignCredits
-                                  ? 'Shared Campaign Credits'
-                                  : 'Campaign Credits',
-                              amount: campaignWallet.virtualBalance,
-                              description: campaignWallet.sharedCampaignCredits
-                                  ? 'Available in all linked stores · Pays for '
-                                      'SMS, WhatsApp and campaigns'
-                                  : 'Pays for SMS, WhatsApp and campaigns',
-                              color: Colors.green,
-                              icon: Icons.account_balance_wallet,
-                              // PAS-UX-WTC: the whole card becomes a shortcut
-                              // to the Top-Up tab. Urgent tint kicks in when
-                              // balance is low so it's obvious which surface
-                              // needs attention — no extra chrome on the card.
-                              onAction: FeatureFlags.enableTopUp
+                            BillingBalancePanel(
+                              campaignBalance: campaignWallet.virtualBalance,
+                              salesBalance: walletState.salesVirtualBalance,
+                              storeName: campaignWallet.activeStoreName,
+                              sharedCampaignCredits:
+                                  campaignWallet.sharedCampaignCredits,
+                              onCampaignTap: FeatureFlags.enableTopUp
                                   ? () {
-                                      final i = _topUpTabIndex();
-                                      if (i != null)
-                                        _tabController.animateTo(i);
+                                      final index = _topUpTabIndex();
+                                      if (index != null) {
+                                        _tabController.animateTo(index);
+                                      }
                                     }
                                   : null,
-                              actionIsUrgent:
-                                  campaignWallet.virtualBalance < 5.0,
+                              cashAdvanceBalance: FeatureFlags.enableCashAdvance
+                                  ? walletState.cashAdvanceBalance
+                                  : null,
                             ),
-                            _balanceCard(
-                              title:
-                                  '${campaignWallet.activeStoreName} Sales Balance',
-                              amount: walletState.salesVirtualBalance,
-                              description:
-                                  'Only for this store · Available for withdrawal',
-                              color: Colors.blue,
-                              icon: Icons.account_balance_wallet,
-                            ),
-                            if (FeatureFlags.enableCashAdvance)
-                              _balanceCard(
-                                title: 'Cash Advance',
-                                amount: walletState.cashAdvanceBalance,
-                                description: 'Available for withdrawal',
-                                color: Colors.orange,
-                                icon: Icons.account_balance,
-                              ),
                             if (FeatureFlags.enableCashAdvance &&
                                 walletState.cashAdvanceWithdrawn > 0)
                               _repaymentCard(walletState),
@@ -239,120 +450,6 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
           ),
         ),
       ),
-    );
-  }
-
-  /// 🔥 Optimized & Compact Balance Card UI
-  ///
-  /// PAS-UX-WTC: kept as a single clean row to stay visually uniform
-  /// with the other balance cards. When [onAction] is supplied the
-  /// whole card becomes tappable (shortcut to the Top-Up tab), and an
-  /// [actionIsUrgent] state tints the card orange so the surface that
-  /// needs attention is obvious without adding extra chrome.
-  Widget _balanceCard({
-    required String title,
-    required double amount,
-    required String description,
-    required Color color,
-    required IconData icon,
-    VoidCallback? onAction,
-    bool actionIsUrgent = false,
-  }) {
-    final bool showUrgent = actionIsUrgent && onAction != null;
-    final Color effectiveColor = showUrgent ? Colors.orange : color;
-
-    final card = Container(
-      padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 2,
-        horizontal: SizeConfig.imageSizeMultiplier * 4,
-      ),
-      margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
-      decoration: BoxDecoration(
-        color: effectiveColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: effectiveColor.withOpacity(0.6), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: effectiveColor.withOpacity(0.2),
-            blurRadius: 8,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // 🔹 Left Section: Icon + Text
-          Expanded(
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: effectiveColor.withOpacity(0.2),
-                  child: Icon(
-                    icon,
-                    size: SizeConfig.textMultiplier * 2.5,
-                    color: effectiveColor,
-                  ),
-                ),
-                SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.8,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      Text(
-                        description,
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.4,
-                          color: Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // 🔹 Right Section: Balance Amount (+ chevron when tappable)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                CurrencyUtil.format(amount),
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 2,
-                  fontWeight: FontWeight.bold,
-                  color: effectiveColor,
-                ),
-              ),
-              if (onAction != null) ...[
-                SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
-                Icon(
-                  Icons.chevron_right,
-                  size: SizeConfig.textMultiplier * 2.2,
-                  color: effectiveColor,
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-
-    if (onAction == null) return card;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onAction,
-      child: card,
     );
   }
 

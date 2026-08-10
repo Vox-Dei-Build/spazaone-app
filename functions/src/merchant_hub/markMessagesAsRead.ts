@@ -1,4 +1,8 @@
 import { functions, db } from "../config/main";
+import { markCustomerMessagesRead } from "../notifications/unreadCounts";
+import { authenticateFirebaseRequest } from "../security/requestAuth";
+import { assertStoreAccess } from "../stores/storeAccess";
+import { formatPhoneNumber, normalizePhoneNumber } from "../utils/phoneUtils";
 
 /**
  * Cloud Function: Mar Messages as Read for Merchants
@@ -9,12 +13,26 @@ import { functions, db } from "../config/main";
 export const markMessagesAsRead = functions.https.onRequest(
   async (req, res) => {
     try {
-      const { merchantId, customerNumber } = req.body;
+      if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+      }
+      const { merchantId, customerNumber, limit = 200 } = req.body || {};
 
       if (!merchantId || !customerNumber) {
         res
           .status(400)
           .json({ error: "Merchant ID and Customer Number are required" });
+        return;
+      }
+      const uid = await authenticateFirebaseRequest(req, res, {
+        requireAppCheck: true,
+      });
+      if (!uid) return;
+      try {
+        await assertStoreAccess(uid, merchantId);
+      } catch (error) {
+        res.status(403).json({ error: "Access denied." });
         return;
       }
 
@@ -26,66 +44,32 @@ export const markMessagesAsRead = functions.https.onRequest(
         return;
       }
 
-      const merchantData = merchantDoc.data();
-      const unreadMessages = merchantData?.unreadMessages || [];
-      const unreadCount = merchantData?.unreadCount || 0;
-
-      // V1 truth-surface (`fix/pas-wa-v1-bot-message-truth`): outbound bot
-      // mirrors share the same array as legacy inbound entries. We only want
-      // to "consume" inbound entries on read — outbound mirrors must remain
-      // so the merchant can scroll back through what the bot replied even if
-      // the live Botpress polling fails. Legacy entries (no `direction`)
-      // continue to be treated as inbound for backwards compatibility.
-      const isInbound = (msg: any) =>
-        msg?.direction == null ||
-        String(msg.direction).toLowerCase() === "inbound";
-
-      const digitsOnly = (raw: unknown) =>
-        String(raw ?? "").replace(/\D/g, "");
-      const matchesCustomer = (stored: unknown, next: unknown) => {
-        const a = digitsOnly(stored);
-        const b = digitsOnly(next);
-        if (!a || !b) return false;
-        const len = Math.min(9, a.length, b.length);
-        return a.slice(-len) === b.slice(-len);
-      };
-
-      let markedMessagesCount = 0;
-      const readAt = new Date().toISOString();
-      const updatedMessages = unreadMessages.map((msg: any) => {
-        if (
-          matchesCustomer(msg.customerNumber, customerNumber) &&
-          isInbound(msg) &&
-          msg?.isRead !== true
-        ) {
-          markedMessagesCount += 1;
-          return {
-            ...msg,
-            isRead: true,
-            readAt,
-          };
-        }
-        return msg;
-      });
-
-      if (markedMessagesCount === 0) {
-        res
-          .status(200)
-          .json({ message: "No unread messages for this customer." });
-        return;
-      }
-
-      // 🔥 Decrement unreadCount based on newly read inbound messages while
-      // keeping the truth-surface history visible in the merchant app.
-      const newUnreadCount = Math.max(0, unreadCount - markedMessagesCount);
-
-      await merchantRef.update({
-        unreadMessages: updatedMessages,
-        unreadCount: newUnreadCount,
+      const normalized = normalizePhoneNumber(customerNumber);
+      const e164 = formatPhoneNumber(customerNumber);
+      const numberVariants = [...new Set([normalized, e164].filter(Boolean))];
+      const customer = numberVariants.length
+        ? await merchantRef
+            .collection("customers")
+            .where("number", "in", numberVariants)
+            .limit(1)
+            .get()
+        : null;
+      const result = await markCustomerMessagesRead({
+        merchantId,
+        customerId:
+          customer && !customer.empty ? customer.docs[0].id : undefined,
+        customerNumber,
+        limit: Math.max(1, Math.min(Number(limit) || 200, 500)),
       });
 
       res.status(200).json({
-        message: `Marked ${markedMessagesCount} messages as read for customer ${customerNumber}.`,
+        message:
+          result.cleared === 0
+            ? "No unread messages for this customer."
+            : `Marked ${result.cleared} messages as read for customer ${customerNumber}.`,
+        cleared: result.cleared,
+        unreadMessagesCount: result.counts.messages,
+        unreadTotalCount: result.counts.total,
       });
     } catch (error) {
       console.error("Error marking messages as read:", error);

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   CjCatalogProduct,
   CjLandedQuote,
@@ -220,7 +221,7 @@ export function isUsableCatalogDocument(
 
 export function catalogPreview(
   value: CjCatalogCacheDocument,
-): CjZaEligibleProduct {
+): CjZaEligibleProduct & { catalogQuoteVersion: string } {
   return {
     productId: value.productId,
     productSku: value.productSku,
@@ -234,7 +235,109 @@ export function catalogPreview(
     estimatedLandedCostMinor: value.estimatedLandedCostMinor,
     logisticAging: value.logisticAging,
     deliveryVerifiedAt: value.deliveryVerifiedAt,
+    catalogQuoteVersion: catalogQuoteVersion(value),
   };
+}
+
+export function catalogQuoteVersion(value: CjCatalogCacheDocument): string {
+  const quote = value.recommendedQuote;
+  return createHash("sha256")
+    .update(
+      [
+        value.productId,
+        value.deliverableVariantId,
+        quote.productCostMinor,
+        quote.shippingCostMinor,
+        quote.landedCostMinor,
+        quote.stock,
+        quote.logisticAging,
+        quote.verifiedAt,
+      ].join("|"),
+    )
+    .digest("hex")
+    .slice(0, 32);
+}
+
+/** Sanitizes a device bookmark snapshot; it is never accepted for pricing. */
+export function savedCatalogSnapshot(
+  value: unknown,
+  productId: string,
+): Record<string, unknown> {
+  const input =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const text = (field: string, max: number): string =>
+    String(input[field] ?? "")
+      .trim()
+      .slice(0, max);
+  const minor = (field: string): number => {
+    const amount = Number(input[field] ?? 0);
+    return Number.isSafeInteger(amount) && amount >= 0 ? amount : 0;
+  };
+  const productCostMinor = minor("estimatedProductCostMinor");
+  const deliveryCostMinor = minor("estimatedDeliveryCostMinor");
+  const landedCostMinor = minor("estimatedLandedCostMinor");
+  const costsAreConsistent =
+    productCostMinor > 0 &&
+    landedCostMinor === productCostMinor + deliveryCostMinor;
+  const rawImage = text("image", 2048);
+  const variantId = text("deliverableVariantId", 200);
+  const deliveryVerifiedAt = text("deliveryVerifiedAt", 80);
+  return {
+    productId,
+    productSku: text("productSku", 100),
+    title: text("title", 160) || "Saved product",
+    image: /^https?:\/\//i.test(rawImage) ? rawImage : "",
+    category: text("category", 100),
+    productCostUsdMinor: minor("productCostUsdMinor"),
+    estimatedProductCostMinor: costsAreConsistent ? productCostMinor : 0,
+    deliverableVariantId: /^[A-Za-z0-9_-]{1,200}$/.test(variantId)
+      ? variantId
+      : "",
+    estimatedDeliveryCostMinor: costsAreConsistent ? deliveryCostMinor : 0,
+    estimatedLandedCostMinor: costsAreConsistent ? landedCostMinor : 0,
+    logisticAging: text("logisticAging", 60),
+    deliveryVerifiedAt: Number.isFinite(Date.parse(deliveryVerifiedAt))
+      ? deliveryVerifiedAt
+      : "",
+    catalogQuoteVersion: text("catalogQuoteVersion", 80),
+  };
+}
+
+export type CatalogListingState =
+  | { status: "ready"; document: CjCatalogCacheDocument }
+  | { status: "quote_changed"; product: ReturnType<typeof catalogPreview> }
+  | { status: "refreshing" }
+  | { status: "unavailable" };
+
+/**
+ * Uses the same catalogue usability predicate for browse and listing creation.
+ * A selected quote version turns an otherwise valid but changed row into a
+ * reviewable update instead of the generic "product unavailable" dead end.
+ */
+export function catalogListingState(
+  value: Partial<CjCatalogCacheDocument> | null | undefined,
+  selectedVariantId: string,
+  selectedQuoteVersion: string,
+  nowMs = Date.now(),
+): CatalogListingState {
+  if (!value || value.active === false) return { status: "unavailable" };
+  if (!isUsableCatalogDocument(value, nowMs)) {
+    return { status: "refreshing" };
+  }
+  if (
+    value.deliverableVariantId !== selectedVariantId ||
+    (selectedQuoteVersion &&
+      value.deliveryVerifiedAt !== selectedQuoteVersion &&
+      catalogQuoteVersion(value) !== selectedQuoteVersion)
+  ) {
+    return {
+      status: "quote_changed",
+      product: catalogPreview(value),
+    };
+  }
+  return { status: "ready", document: value };
 }
 
 export function catalogDetailsPayload(value: CjCatalogCacheDocument) {

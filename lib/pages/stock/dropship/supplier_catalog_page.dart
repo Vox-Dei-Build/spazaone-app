@@ -10,12 +10,16 @@ class SupplierCatalogPage extends StatefulWidget {
     super.key,
     this.onListingCreated,
     this.searchCatalog,
-    this.loadProductDetails,
+    this.createListing,
+    this.loadSavedProducts,
+    this.setSavedProduct,
   });
 
   final VoidCallback? onListingCreated;
   final CjCatalogSearch? searchCatalog;
-  final CjProductDetailsLoader? loadProductDetails;
+  final DropshipListingCreator? createListing;
+  final SavedCatalogLoader? loadSavedProducts;
+  final SavedCatalogToggle? setSavedProduct;
 
   @override
   State<SupplierCatalogPage> createState() => _SupplierCatalogPageState();
@@ -60,10 +64,18 @@ typedef CjCatalogSearch = Future<CjCatalogPage> Function({
   required String cursor,
 });
 
-typedef CjProductDetailsLoader = Future<CjProductDetails> Function(
-  String productId,
-  String preferredVariantId,
-);
+typedef DropshipListingCreator = Future<DropshipListingResult> Function({
+  required String supplierProductId,
+  required String supplierVariantId,
+  required String catalogQuoteVersion,
+  required int markupMinor,
+});
+
+typedef SavedCatalogLoader = Future<List<CjCatalogProduct>> Function();
+typedef SavedCatalogToggle = Future<void> Function(
+  CjCatalogProduct product, {
+  required bool saved,
+});
 
 List<CjCatalogProduct> mergeCjCatalogPages(
   List<CjCatalogProduct> current,
@@ -81,7 +93,15 @@ List<CjCatalogProduct> mergeCjCatalogPages(
 class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   final _search = TextEditingController();
   late final CjCatalogSearch _searchCatalog;
+  late final SavedCatalogLoader _loadSavedProducts;
+  late final SavedCatalogToggle _setSavedProduct;
   List<CjCatalogProduct> _products = const [];
+  List<CjCatalogProduct> _savedProducts = const [];
+  final Set<String> _savedIds = {};
+  final Set<String> _savingIds = {};
+  bool _showSaved = false;
+  bool _loadingSaved = false;
+  String? _savedError;
   bool _loading = true;
   bool _loadingMore = false;
   int _loadGeneration = 0;
@@ -104,7 +124,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   }
 
   List<CjCatalogProduct> get _visibleProducts {
-    final products = [..._products];
+    final products = [...(_showSaved ? _savedProducts : _products)];
     switch (_sort) {
       case _CatalogSort.lowestCost:
         products.sort((a, b) =>
@@ -122,7 +142,16 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   void initState() {
     super.initState();
     _searchCatalog = widget.searchCatalog ?? CommerceService().searchCjCatalog;
+    _loadSavedProducts = widget.loadSavedProducts ??
+        (widget.searchCatalog == null
+            ? CommerceService().listSavedSupplierProducts
+            : () async => const []);
+    _setSavedProduct = widget.setSavedProduct ??
+        (widget.searchCatalog == null
+            ? CommerceService().setSupplierProductSaved
+            : (CjCatalogProduct _, {required bool saved}) async {});
     _load();
+    _refreshSaved();
   }
 
   @override
@@ -199,14 +228,113 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
       return;
     }
     _search.clear();
-    setState(() => _categoryIndex = index);
+    setState(() {
+      _showSaved = false;
+      _categoryIndex = index;
+    });
     _load();
+  }
+
+  Future<void> _refreshSaved() async {
+    setState(() {
+      _loadingSaved = true;
+      _savedError = null;
+    });
+    try {
+      final products = await _loadSavedProducts();
+      if (!mounted) return;
+      setState(() {
+        _savedProducts = products;
+        _savedIds
+          ..clear()
+          ..addAll(products.map((product) => product.id));
+        _loadingSaved = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _savedError = commerceErrorMessage(error);
+        _loadingSaved = false;
+      });
+    }
+  }
+
+  Future<void> _toggleSaved(CjCatalogProduct product) async {
+    if (_savingIds.contains(product.id)) return;
+    final wasSaved = _savedIds.contains(product.id);
+    setState(() {
+      _savingIds.add(product.id);
+      if (wasSaved) {
+        _savedIds.remove(product.id);
+        _savedProducts = _savedProducts
+            .where((saved) => saved.id != product.id)
+            .toList(growable: false);
+      } else {
+        _savedIds.add(product.id);
+        _savedProducts = [product, ..._savedProducts];
+      }
+    });
+    try {
+      await _setSavedProduct(product, saved: !wasSaved);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (wasSaved) {
+          _savedIds.add(product.id);
+          _savedProducts = [product, ..._savedProducts];
+        } else {
+          _savedIds.remove(product.id);
+          _savedProducts = _savedProducts
+              .where((saved) => saved.id != product.id)
+              .toList(growable: false);
+        }
+      });
+      showCommerceError(context, error);
+    } finally {
+      if (mounted) setState(() => _savingIds.remove(product.id));
+    }
+  }
+
+  void _replaceCatalogProduct(CjCatalogProduct product) {
+    List<CjCatalogProduct> replace(List<CjCatalogProduct> products) => products
+        .map((current) => current.id == product.id ? product : current)
+        .toList(growable: false);
+    setState(() {
+      _products = replace(_products);
+      _savedProducts = replace(_savedProducts);
+    });
+  }
+
+  void _removeUnavailableProduct(String productId) {
+    setState(() {
+      final removed = _products.any((product) => product.id == productId);
+      _products = _products
+          .where((product) => product.id != productId)
+          .toList(growable: false);
+      _savedProducts = _savedProducts
+          .map((product) => product.id == productId
+              ? product.copyWith(availability: 'unavailable')
+              : product)
+          .toList(growable: false);
+      if (removed && _totalProductsExact && _totalProducts > 0) {
+        _totalProducts -= 1;
+      }
+    });
+  }
+
+  void _showSavedProducts() {
+    _search.clear();
+    setState(() => _showSaved = true);
+    _refreshSaved();
   }
 
   void _searchProducts() {
     if (_loading || _loadingMore) return;
     if (_search.text.trim().isNotEmpty) {
-      setState(() => _categoryIndex = 0);
+      setState(() {
+        _showSaved = false;
+        _categoryIndex = 0;
+      });
     }
     _load();
   }
@@ -235,7 +363,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             enabled: !_loading,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search supplier products',
+              hintText: 'Search catalogue',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: IconButton(
                 tooltip: 'Search',
@@ -271,12 +399,25 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             scrollDirection: Axis.horizontal,
-            itemCount: _catalogCategories.length,
+            itemCount: _catalogCategories.length + 1,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
+              if (index == 0) {
+                return ChoiceChip(
+                  key: const Key('catalog-saved-filter'),
+                  selected: _showSaved,
+                  avatar: const Icon(Icons.favorite_outline, size: 17),
+                  label: Text(
+                      'Saved${_savedIds.isEmpty ? '' : ' (${_savedIds.length})'}'),
+                  onSelected: (_) => _showSavedProducts(),
+                );
+              }
+              index -= 1;
               final category = _catalogCategories[index];
               return ChoiceChip(
-                selected: index == _categoryIndex && _search.text.isEmpty,
+                selected: !_showSaved &&
+                    index == _categoryIndex &&
+                    _search.text.isEmpty,
                 label: Text(category.label),
                 visualDensity: VisualDensity.compact,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 5),
@@ -292,6 +433,18 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   }
 
   Widget _body() {
+    if (_showSaved && _loadingSaved) {
+      return const _CatalogueLoading();
+    }
+    if (_showSaved && _savedError != null) {
+      return _CatalogMessage(
+        icon: Icons.refresh_outlined,
+        title: 'Could not load saved products',
+        message: _savedError!,
+        actionLabel: 'Try again',
+        action: _refreshSaved,
+      );
+    }
     if (_loading) {
       return const _CatalogueLoading();
     }
@@ -304,7 +457,19 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         action: _load,
       );
     }
-    if (_products.isEmpty) {
+    if (_showSaved && _savedProducts.isEmpty) {
+      return _CatalogMessage(
+        icon: Icons.favorite_outline,
+        title: 'No saved products yet',
+        message: 'Tap the heart on a product to keep it easy to find.',
+        actionLabel: 'Explore products',
+        action: () {
+          setState(() => _showSaved = false);
+          if (_products.isEmpty) _load();
+        },
+      );
+    }
+    if (!_showSaved && _products.isEmpty) {
       if (_hasMore || _page < _totalPages) {
         return _CatalogMessage(
           icon: Icons.inventory_2_outlined,
@@ -347,7 +512,9 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             children: [
               Expanded(
                 child: Text(
-                  _totalProductsExact && _totalProducts > products.length
+                  !_showSaved &&
+                          _totalProductsExact &&
+                          _totalProducts > products.length
                       ? '${products.length} of $_totalProducts products'
                       : '${products.length} ${products.length == 1 ? 'product' : 'products'}',
                   style: Theme.of(context).textTheme.labelLarge,
@@ -378,7 +545,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: () => _load(page: 1),
+            onRefresh: _showSaved ? _refreshSaved : () => _load(page: 1),
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -398,7 +565,12 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                         product: products[index],
                         digitalPaymentsEnabled: _digitalPaymentsEnabled,
                         onListingCreated: widget.onListingCreated,
-                        loadProductDetails: widget.loadProductDetails,
+                        createListing: widget.createListing,
+                        onProductChanged: _replaceCatalogProduct,
+                        onProductUnavailable: _removeUnavailableProduct,
+                        saved: _savedIds.contains(products[index].id),
+                        saving: _savingIds.contains(products[index].id),
+                        onSavedChanged: () => _toggleSaved(products[index]),
                       ),
                       childCount: products.length,
                     ),
@@ -409,13 +581,15 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
                     child: _LoadMoreProducts(
                       loadedProducts: products.length,
-                      totalProducts: _totalProducts,
+                      totalProducts:
+                          _showSaved ? products.length : _totalProducts,
                       loading: _loadingMore,
                       error: _loadMoreError,
-                      hasMore: _hasMore,
-                      onPressed: _page < _totalPages || _hasMore
-                          ? () => _load(page: _page + 1)
-                          : null,
+                      hasMore: !_showSaved && _hasMore,
+                      onPressed:
+                          !_showSaved && (_page < _totalPages || _hasMore)
+                              ? () => _load(page: _page + 1)
+                              : null,
                     ),
                   ),
                 ),
@@ -434,13 +608,23 @@ class _SupplierProductCard extends StatelessWidget {
     required this.product,
     required this.digitalPaymentsEnabled,
     required this.onListingCreated,
-    required this.loadProductDetails,
+    required this.createListing,
+    required this.onProductChanged,
+    required this.onProductUnavailable,
+    required this.saved,
+    required this.saving,
+    required this.onSavedChanged,
   });
 
   final CjCatalogProduct product;
   final bool digitalPaymentsEnabled;
   final VoidCallback? onListingCreated;
-  final CjProductDetailsLoader? loadProductDetails;
+  final DropshipListingCreator? createListing;
+  final ValueChanged<CjCatalogProduct> onProductChanged;
+  final ValueChanged<String> onProductUnavailable;
+  final bool saved;
+  final bool saving;
+  final VoidCallback onSavedChanged;
 
   Future<void> _select(BuildContext context) async {
     final result = await showModalBottomSheet<DropshipListingResult>(
@@ -451,7 +635,9 @@ class _SupplierProductCard extends StatelessWidget {
       builder: (_) => _CjListingSheet(
         product: product,
         digitalPaymentsEnabled: digitalPaymentsEnabled,
-        loadProductDetails: loadProductDetails,
+        createListing: createListing,
+        onProductChanged: onProductChanged,
+        onProductUnavailable: onProductUnavailable,
       ),
     );
     if (result == null || !context.mounted) return;
@@ -503,13 +689,42 @@ class _SupplierProductCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _select(context),
+        onTap: product.isAvailable ? () => _select(context) : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AspectRatio(
               aspectRatio: 1.15,
-              child: _CatalogProductImage(url: product.image),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _CatalogProductImage(url: product.image),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Material(
+                      color: Colors.white.withValues(alpha: .92),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        key: Key('save-supplier-product-${product.id}'),
+                        tooltip: saved ? 'Remove from saved' : 'Save product',
+                        onPressed: saving ? null : onSavedChanged,
+                        icon: saving
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                saved ? Icons.favorite : Icons.favorite_border,
+                                color: saved ? Colors.red.shade600 : null,
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             Expanded(
               child: Padding(
@@ -528,6 +743,21 @@ class _SupplierProductCard extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
+                    if (!product.isAvailable) ...[
+                      Text(
+                        product.availability == 'checking'
+                            ? 'Checking availability'
+                            : 'Currently unavailable',
+                        style: TextStyle(
+                          color: product.availability == 'checking'
+                              ? Colors.orange.shade800
+                              : Colors.red.shade700,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     Text(
                       '${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)} landed',
                       maxLines: 1,
@@ -596,12 +826,16 @@ class _CjListingSheet extends StatefulWidget {
   const _CjListingSheet({
     required this.product,
     required this.digitalPaymentsEnabled,
-    required this.loadProductDetails,
+    required this.createListing,
+    required this.onProductChanged,
+    required this.onProductUnavailable,
   });
 
   final CjCatalogProduct product;
   final bool digitalPaymentsEnabled;
-  final CjProductDetailsLoader? loadProductDetails;
+  final DropshipListingCreator? createListing;
+  final ValueChanged<CjCatalogProduct> onProductChanged;
+  final ValueChanged<String> onProductUnavailable;
 
   @override
   State<_CjListingSheet> createState() => _CjListingSheetState();
@@ -612,10 +846,9 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   final _markup = TextEditingController();
   final _markupFocus = FocusNode();
   final _markupFieldKey = GlobalKey();
+  late CjCatalogProduct _product;
   CjVariant? _variant;
   CjLandedQuote? _quote;
-  bool _usesCatalogSnapshot = false;
-  bool _loadingDetails = false;
   bool _saving = false;
   String? _error;
 
@@ -632,14 +865,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   @override
   void initState() {
     super.initState();
-    final cachedEstimate = resolveCjCatalogSnapshotEstimate(
-      catalogProduct: widget.product,
-    );
-    _variant = cachedEstimate?.variant;
-    _quote = cachedEstimate?.quote;
-    _usesCatalogSnapshot = cachedEstimate?.usesCatalogSnapshot ?? false;
-    _loadingDetails = cachedEstimate == null;
-    _loadDetails();
+    _applyProduct(widget.product);
   }
 
   @override
@@ -649,60 +875,16 @@ class _CjListingSheetState extends State<_CjListingSheet> {
     super.dispose();
   }
 
-  Future<void> _loadDetails() async {
-    final hasVerifiedSnapshot = _quote != null && _variant != null;
-    if (!hasVerifiedSnapshot) {
-      setState(() {
-        _loadingDetails = true;
-        _error = null;
-      });
-    }
-    try {
-      final details = widget.loadProductDetails == null
-          ? await _commerceService.getCjProduct(
-              widget.product.id,
-              preferredVariantId: widget.product.deliverableVariantId,
-            )
-          : await widget.loadProductDetails!(
-              widget.product.id,
-              widget.product.deliverableVariantId,
-            );
-      final estimate = resolveCjListingEstimate(
-        catalogProduct: widget.product,
-        details: details,
-      );
-      if (!mounted) return;
-      if (estimate == null) {
-        setState(() {
-          _variant = null;
-          _quote = null;
-          _usesCatalogSnapshot = false;
-          _loadingDetails = false;
-          _error =
-              'This product does not have a recent South Africa price and delivery estimate. Try another product.';
-        });
-        return;
-      }
-      setState(() {
-        _variant = estimate.variant;
-        _quote = estimate.quote;
-        _usesCatalogSnapshot = estimate.usesCatalogSnapshot;
-        _loadingDetails = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      // Only a clearly transient enrichment failure may retain the bounded
-      // cached ZA quote. Authoritative and unknown errors fail closed.
-      if (hasVerifiedSnapshot && isTransientCommerceDetailsError(error)) {
-        return;
-      }
-      setState(() {
-        _variant = null;
-        _quote = null;
-        _usesCatalogSnapshot = false;
-        _loadingDetails = false;
-        _error = commerceErrorMessage(error);
-      });
+  void _applyProduct(CjCatalogProduct product) {
+    final estimate = resolveServerApprovedCatalogEstimate(
+      catalogProduct: product,
+    );
+    _product = product;
+    _variant = estimate?.variant;
+    _quote = estimate?.quote;
+    _error = null;
+    if (estimate == null) {
+      _error = 'This product is updating. Choose another product for now.';
     }
   }
 
@@ -714,12 +896,39 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       _error = null;
     });
     try {
-      final result = await _commerceService.createListing(
-        supplierProductId: widget.product.id,
+      final createListing =
+          widget.createListing ?? _commerceService.createListing;
+      final result = await createListing(
+        supplierProductId: _product.id,
         supplierVariantId: variant.id,
+        catalogQuoteVersion: _product.catalogQuoteVersion,
         markupMinor: _markupMinor,
       );
       if (mounted) Navigator.pop(context, result);
+    } on DropshipListingQuoteChanged catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _applyProduct(error.product);
+        _saving = false;
+        _error =
+            'Price or delivery changed. Review the updated costs, then tap Add product again.';
+      });
+      widget.onProductChanged(error.product);
+    } on DropshipListingRefreshing catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = 'Updating price and delivery. Try again shortly.';
+      });
+    } on DropshipListingUnavailable catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _variant = null;
+        _quote = null;
+        _error = 'This product is no longer available.';
+      });
+      widget.onProductUnavailable(_product.id);
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -789,7 +998,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _ProductImage(url: widget.product.image, size: 68),
+              _ProductImage(url: _product.image, size: 68),
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -806,7 +1015,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      widget.product.title,
+                      _product.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -832,25 +1041,16 @@ class _CjListingSheetState extends State<_CjListingSheet> {
   }
 
   Widget _sheetBody(BuildContext context) {
-    if (_loadingDetails) {
-      return const _QuoteLoading();
-    }
     if (_variant == null || _quote == null) {
       return _CatalogMessage(
         icon: Icons.inventory_2_outlined,
         title: 'Product unavailable right now',
         message:
             _error ?? 'Spaza One could not load a verified product option.',
-        actionLabel: 'Try again',
-        action: _loadDetails,
       );
     }
 
-    final deliveryDetails = <String>[
-      _deliveryEstimate(_quote!.logisticAging),
-      if (!_usesCatalogSnapshot && _quote!.stock > 0)
-        '${_quote!.stock} in stock',
-    ].join(' · ');
+    final deliveryDetails = _deliveryEstimate(_quote!.logisticAging);
 
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1043,30 +1243,6 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                 : const Text('Add product'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _QuoteLoading extends StatelessWidget {
-  const _QuoteLoading();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text(
-              'Loading product…',
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1333,15 +1509,15 @@ class _CatalogMessage extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
-    required this.actionLabel,
-    required this.action,
+    this.actionLabel,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String message;
-  final String actionLabel;
-  final VoidCallback action;
+  final String? actionLabel;
+  final VoidCallback? action;
 
   @override
   Widget build(BuildContext context) {
@@ -1360,8 +1536,10 @@ class _CatalogMessage extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            OutlinedButton(onPressed: action, child: Text(actionLabel)),
+            if (action != null && actionLabel != null) ...[
+              const SizedBox(height: 16),
+              OutlinedButton(onPressed: action, child: Text(actionLabel!)),
+            ],
           ],
         ),
       ),

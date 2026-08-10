@@ -192,7 +192,15 @@ class ProductViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteProduct(BuildContext context, String? docID) async {
+  /// Deletes the product and reports whether the write succeeded.
+  ///
+  /// Navigation and feedback deliberately belong to the page that owns its
+  /// [BuildContext]. Keeping this async data operation context-free prevents
+  /// a delayed callback from looking up a Navigator after the details page
+  /// has already been disposed.
+  Future<bool> deleteProduct(String? docID) async {
+    if (docID == null || docID.trim().isEmpty) return false;
+
     try {
       isLoading = true;
       notifyListeners();
@@ -224,15 +232,13 @@ class ProductViewModel extends ChangeNotifier {
       TelemetryService.instance.capture(
         ProductDeleted(group: groupBeforeDelete),
       );
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        showSnackbar(context, 'Deleted Successfully!', Colors.green);
-        Navigator.of(context).pop();
-      });
+      return true;
     } catch (e) {
-      showErrorSnackBar(context, 'Failed to delete product!');
+      debugPrint('Failed to delete product: $e');
+      return false;
     } finally {
       isLoading = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 

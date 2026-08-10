@@ -23,6 +23,43 @@ class ProductSelectionWidget<T extends TransactionViewModel>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (viewModel.productSelectionNotice case final notice?) ...[
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: SizeConfig.imageSizeMultiplier * 3,
+              vertical: SizeConfig.heightMultiplier,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(
+                SizeConfig.imageSizeMultiplier * 3,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: SizeConfig.imageSizeMultiplier * 4.5,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
+                Expanded(
+                  child: Text(
+                    notice,
+                    style: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.45,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 1.5),
+        ],
         if (viewModel.suggestedProducts.isNotEmpty) ...[
           Align(
             alignment: Alignment.centerLeft,

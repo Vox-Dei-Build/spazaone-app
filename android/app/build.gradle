@@ -61,7 +61,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "com.tsepo.pasella"
-    compileSdkVersion 35
+    compileSdkVersion 36
     ndkVersion "29.0.13599879"
 
     compileOptions {
@@ -82,7 +82,7 @@ android {
         applicationId "com.tsepo.pasella"
         // Bumped from 23 to 24 for webview_flutter 4.x (system WebView 88+).
         minSdkVersion 24
-        targetSdkVersion 35
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/add_banking_details.dart';
@@ -38,57 +39,105 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body:
-          isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      if (walletViewModel.editingDocumentId == null) ...[
-                        Text(
-                          "Add banking details before store deposits or withdrawals need to be paid out.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontSize: SizeConfig.textMultiplier * 1.5,
-                          ),
-                        ),
-                      ] else ...[
-                        _bankingDetailsSummary(walletViewModel),
-                      ],
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      CustomButton(
-                        title: 'Add / Edit Bank Account',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => AddBankingDetailsPage(
-                                    walletViewModel: walletViewModel,
-                                  ),
-                            ),
-                          );
-                        },
-                        color: Colors.green,
-                        icon: Icons.add,
-                        fontSize: SizeConfig.textMultiplier * 2,
-                        width: SizeConfig.imageSizeMultiplier * 65,
-                      ),
-                    ],
-                  ),
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            if (walletViewModel.editingDocumentId == null)
+              Text(
+                'Add banking details before store deposits or withdrawals need to be paid out.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: SizeConfig.textMultiplier * 1.5,
                 ),
+              )
+            else
+              BankingDetailsSummary(
+                bankName: walletViewModel.bankName.text,
+                accountHolderName: walletViewModel.accountHolderName.text,
+                accountNumber: walletViewModel.accountNumber.text,
+                accountType: walletViewModel.accountType.text,
+                branchCode: walletViewModel.branchCode.text,
+                reference: walletViewModel.reference.text,
               ),
+            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            CustomButton(
+              title: 'Add / Edit Bank Account',
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddBankingDetailsPage(
+                      walletViewModel: walletViewModel,
+                    ),
+                  ),
+                );
+                await _loadBankingDetails();
+              },
+              color: Colors.green,
+              icon: Icons.add,
+              fontSize: SizeConfig.textMultiplier * 2,
+              width: SizeConfig.imageSizeMultiplier * 65,
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _bankingDetailsSummary(WalletViewModel viewModel) {
-    // Read-only summary -- account number etc. visible. Mask the whole Card.
+/// Copy-friendly, read-only presentation of the merchant's saved account.
+class BankingDetailsSummary extends StatelessWidget {
+  const BankingDetailsSummary({
+    super.key,
+    required this.bankName,
+    required this.accountHolderName,
+    required this.accountNumber,
+    required this.accountType,
+    required this.branchCode,
+    required this.reference,
+  });
+
+  final String bankName;
+  final String accountHolderName;
+  final String accountNumber;
+  final String accountType;
+  final String branchCode;
+  final String reference;
+
+  List<MapEntry<String, String>> get _details => [
+        MapEntry('Bank', bankName),
+        MapEntry('Account Holder Name', accountHolderName),
+        MapEntry('Account Number', accountNumber),
+        MapEntry('Account Type', accountType),
+        MapEntry('Branch Code', branchCode),
+        if (reference.trim().isNotEmpty) MapEntry('Reference', reference),
+      ];
+
+  Future<void> _copy(BuildContext context, String text, String message) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allDetails =
+        _details.map((detail) => '${detail.key}: ${detail.value}').join('\n');
+
+    // Account details are intentionally visible and selectable here, but the
+    // whole surface remains masked from replay and screenshot analytics.
     return PrivateRegion(
       child: Card(
         elevation: 3,
@@ -96,46 +145,77 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
         child: Padding(
           padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1.5),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _infoRow("Bank", viewModel.bankName.text),
-              _infoRow("Account Holder Name", viewModel.accountHolderName.text),
-              _infoRow("Account Number", viewModel.accountNumber.text),
-              _infoRow("Account Type", viewModel.accountType.text),
-              _infoRow("Branch Code", viewModel.branchCode.text),
-              _infoRow("Reference", viewModel.reference.text),
+              for (final detail in _details)
+                _BankingInfoRow(
+                  label: detail.key,
+                  value: detail.value,
+                  onCopy: () => _copy(
+                    context,
+                    detail.value,
+                    '${detail.key} copied',
+                  ),
+                ),
+              const Divider(),
+              TextButton.icon(
+                key: const ValueKey('copy-all-banking-details'),
+                onPressed: () => _copy(
+                  context,
+                  allDetails,
+                  'Banking details copied',
+                ),
+                icon: const Icon(Icons.copy_all_outlined),
+                label: const Text('Copy all banking details'),
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _infoRow(String label, String value) {
+class _BankingInfoRow extends StatelessWidget {
+  const _BankingInfoRow({
+    required this.label,
+    required this.value,
+    required this.onCopy,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 0.8,
+        vertical: SizeConfig.heightMultiplier * 0.5,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
             flex: 3,
             child: Text(
               label,
               style: const TextStyle(fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             flex: 4,
-            child: Text(
+            child: SelectableText(
               value,
               style: const TextStyle(color: Colors.black54),
               textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
             ),
+          ),
+          IconButton(
+            key: ValueKey('copy-banking-${label.toLowerCase()}'),
+            tooltip: 'Copy $label',
+            onPressed: onCopy,
+            icon: const Icon(Icons.copy_outlined, size: 20),
           ),
         ],
       ),

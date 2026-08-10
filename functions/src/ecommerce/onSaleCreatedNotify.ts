@@ -9,37 +9,23 @@
 // /notifyOrderEvent. Without this trigger, the order silently lands in
 // Firestore and the merchant sees no badge / no push.
 //
-// IDEMPOTENCY
-// -----------
-// Two safeguards prevent double-notification when /notifyOrderEvent IS also
-// called for the same sale:
-//
-//   1. The notification doc is written with a deterministic id
-//      `order_${saleId}_placed` using `create()`. If /notifyOrderEvent ran
-//      first (it uses .add() with auto-id, so it would not collide), this
-//      trigger's create() still succeeds — but step 2 stops the duplicate.
-//
-//   2. A `notifiedPlacedAt` marker is written onto the sale doc inside a
-//      transaction. If the marker already exists, this trigger bails out
-//      before doing any counter increment or FCM send.
-//
-// Note: /notifyOrderEvent (notifyOrderEvent.ts) does NOT currently set the
-// `notifiedPlacedAt` marker. To make the two paths fully cooperative, a
-// follow-up patch could add that marker write to /notifyOrderEvent. Until
-// then, double-notifications are still possible if /notifyOrderEvent runs
-// AFTER this trigger, but the deterministic notification doc id prevents
-// duplicate notification records, and FCM duplicates are limited to a
-// single repeat at worst.
+// The trigger and /notifyOrderEvent share one deterministic unread-event key.
+// A single transaction creates that marker, the notification record, and the
+// compatible counters. Retries and overlapping paths therefore cannot create
+// a second badge or push.
 
 import { db, functions } from "../config/main";
 import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
 import { AndroidConfig, MulticastMessage } from "firebase-admin/messaging";
 import { sendMerchantOrderSmsFallback } from "../utils/merchantOrderSmsFallback";
 import {
   readStoreNotificationTokens,
   removeInvalidStoreNotificationTokens,
 } from "../notifications/storeNotificationTokens";
+import {
+  incrementUnreadCount,
+  unreadEventDocumentId,
+} from "../notifications/unreadCounts";
 
 /**
  * Firestore onCreate trigger for users/{merchantId}/sales/{saleId}.
@@ -73,31 +59,12 @@ export const onSaleCreatedNotify = functions.firestore
       return;
     }
 
-    const saleRef = snap.ref;
-
-    // Step 1: idempotency marker on the sale doc. Transactional so two
-    // concurrent invocations cannot both pass.
-    const shouldProceed = await db.runTransaction(async (tx) => {
-      const fresh = await tx.get(saleRef);
-      const data = fresh.data() || {};
-      if (data.notifiedPlacedAt) return false;
-      tx.update(saleRef, {
-        notifiedPlacedAt: FieldValue.serverTimestamp(),
-      });
-      return true;
-    });
-
-    if (!shouldProceed) {
-      console.log(
-        `[onSaleCreatedNotify] skip ${saleId}: notifiedPlacedAt already set`,
-      );
-      return;
-    }
-
-    // Step 2: write the notification record with a deterministic id.
-    // Use create() so we never overwrite a notification written by another
-    // path; if it already exists we treat as success and continue.
-    const notifId = `order_${saleId}_placed`;
+    // The unread event is the durable idempotency marker. Its transaction also
+    // writes this notification, so a retry cannot leave a counter without a
+    // read-clear record (or vice versa).
+    const eventKey = `order:${saleId}:ORDER_PLACED`;
+    const unreadEventId = unreadEventDocumentId(eventKey);
+    const notifId = unreadEventId;
     const notifRef = db
       .collection("users")
       .doc(merchantId)
@@ -116,6 +83,7 @@ export const onSaleCreatedNotify = functions.firestore
       type: "ORDER_EVENT" as const,
       eventType: "ORDER_PLACED" as const,
       orderId: saleId,
+      customerId,
       customerName: customerName || null,
       paymentMethod, // "cash" | "online" | "bnpl" | null
       orderTotal,
@@ -124,50 +92,26 @@ export const onSaleCreatedNotify = functions.firestore
       read: false,
       createdAt: new Date().toISOString(),
       idempotencyKey: notifId,
+      unreadEventId: unreadEventDocumentId(eventKey),
       source: "onSaleCreatedNotify",
     };
 
-    try {
-      await notifRef.create(notifData);
-    } catch (e: unknown) {
-      // ALREADY_EXISTS — another path already wrote this notification.
-      // We've already set notifiedPlacedAt, so don't increment counters
-      // or send FCM (assume the other path did or will).
-      const err = e as { code?: string; message?: string };
-      const code = err?.code || "";
-      if (
-        String(code).includes("already-exists") ||
-        String(err?.message || "").includes("ALREADY_EXISTS")
-      ) {
-        console.log(
-          `[onSaleCreatedNotify] notification ${notifId} already exists; skipping counters/FCM`,
-        );
-        return;
-      }
-      throw e;
+    // Share one exactly-once counter path with /notifyOrderEvent.
+    const unread = await incrementUnreadCount({
+      merchantId,
+      customerId,
+      kind: "orders",
+      eventKey,
+      notification: { ref: notifRef, data: notifData },
+    });
+    const freshUnreadOrdersCount = unread.merchant.orders;
+    const freshCustomerOrdersUnread = unread.customer.orders;
+    if (unread.deduped) {
+      console.log(
+        `[onSaleCreatedNotify] skip ${saleId}: unread event already processed`,
+      );
+      return;
     }
-
-    // Step 3: increment ordersUnreadCount on merchant + per-customer doc.
-    const merchantRef = db.collection("users").doc(merchantId);
-    const customerRef = merchantRef.collection("customers").doc(customerId);
-
-    let freshUnreadOrdersCount = 0;
-    await db.runTransaction(async (tx) => {
-      const s = await tx.get(merchantRef);
-      const prev = (s.data()?.ordersUnreadCount as number) ?? 0;
-      const next = prev + 1;
-      tx.set(merchantRef, { ordersUnreadCount: next }, { merge: true });
-      freshUnreadOrdersCount = next;
-    });
-
-    let freshCustomerOrdersUnread = 0;
-    await db.runTransaction(async (tx) => {
-      const s = await tx.get(customerRef);
-      const prev = (s.data()?.ordersUnreadCount as number) ?? 0;
-      const next = prev + 1;
-      tx.set(customerRef, { ordersUnreadCount: next }, { merge: true });
-      freshCustomerOrdersUnread = next;
-    });
 
     // Step 4: FCM push to the merchant.
     const tokens = await readStoreNotificationTokens(merchantId);
@@ -223,6 +167,7 @@ export const onSaleCreatedNotify = functions.firestore
       route: `orders/detail?orderId=${saleId}`,
       idempotencyKey: notifId,
       unreadOrdersCount: String(freshUnreadOrdersCount),
+      unreadTotalCount: String(unread.merchant.total),
       customerOrdersUnreadCount: String(freshCustomerOrdersUnread),
       source: "onSaleCreatedNotify",
     };

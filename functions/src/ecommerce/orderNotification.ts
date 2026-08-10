@@ -1,5 +1,8 @@
 // functions/src/orderNotifications.ts
 import { functions, db } from "../config/main";
+import { markOrderNotificationsRead } from "../notifications/unreadCounts";
+import { authenticateFirebaseRequest } from "../security/requestAuth";
+import { assertStoreAccess } from "../stores/storeAccess";
 
 export const markCustomerOrdersAsRead = functions.https.onRequest(
   async (req, res) => {
@@ -13,33 +16,38 @@ export const markCustomerOrdersAsRead = functions.https.onRequest(
         res.status(400).json({ error: "Missing merchantId or customerId" });
         return;
       }
+      const uid = await authenticateFirebaseRequest(req, res, {
+        requireAppCheck: true,
+      });
+      if (!uid) return;
+      try {
+        await assertStoreAccess(uid, merchantId);
+      } catch (error) {
+        res.status(403).json({ error: "Access denied." });
+        return;
+      }
 
       const userRef = db.collection("users").doc(merchantId);
-      const customerRef = userRef.collection("customers").doc(customerId);
-
       // mark only this customer's ORDER_EVENT notifications as read (optional but nice)
       const notifCol = userRef.collection("notifications");
       const unreadSnap = await notifCol
         .where("type", "==", "ORDER_EVENT")
         .where("read", "==", false)
-        .where("orderId", "!=", null) // ensure field exists for index stability
-        .orderBy("createdAt", "desc")
-        .limit(Math.min(Number(limit) || 200, 500))
+        .where("customerId", "==", customerId)
+        .limit(Math.max(1, Math.min(Number(limit) || 150, 150)))
         .get();
-
-      const batch = db.batch();
-      unreadSnap.docs.forEach((d) => {
-        const data = d.data() as any;
-        if (data.customerId === customerId) {
-          batch.update(d.ref, { read: true, readAt: new Date().toISOString() });
-        }
+      const result = await markOrderNotificationsRead({
+        merchantId,
+        customerId,
+        notificationIds: unreadSnap.docs.map((doc) => doc.id),
       });
 
-      // reset ONLY this customer's counter
-      batch.set(customerRef, { ordersUnreadCount: 0 }, { merge: true });
-      await batch.commit();
-
-      res.status(200).json({ message: "Customer orders marked as read" });
+      res.status(200).json({
+        message: "Customer orders marked as read",
+        cleared: result.cleared,
+        unreadOrdersCount: result.counts.orders,
+        unreadTotalCount: result.counts.total,
+      });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Internal Server Error" });

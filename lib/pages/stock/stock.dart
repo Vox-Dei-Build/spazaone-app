@@ -102,15 +102,19 @@ class _StockPageState extends State<StockPage>
                           Tab(text: 'CATALOGUE'),
                           Tab(text: 'REPORT'),
                         ],
-                        action: _StockToolsMenu(
-                          onSearch: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const GlobalSearchPage(),
-                              ),
-                            );
-                          },
-                          onHelp: _openTutorial,
+                        action: ValueListenableBuilder<int>(
+                          valueListenable: _tabIndexNotifier,
+                          builder: (context, tabIndex, _) => StockTabActions(
+                            showProductSearch: tabIndex == 0,
+                            onSearch: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const GlobalSearchPage(),
+                                ),
+                              );
+                            },
+                            onHelp: _openTutorial,
+                          ),
                         ),
                       ),
                       Expanded(
@@ -203,63 +207,50 @@ class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
   }
 }
 
-/// Discriminator for the Stock page's collapsed kebab menu.
-/// Kept private to this file because it has no meaning outside the
-/// header's PopupMenuButton selection.
-enum _StockHeaderAction { search, help }
-
-class _StockToolsMenu extends StatelessWidget {
-  const _StockToolsMenu({
+/// Product-local actions beside the Stock tabs.
+///
+/// Search is deliberately visible only while the merchant is viewing their
+/// own Products tab. Catalogue has its own search field and Report has no
+/// search, so neither surface inherits a misleading "global" overflow item.
+class StockTabActions extends StatelessWidget {
+  const StockTabActions({
+    super.key,
+    required this.showProductSearch,
     required this.onSearch,
     required this.onHelp,
   });
 
+  final bool showProductSearch;
   final VoidCallback onSearch;
   final VoidCallback onHelp;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 48,
-      height: 48,
-      child: PopupMenuButton<_StockHeaderAction>(
-        tooltip: 'Product tools',
-        icon: Icon(
-          Icons.more_horiz_rounded,
-          color: Colors.black87,
-          size: SizeConfig.imageSizeMultiplier * 5,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showProductSearch)
+          IconButton(
+            key: const ValueKey('search-my-products'),
+            tooltip: 'Search my products',
+            icon: Icon(
+              Icons.search,
+              color: Colors.black87,
+              size: SizeConfig.imageSizeMultiplier * 5,
+            ),
+            onPressed: onSearch,
+          ),
+        IconButton(
+          key: const ValueKey('stock-help'),
+          tooltip: 'How to capture stock',
+          icon: Icon(
+            Icons.help_outline,
+            color: Colors.black87,
+            size: SizeConfig.imageSizeMultiplier * 5,
+          ),
+          onPressed: onHelp,
         ),
-        onSelected: (action) {
-          switch (action) {
-            case _StockHeaderAction.search:
-              onSearch();
-              break;
-            case _StockHeaderAction.help:
-              onHelp();
-              break;
-          }
-        },
-        itemBuilder: (context) => const [
-          PopupMenuItem(
-            value: _StockHeaderAction.search,
-            child: ListTile(
-              leading: Icon(Icons.search),
-              title: Text('Search products'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            ),
-          ),
-          PopupMenuItem(
-            value: _StockHeaderAction.help,
-            child: ListTile(
-              leading: Icon(Icons.help_outline),
-              title: Text('How to capture stock'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

@@ -6,7 +6,7 @@ import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/support_util.dart';
 import 'package:pasella/config/size_config.dart';
 
-/// Wallet > Account > Info segment.
+/// Billing > Account > Fees and limits page.
 ///
 /// This screen exists to honestly explain how the merchant is charged for
 /// messaging and payments. The previous version misled users in three
@@ -94,13 +94,13 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
               'screen.',
             ),
             _buildBulletPoint(
-              'Open Account > History to review every payment, top-up and '
-              'message charge.',
+              'Open Transaction history under Account to review every '
+              'payment, top-up and message charge.',
             ),
             if (FeatureFlags.enableBalancePayout) ...[
               _buildBulletPoint(
-                'Add banking details under Account > Banking to receive '
-                'payouts.',
+                'Open Banking details under Account to choose where payouts '
+                'are sent.',
               ),
               _buildBulletPoint(
                 'Request a payout at any time from the Withdraw tab.',
@@ -339,10 +339,10 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
   Widget _sectionGap() => SizedBox(height: SizeConfig.heightMultiplier * 3);
 
   Widget _divider() => Divider(
-    thickness: 0.6,
-    height: SizeConfig.heightMultiplier * 2,
-    color: Colors.grey.shade300,
-  );
+        thickness: 0.6,
+        height: SizeConfig.heightMultiplier * 2,
+        color: Colors.grey.shade300,
+      );
 
   /// Body bullet — no leading glyph; the indentation and line spacing
   /// alone communicate list structure.
@@ -429,11 +429,10 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
 
   Widget _helpOption() {
     return FilledButton.icon(
-      onPressed:
-          () => SupportUtil.sendWhatsAppMessage(
-            context,
-            WhatsAppMessageType.support,
-          ),
+      onPressed: () => SupportUtil.sendWhatsAppMessage(
+        context,
+        WhatsAppMessageType.support,
+      ),
       icon: Icon(
         FontAwesomeIcons.whatsapp,
         size: SizeConfig.textMultiplier * 2,

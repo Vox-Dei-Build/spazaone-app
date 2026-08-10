@@ -1,11 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const _earningStatuses = {
   'paid',
@@ -250,7 +252,6 @@ class _OrderDetailsState extends State<_OrderDetails> {
 
   Future<void> _act(
     String action, {
-    String? trackingCarrier,
     String? trackingNumber,
     String? trackingUrl,
     String? supplierOrderId,
@@ -261,10 +262,9 @@ class _OrderDetailsState extends State<_OrderDetails> {
   }) async {
     setState(() => _working = true);
     try {
-      await CommerceService().updateOrder(
+      final result = await CommerceService().updateOrder(
         orderId: order.id,
         action: action,
-        trackingCarrier: trackingCarrier,
         trackingNumber: trackingNumber,
         trackingUrl: trackingUrl,
         supplierOrderId: supplierOrderId,
@@ -287,7 +287,7 @@ class _OrderDetailsState extends State<_OrderDetails> {
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
       messenger.showSnackBar(
-        const SnackBar(content: Text('Order updated.')),
+        SnackBar(content: Text(commerceOrderUpdateMessage(action, result))),
       );
     } catch (error) {
       if (mounted) showCommerceError(context, error);
@@ -300,7 +300,6 @@ class _OrderDetailsState extends State<_OrderDetails> {
     if (values == null) return;
     await _act(
       'mark_shipped',
-      trackingCarrier: values['carrier'],
       trackingNumber: values['number'],
       trackingUrl: values['url'],
     );
@@ -313,8 +312,8 @@ class _OrderDetailsState extends State<_OrderDetails> {
     }
     final supplierOrderId = await _textDialog(
       context,
-      title: 'Supplier order placed',
-      label: 'Supplier order number',
+      title: 'Delivery order placed',
+      label: 'Delivery order number',
       confirmLabel: 'Save and continue',
     );
     if (supplierOrderId == null) return;
@@ -325,22 +324,40 @@ class _OrderDetailsState extends State<_OrderDetails> {
   }
 
   Future<void> _confirmManualPayment() async {
-    final note = await _textDialog(
-      context,
-      title: 'Confirm payment received',
-      label: 'Payment method or reference',
-      confirmLabel: 'Confirm payment',
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm payment received?'),
+        content: const Text(
+          'Only continue after checking that the money reached you. '
+          'The customer will be told that payment was received.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Confirm and notify customer'),
+          ),
+        ],
+      ),
     );
-    if (note == null) return;
-    await _act('confirm_manual_payment', manualPaymentNote: note);
+    if (confirmed != true) return;
+    await _act(
+      'confirm_manual_payment',
+      manualPaymentNote: 'Merchant confirmed money received',
+    );
   }
 
   Future<void> _cancel() async {
+    final startsRefund = order.paymentStatus == 'paid';
     final reason = await _textDialog(
       context,
-      title: 'Cancel order',
-      label: 'Cancellation reason',
-      confirmLabel: 'Cancel order',
+      title: startsRefund ? 'Cancel and start refund' : 'Cancel order',
+      label: 'Reason for cancellation',
+      confirmLabel: startsRefund ? 'Cancel and start refund' : 'Cancel order',
     );
     if (reason == null) return;
     await _act('cancel', reason: reason);
@@ -413,39 +430,48 @@ class _OrderDetailsState extends State<_OrderDetails> {
               label: 'Buyer selected',
               value: switch (order.buyerPaymentPreference) {
                 'transfer' => 'EFT / deposit',
+                'eft' => 'EFT / deposit',
                 'cash' => 'Cash',
+                'pay_at_shop' => 'Pay at shop',
                 'bnpl' => 'Pay later',
                 final value => value,
               },
             ),
-          _DetailRow(
-              label: 'Supplier cost',
-              value: CurrencyUtil.format(order.baseCostMinor / 100)),
-          if (order.supplierProductCostMinor > 0)
-            _DetailRow(
-                label: 'Supplier product',
-                value:
-                    CurrencyUtil.format(order.supplierProductCostMinor / 100)),
-          if (order.supplierShippingCostMinor > 0)
-            _DetailRow(
-                label: 'Supplier delivery',
-                value:
-                    CurrencyUtil.format(order.supplierShippingCostMinor / 100)),
-          _DetailRow(
-              label: 'Fee snapshot',
-              value: CurrencyUtil.format(order.feeMinor / 100)),
-          _DetailRow(
-              label: 'Margin snapshot',
-              value: CurrencyUtil.format(order.marginMinor / 100),
-              highlight: true),
-          if (order.supplierId == 'cj_dropshipping') ...[
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: EdgeInsets.zero,
+            title: const Text('Financial details'),
+            children: [
+              _DetailRow(
+                  label: 'Delivery product cost',
+                  value: CurrencyUtil.format(order.baseCostMinor / 100)),
+              _DetailRow(
+                  label: 'Spaza One fee',
+                  value: CurrencyUtil.format(order.feeMinor / 100)),
+              _DetailRow(
+                  label: 'Your margin',
+                  value: CurrencyUtil.format(order.marginMinor / 100),
+                  highlight: true),
+            ],
+          ),
+          if (order.supplierId == 'cj_dropshipping' &&
+              order.status == 'paid') ...[
             const Divider(height: 32),
-            const Text('Supplier details',
+            const Text('Place delivery order',
                 style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             const Text('Fulfilment partner: CJdropshipping'),
             const SizedBox(height: 4),
-            const Text('Use these references when placing the supplier order.'),
+            const Text('Use these details to place the paid delivery order.'),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse('https://www.cjdropshipping.com'),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open fulfilment partner'),
+            ),
             if (order.supplierSku.isNotEmpty) ...[
               const SizedBox(height: 8),
               SelectableText('SKU: ${order.supplierSku}'),
@@ -453,10 +479,20 @@ class _OrderDetailsState extends State<_OrderDetails> {
             if (order.supplierVariantId.isNotEmpty)
               SelectableText('Variant: ${order.supplierVariantId}'),
             if (order.supplierOrderId.isNotEmpty)
-              SelectableText('Supplier order: ${order.supplierOrderId}'),
+              SelectableText('Delivery order: ${order.supplierOrderId}'),
             if (order.logisticName.isNotEmpty)
-              Text('Delivery: ${order.logisticName}'
-                  '${order.logisticAging.isEmpty ? '' : ' · ${order.logisticAging} days'}'),
+              Text(
+                'Delivery estimate: ${order.logisticAging.isEmpty ? 'Check when placing the order' : '${order.logisticAging} days'}',
+              ),
+          ] else if (order.supplierId == 'cj_dropshipping' &&
+              order.supplierOrderId.isNotEmpty) ...[
+            const Divider(height: 32),
+            const Text(
+              'Delivery order record',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            SelectableText('Delivery order: ${order.supplierOrderId}'),
           ],
           const Divider(height: 32),
           Text(order.buyerName,
@@ -464,13 +500,40 @@ class _OrderDetailsState extends State<_OrderDetails> {
           Text(order.buyerPhone),
           const SizedBox(height: 8),
           Text(addressLines.join(', ')),
+          if ((address['plusCode']?.toString() ?? '').isNotEmpty)
+            SelectableText('Plus Code: ${address['plusCode']}'),
+          if (order.status != 'pending_payment') ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final details = [
+                  order.buyerName,
+                  order.buyerPhone,
+                  addressLines.join(', '),
+                  if ((address['plusCode']?.toString() ?? '').isNotEmpty)
+                    'Plus Code: ${address['plusCode']}',
+                  if (order.supplierSku.isNotEmpty) 'SKU: ${order.supplierSku}',
+                  if (order.supplierVariantId.isNotEmpty)
+                    'Variant: ${order.supplierVariantId}',
+                ].join('\n');
+                await Clipboard.setData(ClipboardData(text: details));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Order details copied.')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_all_outlined),
+              label: const Text('Copy all order details'),
+            ),
+          ],
           if (order.trackingNumber?.isNotEmpty == true) ...[
             const Divider(height: 32),
             const Text('Tracking',
                 style: TextStyle(fontWeight: FontWeight.w700)),
-            Text([order.trackingCarrier, order.trackingNumber]
-                .whereType<String>()
-                .join(' · ')),
+            SelectableText(order.trackingNumber ?? ''),
+            if (order.trackingUrl?.isNotEmpty == true)
+              SelectableText(order.trackingUrl!),
           ],
           const SizedBox(height: 24),
           ..._actions(),
@@ -481,52 +544,98 @@ class _OrderDetailsState extends State<_OrderDetails> {
 
   List<Widget> _actions() {
     final buttons = <Widget>[];
-    void add(String label, IconData icon, VoidCallback onPressed,
-        {bool destructive = false}) {
-      if (buttons.isNotEmpty) buttons.add(const SizedBox(height: 10));
+    void addPrimary(String label, IconData icon, VoidCallback onPressed) {
       buttons.add(
-        destructive
-            ? OutlinedButton.icon(
-                onPressed: _working ? null : onPressed,
-                icon: Icon(icon),
-                label: Text(label),
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-              )
-            : ElevatedButton.icon(
-                onPressed: _working ? null : onPressed,
-                icon: Icon(icon),
-                label: Text(label),
-              ),
+        ElevatedButton.icon(
+          onPressed: _working ? null : onPressed,
+          icon: Icon(icon),
+          label: Text(label),
+        ),
       );
     }
+
+    final secondaryActions = <_OrderOverflowAction>[];
 
     switch (order.status) {
       case 'pending_payment':
         if (order.paymentMethod == 'manual') {
-          add('Confirm manual payment', Icons.payments_outlined,
-              _confirmManualPayment);
+          addPrimary(
+            'Confirm payment received & notify customer',
+            Icons.payments_outlined,
+            _confirmManualPayment,
+          );
         }
-        add('Cancel order', Icons.cancel_outlined, _cancel, destructive: true);
+        secondaryActions.add(_OrderOverflowAction.cancel);
       case 'paid':
-        add(
-            order.supplierId == 'cj_dropshipping'
-                ? 'Mark supplier order as placed'
-                : 'Submit for fulfilment',
-            Icons.outbox_outlined,
-            _fulfill);
-        add('Cancel and request refund', Icons.cancel_outlined, _cancel,
-            destructive: true);
+        addPrimary(
+          order.supplierId == 'cj_dropshipping'
+              ? 'Place delivery order'
+              : 'Submit for fulfilment',
+          Icons.outbox_outlined,
+          _fulfill,
+        );
+        secondaryActions.add(_OrderOverflowAction.cancel);
       case 'submitted_for_fulfilment':
-        add('Mark shipped', Icons.local_shipping_outlined, _ship);
-        add('Cancel and request refund', Icons.cancel_outlined, _cancel,
-            destructive: true);
+        addPrimary('Add tracking', Icons.local_shipping_outlined, _ship);
+        secondaryActions.add(_OrderOverflowAction.cancel);
       case 'shipped':
-        add('Mark delivered', Icons.check_circle_outline,
-            () => _act('mark_delivered'));
+        addPrimary(
+          'Mark delivered',
+          Icons.check_circle_outline,
+          () => _act('mark_delivered'),
+        );
       case 'cancelled':
         if (order.paymentStatus == 'refund_pending') {
-          add('Confirm refund completed', Icons.currency_exchange, _refund);
+          secondaryActions.add(_OrderOverflowAction.refund);
         }
+    }
+    if (secondaryActions.isNotEmpty) {
+      if (buttons.isNotEmpty) buttons.add(const SizedBox(height: 10));
+      buttons.add(
+        Align(
+          alignment: Alignment.centerRight,
+          child: PopupMenuButton<_OrderOverflowAction>(
+            key: const Key('commerce-order-more-actions'),
+            enabled: !_working,
+            tooltip: 'More order actions',
+            onSelected: (action) {
+              switch (action) {
+                case _OrderOverflowAction.cancel:
+                  _cancel();
+                case _OrderOverflowAction.refund:
+                  _refund();
+              }
+            },
+            itemBuilder: (context) => [
+              if (secondaryActions.contains(_OrderOverflowAction.cancel))
+                PopupMenuItem(
+                  value: _OrderOverflowAction.cancel,
+                  child: Text(
+                    order.paymentStatus == 'paid'
+                        ? 'Cancel and start refund'
+                        : 'Cancel order',
+                  ),
+                ),
+              if (secondaryActions.contains(_OrderOverflowAction.refund))
+                const PopupMenuItem(
+                  value: _OrderOverflowAction.refund,
+                  child: Text('Confirm refund completed'),
+                ),
+            ],
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.more_horiz),
+                  SizedBox(width: 6),
+                  Text('More order actions'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
     }
     if (_working) {
       buttons.insert(
@@ -539,6 +648,8 @@ class _OrderDetailsState extends State<_OrderDetails> {
     return buttons;
   }
 }
+
+enum _OrderOverflowAction { cancel, refund }
 
 class _DetailRow extends StatelessWidget {
   const _DetailRow(
@@ -602,6 +713,34 @@ class _OrdersEmpty extends StatelessWidget {
 
 String _reference(String orderId) =>
     orderId.substring(0, orderId.length.clamp(0, 8)).toUpperCase();
+
+bool isValidCommerceTrackingUrl(String value) {
+  final text = value.trim();
+  if (text.isEmpty) return true;
+  final uri = Uri.tryParse(text);
+  if (uri == null) return false;
+  final scheme = uri.scheme.toLowerCase();
+  return (scheme == 'https' || scheme == 'http') &&
+      uri.host.isNotEmpty &&
+      uri.userInfo.isEmpty;
+}
+
+String commerceOrderUpdateMessage(
+  String action,
+  CommerceOrderUpdateResult result,
+) {
+  final saved = action == 'mark_shipped' ? 'Tracking saved' : 'Order updated';
+  return switch (result.customerNotification) {
+    'sent' => '$saved and customer notified.',
+    'queued' => '$saved. Customer update is queued and will retry.',
+    'not_deliverable' =>
+      '$saved, but no customer number was available. Contact them directly.',
+    'failed' =>
+      '$saved, but the customer notification failed. Contact them directly.',
+    'skipped' => '$saved.',
+    _ => '$saved. Customer notification status is unavailable.',
+  };
+}
 
 Future<String?> _textDialog(
   BuildContext context, {
@@ -684,13 +823,12 @@ class _TrackingInputDialog extends StatefulWidget {
 }
 
 class _TrackingInputDialogState extends State<_TrackingInputDialog> {
-  final TextEditingController _carrier = TextEditingController();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _number = TextEditingController();
   final TextEditingController _url = TextEditingController();
 
   @override
   void dispose() {
-    _carrier.dispose();
     _number.dispose();
     _url.dispose();
     super.dispose();
@@ -698,25 +836,33 @@ class _TrackingInputDialogState extends State<_TrackingInputDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Shipping details'),
+        title: const Text('Add delivery tracking'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: _carrier,
-                  decoration: const InputDecoration(labelText: 'Carrier')),
-              TextField(
-                  controller: _number,
-                  autofocus: true,
-                  decoration:
-                      const InputDecoration(labelText: 'Tracking number *')),
-              TextField(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                    controller: _number,
+                    autofocus: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Tracking number *')),
+                TextFormField(
                   controller: _url,
                   keyboardType: TextInputType.url,
+                  autocorrect: false,
                   decoration: const InputDecoration(
-                      labelText: 'Tracking link (optional)')),
-            ],
+                    labelText: 'Tracking link (optional)',
+                    hintText: 'https://tracking.example/123',
+                    helperText: 'Use a secure https:// link when available.',
+                  ),
+                  validator: (value) => isValidCommerceTrackingUrl(value ?? '')
+                      ? null
+                      : 'Enter a valid http:// or https:// link.',
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -726,14 +872,16 @@ class _TrackingInputDialogState extends State<_TrackingInputDialog> {
           ),
           FilledButton(
             onPressed: () {
-              if (_number.text.trim().isEmpty) return;
+              if (_number.text.trim().isEmpty ||
+                  !(_formKey.currentState?.validate() ?? false)) {
+                return;
+              }
               Navigator.pop(context, {
-                'carrier': _carrier.text.trim(),
                 'number': _number.text.trim(),
                 'url': _url.text.trim(),
               });
             },
-            child: const Text('Mark shipped'),
+            child: const Text('Save and notify customer'),
           ),
         ],
       );

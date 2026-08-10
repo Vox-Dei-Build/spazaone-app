@@ -1,37 +1,43 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart'; // ✅ NEW
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
 import 'package:pasella/pages/wallet/tabs/pricing_tab.dart';
 import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/feature_flags.dart';
 
 enum InfoView { history, banking, info }
 
+/// Billing's Account landing page.
+///
+/// Account remains a top-level Billing tab, but its destinations use ordinary
+/// list navigation instead of another segmented control nested inside the
+/// tab. Each destination opens as a full page with standard back navigation.
 class InfoCenterTab extends StatefulWidget {
+  const InfoCenterTab({
+    super.key,
+    required this.walletVM,
+    this.initialView,
+  });
+
   final WalletViewModel walletVM;
   final InfoView? initialView;
-
-  const InfoCenterTab({super.key, required this.walletVM, this.initialView});
 
   @override
   State<InfoCenterTab> createState() => _InfoCenterTabState();
 }
 
 class _InfoCenterTabState extends State<InfoCenterTab> {
-  late InfoView _selected;
+  bool _openedInitialView = false;
 
   @override
-  void initState() {
-    super.initState();
-    _selected =
-        _isEnabled(widget.initialView) ? widget.initialView! : _initialView();
-  }
-
-  InfoView _initialView() {
-    if (FeatureFlags.enableTransactionHistory) return InfoView.history;
-    if (FeatureFlags.enableBankingDetails) return InfoView.banking;
-    return InfoView.info;
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_openedInitialView || !_isEnabled(widget.initialView)) return;
+    _openedInitialView = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _open(widget.initialView!);
+    });
   }
 
   bool _isEnabled(InfoView? view) {
@@ -47,97 +53,212 @@ class _InfoCenterTabState extends State<InfoCenterTab> {
     }
   }
 
+  void _open(InfoView view) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BillingAccountDestinationPage(
+          view: view,
+          walletVM: widget.walletVM,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // ✅ ensure SizeConfig is available
-
-    final labelStyle = TextStyle(
-      // ✅ matches Sales tab
-      fontSize: SizeConfig.textMultiplier * 1.5,
-      fontWeight: FontWeight.bold,
+    return BillingAccountMenu(
+      showHistory: FeatureFlags.enableTransactionHistory,
+      showBanking: FeatureFlags.enableBankingDetails,
+      showFees: FeatureFlags.enablePricingInfo,
+      onHistory: () => _open(InfoView.history),
+      onBanking: () => _open(InfoView.banking),
+      onFees: () => _open(InfoView.info),
     );
-    final iconSize = SizeConfig.textMultiplier * 1.5; // ✅ matches Sales tab
+  }
+}
 
-    final segments = <ButtonSegment<InfoView>>[];
+/// Testable, Firebase-free presentation for the Account landing page.
+class BillingAccountMenu extends StatelessWidget {
+  const BillingAccountMenu({
+    super.key,
+    required this.showHistory,
+    required this.showBanking,
+    required this.showFees,
+    required this.onHistory,
+    required this.onBanking,
+    required this.onFees,
+  });
 
-    if (FeatureFlags.enableTransactionHistory) {
-      segments.add(
-        ButtonSegment(
-          value: InfoView.history,
-          label: Text('History', style: labelStyle), // ✅
-          icon: Icon(Icons.history, size: iconSize), // ✅
+  final bool showHistory;
+  final bool showBanking;
+  final bool showFees;
+  final VoidCallback onHistory;
+  final VoidCallback onBanking;
+  final VoidCallback onFees;
+
+  @override
+  Widget build(BuildContext context) {
+    final destinations = <_AccountDestination>[
+      if (showHistory)
+        _AccountDestination(
+          key: const ValueKey('billing-account-history'),
+          icon: Icons.receipt_long_outlined,
+          title: 'Transaction history',
+          color: Colors.green.shade700,
+          onTap: onHistory,
         ),
-      );
-    }
-    if (FeatureFlags.enableBankingDetails) {
-      segments.add(
-        ButtonSegment(
-          value: InfoView.banking,
-          label: Text('Banking', style: labelStyle), // ✅
-          icon: Icon(Icons.account_balance, size: iconSize), // ✅
+      if (showBanking)
+        _AccountDestination(
+          key: const ValueKey('billing-account-banking'),
+          icon: Icons.account_balance_outlined,
+          title: 'Banking details',
+          color: Colors.blue.shade700,
+          onTap: onBanking,
         ),
-      );
-    }
-    if (FeatureFlags.enablePricingInfo) {
-      segments.add(
-        ButtonSegment(
-          value: InfoView.info,
-          label: Text('Info', style: labelStyle), // ✅
-          icon: Icon(Icons.info_outline, size: iconSize), // ✅
+      if (showFees)
+        _AccountDestination(
+          key: const ValueKey('billing-account-fees'),
+          icon: Icons.info_outline,
+          title: 'Fees and limits',
+          color: Colors.orange.shade800,
+          onTap: onFees,
         ),
-      );
+    ];
+
+    if (destinations.isEmpty) {
+      return const Center(child: Text('No account information available'));
     }
 
-    if (segments.isEmpty) {
-      return const Center(child: Text('No information available'));
-    }
+    return Padding(
+      key: const ValueKey('billing-account-dashboard'),
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 16),
+      child: Column(
+        children: [
+          for (var index = 0; index < destinations.length; index++) ...[
+            if (index > 0) const SizedBox(height: 10),
+            Expanded(
+              child: _AccountMenuTile(destination: destinations[index]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
-    Widget contentFor(InfoView view) {
-      switch (view) {
-        case InfoView.history:
-          return UnifiedHistoryTab(viewModel: widget.walletVM);
-        case InfoView.banking:
-          return const BankingDetailsTab();
-        case InfoView.info:
-          return const PricingInfoTab();
-      }
-    }
+class _AccountDestination {
+  const _AccountDestination({
+    required this.key,
+    required this.icon,
+    required this.title,
+    required this.color,
+    required this.onTap,
+  });
 
-    if (segments.length == 1) {
-      return contentFor(segments.first.value);
-    }
+  final Key key;
+  final IconData icon;
+  final String title;
+  final Color color;
+  final VoidCallback onTap;
+}
 
-    return Column(
-      children: [
-        const SizedBox(height: 16), // ✅ same top spacing as Sales
-        Theme(
-          data: Theme.of(context).copyWith(
-            segmentedButtonTheme: SegmentedButtonThemeData(
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? Colors.green
-                      : Colors.white,
+class _AccountMenuTile extends StatelessWidget {
+  const _AccountMenuTile({
+    required this.destination,
+  });
+
+  final _AccountDestination destination;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: destination.key,
+      color: destination.color.withValues(alpha: .08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: destination.color.withValues(alpha: .16)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: destination.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: destination.color.withValues(alpha: .13),
+                  borderRadius: BorderRadius.circular(15),
                 ),
-                foregroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? Colors.white
-                      : Colors.black87,
+                child: Icon(
+                  destination.icon,
+                  size: 25,
+                  color: destination.color,
                 ),
               ),
-            ),
-          ),
-          child: SegmentedButton<InfoView>(
-            segments: segments,
-            selected: <InfoView>{_selected},
-            onSelectionChanged: (selection) {
-              setState(() => _selected = selection.first);
-            },
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  destination.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_rounded,
+                color: destination.color,
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16), // optional: mirrors Sales layout rhythm
-        Expanded(child: contentFor(_selected)),
-      ],
+      ),
+    );
+  }
+}
+
+class BillingAccountDestinationPage extends StatelessWidget {
+  const BillingAccountDestinationPage({
+    super.key,
+    required this.view,
+    required this.walletVM,
+  });
+
+  final InfoView view;
+  final WalletViewModel walletVM;
+
+  String get _title {
+    switch (view) {
+      case InfoView.history:
+        return 'Transaction History';
+      case InfoView.banking:
+        return 'Banking Details';
+      case InfoView.info:
+        return 'Fees and Limits';
+    }
+  }
+
+  Widget get _content {
+    switch (view) {
+      case InfoView.history:
+        return UnifiedHistoryTab(viewModel: walletVM);
+      case InfoView.banking:
+        return const BankingDetailsTab();
+      case InfoView.info:
+        return const PricingInfoTab();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppBar(title: _title),
+      body: SafeArea(child: _content),
     );
   }
 }

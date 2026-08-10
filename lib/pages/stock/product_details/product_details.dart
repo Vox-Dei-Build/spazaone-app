@@ -11,7 +11,15 @@ import 'package:pasella/pages/stock/view_model/product_view_model.dart';
 import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
+import 'package:pasella/utils/show_toast.dart';
 import 'package:provider/provider.dart';
+
+@visibleForTesting
+bool productDetailsCanPop({
+  required bool hasUnsavedChanges,
+  required bool exitAuthorized,
+}) =>
+    exitAuthorized || !hasUnsavedChanges;
 
 class ProductDetailsPage extends StatefulWidget {
   final Product product;
@@ -29,6 +37,33 @@ class ProductDetailsPage extends StatefulWidget {
 
 class _ProductDetailsPage extends State<ProductDetailsPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  bool _exitAuthorized = false;
+
+  Future<void> _deleteProduct(ProductViewModel viewModel) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => const DeleteConfirmationDialog(),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final deleted = await viewModel.deleteProduct(widget.docID);
+    if (!mounted) return;
+
+    if (!deleted) {
+      showErrorSnackBar(context, 'Failed to delete product!');
+      return;
+    }
+
+    // Rebuild PopScope with an explicit successful-delete exit before
+    // navigating. A merchant may delete after editing a field, in which case
+    // the ordinary unsaved-changes guard must not trap an already-deleted
+    // product on screen or show the discard prompt.
+    setState(() => _exitAuthorized = true);
+    showSnackbar(context, 'Deleted Successfully!', Colors.green);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
 
   Future<void> _promote(
     BuildContext context,
@@ -122,25 +157,14 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
                 ),
                 onPressed: viewModel.isLoading
                     ? null
-                    : () {
-                        showDialog(
-                          context: context,
-                          builder: (BuildContext context) {
-                            return DeleteConfirmationDialog(
-                              onConfirm: () async {
-                                await viewModel.deleteProduct(
-                                  context,
-                                  widget.docID,
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
+                    : () => _deleteProduct(viewModel),
               ),
             ),
             body: PopScope(
-              canPop: !viewModel.hasUnsavedChanges,
+              canPop: productDetailsCanPop(
+                hasUnsavedChanges: viewModel.hasUnsavedChanges,
+                exitAuthorized: _exitAuthorized,
+              ),
               onPopInvokedWithResult: (didPop, _) async {
                 if (didPop) return;
                 final discard = await ConfirmDialog.showDestructive(
@@ -151,7 +175,10 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
                   cancelLabel: 'Keep editing',
                 );
                 if (discard && context.mounted) {
-                  Navigator.of(context).pop();
+                  setState(() => _exitAuthorized = true);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) Navigator.of(context).pop();
+                  });
                 }
               },
               child: SafeArea(

@@ -2,9 +2,18 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
 import { commerceCheckoutUrl } from "./checkoutUrl";
-import { getCachedCatalogDocument } from "./cjCatalogRepository";
+import {
+  catalogProductRef,
+  enqueueProductRefresh,
+} from "./cjCatalogRepository";
+import {
+  catalogListingState,
+  catalogQuoteVersion,
+  CatalogListingState,
+} from "./cjCatalogCache";
 import { priceCommerceOrder, requireMinorUnits } from "./domain";
 import { commercePaymentsEnabled } from "./readiness";
+import { deliveryEstimateFromAging } from "./prepareCommerceCheckout";
 
 function cleanText(value: unknown, field: string, max: number): string {
   const text = String(value ?? "").trim();
@@ -15,6 +24,44 @@ function cleanText(value: unknown, field: string, max: number): string {
     );
   }
   return text;
+}
+
+function optionalText(value: unknown, field: string, max: number): string {
+  const text = String(value ?? "").trim();
+  if (text.length > max) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `${field} must be at most ${max} characters.`,
+    );
+  }
+  return text;
+}
+
+function throwCatalogState(
+  state: Exclude<CatalogListingState, { status: "ready" }>,
+): never {
+  if (state.status === "quote_changed") {
+    throw new functions.https.HttpsError(
+      "aborted",
+      "Price or delivery changed. Review the updated costs, then add the product again.",
+      {
+        reason: "CATALOG_QUOTE_CHANGED",
+        product: state.product,
+      },
+    );
+  }
+  if (state.status === "refreshing") {
+    throw new functions.https.HttpsError(
+      "unavailable",
+      "Updating price and delivery. Try again shortly.",
+      { reason: "CATALOG_REFRESHING", retryAfterSeconds: 15 },
+    );
+  }
+  throw new functions.https.HttpsError(
+    "failed-precondition",
+    "This product is no longer available.",
+    { reason: "CATALOG_UNAVAILABLE" },
+  );
 }
 
 /** Creates a seller product plus the immutable server-priced projection. */
@@ -31,6 +78,11 @@ export const createDropshipListing = functions
       data?.supplierVariantId,
       "supplierVariantId",
       200,
+    );
+    const selectedQuoteVersion = optionalText(
+      data?.catalogQuoteVersion,
+      "catalogQuoteVersion",
+      80,
     );
     await assertCallableStoreAccess(context, storeId);
 
@@ -50,17 +102,26 @@ export const createDropshipListing = functions
       );
     }
 
-    const cached = await getCachedCatalogDocument(supplierProductId);
-    if (
-      !cached ||
-      cached.deliverableVariantId !== supplierVariantId ||
-      cached.recommendedQuote.variant.variantId !== supplierVariantId
-    ) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "That product option is being refreshed. Choose another product for now.",
-      );
+    const catalogRef = catalogProductRef(supplierProductId);
+    const catalogSnapshot = await catalogRef.get();
+    const rawCatalog = catalogSnapshot.data();
+    const listingState = catalogListingState(
+      rawCatalog,
+      supplierVariantId,
+      selectedQuoteVersion,
+    );
+    if (listingState.status !== "ready") {
+      if (listingState.status === "refreshing" && rawCatalog) {
+        await enqueueProductRefresh({
+          product: rawCatalog,
+          query: "listing",
+          priority: 50,
+        });
+      }
+      throwCatalogState(listingState);
     }
+    const cached = listingState.document;
+    const acceptedQuoteVersion = catalogQuoteVersion(cached);
     const quote = cached.recommendedQuote;
     const product = cached.details;
 
@@ -89,8 +150,8 @@ export const createDropshipListing = functions
     const description = product.description;
     const shippingNotes = [
       quote.logisticAging
-        ? `Estimated ${quote.logisticAging} days via ${quote.logisticName}.`
-        : `Delivery via ${quote.logisticName}.`,
+        ? `Estimated delivery: ${quote.logisticAging} days.`
+        : "Delivery estimate is confirmed before the order is placed.",
       "Final delivery cost is verified from the buyer's address at checkout.",
     ].join(" ");
     const sellerProductRef = db
@@ -103,6 +164,15 @@ export const createDropshipListing = functions
     const now = FieldValue.serverTimestamp();
 
     await db.runTransaction(async (tx) => {
+      // Bind every created listing to the exact card the merchant reviewed.
+      // This closes the gap between the initial read and the writes below.
+      const currentSnapshot = await tx.get(catalogRef);
+      const currentState = catalogListingState(
+        currentSnapshot.data(),
+        supplierVariantId,
+        acceptedQuoteVersion,
+      );
+      if (currentState.status !== "ready") throwCatalogState(currentState);
       tx.create(sellerProductRef, {
         name: title,
         description,
@@ -110,7 +180,7 @@ export const createDropshipListing = functions
         images,
         cost: baseCostMinor / 100,
         sellingPrice: sellPriceMinor / 100,
-        company: "Spaza One supplier",
+        company: "Spaza One delivery",
         group: product.category || "Dropship",
         whatsappListed: true,
         supplierId: "cj_dropshipping",
@@ -125,6 +195,7 @@ export const createDropshipListing = functions
         sellPriceMinor,
         fulfilmentMode: "seller_manual_cj_order",
         shippingNotes,
+        deliveryEstimate: deliveryEstimateFromAging(quote.logisticAging),
         isDropshipListing: true,
         commerceListingId: listingRef.id,
         checkoutUrl,
@@ -157,6 +228,7 @@ export const createDropshipListing = functions
         sourceCountryCode: quote.originCountryCode,
         logisticName: quote.logisticName,
         logisticAging: quote.logisticAging,
+        deliveryEstimate: deliveryEstimateFromAging(quote.logisticAging),
         availability: "available",
         fulfilmentMode: "seller_manual_cj_order",
         shippingNotes,

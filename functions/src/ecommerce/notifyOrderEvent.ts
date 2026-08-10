@@ -6,12 +6,23 @@ import {
   readStoreNotificationTokens,
   removeInvalidStoreNotificationTokens,
 } from "../notifications/storeNotificationTokens";
+import {
+  incrementUnreadCount,
+  markOrderNotificationsRead,
+  unreadEventDocumentId,
+} from "../notifications/unreadCounts";
+import {
+  authenticateFirebaseRequest,
+  requireBotRequest,
+} from "../security/requestAuth";
+import { assertStoreAccess } from "../stores/storeAccess";
 
 /** Shape of an order notification record stored in Firestore. */
 interface OrderNotificationData {
   type: "ORDER_EVENT";
   eventType: "ORDER_PLACED" | "ONLINE_PAYMENT_CONFIRMED";
   orderId: string;
+  customerId: string;
   customerName: string | null;
   paymentMethod: "cash" | "online" | null;
   orderTotal: number | null;
@@ -20,24 +31,7 @@ interface OrderNotificationData {
   read: boolean;
   createdAt: string; // ISO string
   idempotencyKey: string | null;
-}
-
-/**
- * Writes a notification record into users/{merchantId}/notifications.
- *
- * @param {string} merchantId - Merchant document ID.
- * @param {OrderNotificationData} data - Notification payload to persist.
- * @return {Promise<FirebaseFirestore.DocumentReference>} The created doc ref.
- */
-async function writeNotificationRecord(
-  merchantId: string,
-  data: OrderNotificationData,
-): Promise<FirebaseFirestore.DocumentReference> {
-  const col = db
-    .collection("users")
-    .doc(merchantId)
-    .collection("notifications");
-  return await col.add(data);
+  unreadEventId: string;
 }
 
 /**
@@ -58,6 +52,7 @@ async function notifyOrderEventHandler(
       res.status(405).json({ error: "Method Not Allowed" });
       return;
     }
+    if (!requireBotRequest(req, res)) return;
 
     const {
       merchantId,
@@ -95,12 +90,6 @@ async function notifyOrderEventHandler(
       return;
     }
 
-    const customerRef = db
-      .collection("users")
-      .doc(merchantId)
-      .collection("customers")
-      .doc(customerId);
-
     if (!["ORDER_PLACED", "ONLINE_PAYMENT_CONFIRMED"].includes(eventType)) {
       res.status(400).json({ error: "Invalid eventType" });
       return;
@@ -113,13 +102,44 @@ async function notifyOrderEventHandler(
       return;
     }
 
+    // The bot credential authorizes the caller, while the stored order binding
+    // authorizes the target. A valid bot token must not be enough to create a
+    // notification against an unrelated store/customer pair.
+    const legacyOrder = await merchantRef
+      .collection("sales")
+      .doc(orderId)
+      .get();
+    const commerceOrder = legacyOrder.exists
+      ? null
+      : await db.collection("commerceOrders").doc(orderId).get();
+    const storedOrder = legacyOrder.exists
+      ? legacyOrder.data()
+      : commerceOrder?.data();
+    if (!storedOrder) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (
+      (!legacyOrder.exists &&
+        String(storedOrder.sellerId ?? "") !== merchantId) ||
+      String(storedOrder.customerId ?? "") !== customerId
+    ) {
+      res
+        .status(403)
+        .json({ error: "Order does not belong to this customer." });
+      return;
+    }
+
     const tokens = await readStoreNotificationTokens(merchantId);
 
     // 1) Create unread notification record
+    const eventKey = `order:${orderId}:${eventType}`;
+    const unreadEventId = unreadEventDocumentId(eventKey);
     const notifData: OrderNotificationData = {
       type: "ORDER_EVENT",
       eventType,
       orderId,
+      customerId,
       customerName: customerName ?? null,
       paymentMethod: (paymentMethod ?? null) as "cash" | "online" | null,
       orderTotal: typeof orderTotal === "number" ? orderTotal : null,
@@ -128,27 +148,31 @@ async function notifyOrderEventHandler(
       read: false,
       createdAt: new Date().toISOString(),
       idempotencyKey: idempotencyKey ?? null,
+      unreadEventId,
     };
-    const notifRef = await writeNotificationRecord(merchantId, notifData);
+    const notifRef = merchantRef.collection("notifications").doc(unreadEventId);
 
-    // 2) Atomically increment ordersUnreadCount and read the fresh value
-    let freshUnreadOrdersCount = 0;
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(merchantRef);
-      const prev = (snap.data()?.ordersUnreadCount as number) ?? 0;
-      const next = prev + 1;
-      tx.set(merchantRef, { ordersUnreadCount: next }, { merge: true });
-      freshUnreadOrdersCount = next;
+    // 2) Increment the canonical counters exactly once. The on-create trigger
+    // uses the same key, so HTTP retries and trigger overlap cannot double the
+    // merchant/customer badges.
+    const unread = await incrementUnreadCount({
+      merchantId,
+      customerId,
+      kind: "orders",
+      eventKey,
+      notification: { ref: notifRef, data: notifData },
     });
-
-    let freshCustomerOrdersUnread = 0;
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(customerRef);
-      const prev = (snap.data()?.ordersUnreadCount as number) ?? 0;
-      const next = prev + 1;
-      tx.set(customerRef, { ordersUnreadCount: next }, { merge: true });
-      freshCustomerOrdersUnread = next;
-    });
+    const freshUnreadOrdersCount = unread.merchant.orders;
+    const freshCustomerOrdersUnread = unread.customer.orders;
+    if (unread.deduped) {
+      res.status(200).json({
+        message: "Order notification already processed.",
+        deduped: true,
+        unreadOrdersCount: freshUnreadOrdersCount,
+        unreadTotalCount: unread.merchant.total,
+      });
+      return;
+    }
 
     // 3) Build push message
     const title =
@@ -190,6 +214,7 @@ async function notifyOrderEventHandler(
       route: `orders/detail?orderId=${orderId}`,
       idempotencyKey: idempotencyKey || "",
       unreadOrdersCount: String(freshUnreadOrdersCount),
+      unreadTotalCount: String(unread.merchant.total),
     };
 
     dataPayload.customerOrdersUnreadCount = String(freshCustomerOrdersUnread);
@@ -283,12 +308,13 @@ async function notifyOrderEventHandler(
  * Cloud Function export bound to the HTTP handler for order events.
  * (Wrapper with no parameters; see {@link notifyOrderEventHandler} for details.)
  */
-export const notifyOrderEvent = functions.https.onRequest(
-  notifyOrderEventHandler,
-);
+export const notifyOrderEvent = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(notifyOrderEventHandler);
 
 /**
- * Mark all ORDER_EVENT notifications as read and reset ordersUnreadCount.
+ * Mark a bounded set of ORDER_EVENT notifications as read and subtract only
+ * those records from the compatible unread counters.
  *
  * @param {import("firebase-functions").https.Request} req - Incoming HTTP request (POST).
  * @param {import("firebase-functions").Response} res - Outgoing HTTP response.
@@ -314,6 +340,16 @@ export const markOrdersAsRead = functions.https.onRequest(
         res.status(400).json({ error: "Missing merchantId" });
         return;
       }
+      const uid = await authenticateFirebaseRequest(req, res, {
+        requireAppCheck: true,
+      });
+      if (!uid) return;
+      try {
+        await assertStoreAccess(uid, merchantId);
+      } catch (error) {
+        res.status(403).json({ error: "Access denied." });
+        return;
+      }
 
       const userRef = db.collection("users").doc(merchantId);
       const notifCol = userRef.collection("notifications");
@@ -322,22 +358,19 @@ export const markOrdersAsRead = functions.https.onRequest(
         .where("type", "==", "ORDER_EVENT")
         .where("read", "==", false)
         .orderBy("createdAt", "desc")
-        .limit(Math.min(Number(limit) || 200, 500))
+        .limit(Math.max(1, Math.min(Number(limit) || 150, 150)))
         .get();
+      const result = await markOrderNotificationsRead({
+        merchantId,
+        notificationIds: unreadSnap.docs.map((doc) => doc.id),
+      });
 
-      const batch = db.batch();
-      unreadSnap.docs.forEach((d) =>
-        batch.update(d.ref, {
-          read: true,
-          readAt: new Date().toISOString(),
-        }),
-      );
-      batch.set(userRef, { ordersUnreadCount: 0 }, { merge: true });
-      await batch.commit();
-
-      res
-        .status(200)
-        .json({ message: "Orders marked as read", cleared: unreadSnap.size });
+      res.status(200).json({
+        message: "Orders marked as read",
+        cleared: result.cleared,
+        unreadOrdersCount: result.counts.orders,
+        unreadTotalCount: result.counts.total,
+      });
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(e);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/config/function_endpoints.dart';
@@ -358,14 +359,22 @@ class ConnectManagementViewModel {
   Future<void> markMessagesAsRead(String? customerNumber) async {
     if (customerNumber == null) return;
     try {
-      await SecureFunctionClient().post(
+      final response = await SecureFunctionClient().post(
         FunctionEndpoints.https('markMessagesAsRead'),
         {
           'merchantId': currentUserId,
           'customerNumber': customerNumber,
         },
       );
-      FlutterAppBadgerPlus.removeBadge();
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+        final total = data is Map
+            ? int.tryParse(data['unreadTotalCount']?.toString() ?? '')
+            : null;
+        if (total != null) {
+          await FlutterAppBadgerPlus.updateBadgeCount(total);
+        }
+      }
     } catch (e) {
       // ignore: avoid_print
       print('markMessagesAsRead failed: $e');

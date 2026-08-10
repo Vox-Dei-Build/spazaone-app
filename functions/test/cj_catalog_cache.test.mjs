@@ -3,11 +3,14 @@ import test from "node:test";
 import {
   buildCatalogCacheDocument,
   CATALOG_SNAPSHOT_MAX_AGE_MS,
+  catalogListingState,
+  catalogQuoteVersion,
   catalogSnapshotIsFresh,
   catalogDetailsPayload,
   catalogQueryWords,
   catalogSearchTokens,
   isUsableCatalogDocument,
+  savedCatalogSnapshot,
 } from "../lib/commerce/cjCatalogCache.js";
 
 const fx = {
@@ -163,6 +166,78 @@ test("catalog snapshots have a bounded seven-day delivery grace", () => {
     }),
     false,
   );
+});
+
+test("listing state uses the browse gate and returns reviewable changes", () => {
+  const { document } = fixture();
+  const verifiedAtMs = Date.parse(document.deliveryVerifiedAt);
+  const nowMs = verifiedAtMs + 24 * 60 * 60 * 1000;
+  const quoteVersion = catalogQuoteVersion(document);
+
+  assert.equal(
+    catalogListingState(
+      document,
+      document.deliverableVariantId,
+      quoteVersion,
+      nowMs,
+    ).status,
+    "ready",
+  );
+
+  const changed = catalogListingState(
+    document,
+    document.deliverableVariantId,
+    "older-quote",
+    nowMs,
+  );
+  assert.equal(changed.status, "quote_changed");
+  assert.equal(changed.product.catalogQuoteVersion, quoteVersion);
+  assert.equal(changed.product.estimatedLandedCostMinor, 13_905);
+
+  assert.equal(
+    catalogListingState(
+      document,
+      document.deliverableVariantId,
+      document.deliveryVerifiedAt,
+      verifiedAtMs + CATALOG_SNAPSHOT_MAX_AGE_MS + 1,
+    ).status,
+    "refreshing",
+  );
+  assert.equal(
+    catalogListingState(
+      { ...document, active: false },
+      document.deliverableVariantId,
+      document.deliveryVerifiedAt,
+      nowMs,
+    ).status,
+    "unavailable",
+  );
+});
+
+test("saved bookmarks survive availability changes without trusting prices", () => {
+  const { document } = fixture();
+  const preview = savedCatalogSnapshot(
+    {
+      ...document,
+      productId: "attacker-controlled-id",
+      image: "javascript:alert(1)",
+    },
+    "server-product-id",
+  );
+  assert.equal(preview.productId, "server-product-id");
+  assert.equal(preview.image, "");
+  assert.equal(preview.estimatedLandedCostMinor, 13_905);
+
+  const tampered = savedCatalogSnapshot(
+    {
+      ...document,
+      estimatedLandedCostMinor: 1,
+    },
+    "server-product-id",
+  );
+  assert.equal(tampered.estimatedProductCostMinor, 0);
+  assert.equal(tampered.estimatedDeliveryCostMinor, 0);
+  assert.equal(tampered.estimatedLandedCostMinor, 0);
 });
 
 test("catalog cache rejects mismatched products and unusable prices", () => {

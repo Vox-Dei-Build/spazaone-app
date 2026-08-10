@@ -23,7 +23,7 @@ subprojects {
                 // only present from API 31). Force every subproject to compile
                 // against the same SDK as the app to avoid resource-linking
                 // failures.
-                compileSdkVersion 35
+                compileSdkVersion 36
             }
         }
     }

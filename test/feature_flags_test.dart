@@ -52,6 +52,14 @@ void main() {
     expect(FeatureFlags.enableOnlineSales, isTrue);
   });
 
+  test('Paystack stays disabled even when a stale remote value is true', () {
+    FeatureFlags.applyFlagsForTesting(
+      _FakeRemoteConfig({'FEATURE_TOP_UP_PAYSTACK_ENABLED': true}),
+    );
+
+    expect(FeatureFlags.enableTopUpPaystack, isFalse);
+  });
+
   test('emulator QA profile applies every release-relevant value together', () {
     final profile = EmulatorQaFeatureProfile.fromValues(const {
       EmulatorQaFeatureProfile.multiStoreKey: 'true',

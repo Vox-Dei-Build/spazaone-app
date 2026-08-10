@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
@@ -8,30 +7,37 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
-
-class _FunctionsError extends FirebaseFunctionsException {
-  _FunctionsError(String code)
-      : super(code: code, message: 'Supplier details failed');
-}
+import 'package:pasella/services/commerce_service.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 void main() {
-  CjCatalogProduct supplierProduct(int index) => CjCatalogProduct(
-        id: 'product-$index',
-        sku: 'SKU-$index',
-        title: 'Supplier product $index',
-        image: '',
-        category: 'Home',
-        productCostUsdMinor: 100,
-        estimatedProductCostMinor: 1800,
-        deliverableVariantId: 'variant-$index',
-        estimatedDeliveryCostMinor: 900,
-        estimatedLandedCostMinor: 2700,
-        logisticAging: '8-14 days',
-        deliveryVerifiedAt: DateTime.now()
+  CjCatalogProduct supplierProduct(
+    int index, {
+    int productCostMinor = 1800,
+    int deliveryCostMinor = 900,
+    String? verifiedAt,
+  }) {
+    final quoteVersion = verifiedAt ??
+        DateTime.now()
             .toUtc()
             .subtract(const Duration(hours: 1))
-            .toIso8601String(),
-      );
+            .toIso8601String();
+    return CjCatalogProduct(
+      id: 'product-$index',
+      sku: 'SKU-$index',
+      title: 'Supplier product $index',
+      image: '',
+      category: 'Home',
+      productCostUsdMinor: 100,
+      estimatedProductCostMinor: productCostMinor,
+      deliverableVariantId: 'variant-$index',
+      estimatedDeliveryCostMinor: deliveryCostMinor,
+      estimatedLandedCostMinor: productCostMinor + deliveryCostMinor,
+      logisticAging: '8-14 days',
+      deliveryVerifiedAt: quoteVersion,
+      catalogQuoteVersion: quoteVersion,
+    );
+  }
 
   test('catalog pages append without duplicating products', () {
     final first = [supplierProduct(1), supplierProduct(2)];
@@ -333,7 +339,7 @@ void main() {
   });
 
   testWidgets(
-      'verified catalogue card stays addable when details enrichment fails',
+      'server-approved catalogue card opens without a second details request',
       (tester) async {
     tester.view.physicalSize = const Size(360, 720);
     tester.view.devicePixelRatio = 1;
@@ -356,13 +362,25 @@ void main() {
           digitalPaymentsEnabled: false,
         );
 
+    var createCalls = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SupplierCatalogPage(
             searchCatalog: search,
-            loadProductDetails: (_, __) async =>
-                throw _FunctionsError('unavailable'),
+            createListing: ({
+              required supplierProductId,
+              required supplierVariantId,
+              required catalogQuoteVersion,
+              required markupMinor,
+            }) async {
+              createCalls++;
+              return const DropshipListingResult(
+                listingId: 'listing-1',
+                sellerProductId: 'product-1',
+                checkoutUrl: 'https://example.test/checkout',
+              );
+            },
           ),
         ),
       ),
@@ -377,6 +395,7 @@ void main() {
     expect(find.byKey(const Key('dropship-markup-field')), findsOneWidget);
     expect(find.text('Recommended option'), findsOneWidget);
     expect(find.text('Add product'), findsOneWidget);
+    expect(createCalls, 0);
     await tester.ensureVisible(
       find.byKey(const Key('dropship-markup-field')),
     );
@@ -402,7 +421,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('authoritative product not-found invalidates the listing sheet',
+  testWidgets('changed quote updates the same sheet and requires confirmation',
       (tester) async {
     Future<CjCatalogPage> search({
       required String query,
@@ -420,13 +439,37 @@ void main() {
           digitalPaymentsEnabled: false,
         );
 
+    var createCalls = 0;
+    final changed = supplierProduct(
+      2,
+      productCostMinor: 2100,
+      deliveryCostMinor: 1100,
+      verifiedAt: DateTime.now().toUtc().toIso8601String(),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SupplierCatalogPage(
             searchCatalog: search,
-            loadProductDetails: (_, __) async =>
-                throw _FunctionsError('not-found'),
+            createListing: ({
+              required supplierProductId,
+              required supplierVariantId,
+              required catalogQuoteVersion,
+              required markupMinor,
+            }) async {
+              createCalls++;
+              if (createCalls == 1) {
+                throw DropshipListingQuoteChanged(
+                  product: changed,
+                  message: 'Price or delivery changed.',
+                );
+              }
+              return const DropshipListingResult(
+                listingId: 'listing-2',
+                sellerProductId: 'seller-product-2',
+                checkoutUrl: 'https://example.test/checkout',
+              );
+            },
           ),
         ),
       ),
@@ -437,9 +480,36 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Product unavailable right now'), findsOneWidget);
-    expect(find.byKey(const Key('dropship-markup-field')), findsNothing);
-    expect(find.widgetWithText(ElevatedButton, 'Add product'), findsNothing);
+    expect(find.byKey(const Key('dropship-markup-field')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('dropship-markup-field')),
+      '25.00',
+    );
+    await tester.pump();
+    await tester
+        .ensureVisible(find.widgetWithText(ElevatedButton, 'Add product'));
+    await tester.tap(
+      find.widgetWithText(ElevatedButton, 'Add product').hitTestable(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(createCalls, 1);
+    expect(
+      find.text(
+        'Price or delivery changed. Review the updated costs, then tap Add product again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text(CurrencyUtil.format(32)), findsWidgets);
+
+    await tester
+        .ensureVisible(find.widgetWithText(ElevatedButton, 'Add product'));
+    await tester.tap(
+      find.widgetWithText(ElevatedButton, 'Add product').hitTestable(),
+    );
+    await tester.pumpAndSettle();
+    expect(createCalls, 2);
+    expect(find.text('Added to your products'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -549,5 +619,73 @@ void main() {
 
     expect(promotedProducts, hasLength(2));
     expect(promotedProducts.last.id, 'dropship-product');
+  });
+
+  testWidgets('saved catalogue products persist and remain visibly unavailable',
+      (tester) async {
+    final available = supplierProduct(1);
+    final unavailable = CjCatalogProduct(
+      id: 'product-2',
+      sku: 'SKU-2',
+      title: 'Saved village lamp',
+      image: '',
+      category: 'Home',
+      productCostUsdMinor: 100,
+      estimatedProductCostMinor: 1800,
+      deliverableVariantId: 'variant-2',
+      estimatedDeliveryCostMinor: 900,
+      estimatedLandedCostMinor: 2700,
+      logisticAging: '8-14 days',
+      deliveryVerifiedAt: DateTime.now().toUtc().toIso8601String(),
+      saved: true,
+      availability: 'unavailable',
+    );
+    final savedProducts = <CjCatalogProduct>[unavailable];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SupplierCatalogPage(
+            searchCatalog: ({
+              required query,
+              required page,
+              required cursor,
+            }) async =>
+                CjCatalogPage(
+              products: [available],
+              page: 1,
+              totalPages: 1,
+              totalProducts: 1,
+              hasMore: false,
+              nextCursor: '',
+              catalogueRefreshing: false,
+              digitalPaymentsEnabled: false,
+            ),
+            loadSavedProducts: () async => List.of(savedProducts),
+            setSavedProduct: (product, {required bool saved}) async {
+              if (saved) {
+                savedProducts.add(available);
+              } else {
+                savedProducts.removeWhere(
+                  (savedProduct) => savedProduct.id == product.id,
+                );
+              }
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('save-supplier-product-product-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.favorite), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('catalog-saved-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('Saved village lamp'), findsOneWidget);
+    expect(find.text('Currently unavailable'), findsOneWidget);
   });
 }

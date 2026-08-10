@@ -7,16 +7,10 @@ import {
   presentCommerceOrder,
 } from "../lib/commerce/orderPresentation.js";
 
-test("buyer tracking masks CJ supplier carrier names", () => {
-  assert.equal(
-    buyerSafeTrackingCarrier("CJPacket Ordinary"),
-    "Spaza One delivery",
-  );
-  assert.equal(
-    buyerSafeTrackingCarrier("CJ Dropshipping"),
-    "Spaza One delivery",
-  );
-  assert.equal(buyerSafeTrackingCarrier("The Courier Guy"), "The Courier Guy");
+test("buyer tracking omits every delivery partner name", () => {
+  assert.equal(buyerSafeTrackingCarrier("CJPacket Ordinary"), "");
+  assert.equal(buyerSafeTrackingCarrier("CJ Dropshipping"), "");
+  assert.equal(buyerSafeTrackingCarrier("The Courier Guy"), "");
 });
 
 test("commerce orders are explicitly identified for WhatsApp tracking", () => {
@@ -50,7 +44,7 @@ test("commerce orders are explicitly identified for WhatsApp tracking", () => {
   assert.equal(row.items[0].productId, "product-1");
   assert.equal(row.createdAt, createdAt);
   assert.deepEqual(row.tracking, {
-    carrier: "Spaza One delivery",
+    carrier: "",
     number: "TRACK-123",
     url: "https://tracking.example.test/TRACK-123",
   });

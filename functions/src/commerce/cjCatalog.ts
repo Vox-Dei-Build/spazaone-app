@@ -1,13 +1,17 @@
-import { functions } from "../config/main";
+import { FieldValue } from "firebase-admin/firestore";
+import { db, functions } from "../config/main";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
 import { quoteCjVariant } from "./cjClient";
 import {
   catalogSearchNeedsDiscovery,
+  catalogProductRef,
   enqueueCatalogDemand,
+  enqueueProductRefresh,
   getCachedCatalogDocument,
   getCachedCatalogProduct,
   searchCachedCatalog,
 } from "./cjCatalogRepository";
+import { catalogPreview, savedCatalogSnapshot } from "./cjCatalogCache";
 import { commercePaymentsEnabled } from "./readiness";
 
 const catalogRuntime = functions.runWith({
@@ -161,6 +165,95 @@ export const getCjSupplierProduct = catalogRuntime.https.onCall(
         "Spaza One could not load that product right now. Please try again.",
       );
     }
+  },
+);
+
+/** Saves/removes a seller's catalogue bookmark using the stable product ID. */
+export const setSavedSupplierProduct = catalogRuntime.https.onCall(
+  async (data, context) => {
+    const input = await authorize(data, context);
+    const storeId = cleanId(input.storeId, "storeId");
+    const productId = cleanId(input.productId, "productId");
+    const saved = input.saved !== false;
+    const savedRef = db.doc(
+      `users/${storeId}/savedCatalogProducts/${productId}`,
+    );
+    if (!saved) {
+      await savedRef.delete();
+      return { productId, saved: false };
+    }
+    const product = await getCachedCatalogDocument(productId);
+    let availability = "available";
+    const snapshot: Record<string, unknown> = product
+      ? catalogPreview(product)
+      : savedCatalogSnapshot(input.snapshot, productId);
+    if (!product) {
+      const rawSnapshot = await catalogProductRef(productId).get();
+      const raw = rawSnapshot.data();
+      const checking = Boolean(rawSnapshot.exists && raw?.active !== false);
+      availability = checking ? "checking" : "unavailable";
+      if (checking && raw) {
+        await enqueueProductRefresh({
+          product: raw,
+          query: "saved",
+          priority: 40,
+        });
+      }
+    }
+    await savedRef.set(
+      {
+        productId,
+        snapshot,
+        availability,
+        savedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        schemaVersion: 1,
+      },
+      { merge: true },
+    );
+    return { productId, saved: true, availability };
+  },
+);
+
+/** Lists bookmarks even when their current catalogue row is unavailable. */
+export const listSavedSupplierProducts = catalogRuntime.https.onCall(
+  async (data, context) => {
+    const input = await authorize(data, context);
+    const storeId = cleanId(input.storeId, "storeId");
+    const saved = await db
+      .collection(`users/${storeId}/savedCatalogProducts`)
+      .orderBy("savedAt", "desc")
+      .limit(100)
+      .get();
+    const products = await Promise.all(
+      saved.docs.map(async (document) => {
+        const value = document.data();
+        const current = await getCachedCatalogDocument(document.id);
+        const rawSnapshot = current
+          ? null
+          : await catalogProductRef(document.id).get();
+        const raw = rawSnapshot?.data();
+        const checking = Boolean(rawSnapshot?.exists && raw?.active !== false);
+        if (checking) {
+          await enqueueProductRefresh({
+            product: raw as Record<string, unknown>,
+            query: "saved",
+            priority: 40,
+          });
+        }
+        return {
+          ...(current ? catalogPreview(current) : (value.snapshot ?? {})),
+          productId: document.id,
+          saved: true,
+          availability: current
+            ? "available"
+            : checking
+              ? "checking"
+              : "unavailable",
+        };
+      }),
+    );
+    return { products };
   },
 );
 

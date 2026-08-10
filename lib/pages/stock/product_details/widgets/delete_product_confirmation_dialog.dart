@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 
 class DeleteConfirmationDialog extends StatelessWidget {
-  final VoidCallback onConfirm;
-
-  const DeleteConfirmationDialog({Key? key, required this.onConfirm})
-      : super(key: key);
+  const DeleteConfirmationDialog({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -38,8 +35,7 @@ class DeleteConfirmationDialog extends StatelessWidget {
             style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
           ),
           onPressed: () {
-            onConfirm();
-            Navigator.of(context).pop();
+            Navigator.of(context).pop(true);
           },
         ),
       ],

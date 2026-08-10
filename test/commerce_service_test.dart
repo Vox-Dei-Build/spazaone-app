@@ -4,14 +4,22 @@ import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/services/commerce_service.dart';
 
 class _FunctionsError extends FirebaseFunctionsException {
-  _FunctionsError(String code)
-      : super(code: code, message: 'Supplier details failed');
+  _FunctionsError(String code, {Object? details})
+      : super(
+          code: code,
+          message: 'Supplier details failed',
+          details: details,
+        );
 }
 
 void main() {
   final testNow = DateTime.utc(2026, 8, 6, 10);
 
   test('debug catalogue routing stays isolated from stable callables', () {
+    expect(
+      dropshipCallableName('searchCjSupplierCatalog'),
+      'searchCjSupplierCatalogV2',
+    );
     expect(
       dropshipCallableName('searchCjSupplierCatalog', useV2: false),
       'searchCjSupplierCatalog',
@@ -98,25 +106,66 @@ void main() {
     );
   });
 
-  test('only explicit temporary callable failures preserve a cached quote', () {
-    for (final code in [
-      'unavailable',
-      'deadline-exceeded',
-      'resource-exhausted',
-    ]) {
-      expect(isTransientCommerceDetailsError(_FunctionsError(code)), isTrue);
-    }
-    for (final code in [
-      'not-found',
-      'failed-precondition',
-      'permission-denied',
-      'unauthenticated',
-      'internal',
-      'unknown',
-    ]) {
-      expect(isTransientCommerceDetailsError(_FunctionsError(code)), isFalse);
-    }
-    expect(isTransientCommerceDetailsError(StateError('unknown')), isFalse);
+  test('listing failures preserve actionable server outcomes', () {
+    final changedProduct = catalogProduct().toJson();
+    final changed = mapDropshipListingFailure(
+      _FunctionsError(
+        'aborted',
+        details: {
+          'reason': 'CATALOG_QUOTE_CHANGED',
+          'product': changedProduct,
+        },
+      ),
+    );
+    expect(changed, isA<DropshipListingQuoteChanged>());
+    expect(
+      (changed as DropshipListingQuoteChanged).product.id,
+      'product-1',
+    );
+
+    expect(
+      mapDropshipListingFailure(
+        _FunctionsError(
+          'unavailable',
+          details: const {'reason': 'CATALOG_REFRESHING'},
+        ),
+      ),
+      isA<DropshipListingRefreshing>(),
+    );
+    expect(
+      mapDropshipListingFailure(
+        _FunctionsError(
+          'failed-precondition',
+          details: const {'reason': 'CATALOG_UNAVAILABLE'},
+        ),
+      ),
+      isA<DropshipListingUnavailable>(),
+    );
+  });
+
+  test('missing Saved callable is detected without masking access failures',
+      () {
+    expect(
+        isMissingSavedCatalogCapability(_FunctionsError('not-found')), isTrue);
+    expect(
+      isMissingSavedCatalogCapability(_FunctionsError('unimplemented')),
+      isTrue,
+    );
+    expect(
+      isMissingSavedCatalogCapability(_FunctionsError('permission-denied')),
+      isFalse,
+    );
+  });
+
+  test('catalogue product can round-trip through local Saved storage', () {
+    final original = catalogProduct();
+    final restored = CjCatalogProduct.fromJson(original.toJson());
+
+    expect(restored.id, original.id);
+    expect(restored.deliverableVariantId, original.deliverableVariantId);
+    expect(
+        restored.estimatedLandedCostMinor, original.estimatedLandedCostMinor);
+    expect(restored.deliveryVerifiedAt, original.deliveryVerifiedAt);
   });
 
   test('product details retain the server-verified variant and quote', () {

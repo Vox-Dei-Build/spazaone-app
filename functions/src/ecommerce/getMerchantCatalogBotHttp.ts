@@ -18,6 +18,7 @@ type CatalogProduct = {
   isDropshipListing?: boolean;
   commerceListingId?: string;
   fulfilmentMode?: string;
+  deliveryEstimate?: { minDays: number; maxDays: number };
 };
 
 function cleanString(value: unknown): string | undefined {
@@ -98,6 +99,18 @@ export const getMerchantCatalogBotHttp = functions
             product.commerceListingId = commerceListingId;
             product.fulfilmentMode =
               cleanString(data.fulfilmentMode) ?? "seller_manual_cj_order";
+            const deliveryEstimate = data.deliveryEstimate;
+            if (
+              deliveryEstimate &&
+              typeof deliveryEstimate === "object" &&
+              Number.isSafeInteger(Number(deliveryEstimate.minDays)) &&
+              Number.isSafeInteger(Number(deliveryEstimate.maxDays))
+            ) {
+              product.deliveryEstimate = {
+                minDays: Number(deliveryEstimate.minDays),
+                maxDays: Number(deliveryEstimate.maxDays),
+              };
+            }
           }
           return product;
         })

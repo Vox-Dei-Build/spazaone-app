@@ -156,7 +156,7 @@ class _EntityTabState extends State<EntityTab> {
           // but should not ring the bell. Entries flagged `isRead: true`
           // by `markMessagesAsRead` must also be excluded so the badge
           // actually clears after the merchant opens the chat.
-          final chatUnread = unreadMessages
+          final legacyChatUnread = unreadMessages
               .where(
                 (msg) =>
                     msg['customerNumber'] == customerData['number'] &&
@@ -166,10 +166,17 @@ class _EntityTabState extends State<EntityTab> {
                     msg['isRead'] != true,
               )
               .length;
+          final nestedUnread = customerData['unreadCounts'];
+          final chatUnread = nestedUnread is Map &&
+                  nestedUnread['messages'] is num
+              ? (nestedUnread['messages'] as num).toInt()
+              : legacyChatUnread;
 
           // 🟠 Orders unread per customer (NEW)
-          final int ordersUnread =
-              (customerData['ordersUnreadCount'] as int?) ?? 0;
+          final int ordersUnread = nestedUnread is Map &&
+                  nestedUnread['orders'] is num
+              ? (nestedUnread['orders'] as num).toInt()
+              : (customerData['ordersUnreadCount'] as int?) ?? 0;
 
           // ✅ Single badge shows combined unread (messages + orders)
           final int combinedUnread = chatUnread + ordersUnread;

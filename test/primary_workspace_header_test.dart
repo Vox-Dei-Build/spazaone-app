@@ -54,8 +54,19 @@ void main() {
           final wallet = find.byKey(const ValueKey('page-header-wallet'));
           expect(brand, findsOneWidget);
           expect(wallet, findsOneWidget);
-          expect(tester.getSize(brand).width, greaterThanOrEqualTo(74));
-          expect(tester.getSize(wallet).width, lessThanOrEqualTo(96));
+          expect(tester.getSize(brand).width, greaterThanOrEqualTo(96));
+          expect(tester.getSize(brand).height, 36);
+          expect(tester.getSize(wallet).width, lessThanOrEqualTo(88));
+          final settings = find.byKey(
+            const ValueKey('page-header-settings'),
+          );
+          expect(settings, findsOneWidget);
+          expect(
+            tester.getTopLeft(settings).dx,
+            greaterThan(
+              tester.getTopLeft(find.byIcon(Icons.cloud_done_outlined)).dx,
+            ),
+          );
           expect(find.bySemanticsLabel('Spaza One'), findsOneWidget);
           expect(
             find.bySemanticsLabel(

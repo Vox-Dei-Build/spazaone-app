@@ -9,6 +9,13 @@ class OrdersUnreadService {
         .collection('users')
         .doc(userId)
         .snapshots()
-        .map((s) => (s.data()?['ordersUnreadCount'] as int?) ?? 0);
+        .map((snapshot) {
+      final data = snapshot.data();
+      final counts = data?['unreadCounts'];
+      if (counts is Map && counts['orders'] is num) {
+        return (counts['orders'] as num).toInt();
+      }
+      return (data?['ordersUnreadCount'] as num?)?.toInt() ?? 0;
+    });
   }
 }
