@@ -529,7 +529,9 @@ async function quoteListing(listing: FirebaseFirestore.DocumentData): Promise<{
 /** Bot-authenticated delivery resolution and exact review-price preparation. */
 export const prepareCommerceCheckout = functions
   .runWith({
-    secrets: ["CJ_API_KEY", "PASELLA_BOT_TOKEN", "GEOCODING_API_KEY"],
+    // Reverse geocoding is an optional enhancement. When no key is configured,
+    // the handler uses the validated one-clarification rural address fallback.
+    secrets: ["CJ_API_KEY", "PASELLA_BOT_TOKEN"],
     timeoutSeconds: 120,
     memory: "512MB",
   })
