@@ -583,6 +583,42 @@ test("one rural clarification safely falls back when geocoding is unavailable", 
   }
 });
 
+test("a WhatsApp rural pin reuses its supplied address without retyping known details", async () => {
+  await seedManualListing();
+  const key = process.env.GEOCODING_API_KEY;
+  delete process.env.GEOCODING_API_KEY;
+  try {
+    const prepared = await botPrepare({
+      delivery: {
+        kind: "location",
+        latitude: -30.54805172,
+        longitude: 27.36525977,
+        name: "Sona's Fresh bakes",
+        address:
+          "Masekeleng village Tienbank, Joe Gqabi District Municipality, 9762, Eastern Cape, ZA",
+      },
+    });
+    assert.equal(prepared.body.status, "ready");
+    assert.equal(prepared.body.deliveryAddress.source, "manual_review");
+    assert.equal(
+      prepared.body.deliveryAddress.city,
+      "Masekeleng village Tienbank",
+    );
+    assert.equal(prepared.body.deliveryAddress.province, "Eastern Cape");
+    assert.equal(prepared.body.deliveryAddress.postalCode, "9762");
+    assert.equal(
+      prepared.body.deliveryLabel,
+      "Masekeleng village Tienbank, Joe Gqabi District Municipality, 9762, Eastern Cape, ZA",
+    );
+    assert.deepEqual(prepared.body.deliveryAddress.location, {
+      latitude: -30.54805172,
+      longitude: 27.36525977,
+    });
+  } finally {
+    process.env.GEOCODING_API_KEY = key;
+  }
+});
+
 test("zero-result fallback preserves typed rural directions and fails closed when insufficient", async () => {
   await seedManualListing();
   axios.defaults.adapter = async (config) => ({

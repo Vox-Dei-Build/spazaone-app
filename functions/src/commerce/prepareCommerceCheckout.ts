@@ -205,25 +205,26 @@ function plusCodeFromText(value: string): string {
   ).toUpperCase();
 }
 
+function plausibleTown(value: string): string {
+  const candidate = text(value, 100)
+    .replace(/^the\s+/i, "")
+    .trim();
+  if (
+    !/[A-Za-z]{2}/.test(candidate) ||
+    /^(?:clinic|school|church|shop|store|spaza|garage|bridge|river|road|street|stand|house|landmark)\b/i.test(
+      candidate,
+    )
+  ) {
+    return "";
+  }
+  return candidate;
+}
+
 function nearestTownFromClarification(
   clarification: string,
   province: string,
   postalCode: string,
 ): string {
-  const plausibleTown = (value: string): string => {
-    const candidate = text(value, 100)
-      .replace(/^the\s+/i, "")
-      .trim();
-    if (
-      !/[A-Za-z]{2}/.test(candidate) ||
-      /^(?:clinic|school|church|shop|store|spaza|garage|bridge|river|road|street|stand|house|landmark)\b/i.test(
-        candidate,
-      )
-    ) {
-      return "";
-    }
-    return candidate;
-  };
   const explicit = clarification.match(
     /\b(?:nearest\s+town|town)\s*[:=-]\s*([A-Za-z][A-Za-z .'-]{1,80})(?=\s*[,;|]|\s+\d{4}\b|$)/i,
   )?.[1];
@@ -273,6 +274,42 @@ function nearestTownFromClarification(
   return plausibleTown(candidate);
 }
 
+function nearestTownFromAddress(
+  address: string,
+  province: string,
+  postalCode: string,
+): string {
+  const parts = address
+    .split(/[,;|\n]/)
+    .map((part) => text(part, 100))
+    .filter(Boolean);
+  for (const part of parts) {
+    const candidate = part
+      .replace(postalCode, " ")
+      .replace(province, " ")
+      .replace(/\b(?:ZA|South Africa)\b/gi, " ")
+      .replace(/\b(?:district|local|metropolitan)\s+municipality\b/gi, " ")
+      .replace(/^[,;| -]+|[,;| -]+$/g, "")
+      .trim();
+    if (!candidate || /^\d/.test(candidate)) continue;
+    if (/\b(?:district|municipality|province)\b/i.test(candidate)) continue;
+    const town = plausibleTown(candidate);
+    if (town) return town;
+  }
+  return "";
+}
+
+type DeliveryClarification = "landmark" | "postal_code" | "town" | "address";
+
+function missingDeliveryDetail(value: string): DeliveryClarification {
+  const province = provinceFromText(value);
+  const postalCode = value.match(/\b\d{4}\b/)?.[0] ?? "";
+  const town = nearestTownFromAddress(value, province, postalCode);
+  if (province && postalCode && !town) return "town";
+  if (province && town && !postalCode) return "postal_code";
+  return "address";
+}
+
 function manualDeliveryFallback(
   delivery: Record<string, unknown>,
   clarification: string,
@@ -281,16 +318,16 @@ function manualDeliveryFallback(
   deliveryLabel: string;
   plusCode?: string;
 } | null {
-  if (!clarification) return null;
-  const originalText = text(delivery.text, 500);
+  const originalText =
+    text(delivery.text, 500) ||
+    text(delivery.address, 500) ||
+    text(delivery.name, 200);
   const combined = [originalText, clarification].filter(Boolean).join(", ");
   const province = provinceFromText(combined);
   const postalCode = combined.match(/\b\d{4}\b/)?.[0] ?? "";
-  const nearestTown = nearestTownFromClarification(
-    clarification,
-    province,
-    postalCode,
-  );
+  const nearestTown =
+    nearestTownFromClarification(clarification, province, postalCode) ||
+    nearestTownFromAddress(originalText, province, postalCode);
   if (!province || !postalCode || !nearestTown) return null;
 
   const latitude = Number(delivery.latitude);
@@ -320,7 +357,7 @@ function manualDeliveryFallback(
       country: "ZA",
       source: "manual_review",
       ...(originalText ? { originalText } : {}),
-      landmark: clarification,
+      ...(clarification ? { landmark: clarification } : {}),
       ...(plusCode ? { plusCode } : {}),
       ...(location ? { location } : {}),
     },
@@ -333,7 +370,7 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
   address?: PreparedAddress;
   deliveryLabel?: string;
   plusCode?: string;
-  clarification?: "landmark" | "postal_code" | "address";
+  clarification?: DeliveryClarification;
   clarificationExhausted?: boolean;
 }> {
   const delivery =
@@ -362,6 +399,9 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
       };
     }
     location = { latitude, longitude };
+    // WhatsApp location messages commonly include a useful formatted address.
+    // Keep it instead of asking rural customers to retype known details.
+    originalText = text(delivery.address, 500) || text(delivery.name, 200);
   } else if (kind === "text") {
     originalText = text(delivery.text, 500);
     if (!originalText) {
@@ -382,7 +422,7 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
     const manual = fallback();
     return (
       manual ?? {
-        clarification: "address",
+        clarification: missingDeliveryDetail(originalText),
         clarificationExhausted: Boolean(clarification),
       }
     );
@@ -404,7 +444,7 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
     const manual = fallback();
     return (
       manual ?? {
-        clarification: "address",
+        clarification: missingDeliveryDetail(originalText),
         clarificationExhausted: Boolean(clarification),
       }
     );
@@ -414,7 +454,7 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
     const manual = fallback();
     return (
       manual ?? {
-        clarification: "address",
+        clarification: missingDeliveryDetail(originalText),
         clarificationExhausted: Boolean(clarification),
       }
     );
@@ -422,11 +462,18 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
   const components = Array.isArray(result.address_components)
     ? result.address_components
     : [];
-  const province = canonicalProvince(
-    component(components, "administrative_area_level_1"),
-  );
+  const combinedDeliveryText = [originalText, clarification]
+    .filter(Boolean)
+    .join(", ");
+  const province =
+    canonicalProvince(component(components, "administrative_area_level_1")) ||
+    provinceFromText(combinedDeliveryText);
   const postalFromAnswer = clarification.match(/\b\d{4}\b/)?.[0] ?? "";
-  const postalCode = component(components, "postal_code") || postalFromAnswer;
+  const postalFromOriginal = originalText.match(/\b\d{4}\b/)?.[0] ?? "";
+  const postalCode =
+    component(components, "postal_code") ||
+    postalFromAnswer ||
+    postalFromOriginal;
   const street = [
     component(components, "street_number"),
     component(components, "route", "premise"),
@@ -462,19 +509,24 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
       }
     );
   }
-  if (!street && !plusCode && !clarification) {
+  if (!street && !originalText && !plusCode && !clarification) {
     return { clarification: "landmark" };
   }
   // Rural reverse-geocodes can omit locality/admin-level-2 even when the
   // province and postal code are valid. Keep the server-prepared structure
   // compatible with final validation; the full formatted label remains the
   // customer-facing description.
-  const resolvedSuburb = locality || city || province;
-  const resolvedCity = city || locality || province;
-  const deliveryLabel = text(result.formatted_address, 300);
+  const suppliedTown = nearestTownFromAddress(
+    originalText,
+    province,
+    postalCode,
+  );
+  const resolvedSuburb = locality || suppliedTown || city || province;
+  const resolvedCity = city || suppliedTown || locality || province;
+  const deliveryLabel = originalText || text(result.formatted_address, 300);
   return {
     address: {
-      line1: street || plusCode || clarification,
+      line1: street || originalText || plusCode || clarification,
       line2: clarification && clarification !== postalCode ? clarification : "",
       suburb: resolvedSuburb,
       city: resolvedCity,
@@ -585,9 +637,11 @@ export const prepareCommerceCheckout = functions
         const prompt =
           field === "postal_code"
             ? "What is the four-digit postal code?"
-            : field === "landmark"
-              ? "Send one nearby landmark or stand description."
-              : "Reply with the nearest town, province and four-digit postal code in one message.";
+            : field === "town"
+              ? "What is the nearest town?"
+              : field === "landmark"
+                ? "Send one nearby landmark or stand description."
+                : "Reply with the nearest town, province and four-digit postal code in one message.";
         res.status(200).json({
           status: "needs_clarification",
           prompt,

@@ -6,6 +6,7 @@ import { requireBotRequest } from "../security/requestAuth";
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const MEDIA_FETCH_TIMEOUT_MS = 12_000;
 const TRUSTED_MEDIA_HOST = "files.bpcontent.cloud";
+export const GOOGLE_SPEECH_MODEL = "command_and_search" as const;
 
 export type VoiceAudioEncoding = "OGG_OPUS" | "WEBM_OPUS";
 
@@ -59,12 +60,26 @@ async function recognizeWithGoogle(
       encoding: request.encoding,
       sampleRateHertz: 48_000,
       languageCode: "en-ZA",
-      model: "latest_short",
+      // `latest_short` is not available for South African English. Google
+      // rejects the whole request with INVALID_ARGUMENT when that model is
+      // paired with en-ZA, so every otherwise-valid WhatsApp voice note used
+      // to fail before recognition. `command_and_search` is the supported
+      // short-utterance model for en-ZA.
+      model: GOOGLE_SPEECH_MODEL,
       enableAutomaticPunctuation: true,
     },
     audio: { content: request.audioContent },
   });
   return response;
+}
+
+function recognitionFailureCode(error: unknown): string {
+  if (!error || typeof error !== "object") return "unknown";
+  const candidate = error as { code?: unknown; status?: unknown };
+  const value = candidate.code ?? candidate.status;
+  return String(value ?? "unknown")
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .slice(0, 48);
 }
 
 export function isTrustedBotpressMediaUrl(value: unknown): value is string {
@@ -197,7 +212,12 @@ export async function transcribeVoiceNoteFromMedia(
       encoding,
       audioContent,
     });
-  } catch {
+  } catch (error) {
+    // Log only the provider status code. Do not log the media URL, audio,
+    // transcript, credentials or provider message.
+    console.warn("[voice-transcription] google recognition failed", {
+      serviceCode: recognitionFailureCode(error),
+    });
     throw new VoiceTranscriptionError("speech_recognition_failed", 502);
   }
 

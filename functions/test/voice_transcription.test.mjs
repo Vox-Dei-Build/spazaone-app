@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  GOOGLE_SPEECH_MODEL,
   encodingForContentType,
   isTrustedBotpressMediaUrl,
   transcribeVoiceNoteFromMedia,
 } from "../lib/bots/transcribeVoiceNoteBotHttp.js";
+
+it("uses the short-utterance model supported by South African English", () => {
+  assert.equal(GOOGLE_SPEECH_MODEL, "command_and_search");
+});
 
 const trustedUrl = "https://files.bpcontent.cloud/voice/customer-note";
 
