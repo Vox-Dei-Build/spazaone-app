@@ -52,8 +52,8 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
           }
 
           return ListView.separated(
-            separatorBuilder:
-                (_, __) => const Divider(color: Colors.grey, thickness: .3),
+            separatorBuilder: (_, __) =>
+                const Divider(color: Colors.grey, thickness: .3),
             itemCount: merged.length,
             itemBuilder: (context, index) {
               final item = merged[index];

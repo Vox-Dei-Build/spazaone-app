@@ -31,7 +31,7 @@ void main() {
 
     expect(find.byType(SegmentedButton), findsNothing);
     expect(find.text('Transaction history'), findsOneWidget);
-    expect(find.text('Banking details'), findsOneWidget);
+    expect(find.text('Payment setup'), findsOneWidget);
     expect(find.text('Fees and limits'), findsOneWidget);
     expect(find.text('Payments, top-ups and message charges'), findsNothing);
     expect(find.text('Account used for deposits and payouts'), findsNothing);
@@ -46,7 +46,7 @@ void main() {
     expect(lastTile.height, greaterThan(90));
 
     await tester.tap(find.text('Transaction history'));
-    await tester.tap(find.text('Banking details'));
+    await tester.tap(find.text('Payment setup'));
     await tester.tap(find.text('Fees and limits'));
     expect(historyTaps, 1);
     expect(bankingTaps, 1);

@@ -1,0 +1,49 @@
+{
+  "parameters": {
+    "FEATURE_TOP_UP_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Show Campaign Credits while online checkout remains independently gated."
+    },
+    "FEATURE_TOP_UP_PAYSTACK_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Development kill switch for Campaign Credit Paystack checkout."
+    },
+    "FEATURE_ONLINE_SALES_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Development kill switch for owned-stock and account payment affordances."
+    },
+    "FEATURE_BANKING_DETAILS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Show Payment Setup for development merchant verification QA."
+    },
+    "FEATURE_BALANCE_PAYOUT_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Legacy payout requests remain disabled in the development lane."
+    },
+    "FEATURE_MOVE_FUNDS_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Legacy wallet movement remains disabled."
+    },
+    "FEATURE_CASH_ADVANCE_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Cash Advance is outside the commerce release."
+    }
+  },
+  "version": {
+    "description": "SpazaOne Development fail-closed commerce defaults"
+  }
+}

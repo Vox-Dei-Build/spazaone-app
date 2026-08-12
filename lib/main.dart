@@ -13,6 +13,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/config/firebase_options.dart';
 import 'package:pasella/config/firebase_environment.dart';
+import 'package:pasella/config/spaza_environment.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
@@ -32,6 +33,7 @@ import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/fcm_service.dart';
+import 'package:pasella/services/environment_contract_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -550,6 +552,8 @@ Future<void> _initializeCoreServices() async {
     );
   }
 
+  await EnvironmentContractService.verify();
+
   // `useFirestoreEmulator` installs a host + plaintext transport in the SDK
   // settings. Replacing the settings object afterwards resets that host and
   // can silently send an emulator build back toward production Firestore.
@@ -953,6 +957,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // the user grants consent).
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            final app = child ?? const SizedBox.shrink();
+            if (SpazaRuntimeEnvironment.isProduction) return app;
+            return Banner(
+              message: SpazaRuntimeEnvironment.label,
+              location: BannerLocation.topEnd,
+              color: SpazaRuntimeEnvironment.isDevelopment
+                  ? const Color(0xFFD84315)
+                  : const Color(0xFF6A1B9A),
+              child: app,
+            );
+          },
           theme: kCustomThemeData,
           // PAS-UX-22: when the number-first flag is on, launch into the
           // single-field entry screen. Default (flag off) keeps the legacy

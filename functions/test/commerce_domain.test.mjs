@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canManuallyConfirmCommerceRefund,
   paymentStatusAfterAction,
   priceCommerceOrder,
   targetStatusForAction,
@@ -132,4 +133,10 @@ test("paid cancellation creates a refund path", () => {
     () => targetStatusForAction("cancelled", "mark_refunded", "paid"),
     /REFUND_NOT_PENDING/,
   );
+});
+
+test("provider refunds cannot be completed by a merchant action", () => {
+  assert.equal(canManuallyConfirmCommerceRefund("manual"), true);
+  assert.equal(canManuallyConfirmCommerceRefund("paystack"), false);
+  assert.equal(canManuallyConfirmCommerceRefund(""), false);
 });

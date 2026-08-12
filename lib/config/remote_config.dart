@@ -84,8 +84,7 @@ class RemoteConfigService implements RemoteConfigBoolReader {
           'PAYSTACK_EFT_PERCENT': dotenv.env['PAYSTACK_EFT_PERCENT'] ?? '2.0',
           'PAYSTACK_INT_PERCENT': dotenv.env['PAYSTACK_INT_PERCENT'] ?? '3.1',
           'PAYSTACK_INT_FLAT': dotenv.env['PAYSTACK_INT_FLAT'] ?? '1.0',
-          'PAYSTACK_SETTLEMENT_FEE':
-              dotenv.env['PAYSTACK_SETTLEMENT_FEE'] ?? '3.0',
+          'PAYSTACK_TRANSFER_FEE': dotenv.env['PAYSTACK_TRANSFER_FEE'] ?? '3.0',
           'PAYSTACK_VAT_PERCENT': dotenv.env['PAYSTACK_VAT_PERCENT'] ?? '15.0',
           // SMS template defaults — these mirror the production Remote Config
           // values (post-QW-0 with ASCII hyphens in the sign-off). Defaults
@@ -118,6 +117,8 @@ class RemoteConfigService implements RemoteConfigBoolReader {
               dotenv.env['FEATURE_OTP_RESEND_IN_DIALOG_ENABLED'] == 'true',
           'FEATURE_ONLINE_SALES_ENABLED':
               dotenv.env['FEATURE_ONLINE_SALES_ENABLED'] == 'true',
+          'FEATURE_TOP_UP_PAYSTACK_ENABLED':
+              dotenv.env['FEATURE_TOP_UP_PAYSTACK_ENABLED'] == 'true',
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED':
               (dotenv.env['FEATURE_MULTI_STORE_OPERATORS_ENABLED'] ?? 'true') ==
                   'true',

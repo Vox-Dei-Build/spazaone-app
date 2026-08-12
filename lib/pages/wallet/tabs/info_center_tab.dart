@@ -111,7 +111,7 @@ class BillingAccountMenu extends StatelessWidget {
         _AccountDestination(
           key: const ValueKey('billing-account-banking'),
           icon: Icons.account_balance_outlined,
-          title: 'Banking details',
+          title: 'Payment setup',
           color: Colors.blue.shade700,
           onTap: onBanking,
         ),
@@ -237,7 +237,7 @@ class BillingAccountDestinationPage extends StatelessWidget {
       case InfoView.history:
         return 'Transaction History';
       case InfoView.banking:
-        return 'Banking Details';
+        return 'Payment Setup';
       case InfoView.info:
         return 'Fees and Limits';
     }

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pasella/models/orders/canonical_order_status.dart';
 
 class CommerceOrder {
   const CommerceOrder({
@@ -63,19 +64,21 @@ class CommerceOrder {
   final String? trackingNumber;
   final String? trackingUrl;
 
+  CanonicalOrderStatus get canonicalStatus =>
+      canonicalOrderStatus(status, paymentStatus: paymentStatus);
+
   static int _minor(Object? value) => value is num ? value.toInt() : 0;
 
   factory CommerceOrder.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) {
     final data = document.data() ?? const <String, dynamic>{};
-    final buyer = Map<String, dynamic>.from(
-      data['buyer'] as Map? ?? const {},
-    );
+    final buyer = Map<String, dynamic>.from(data['buyer'] as Map? ?? const {});
     final items = data['lineItems'] as List? ?? const [];
-    final item = items.isNotEmpty
-        ? Map<String, dynamic>.from(items.first as Map)
-        : const <String, dynamic>{};
+    final item =
+        items.isNotEmpty
+            ? Map<String, dynamic>.from(items.first as Map)
+            : const <String, dynamic>{};
     final tracking = Map<String, dynamic>.from(
       data['tracking'] as Map? ?? const {},
     );

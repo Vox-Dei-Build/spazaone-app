@@ -2,11 +2,27 @@
 import { db, functions } from "../config/main";
 import { authorizeCallableMerchantOrBot } from "../security/requestAuth";
 import { FieldValue } from "firebase-admin/firestore";
+import { createHash } from "crypto";
 import {
   buildPaymentReceiptPatch,
   isPaymentAlreadyRecorded,
   isPaymentReceiptAction,
 } from "./orderPaymentPolicy";
+import {
+  commerceNotificationDocumentId,
+  CommerceNotificationResult,
+  deliverCommerceOrderNotificationOutbox,
+  enqueueCommerceOrderNotification,
+  OrderNotice,
+} from "../commerce/notifications";
+import {
+  consumeOwnedInventoryReservation,
+  releaseOwnedInventoryReservation,
+} from "../payments/v2/inventoryReservations";
+import {
+  executePaystackRefundV2,
+  openRefundCaseInTransactionV2,
+} from "../payments/v2/refunds";
 
 const ALLOWED = new Set([
   "ACCEPT_ORDER",
@@ -22,6 +38,115 @@ const ALLOWED = new Set([
   "SETTLE_BNPL",
   "CANCEL_ORDER",
 ]);
+
+function canonicalNoticeStatus(action: string): string {
+  switch (action) {
+    case "MARK_CASH_RECEIVED":
+    case "SETTLE_BNPL":
+      return "paid";
+    case "ACCEPT_ORDER":
+    case "ASSIGN_DRIVER":
+    case "UNASSIGN_DRIVER":
+    case "ACCEPT_BNPL":
+      return "preparing";
+    case "MARK_OUT_FOR_DELIVERY":
+      return "on_the_way";
+    case "MARK_DELIVERED":
+    case "MARK_COLLECTED":
+      return "delivered";
+    case "REJECT_ORDER":
+    case "CANCEL_ORDER":
+      return "cancelled";
+    case "REJECT_BNPL":
+      return "awaiting_payment";
+    default:
+      throw new Error("ORDER_NOTICE_ACTION_INVALID");
+  }
+}
+
+function legacyOrderNotice(input: {
+  merchantId: string;
+  orderId: string;
+  action: string;
+  order: Record<string, any>;
+  customer?: Record<string, any>;
+}): OrderNotice {
+  const customer = input.customer ?? {};
+  const amountRands = Number(input.order.total ?? input.order.amount ?? 0);
+  const amountDueMinor = Number.isFinite(amountRands)
+    ? Math.max(0, Math.round(amountRands * 100))
+    : 0;
+  const driver = input.order.driver ?? {};
+  const assignmentIdentity = [
+    String(driver.id ?? ""),
+    String(driver.phone ?? ""),
+    String(driver.name ?? ""),
+    input.order.driverAssignedAt instanceof Date
+      ? input.order.driverAssignedAt.toISOString()
+      : String(input.order.driverAssignedAt ?? ""),
+  ].join(":");
+  const unassignmentIdentity =
+    input.order.driverUnassignedAt instanceof Date
+      ? input.order.driverUnassignedAt.toISOString()
+      : String(input.order.driverUnassignedAt ?? "");
+  const eventKey =
+    input.action === "ASSIGN_DRIVER"
+      ? `assign_driver:${createHash("sha256")
+          .update(assignmentIdentity)
+          .digest("hex")
+          .slice(0, 24)}`
+      : input.action === "UNASSIGN_DRIVER"
+        ? `unassign_driver:${createHash("sha256")
+            .update(unassignmentIdentity)
+            .digest("hex")
+            .slice(0, 24)}`
+        : input.action.toLowerCase();
+  return {
+    orderId: input.orderId,
+    sellerId: input.merchantId,
+    customerId: String(input.order.customerId ?? input.order.customerID ?? ""),
+    buyerName: String(
+      customer.name ??
+        customer.fullName ??
+        input.order.customerName ??
+        "Customer",
+    ),
+    buyerPhone: String(
+      customer.number ?? customer.phone ?? input.order.customerPhone ?? "",
+    ),
+    status: canonicalNoticeStatus(input.action),
+    paymentMethod: String(
+      input.order.paymentMethod ?? input.order.type ?? "manual",
+    ).toLowerCase(),
+    amountDueMinor,
+    notifyBuyer: input.action !== "UNASSIGN_DRIVER",
+    orderKind: "merchant_stock",
+    eventKey,
+  };
+}
+
+async function deliverLegacyOrderNotice(
+  notificationId: string,
+): Promise<CommerceNotificationResult> {
+  if (!notificationId) {
+    return {
+      customer: "skipped",
+      buyerResult: "skipped_no_change",
+      sellerResult: "skipped_no_change",
+    };
+  }
+  try {
+    return await deliverCommerceOrderNotificationOutbox(notificationId);
+  } catch (error) {
+    console.error("[owned-order] notification queued", error);
+    return {
+      notificationId,
+      customer: "queued",
+      buyerResult: "pending",
+      sellerResult: "pending",
+    };
+  }
+}
 
 /**
  * Finalizes the inventory and clears the customer's cart for a given order.
@@ -62,6 +187,19 @@ async function finalizeInventoryOnce(opts: {
     .collection("carts")
     .doc(customerId);
 
+  const preflight = await saleRef.get();
+  if (!preflight.exists) throw new Error("SALE_NOT_FOUND");
+  const reservationId = String(
+    preflight.data()?.inventoryReservationId ?? "",
+  ).trim();
+  if (reservationId) {
+    await consumeOwnedInventoryReservation({
+      reservationId,
+      merchantId,
+      orderId,
+    });
+  }
+
   await db.runTransaction(async (tx) => {
     // --- READS (all of them) ---
     const saleSnap = await tx.get(saleRef);
@@ -73,7 +211,9 @@ async function finalizeInventoryOnce(opts: {
       return;
     }
 
-    const productIds: string[] = Object.keys(sale.products || {});
+    const productIds: string[] = reservationId
+      ? []
+      : Object.keys(sale.products || {});
     const productRefs = productIds.map((pid) =>
       db.collection("users").doc(merchantId).collection("products").doc(pid),
     );
@@ -121,6 +261,12 @@ async function finalizeInventoryOnce(opts: {
     // 3) Mark sale as inventory finalized
     tx.update(saleRef, {
       inventoryFinalized: true,
+      ...(reservationId
+        ? {
+            inventoryReservationConsumed: true,
+            inventoryReservationConsumedAt: FieldValue.serverTimestamp(),
+          }
+        : {}),
       inventoryFinalizedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -195,7 +341,7 @@ export const updateOrderPayment = functions.https.onCall(
         .doc(orderId);
 
       if (isPaymentReceiptAction(paymentAction)) {
-        const paymentRecordedNow = await db.runTransaction(async (tx) => {
+        const receipt = await db.runTransaction(async (tx) => {
           const current = await tx.get(ref);
           if (!current.exists) {
             throw new functions.https.HttpsError(
@@ -204,15 +350,47 @@ export const updateOrderPayment = functions.https.onCall(
             );
           }
           const currentData = current.data() || {};
-          if (isPaymentAlreadyRecorded(currentData)) return false;
+          if (isPaymentAlreadyRecorded(currentData)) {
+            return { paymentRecordedNow: false, notificationId: "" };
+          }
 
+          const customerId = String(
+            currentData.customerId ?? currentData.customerID ?? "",
+          );
+          const customer = customerId
+            ? await tx.get(
+                db.doc(`users/${merchantId}/customers/${customerId}`),
+              )
+            : null;
+
+          const notice = legacyOrderNotice({
+            merchantId,
+            orderId,
+            action: paymentAction,
+            order: currentData,
+            customer: customer?.data(),
+          });
+          const notificationId = commerceNotificationDocumentId(notice);
+          const existingNotice = await tx.get(
+            db.doc(`commerceNotificationOutbox/${notificationId}`),
+          );
           tx.update(
             ref,
             buildPaymentReceiptPatch(paymentAction, currentData, new Date()),
           );
-          return true;
+          if (!existingNotice.exists) {
+            enqueueCommerceOrderNotification(tx, notice);
+          }
+          return { paymentRecordedNow: true, notificationId };
         });
-        return { ok: true, paymentRecordedNow };
+        const notification = await deliverLegacyOrderNotice(
+          receipt.notificationId,
+        );
+        return {
+          ok: true,
+          paymentRecordedNow: receipt.paymentRecordedNow,
+          notification,
+        };
       }
 
       const snap = await ref.get();
@@ -233,6 +411,9 @@ export const updateOrderPayment = functions.https.onCall(
       const amount = Number(orderData.total ?? orderData.amount ?? 0) || 0;
       const products =
         orderData.products ?? orderData.items ?? orderData.cart ?? [];
+      let refundIntentId = "";
+      let refundAmountMinor = 0;
+      let refundCaseId = "";
 
       switch (paymentAction) {
         case "ACCEPT_ORDER": {
@@ -439,10 +620,28 @@ export const updateOrderPayment = functions.https.onCall(
         }
 
         case "CANCEL_ORDER": {
+          const reservationId = String(
+            orderData.inventoryReservationId ?? "",
+          ).trim();
+          if (
+            orderData.paymentRail === "paystack_v2" &&
+            orderData.paymentStatus === "paid"
+          ) {
+            refundIntentId = String(orderData.paymentIntentId ?? "");
+            refundAmountMinor =
+              Number(orderData.amountMinor) || Math.round(amount * 100);
+          } else if (reservationId && orderData.inventoryReserved === true) {
+            await releaseOwnedInventoryReservation({
+              reservationId,
+              reason: "order_cancelled",
+            });
+          }
           patch = {
             ...patch,
             status: "cancelled",
-            paymentStatus: orderData.paymentStatus || "cancelled",
+            paymentStatus: refundIntentId
+              ? "refund_pending"
+              : orderData.paymentStatus || "cancelled",
             cancelledAt: now,
           };
           // Remove cart lock if this order owns it (no item clear, no stock changes)
@@ -456,8 +655,41 @@ export const updateOrderPayment = functions.https.onCall(
         }
       }
 
-      await ref.update(patch);
-      return { ok: true };
+      const customer = customerId
+        ? await db.doc(`users/${merchantId}/customers/${customerId}`).get()
+        : null;
+      const notice = legacyOrderNotice({
+        merchantId,
+        orderId,
+        action: paymentAction,
+        order: { ...orderData, ...patch },
+        customer: customer?.data(),
+      });
+      const notificationId = commerceNotificationDocumentId(notice);
+      const outboxRef = db.doc(`commerceNotificationOutbox/${notificationId}`);
+      await db.runTransaction(async (tx) => {
+        const existingNotice = await tx.get(outboxRef);
+        if (refundIntentId) {
+          const refund = await openRefundCaseInTransactionV2(tx, {
+            intentId: refundIntentId,
+            idempotencyKey: `owned-order-cancel:${orderId}`,
+            refundAmountMinor,
+            reason: "merchant_cancelled_owned_order",
+            owner: "operations",
+          });
+          refundCaseId = refund.refundCaseId;
+          patch.refundCaseId = refundCaseId;
+        }
+        tx.update(ref, patch);
+        if (!existingNotice.exists) {
+          enqueueCommerceOrderNotification(tx, notice);
+        }
+      });
+      if (refundCaseId) {
+        await executePaystackRefundV2(refundCaseId).catch(() => undefined);
+      }
+      const notification = await deliverLegacyOrderNotice(notificationId);
+      return { ok: true, notification };
     } catch (err: any) {
       console.error("updateOrderPayment error", err);
       if (err?.code && err?.message) throw err;

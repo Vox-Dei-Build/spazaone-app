@@ -435,13 +435,14 @@ workflows:
           # so Gradle's signingConfigs.release block (which reads from
           # key.properties) will produce a release-signed bundle
           # without any local file shuffling.
-          flutter build appbundle --release \
+          flutter build appbundle --flavor production --release \
+            --dart-define=SPAZAONE_ENVIRONMENT=production \
             --dart-define=USE_FIREBASE_EMULATORS=false \
             --dart-define=DROPSHIP_CATALOG_V2=true
       - name: Verify 16 KB page-size compliance
         script: |
           set -euo pipefail
-          AAB="build/app/outputs/bundle/release/app-release.aab"
+          AAB="build/app/outputs/bundle/productionRelease/app-production-release.aab"
           if [ ! -f "$AAB" ]; then
             echo "::error:: AAB not found at $AAB"
             exit 1
@@ -600,7 +601,8 @@ workflows:
             echo "::error:: $HOME/export_options.plist missing \u2014 xcode-project use-profiles did not run or did not find a profile."
             exit 1
           fi
-          flutter build ipa --release \
+          flutter build ipa --flavor production --release \
+            --dart-define=SPAZAONE_ENVIRONMENT=production \
             --dart-define=USE_FIREBASE_EMULATORS=false \
             --dart-define=DROPSHIP_CATALOG_V2=true \
             --export-options-plist="$HOME/export_options.plist"

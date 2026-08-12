@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import {
   centsFromRands,
+  normalizePaystackSecret,
   verifyPaystackSignature,
 } from "../lib/payments/paystack/paystackSecurity.js";
 
@@ -22,6 +23,11 @@ test("accepts only the SHA-512 HMAC for the exact webhook bytes", () => {
     false,
   );
   assert.equal(verifyPaystackSignature(body, "not-a-signature", secret), false);
+});
+
+test("normalizes Secret Manager terminal whitespace before HMAC use", () => {
+  assert.equal(normalizePaystackSecret("  sk_test_example\n"), "sk_test_example");
+  assert.equal(normalizePaystackSecret(undefined), "");
 });
 
 test("normalizes ZAR rands to integer cents", () => {

@@ -72,17 +72,17 @@ OrdersTruthSurface resolveOrdersTruthSurface({
 
 @visibleForTesting
 OrderModel commerceOrderListModel(CommerceOrder order) => OrderModel(
-      id: order.id,
-      status: order.status,
-      total: order.amountDueMinor / 100,
-      itemsCount: 1,
-      createdAt: order.createdAt,
-      type: 'Dropship',
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      collected: order.status == 'delivered',
-      source: 'commerce',
-    );
+  id: order.id,
+  status: order.canonicalStatus.value,
+  total: order.amountDueMinor / 100,
+  itemsCount: 1,
+  createdAt: order.createdAt,
+  type: 'Dropship',
+  paymentMethod: order.paymentMethod,
+  paymentStatus: order.paymentStatus,
+  collected: order.status == 'delivered',
+  source: 'commerce',
+);
 
 class LinkedHashMapEntries {
   final List<MapEntry<DateTime, List<OrderModel>>> entries;
@@ -96,9 +96,9 @@ class OrdersController extends ChangeNotifier {
     required OrdersRepository repository,
     required String customerId,
     Duration searchDebounce = const Duration(milliseconds: 350),
-  })  : _repo = repository,
-        _customerId = customerId,
-        _searchDebounceDuration = searchDebounce;
+  }) : _repo = repository,
+       _customerId = customerId,
+       _searchDebounceDuration = searchDebounce;
 
   final OrdersRepository _repo;
   final String _customerId;
@@ -132,12 +132,12 @@ class OrdersController extends ChangeNotifier {
   bool get hasAnyError => _error != null || _commerceError != null;
 
   OrdersTruthSurface get truthSurface => resolveOrdersTruthSurface(
-        legacyLoading: _loading,
-        commerceLoading: _commerceLoading,
-        legacyError: _error,
-        commerceError: _commerceError,
-        hasOrders: allOrders.isNotEmpty,
-      );
+    legacyLoading: _loading,
+    commerceLoading: _commerceLoading,
+    legacyError: _error,
+    commerceError: _commerceError,
+    hasOrders: allOrders.isNotEmpty,
+  );
 
   /// Unfiltered server result. We hold onto it so client-side filter
   /// changes don't require another round-trip.
@@ -145,10 +145,7 @@ class OrdersController extends ChangeNotifier {
   List<OrderModel> _commerceOrderModels = const [];
   Map<String, CommerceOrder> _commerceOrdersById = const {};
 
-  List<OrderModel> get allOrders => [
-        ..._legacyOrders,
-        ..._commerceOrderModels,
-      ];
+  List<OrderModel> get allOrders => [..._legacyOrders, ..._commerceOrderModels];
 
   CommerceOrder? commerceOrderFor(String orderId) =>
       _commerceOrdersById[orderId];
@@ -161,8 +158,9 @@ class OrdersController extends ChangeNotifier {
     _commerceLoading = false;
     _commerceError = commerceOrdersSnapshotError(isFromCache: isFromCache);
     _commerceOrdersById = {for (final order in orders) order.id: order};
-    _commerceOrderModels =
-        orders.map(commerceOrderListModel).toList(growable: false);
+    _commerceOrderModels = orders
+        .map(commerceOrderListModel)
+        .toList(growable: false);
     notifyListeners();
   }
 
@@ -222,9 +220,10 @@ class OrdersController extends ChangeNotifier {
       final raw = o.createdAt;
       // Orders with no date land in a synthetic "Unknown" bucket at
       // the epoch — they sort last and the header renders as "Unknown".
-      final key = raw == null
-          ? DateTime.fromMillisecondsSinceEpoch(0)
-          : DateTime(raw.year, raw.month, raw.day);
+      final key =
+          raw == null
+              ? DateTime.fromMillisecondsSinceEpoch(0)
+              : DateTime(raw.year, raw.month, raw.day);
       final existing = buckets[key];
       if (existing == null) {
         buckets[key] = [o];
@@ -251,7 +250,7 @@ class OrdersController extends ChangeNotifier {
     for (final o in allOrders) {
       counts[OrderFilterGroup.all] = counts[OrderFilterGroup.all]! + 1;
       final s = computeStatus(o);
-      if (s == OrderStatus.pending) {
+      if (s == OrderStatus.pending || s == OrderStatus.awaitingPayment) {
         counts[OrderFilterGroup.pending] =
             counts[OrderFilterGroup.pending]! + 1;
       }
@@ -260,7 +259,9 @@ class OrdersController extends ChangeNotifier {
           s == OrderStatus.bnplRejected) {
         counts[OrderFilterGroup.bnpl] = counts[OrderFilterGroup.bnpl]! + 1;
       }
-      if (s == OrderStatus.outForDelivery || s == OrderStatus.delivered) {
+      if (s == OrderStatus.outForDelivery ||
+          s == OrderStatus.onTheWay ||
+          s == OrderStatus.delivered) {
         counts[OrderFilterGroup.delivery] =
             counts[OrderFilterGroup.delivery]! + 1;
       }

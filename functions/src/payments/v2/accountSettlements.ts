@@ -1,0 +1,723 @@
+import axios from "axios";
+import { createHash } from "crypto";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { db, functions } from "../../config/main";
+import { paystackSecret } from "../../config/environment";
+import {
+  deliverCommerceOrderNotificationOutbox,
+  enqueueCommerceOrderNotification,
+} from "../../commerce/notifications";
+import {
+  authenticateFirebaseRequest,
+  verifyBotRequest,
+} from "../../security/requestAuth";
+import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
+import {
+  buildMoneySnapshot,
+  calculatePlatformFeeMinor,
+  PaymentPurpose,
+  requirePositiveMinorUnits,
+  stableDocumentId,
+} from "./domain";
+import {
+  createPaymentIntentV2,
+  providerEventDocumentId,
+  recordProviderEventV2,
+} from "./financialCore";
+import { estimatedOwnedOrderProviderFeeMinor } from "./ownedOrders";
+import { paymentReadiness } from "./readiness";
+import { executePaystackRefundV2 } from "./refunds";
+
+const ACCOUNT_CHANNELS = ["card", "eft", "capitec_pay", "qr"] as const;
+type AccountChannel = (typeof ACCOUNT_CHANNELS)[number];
+
+function id(value: unknown, field: string): string {
+  const result = String(value ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(result)) {
+    throw new Error(`${field}_INVALID`);
+  }
+  return result;
+}
+
+function accountChannel(value: unknown): AccountChannel {
+  const result = String(value ?? "eft").trim() as AccountChannel;
+  if (!ACCOUNT_CHANNELS.includes(result)) {
+    throw new Error("ACCOUNT_CHANNEL_INVALID");
+  }
+  return result;
+}
+
+function paymentReference(intentId: string): string {
+  return `p2-acct-${createHash("sha256")
+    .update(intentId)
+    .digest("hex")
+    .slice(0, 31)}`;
+}
+
+export function accountOutstandingMinor(balanceValue: unknown): number {
+  const balance = Number(balanceValue ?? 0);
+  const minor = Math.round(Math.max(0, -balance) * 100);
+  if (!Number.isFinite(balance) || !Number.isSafeInteger(minor)) {
+    throw new Error("CUSTOMER_BALANCE_INVALID");
+  }
+  return minor;
+}
+
+export function nextRepaymentInstallmentMinor(input: {
+  remainingAmountMinor: number;
+  installmentAmountMinor: number;
+}): number {
+  const remaining = requirePositiveMinorUnits(
+    input.remainingAmountMinor,
+    "plan_remaining",
+  );
+  const installment = requirePositiveMinorUnits(
+    input.installmentAmountMinor,
+    "installment_amount",
+  );
+  return Math.min(remaining, installment);
+}
+
+async function authorizeMerchantOrBot(
+  req: functions.https.Request,
+  res: functions.Response,
+  merchantId: string,
+): Promise<string | null> {
+  if (verifyBotRequest(req)) return "botpress";
+  const uid = await authenticateFirebaseRequest(req, res, {
+    requireAppCheck: true,
+  });
+  if (!uid) return null;
+  await assertStoreAccess(uid, merchantId);
+  return uid;
+}
+
+function publicError(error: unknown): { status: number; message: string } {
+  if (error instanceof functions.https.HttpsError) {
+    return {
+      status: error.code === "permission-denied" ? 403 : 400,
+      message: error.message,
+    };
+  }
+  const code = error instanceof Error ? error.message : "";
+  const known: Record<string, [number, string]> = {
+    PAYMENT_CAPABILITY_DISABLED: [
+      409,
+      "Online account payments are not enabled for this shop yet.",
+    ],
+    CUSTOMER_NOT_FOUND: [404, "Customer account not found."],
+    CUSTOMER_ACCOUNT_SETTLED: [409, "This account is already settled."],
+    ACCOUNT_PAYMENT_EXCEEDS_BALANCE: [
+      409,
+      "The payment cannot exceed the current outstanding balance.",
+    ],
+    MERCHANT_SETTLEMENT_NOT_APPROVED: [
+      409,
+      "The shop's settlement account is not ready.",
+    ],
+    ACCOUNT_CHANNEL_INVALID: [400, "Choose an available payment method."],
+  };
+  const mapped = known[code];
+  return mapped
+    ? { status: mapped[0], message: mapped[1] }
+    : { status: 500, message: "The payment link could not be prepared." };
+}
+
+export const createAccountSettlementLinkV2 = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN", "PAYSTACK_SECRET_KEY"] })
+  .https.onRequest(async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+    try {
+      const merchantId = requireStoreId(
+        req.body?.merchantId ?? req.body?.storeId,
+      );
+      const initiatedBy = await authorizeMerchantOrBot(req, res, merchantId);
+      if (!initiatedBy) return;
+      const customerId = id(req.body?.customerId, "CUSTOMER_ID");
+      const planIdValue = String(req.body?.repaymentPlanId ?? "").trim();
+      const planId = planIdValue ? id(planIdValue, "REPAYMENT_PLAN_ID") : "";
+      const purpose: PaymentPurpose = planId
+        ? "repayment_installment"
+        : "account_settlement";
+      const readiness = await paymentReadiness({ merchantId, purpose });
+      if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+      const channel = accountChannel(req.body?.channel);
+      const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
+      const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
+      const [customer, profile, plan] = await Promise.all([
+        customerRef.get(),
+        profileRef.get(),
+        planId
+          ? db.doc(`repaymentPlans/${planId}`).get()
+          : Promise.resolve(null),
+      ]);
+      if (!customer.exists) throw new Error("CUSTOMER_NOT_FOUND");
+      const customerData = customer.data() ?? {};
+      const outstanding = accountOutstandingMinor(customerData.balance);
+      if (outstanding <= 0) throw new Error("CUSTOMER_ACCOUNT_SETTLED");
+      const requested =
+        req.body?.amountMinor == null
+          ? outstanding
+          : requirePositiveMinorUnits(req.body.amountMinor, "amount");
+      if (requested > outstanding) {
+        throw new Error("ACCOUNT_PAYMENT_EXCEEDS_BALANCE");
+      }
+      if (planId) {
+        if (
+          !plan?.exists ||
+          plan.get("merchantId") !== merchantId ||
+          plan.get("customerId") !== customerId ||
+          plan.get("status") !== "active"
+        ) {
+          throw new Error("REPAYMENT_PLAN_NOT_ACTIVE");
+        }
+        const remaining = requirePositiveMinorUnits(
+          plan.get("remainingAmountMinor"),
+          "plan_remaining",
+        );
+        const scheduled = requirePositiveMinorUnits(
+          plan.get("installmentAmountMinor"),
+          "installment_amount",
+        );
+        if (
+          requested !==
+          nextRepaymentInstallmentMinor({
+            remainingAmountMinor: remaining,
+            installmentAmountMinor: scheduled,
+          })
+        ) {
+          throw new Error("REPAYMENT_INSTALLMENT_AMOUNT_CHANGED");
+        }
+      }
+      const profileData = profile.data() ?? {};
+      const subaccountCode = String(profileData.paystackSubaccountCode ?? "");
+      if (
+        profileData.bankVerificationStatus !== "approved" ||
+        !/^ACCT_[A-Za-z0-9]+$/.test(subaccountCode)
+      ) {
+        throw new Error("MERCHANT_SETTLEMENT_NOT_APPROVED");
+      }
+      const platformFeeMinor = calculatePlatformFeeMinor({
+        grossAmountMinor: requested,
+      });
+      const providerFeeMinor = estimatedOwnedOrderProviderFeeMinor({
+        amountMinor: requested,
+        channel,
+      });
+      const money = buildMoneySnapshot({
+        grossAmountMinor: requested,
+        platformFeeMinor,
+        providerFeeMinor,
+      });
+      const idempotencyKey = id(req.body?.idempotencyKey, "IDEMPOTENCY_KEY");
+      const created = await createPaymentIntentV2({
+        merchantId,
+        purpose,
+        idempotencyKey,
+        expectedAmountMinor: requested,
+        businessBinding: {
+          type: planId ? "repayment_installment" : "customer_account",
+          id: planId || customerId,
+        },
+        money,
+        initiatedBy,
+        expiresAt: Timestamp.fromMillis(Date.now() + 30 * 60 * 1000),
+      });
+      const intentRef = db.doc(`paymentIntents/${created.intentId}`);
+      const reference = paymentReference(created.intentId);
+      const claimId = stableDocumentId("claim", [
+        created.intentId,
+        String(Date.now()),
+      ]);
+      const existing = await db.runTransaction(async (tx) => {
+        const intent = await tx.get(intentRef);
+        const data = intent.data() ?? {};
+        if (data.status === "initialized") {
+          return {
+            authorizationUrl: String(data.authorizationUrl ?? ""),
+            providerReference: String(data.providerReference ?? ""),
+          };
+        }
+        if (
+          data.initializationState === "processing" &&
+          Number(data.initializationLeaseUntilMs ?? 0) > Date.now()
+        ) {
+          throw new Error("PAYMENT_INITIALIZATION_IN_PROGRESS");
+        }
+        tx.update(intentRef, {
+          customerId,
+          repaymentPlanId: planId || null,
+          selectedChannel: channel,
+          paystackSubaccountCode: subaccountCode,
+          settlementDestination: {
+            bankName: String(profileData.bankName ?? ""),
+            accountName: String(profileData.resolvedAccountName ?? ""),
+            accountLast4: String(profileData.accountLast4 ?? ""),
+          },
+          initializationState: "processing",
+          initializationClaimId: claimId,
+          initializationLeaseUntilMs: Date.now() + 45_000,
+          initializationAttempts: FieldValue.increment(1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return { authorizationUrl: "", providerReference: "" };
+      });
+      if (existing.authorizationUrl && existing.providerReference) {
+        res.status(200).json({
+          authorizationUrl: existing.authorizationUrl,
+          reference: existing.providerReference,
+          intentId: created.intentId,
+          amountMinor: requested,
+          outstandingAmountMinor: outstanding,
+          deduped: true,
+        });
+        return;
+      }
+      try {
+        const email = String(req.body?.email ?? customerData.email ?? "")
+          .trim()
+          .toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(email))
+          throw new Error("BUYER_EMAIL_INVALID");
+        const callbackUrl = String(req.body?.callbackUrl ?? "").trim();
+        const response = await axios.post(
+          "https://api.paystack.co/transaction/initialize",
+          {
+            email,
+            amount: requested,
+            currency: "ZAR",
+            channels: [channel],
+            reference,
+            ...(callbackUrl ? { callback_url: callbackUrl } : {}),
+            subaccount: subaccountCode,
+            transaction_charge: platformFeeMinor,
+            bearer: "subaccount",
+            metadata: {
+              schemaVersion: 2,
+              purpose,
+              intentId: created.intentId,
+              merchantId,
+              customerId,
+              repaymentPlanId: planId || null,
+              selectedChannel: channel,
+            },
+          },
+          {
+            headers: { Authorization: `Bearer ${paystackSecret()}` },
+            timeout: 15_000,
+          },
+        );
+        const authorizationUrl = String(
+          response.data?.data?.authorization_url ?? "",
+        ).trim();
+        const providerReference = String(
+          response.data?.data?.reference ?? "",
+        ).trim();
+        if (!authorizationUrl || providerReference !== reference) {
+          throw new Error("PAYSTACK_INITIALIZE_RESPONSE_INVALID");
+        }
+        await db.runTransaction(async (tx) => {
+          const intent = await tx.get(intentRef);
+          const data = intent.data() ?? {};
+          if (
+            data.status === "initialized" &&
+            data.providerReference === reference
+          ) {
+            return;
+          }
+          if (data.initializationClaimId !== claimId) {
+            throw new Error("PAYMENT_INITIALIZATION_CLAIM_LOST");
+          }
+          const now = FieldValue.serverTimestamp();
+          tx.update(intentRef, {
+            status: "initialized",
+            previousStatus: "created",
+            provider: "paystack",
+            providerReference: reference,
+            authorizationUrl,
+            initializationState: "completed",
+            initializationLeaseUntilMs: 0,
+            initializedAt: now,
+            updatedAt: now,
+          });
+        });
+        res.status(200).json({
+          authorizationUrl,
+          reference,
+          intentId: created.intentId,
+          amountMinor: requested,
+          outstandingAmountMinor: outstanding,
+          deduped: created.deduped,
+        });
+      } catch (error) {
+        await intentRef.set(
+          {
+            initializationState: "retryable",
+            initializationLeaseUntilMs: 0,
+            initializationErrorCode: "provider_initialization_failed",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        throw error;
+      }
+    } catch (error) {
+      console.error("[payments-v2] account link initialization failed", {
+        code: error instanceof Error ? error.message : "unknown",
+      });
+      const response = publicError(error);
+      res.status(response.status).json({ error: response.message });
+    }
+  });
+
+export async function applyVerifiedAccountSettlementV2(
+  transaction: Record<string, any>,
+  rawBody: Buffer,
+): Promise<{ deduped: boolean; intentId: string; transactionId?: string }> {
+  const metadata = transaction.metadata ?? {};
+  const purpose = String(metadata.purpose ?? "") as PaymentPurpose;
+  if (!["account_settlement", "repayment_installment"].includes(purpose)) {
+    throw new Error("ACCOUNT_PAYMENT_PURPOSE_MISMATCH");
+  }
+  const intentId = id(metadata.intentId, "INTENT_ID");
+  const merchantId = requireStoreId(metadata.merchantId);
+  const customerId = id(metadata.customerId, "CUSTOMER_ID");
+  const reference = id(transaction.reference, "REFERENCE");
+  const amountMinor = requirePositiveMinorUnits(transaction.amount, "amount");
+  const providerFeeMinor = Number(transaction.fees ?? 0);
+  if (!Number.isSafeInteger(providerFeeMinor) || providerFeeMinor < 0) {
+    throw new Error("PROVIDER_FEE_INVALID");
+  }
+  const providerId = String(transaction.id ?? "").trim();
+  const eventInput = {
+    provider: "paystack" as const,
+    ...(providerId ? { providerEventId: `charge-${providerId}` } : {}),
+    eventType: "charge.success",
+    reference,
+    rawBody,
+    intentId,
+  };
+  const recorded = await recordProviderEventV2(eventInput);
+  const eventRef = db.doc(
+    `paymentEvents/${providerEventDocumentId(eventInput)}`,
+  );
+  const intentRef = db.doc(`paymentIntents/${intentId}`);
+  const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
+  const ledgerRef = customerRef
+    .collection("transactions")
+    .doc(`paystack_${intentId}`);
+  const settlementRef = db.doc(
+    `settlements/${stableDocumentId("st", [intentId])}`,
+  );
+  let deduped = recorded.deduped;
+  let notificationId = "";
+  let refundCaseId = "";
+  await db.runTransaction(async (tx) => {
+    const [intent, event, customer, ledger, settlement] = await Promise.all([
+      tx.get(intentRef),
+      tx.get(eventRef),
+      tx.get(customerRef),
+      tx.get(ledgerRef),
+      tx.get(settlementRef),
+    ]);
+    if (!intent.exists || !event.exists || !customer.exists) {
+      throw new Error("ACCOUNT_PAYMENT_CORE_MISSING");
+    }
+    const intentData = intent.data() ?? {};
+    if (
+      intentData.purpose !== purpose ||
+      intentData.merchantId !== merchantId ||
+      intentData.customerId !== customerId ||
+      intentData.providerReference !== reference ||
+      Number(intentData.expectedAmountMinor) !== amountMinor ||
+      String(intentData.selectedChannel ?? "") !==
+        String(transaction.channel ?? "") ||
+      String(metadata.repaymentPlanId ?? "") !==
+        String(intentData.repaymentPlanId ?? "")
+    ) {
+      throw new Error("ACCOUNT_PAYMENT_BINDING_MISMATCH");
+    }
+    const applied = Array.isArray(intentData.appliedProviderEventIds)
+      ? intentData.appliedProviderEventIds.map(String)
+      : [];
+    if (applied.includes(eventRef.id)) {
+      deduped = true;
+      return;
+    }
+    if (ledger.exists || settlement.exists) {
+      throw new Error("ACCOUNT_PAYMENT_IDEMPOTENCY_COLLISION");
+    }
+    const currentOutstanding = accountOutstandingMinor(
+      (customer.data() ?? {}).balance,
+    );
+    const now = FieldValue.serverTimestamp();
+    if (amountMinor > currentOutstanding || currentOutstanding <= 0) {
+      refundCaseId = stableDocumentId("rf", [intentId, "account_overpayment"]);
+      tx.create(db.doc(`refundCases/${refundCaseId}`), {
+        refundCaseId,
+        intentId,
+        refundAmountMinor: amountMinor,
+        currency: "ZAR",
+        status: "requested",
+        provider: "paystack",
+        providerConfirmed: false,
+        providerReference: reference,
+        reason: "account_balance_changed_before_payment_confirmation",
+        owner: "operations",
+        attemptCount: 0,
+        schemaVersion: 2,
+        createdAt: now,
+        updatedAt: now,
+      });
+      tx.update(intentRef, {
+        status: "refund_pending",
+        requestedRefundMinor: amountMinor,
+        providerAmountMinor: amountMinor,
+        providerFeeMinor,
+        appliedProviderEventIds: FieldValue.arrayUnion(eventRef.id),
+        updatedAt: now,
+      });
+      tx.update(eventRef, {
+        processingState: "applied_refund_pending",
+        attemptCount: FieldValue.increment(1),
+        processedAt: now,
+        updatedAt: now,
+      });
+      return;
+    }
+    const repaymentPlanId = String(intentData.repaymentPlanId ?? "");
+    const planRef = repaymentPlanId
+      ? db.doc(`repaymentPlans/${id(repaymentPlanId, "PLAN_ID")}`)
+      : null;
+    const plan = planRef ? await tx.get(planRef) : null;
+    if (planRef && (!plan?.exists || plan.get("status") !== "active")) {
+      throw new Error("REPAYMENT_PLAN_NOT_ACTIVE");
+    }
+    const platformFeeMinor = Number(intentData.money?.platformFeeMinor ?? 0);
+    const money = buildMoneySnapshot({
+      grossAmountMinor: amountMinor,
+      platformFeeMinor,
+      providerFeeMinor,
+    });
+    const customerData = customer.data() ?? {};
+    const transactionData = {
+      type: "Payment",
+      amount: amountMinor / 100,
+      amountMinor,
+      date: now,
+      status: "PAID",
+      remarks: "Online account payment",
+      source: "paystack_v2",
+      paymentIntentId: intentId,
+      paymentReference: reference,
+      provider: "paystack",
+      schemaVersion: 2,
+    };
+    tx.create(ledgerRef, transactionData);
+    tx.set(
+      customerRef,
+      { lastTransaction: transactionData, updatedAt: now },
+      { merge: true },
+    );
+    tx.create(settlementRef, {
+      settlementId: settlementRef.id,
+      intentId,
+      merchantId,
+      customerId,
+      provider: "paystack",
+      subaccountCode: String(intentData.paystackSubaccountCode ?? ""),
+      destination: intentData.settlementDestination ?? {},
+      grossAmountMinor: amountMinor,
+      platformFeeMinor,
+      providerFeeMinor,
+      merchantNetProceedsMinor: money.merchantNetProceedsMinor,
+      status: "pending",
+      currency: "ZAR",
+      schemaVersion: 2,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (planRef && plan) {
+      const remainingBefore = requirePositiveMinorUnits(
+        plan.get("remainingAmountMinor"),
+        "plan_remaining",
+      );
+      if (amountMinor > remainingBefore) {
+        throw new Error("REPAYMENT_INSTALLMENT_EXCEEDS_REMAINING");
+      }
+      const remainingAfter = remainingBefore - amountMinor;
+      tx.update(planRef, {
+        paidAmountMinor: FieldValue.increment(amountMinor),
+        remainingAmountMinor: remainingAfter,
+        completedInstallments: FieldValue.increment(1),
+        status: remainingAfter === 0 ? "completed" : "active",
+        lastPaymentIntentId: intentId,
+        updatedAt: now,
+        ...(remainingAfter === 0 ? { completedAt: now } : {}),
+      });
+    }
+    tx.update(intentRef, {
+      status: "paid",
+      previousStatus: String(intentData.status ?? "initialized"),
+      providerAmountMinor: amountMinor,
+      providerFeeMinor,
+      actualMoney: money,
+      appliedProviderEventIds: FieldValue.arrayUnion(eventRef.id),
+      paidAt: now,
+      updatedAt: now,
+    });
+    tx.update(eventRef, {
+      processingState: "applied",
+      attemptCount: FieldValue.increment(1),
+      processedAt: now,
+      updatedAt: now,
+    });
+    notificationId = enqueueCommerceOrderNotification(tx, {
+      orderId: intentId,
+      sellerId: merchantId,
+      customerId,
+      buyerName: String(customerData.name ?? "Customer"),
+      buyerPhone: String(customerData.number ?? customerData.phone ?? ""),
+      status: "paid",
+      paymentMethod: "paystack",
+      amountDueMinor: amountMinor,
+      orderKind: "merchant_stock",
+      noticeKind: "account_payment",
+      eventKey: eventRef.id,
+    });
+  });
+  if (refundCaseId) {
+    await executePaystackRefundV2(refundCaseId).catch((error) => {
+      console.error("[payments-v2] account refund submission queued", {
+        refundCaseId,
+        code: error instanceof Error ? error.message : "unknown",
+      });
+    });
+  } else if (notificationId) {
+    await deliverCommerceOrderNotificationOutbox(notificationId).catch(
+      () => undefined,
+    );
+  }
+  return {
+    deduped,
+    intentId,
+    ...(refundCaseId ? {} : { transactionId: ledgerRef.id }),
+  };
+}
+
+const CADENCE_DAYS = { weekly: 7, fortnightly: 14, monthly: 30 } as const;
+
+/** Server-only foundation; exposure is independently gated by its capability. */
+export const createRepaymentPlanV2 = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+    try {
+      const merchantId = requireStoreId(
+        req.body?.merchantId ?? req.body?.storeId,
+      );
+      const initiatedBy = await authorizeMerchantOrBot(req, res, merchantId);
+      if (!initiatedBy) return;
+      const readiness = await paymentReadiness({
+        merchantId,
+        purpose: "repayment_installment",
+      });
+      if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+      const customerId = id(req.body?.customerId, "CUSTOMER_ID");
+      const customer = await db
+        .doc(`users/${merchantId}/customers/${customerId}`)
+        .get();
+      if (!customer.exists) throw new Error("CUSTOMER_NOT_FOUND");
+      const outstanding = accountOutstandingMinor(
+        (customer.data() ?? {}).balance,
+      );
+      const totalAmountMinor = requirePositiveMinorUnits(
+        req.body?.totalAmountMinor,
+        "total_amount",
+      );
+      const installmentAmountMinor = requirePositiveMinorUnits(
+        req.body?.installmentAmountMinor,
+        "installment_amount",
+      );
+      if (
+        totalAmountMinor > outstanding ||
+        installmentAmountMinor > totalAmountMinor
+      ) {
+        throw new Error("REPAYMENT_PLAN_AMOUNT_INVALID");
+      }
+      const cadence = String(
+        req.body?.cadence ?? "",
+      ) as keyof typeof CADENCE_DAYS;
+      if (!CADENCE_DAYS[cadence]) throw new Error("REPAYMENT_CADENCE_INVALID");
+      const startAtMs = Number(req.body?.startAtMs);
+      if (
+        !Number.isSafeInteger(startAtMs) ||
+        startAtMs < Date.now() ||
+        startAtMs > Date.now() + 366 * 24 * 60 * 60 * 1000
+      ) {
+        throw new Error("REPAYMENT_START_INVALID");
+      }
+      const key = id(req.body?.idempotencyKey, "IDEMPOTENCY_KEY");
+      const planId = stableDocumentId("rp", [merchantId, customerId, key]);
+      const planRef = db.doc(`repaymentPlans/${planId}`);
+      let deduped = false;
+      await db.runTransaction(async (tx) => {
+        const existing = await tx.get(planRef);
+        if (existing.exists) {
+          if (
+            existing.get("merchantId") !== merchantId ||
+            existing.get("customerId") !== customerId ||
+            Number(existing.get("totalAmountMinor")) !== totalAmountMinor
+          ) {
+            throw new Error("REPAYMENT_PLAN_IDEMPOTENCY_MISMATCH");
+          }
+          deduped = true;
+          return;
+        }
+        const now = FieldValue.serverTimestamp();
+        tx.create(planRef, {
+          planId,
+          merchantId,
+          customerId,
+          totalAmountMinor,
+          paidAmountMinor: 0,
+          remainingAmountMinor: totalAmountMinor,
+          installmentAmountMinor,
+          cadence,
+          cadenceDays: CADENCE_DAYS[cadence],
+          startAt: Timestamp.fromMillis(startAtMs),
+          nextDueAt: Timestamp.fromMillis(startAtMs),
+          completedInstallments: 0,
+          status: "active",
+          automaticDebit: false,
+          savedCardCharging: false,
+          interestMinor: 0,
+          penaltyMinor: 0,
+          initiatedBy,
+          schemaVersion: 2,
+          createdAt: now,
+          updatedAt: now,
+        });
+      });
+      res.status(200).json({
+        planId,
+        status: "active",
+        totalAmountMinor,
+        installmentAmountMinor,
+        cadence,
+        deduped,
+      });
+    } catch (error) {
+      console.error("[payments-v2] repayment plan creation failed", {
+        code: error instanceof Error ? error.message : "unknown",
+      });
+      const response = publicError(error);
+      res.status(response.status).json({ error: response.message });
+    }
+  });

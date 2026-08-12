@@ -153,3 +153,15 @@ export function paymentStatusAfterAction(
   if (action === "mark_refunded") return "refunded";
   return current;
 }
+
+/** Manual refund confirmation is only valid for money collected outside the
+ * provider. Paystack refunds are advanced by provider-confirmed V2 events. */
+export function canManuallyConfirmCommerceRefund(
+  paymentProvider: unknown,
+): boolean {
+  return (
+    String(paymentProvider ?? "")
+      .trim()
+      .toLowerCase() === "manual"
+  );
+}

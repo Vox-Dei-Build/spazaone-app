@@ -13,6 +13,8 @@ import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/wallet_utils.dart';
 import 'package:provider/provider.dart';
 
+/// Legacy enum values are retained for deep-link compatibility. In 4.8,
+/// `withdraw` opens Settlements and `topUp` opens Campaign Credits.
 enum WalletInitialTab { withdraw, topUp, account }
 
 /// Visual summary for the balances merchants use most.
@@ -39,22 +41,23 @@ class BillingBalancePanel extends StatelessWidget {
     final campaignColor = campaignBalance < 5 && onCampaignTap != null
         ? Colors.orange.shade800
         : Colors.green.shade700;
+    final campaign = _BillingBalanceItem(
+      label: 'Campaign Credits',
+      scope: sharedCampaignCredits ? 'All stores' : null,
+      amount: campaignBalance,
+      icon: Icons.campaign_outlined,
+      color: campaignColor,
+      onTap: onCampaignTap,
+    );
+    final legacy = _BillingBalanceItem(
+      label: 'Legacy Balance',
+      scope: storeName,
+      amount: salesBalance,
+      icon: Icons.history_rounded,
+      color: Colors.orange.shade900,
+    );
     final items = <_BillingBalanceItem>[
-      _BillingBalanceItem(
-        label: 'Campaign credits',
-        scope: sharedCampaignCredits ? 'All stores' : null,
-        amount: campaignBalance,
-        icon: Icons.campaign_outlined,
-        color: campaignColor,
-        onTap: onCampaignTap,
-      ),
-      _BillingBalanceItem(
-        label: 'Sales balance',
-        scope: storeName,
-        amount: salesBalance,
-        icon: Icons.account_balance_wallet_outlined,
-        color: Colors.blue.shade700,
-      ),
+      campaign,
       if (cashAdvanceBalance case final amount?)
         _BillingBalanceItem(
           label: 'Cash advance',
@@ -69,33 +72,31 @@ class BillingBalancePanel extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(
-            height: 154,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _BillingBalanceTile(
-                    key: const ValueKey('billing-balance-campaign'),
-                    item: items[0],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _BillingBalanceTile(
-                    key: const ValueKey('billing-balance-sales'),
-                    item: items[1],
-                  ),
-                ),
-              ],
+            height: 112,
+            child: _BillingBalanceTile(
+              key: const ValueKey('billing-balance-campaign'),
+              item: campaign,
+              horizontal: true,
             ),
           ),
-          if (items.length > 2) ...[
+          if (salesBalance > 0) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 88,
+              child: _BillingBalanceTile(
+                key: const ValueKey('billing-balance-legacy'),
+                item: legacy,
+                horizontal: true,
+              ),
+            ),
+          ],
+          if (cashAdvanceBalance != null) ...[
             const SizedBox(height: 10),
             SizedBox(
               height: 88,
               child: _BillingBalanceTile(
                 key: const ValueKey('billing-balance-cash-advance'),
-                item: items[2],
+                item: items.last,
                 horizontal: true,
               ),
             ),
@@ -292,9 +293,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }
 
   int _getTabCount() {
-    // Always show the Withdraw tab. Top-up is optional and account
-    // features are grouped under a single Account tab.
-    int count = 1; // Withdraw
+    // Settlements is always present. Credits and setup/info respect the
+    // existing feature flags so released configurations remain compatible.
+    int count = 1; // Settlements
     if (FeatureFlags.enableTopUp) count++;
     if (FeatureFlags.enableCashAdvance ||
         FeatureFlags.enableTransactionHistory ||
@@ -348,7 +349,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     final bool hasInfoTab = _hasInfoTab;
 
     if (hasInfoTab) {
-      tabLabels.add(const Tab(text: 'Account'));
+      tabLabels.add(const Tab(text: 'Setup & Info'));
       tabViews.add(
         InfoCenterTab(
           walletVM: walletVM,
@@ -358,18 +359,19 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     }
 
     if (FeatureFlags.enableTopUp) {
-      tabLabels.add(const Tab(text: 'Top Up'));
+      tabLabels.add(const Tab(text: 'Campaign Credits'));
       tabViews.add(const TopUpTab());
     }
 
-    // Withdraw tab always enabled.
-    tabLabels.add(const Tab(text: 'Withdraw'));
+    // Verified online proceeds settle directly; there is no public withdrawal
+    // action for V2 money.
+    tabLabels.add(const Tab(text: 'Settlements'));
     tabViews.add(const SalesBalanceTab());
 
     return DefaultTabController(
       length: tabLabels.length,
       child: Scaffold(
-        appBar: const CustomAppBar(title: 'Billing'),
+        appBar: const CustomAppBar(title: 'Billing & Payments'),
         body: SafeArea(
           child: Padding(
             padding: LayoutConstants.padding10Horizontal,

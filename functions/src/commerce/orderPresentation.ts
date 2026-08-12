@@ -32,6 +32,40 @@ export function isOpenCommerceOrder(value: unknown): boolean {
   ]).has(String(record(value).status ?? "").toLowerCase());
 }
 
+export type CanonicalOrderStatus =
+  | "awaiting_payment"
+  | "paid"
+  | "preparing"
+  | "on_the_way"
+  | "delivered"
+  | "cancelled"
+  | "refunded";
+
+/** Customer-facing lifecycle shared by stock and supplier orders. Source
+ * states remain untouched so released operational paths keep working. */
+export function canonicalCommerceOrderStatus(
+  statusValue: unknown,
+  paymentStatusValue?: unknown,
+): CanonicalOrderStatus {
+  const status = String(statusValue ?? "")
+    .trim()
+    .toLowerCase();
+  const paymentStatus = String(paymentStatusValue ?? "")
+    .trim()
+    .toLowerCase();
+  if (status === "refunded" || paymentStatus === "refunded") return "refunded";
+  if (status === "cancelled") return "cancelled";
+  if (status === "delivered") return "delivered";
+  if (["shipped", "out_for_delivery", "on_the_way"].includes(status)) {
+    return "on_the_way";
+  }
+  if (["submitted_for_fulfilment", "preparing"].includes(status)) {
+    return "preparing";
+  }
+  if (status === "paid" || paymentStatus === "paid") return "paid";
+  return "awaiting_payment";
+}
+
 /** Released readers may still call this helper, but partner names are no
  * longer part of the customer contract. */
 export function buyerSafeTrackingCarrier(_value: unknown): string {
@@ -84,7 +118,11 @@ export function presentCommerceOrder(
     (sum, item) => sum + finiteNumber(item.quantity),
     0,
   );
-  const status = String(order.status ?? "pending_payment");
+  const sourceStatus = String(order.status ?? "pending_payment");
+  const status = canonicalCommerceOrderStatus(
+    sourceStatus,
+    order.paymentStatus,
+  );
 
   return {
     id,
@@ -92,6 +130,7 @@ export function presentCommerceOrder(
     source: "commerce",
     orderKind: "supplier_delivery",
     status,
+    sourceStatus,
     total: finiteNumber(order.amountDueMinor) / 100,
     amount: finiteNumber(order.amountDueMinor) / 100,
     itemsCount: itemsCount || 1,

@@ -5,6 +5,16 @@ import 'package:http/http.dart' as http;
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/config/function_endpoints.dart';
 
+class BotpressConversationException implements Exception {
+  const BotpressConversationException(this.code, this.message);
+
+  final String code;
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class BotpressService {
   BotpressService._() : _http = http.Client();
 
@@ -30,9 +40,10 @@ class BotpressService {
             const <String, dynamic>{};
         final createdAtStr =
             (msg['createdAt'] ?? msg['created_at'])?.toString();
-        final created = createdAtStr != null
-            ? DateTime.parse(createdAtStr).toLocal()
-            : DateTime.now();
+        final created = createdAtStr == null
+            ? DateTime.fromMillisecondsSinceEpoch(0)
+            : DateTime.tryParse(createdAtStr)?.toLocal() ??
+                DateTime.fromMillisecondsSinceEpoch(0);
 
         // PAS-AI-02: full Botpress payload coverage. Previously only `text` /
         // `value` were extracted, so `card`, `carousel`, `choice`, `dropdown`,
@@ -67,11 +78,17 @@ class BotpressService {
           'payload': payload,
         };
       }).toList(growable: false);
-    } catch (e, stack) {
-      // Keep failures non-fatal to the UI
+    } on BotpressConversationException {
+      rethrow;
+    } catch (error, stack) {
+      // Structured, non-secret diagnostic; the ViewModel keeps Twilio and the
+      // Firestore truth surface visible while showing a human fallback.
       // ignore: avoid_print
-      print('🔥 Botpress fetch error: $e\n$stack');
-      return const [];
+      print('[botpress] MESSAGE_MAPPING_FAILED: $error\n$stack');
+      throw const BotpressConversationException(
+        'BOTPRESS_MESSAGE_MAPPING_FAILED',
+        'Bot conversation history could not be read. Other message history is still available.',
+      );
     }
   }
 
@@ -224,9 +241,25 @@ class BotpressService {
       }),
     );
     if (response.statusCode != 200) {
-      throw StateError('Conversation proxy returned ${response.statusCode}.');
+      Map<String, dynamic> body = const {};
+      try {
+        body = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {}
+      final diagnostic = body['diagnostic'] is Map
+          ? Map<String, dynamic>.from(body['diagnostic'] as Map)
+          : const <String, dynamic>{};
+      throw BotpressConversationException(
+        diagnostic['code']?.toString() ?? 'BOTPRESS_PROXY_UNAVAILABLE',
+        'Bot conversation history is temporarily unavailable. Other message history is still shown.',
+      );
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['state'] == 'not_found') {
+      throw const BotpressConversationException(
+        'BOTPRESS_CONVERSATION_NOT_FOUND',
+        'No bot conversation was found for this customer. Other message history is still shown.',
+      );
+    }
     return body['messages'] as List? ?? const [];
   }
 

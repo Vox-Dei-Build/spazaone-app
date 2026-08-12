@@ -58,6 +58,7 @@ class OrderPaymentResult {
     required this.sendIntent,
     this.errorMessage,
     this.paymentRecordedNow,
+    this.customerNotification,
   });
 
   final OrderActionStatus status;
@@ -78,6 +79,11 @@ class OrderPaymentResult {
   /// True only when this call performed a new paid transition. Null keeps
   /// compatibility with an older deployed Function that predates this field.
   final bool? paymentRecordedNow;
+
+  /// Present when the server-owned notification outbox accepted or completed
+  /// delivery. Null means an older backend is in use and the client fallback
+  /// may still send the existing template.
+  final String? customerNotification;
 
   bool get isSuccess => status == OrderActionStatus.success;
 }
@@ -179,20 +185,29 @@ class PaymentService {
       final paymentRecordedNow = responseData is Map
           ? responseData['paymentRecordedNow'] as bool?
           : null;
+      final notification =
+          responseData is Map && responseData['notification'] is Map
+              ? Map<String, dynamic>.from(responseData['notification'] as Map)
+              : null;
+      final customerNotification = notification?['customer']?.toString();
       if (stateLabel == null) {
         return OrderPaymentResult(
           status: OrderActionStatus.unexpectedError,
           stateLabel: '',
           sendIntent: sendIntent,
           paymentRecordedNow: paymentRecordedNow,
+          customerNotification: customerNotification,
           errorMessage: 'Order updated, but action "$action" is not mapped.',
         );
       }
       return OrderPaymentResult(
         status: OrderActionStatus.success,
         stateLabel: stateLabel,
-        sendIntent: sendIntent && paymentRecordedNow != false,
+        sendIntent: sendIntent &&
+            paymentRecordedNow != false &&
+            customerNotification == null,
         paymentRecordedNow: paymentRecordedNow,
+        customerNotification: customerNotification,
       );
     } on FirebaseFunctionsException catch (e) {
       debugPrint('[updateOrderPayment] code=${e.code} message=${e.message}');

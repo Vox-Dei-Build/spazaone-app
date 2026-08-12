@@ -52,12 +52,16 @@ void main() {
     expect(FeatureFlags.enableOnlineSales, isTrue);
   });
 
-  test('Paystack stays disabled even when a stale remote value is true', () {
+  test('Campaign Credit Paystack stays dark by default and follows its flag',
+      () {
+    FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
+    expect(FeatureFlags.enableTopUpPaystack, isFalse);
+
     FeatureFlags.applyFlagsForTesting(
       _FakeRemoteConfig({'FEATURE_TOP_UP_PAYSTACK_ENABLED': true}),
     );
 
-    expect(FeatureFlags.enableTopUpPaystack, isFalse);
+    expect(FeatureFlags.enableTopUpPaystack, isTrue);
   });
 
   test('emulator QA profile applies every release-relevant value together', () {
@@ -68,6 +72,7 @@ void main() {
       EmulatorQaFeatureProfile.otpAutosubmitKey: 'false',
       EmulatorQaFeatureProfile.otpResendKey: 'false',
       EmulatorQaFeatureProfile.onlineSalesKey: 'false',
+      EmulatorQaFeatureProfile.campaignCreditPaystackKey: 'true',
       EmulatorQaFeatureProfile.onboardingIntroKey: 'true',
     });
 
@@ -80,6 +85,7 @@ void main() {
     expect(FeatureFlags.enableOtpAutosubmit, isFalse);
     expect(FeatureFlags.enableOtpResendInDialog, isFalse);
     expect(FeatureFlags.enableOnlineSales, isFalse);
+    expect(FeatureFlags.enableTopUpPaystack, isTrue);
     expect(FeatureFlags.enableMerchantOnboardingIntro, isTrue);
   });
 

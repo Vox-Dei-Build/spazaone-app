@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 
 void main() {
-  testWidgets('Billing shows balanced visual tiles without explanatory copy', (
+  testWidgets('Billing separates campaign credits from legacy money', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -22,9 +22,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Campaign credits'), findsOneWidget);
+    expect(find.text('Campaign Credits'), findsOneWidget);
     expect(find.text('All stores'), findsOneWidget);
-    expect(find.text('Sales balance'), findsOneWidget);
+    expect(find.text('Legacy Balance'), findsOneWidget);
+    expect(find.text('Sales balance'), findsNothing);
     expect(find.text('Koekie Food Security'), findsOneWidget);
     expect(find.textContaining('Pays for'), findsNothing);
     expect(find.textContaining('Available for withdrawal'), findsNothing);
@@ -32,13 +33,33 @@ void main() {
     final campaign = tester.getRect(
       find.byKey(const ValueKey('billing-balance-campaign')),
     );
-    final sales = tester.getRect(
-      find.byKey(const ValueKey('billing-balance-sales')),
+    final legacy = tester.getRect(
+      find.byKey(const ValueKey('billing-balance-legacy')),
     );
-    expect(campaign.top, sales.top);
-    expect(campaign.height, greaterThanOrEqualTo(150));
-    expect(campaign.width, greaterThan(150));
-    expect(sales.width, greaterThan(150));
+    expect(legacy.top, greaterThan(campaign.bottom));
+    expect(campaign.width, greaterThan(330));
+    expect(legacy.width, greaterThan(330));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Billing hides Legacy Balance after it reaches zero', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: BillingBalancePanel(
+            campaignBalance: 100,
+            salesBalance: 0,
+            storeName: 'Test Shop',
+            sharedCampaignCredits: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Campaign Credits'), findsOneWidget);
+    expect(find.text('Legacy Balance'), findsNothing);
+    expect(find.byKey(const ValueKey('billing-balance-legacy')), findsNothing);
   });
 }

@@ -27,6 +27,8 @@ class ConnectManagementViewModel {
   bool _hasLoadedOnce = false;
   Future<void>? _initFuture;
   final ValueNotifier<bool> loadingNotifier = ValueNotifier(false);
+  final ValueNotifier<String?> conversationWarningNotifier =
+      ValueNotifier(null);
   late TwilioService _twilio;
   late BotpressService _botpress;
   Timer? _poll;
@@ -99,9 +101,7 @@ class ConnectManagementViewModel {
           customerNumber: customerNumber,
           customerId: customerId,
         ),
-        _botpress.fetchBotpressMessages(
-          customerId: customerId,
-        ),
+        _fetchBotpressSafely(),
       ]);
 
       final sentSms = results[0];
@@ -178,6 +178,27 @@ class ConnectManagementViewModel {
     } finally {
       _isFetching = false;
       if (!isDisposed) loadingNotifier.value = false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchBotpressSafely() async {
+    try {
+      final messages = await _botpress.fetchBotpressMessages(
+        customerId: customerId,
+      );
+      if (!isDisposed) conversationWarningNotifier.value = null;
+      return messages;
+    } on BotpressConversationException catch (error) {
+      if (!isDisposed) conversationWarningNotifier.value = error.message;
+      // ignore: avoid_print
+      print('[botpress] ${error.code}');
+      return const [];
+    } catch (_) {
+      if (!isDisposed) {
+        conversationWarningNotifier.value =
+            'Bot conversation history is temporarily unavailable. Other message history is still shown.';
+      }
+      return const [];
     }
   }
 
@@ -486,6 +507,7 @@ class ConnectManagementViewModel {
     _poll?.cancel();
     _truthSurfaceSubscription?.cancel();
     loadingNotifier.dispose();
+    conversationWarningNotifier.dispose();
     if (_isInitialized) _botpress.dispose();
     _controller.close();
   }

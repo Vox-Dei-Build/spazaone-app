@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -18,7 +17,6 @@ class TopUpTab extends StatelessWidget {
       showOnline: FeatureFlags.enableTopUpPaystack,
       showHelp: tutorialUrl.isNotEmpty,
       onOnline: () => walletVM.openPaystackForm(context),
-      onWhatsApp: () => walletVM.sendTopUpWhatsAppMessage(context),
       onHelp: () {
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -44,14 +42,12 @@ class BillingTopUpMenu extends StatelessWidget {
     required this.showOnline,
     required this.showHelp,
     required this.onOnline,
-    required this.onWhatsApp,
     required this.onHelp,
   });
 
   final bool showOnline;
   final bool showHelp;
   final VoidCallback onOnline;
-  final VoidCallback onWhatsApp;
   final VoidCallback onHelp;
 
   @override
@@ -65,13 +61,6 @@ class BillingTopUpMenu extends StatelessWidget {
           color: Colors.blue.shade700,
           onTap: onOnline,
         ),
-      _TopUpAction(
-        key: const ValueKey('billing-top-up-whatsapp'),
-        icon: FontAwesomeIcons.whatsapp,
-        title: 'Top up on WhatsApp',
-        color: Colors.green.shade700,
-        onTap: onWhatsApp,
-      ),
       if (showHelp)
         _TopUpAction(
           key: const ValueKey('billing-top-up-help'),
@@ -81,6 +70,18 @@ class BillingTopUpMenu extends StatelessWidget {
           onTap: onHelp,
         ),
     ];
+
+    if (actions.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Online Campaign Credit top-ups are temporarily unavailable. No manual WhatsApp top-up is required.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
 
     return Padding(
       key: const ValueKey('billing-top-up-dashboard'),

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/pages/ecommerce/orders_management/data/orders_controller.dart';
+import 'package:pasella/pages/ecommerce/orders_management/data/order_filters.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 import 'package:pasella/services/commerce_service.dart';
 
@@ -39,8 +40,9 @@ void main() {
 
     expect(model.source, 'commerce');
     expect(model.total, 123.45);
-    expect(model.status, 'submitted_for_fulfilment');
+    expect(model.status, 'preparing');
     expect(model.paymentStatus, 'paid');
+    expect(computeStatus(model), OrderStatus.preparing);
   });
 
   test('refund and cancellation override an older paid snapshot', () {

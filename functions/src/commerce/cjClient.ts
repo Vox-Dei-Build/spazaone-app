@@ -89,6 +89,36 @@ export type CjLandedQuote = {
   verifiedAt: string;
 };
 
+export type CjOrderInput = {
+  orderNumber: string;
+  variantId: string;
+  quantity: number;
+  logisticName: string;
+  fromCountryCode: string;
+  shipping: {
+    postalCode: string;
+    country: string;
+    countryCode: "ZA";
+    province: string;
+    city: string;
+    phone: string;
+    customerName: string;
+    address1: string;
+    address2?: string;
+    email?: string;
+  };
+};
+
+export type CjCreatedOrder = {
+  orderId: string;
+  shipmentOrderId: string;
+  orderNumber: string;
+  actualPaymentUsdMinor: number;
+  orderStatus: string;
+  sandbox: boolean;
+  requestId: string;
+};
+
 let tokenCache: TokenCache | null = null;
 let tokenRequest: Promise<string> | null = null;
 let fxCache: (CjFxRate & { cachedAt: number }) | null = null;
@@ -814,6 +844,112 @@ export async function quoteCjVariant(input: {
     product,
     variantId: input.variantId,
     postalCode: input.postalCode,
+  });
+}
+
+function cjSandboxMode(): boolean {
+  return String(process.env.CJ_SANDBOX_MODE ?? "true").toLowerCase() === "true";
+}
+
+function requireCjPurchaseAuthority(): boolean {
+  const sandbox = cjSandboxMode();
+  if (
+    !sandbox &&
+    String(process.env.CJ_LIVE_FULFILMENT_ENABLED ?? "").toLowerCase() !==
+      "true"
+  ) {
+    throw new Error("CJ_LIVE_FULFILMENT_DISABLED");
+  }
+  return sandbox;
+}
+
+/** Returns the pre-funded CJ USD balance in integer cents. */
+export async function getCjBalanceUsdMinor(): Promise<number> {
+  const data = object(
+    await cjRequest({
+      method: "GET",
+      url: "/shopping/pay/getBalance",
+    }),
+  );
+  return usdMinor(data.amount);
+}
+
+/** Creates a CJ order without paying it so the actual charge can be checked. */
+export async function createCjDropshipOrder(
+  input: CjOrderInput,
+): Promise<CjCreatedOrder> {
+  const sandbox = requireCjPurchaseAuthority();
+  const orderNumber = text(input.orderNumber, 50);
+  const variantId = text(input.variantId, 50);
+  const logisticName = text(input.logisticName, 50);
+  const fromCountryCode = text(input.fromCountryCode, 2).toUpperCase();
+  if (
+    !orderNumber ||
+    !variantId ||
+    !logisticName ||
+    !/^[A-Z]{2}$/.test(fromCountryCode) ||
+    !Number.isSafeInteger(input.quantity) ||
+    input.quantity <= 0
+  ) {
+    throw new Error("CJ_ORDER_INPUT_INVALID");
+  }
+  const shipping = input.shipping;
+  const data = object(
+    await cjRequest({
+      method: "POST",
+      url: "/shopping/order/createOrderV2",
+      data: {
+        orderNumber,
+        shippingZip: text(shipping.postalCode, 20),
+        shippingCountry: text(shipping.country, 50),
+        shippingCountryCode: "ZA",
+        shippingProvince: text(shipping.province, 50),
+        shippingCity: text(shipping.city, 50),
+        shippingPhone: text(shipping.phone, 20),
+        shippingCustomerName: text(shipping.customerName, 50),
+        shippingAddress: text(shipping.address1, 200),
+        shippingAddress2: text(shipping.address2, 200),
+        email: text(shipping.email, 50),
+        payType: 3,
+        isSandbox: sandbox ? 1 : 0,
+        logisticName,
+        fromCountryCode,
+        platform: "api",
+        orderFlow: 1,
+        products: [
+          {
+            vid: variantId,
+            quantity: input.quantity,
+            storeLineItemId: orderNumber,
+          },
+        ],
+      },
+    }),
+  );
+  const orderId = text(data.orderId, 200);
+  if (!orderId) throw new Error("CJ_ORDER_CREATE_INVALID");
+  return {
+    orderId,
+    shipmentOrderId: text(data.shipmentOrderId, 200),
+    orderNumber: text(data.orderNumber, 200) || orderNumber,
+    actualPaymentUsdMinor: usdMinor(data.actualPayment ?? data.orderAmount),
+    orderStatus: text(data.orderStatus, 40),
+    sandbox,
+    requestId: "",
+  };
+}
+
+/** Pays an already-created single CJ order from the pre-funded balance. */
+export async function payCjOrderFromBalance(
+  orderIdValue: unknown,
+): Promise<void> {
+  requireCjPurchaseAuthority();
+  const orderId = text(orderIdValue, 200);
+  if (!orderId) throw new Error("CJ_ORDER_ID_INVALID");
+  await cjRequest({
+    method: "POST",
+    url: "/shopping/pay/payBalance",
+    data: { orderId },
   });
 }
 

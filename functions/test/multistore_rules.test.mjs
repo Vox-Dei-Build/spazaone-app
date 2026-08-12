@@ -22,8 +22,12 @@ import { getBytes, ref, uploadString } from "firebase/storage";
 let env;
 
 before(async () => {
+  // Cross-service Storage rules use Firestore membership lookups. The test
+  // project must therefore match the emulator hub project; a hard-coded
+  // second demo project makes those lookups target an empty namespace.
+  const projectId = process.env.GCLOUD_PROJECT || "demo-spazaone-multistore";
   env = await initializeTestEnvironment({
-    projectId: "demo-spazaone-multistore",
+    projectId,
     firestore: {
       rules: await readFile(
         new URL("../../firestore.rules", import.meta.url),
@@ -96,6 +100,39 @@ beforeEach(async () => {
       }),
       setDoc(doc(db, "paymentReferences/referenceA"), {
         merchantId: "storeA",
+      }),
+      setDoc(doc(db, "paymentIntents/intentA"), {
+        merchantId: "storeA",
+        status: "paid",
+      }),
+      setDoc(doc(db, "paymentEvents/eventA"), {
+        provider: "paystack",
+      }),
+      setDoc(doc(db, "merchantPaymentProfiles/storeA"), {
+        merchantId: "storeA",
+        status: "enabled",
+      }),
+      setDoc(doc(db, "settlements/settlementA"), { merchantId: "storeA" }),
+      setDoc(doc(db, "refundCases/refundA"), { merchantId: "storeA" }),
+      setDoc(doc(db, "inventoryReservations/reservationA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "supplierFulfilments/fulfilmentA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "financialReconciliationRuns/runA"), {
+        status: "balanced",
+      }),
+      setDoc(doc(db, "paymentConfiguration/global"), { enabled: false }),
+      setDoc(doc(db, "campaignCreditPurchases/purchaseA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "campaignCreditRecoveryCases/recoveryA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "repaymentPlans/planA"), { merchantId: "storeA" }),
+      setDoc(doc(db, "commerceNotificationOutbox/noticeA"), {
+        state: "pending",
       }),
       setDoc(doc(db, "commerceListings/listingA"), {
         sellerId: "storeA",
@@ -184,6 +221,39 @@ test("shared operator sees campaign balance but not canonical sales fields", asy
   await assertFails(
     getDoc(doc(db, "campaignWalletAccess/storeA/members/operator2")),
   );
+});
+
+test("Payments V2 truth is server-only for owners, operators and admins", async () => {
+  const paths = [
+    "paymentIntents/intentA",
+    "paymentEvents/eventA",
+    "merchantPaymentProfiles/storeA",
+    "settlements/settlementA",
+    "refundCases/refundA",
+    "inventoryReservations/reservationA",
+    "supplierFulfilments/fulfilmentA",
+    "financialReconciliationRuns/runA",
+    "financialMigrationRuns/runA",
+    "schemaMetadata/paymentsV2",
+    "developmentSeedRuns/runA",
+    "paymentConfiguration/global",
+    "paymentAdministrationAudit/auditA",
+    "campaignCreditPurchases/purchaseA",
+    "campaignCreditRecoveryCases/recoveryA",
+    "repaymentPlans/planA",
+    "commerceNotificationOutbox/noticeA",
+  ];
+  for (const client of [
+    env.authenticatedContext("storeA").firestore(),
+    env.authenticatedContext("operator1").firestore(),
+    env.authenticatedContext("spaza-admin", { spazaAdmin: true }).firestore(),
+    env.unauthenticatedContext().firestore(),
+  ]) {
+    for (const path of paths) {
+      await assertFails(getDoc(doc(client, path)));
+      await assertFails(setDoc(doc(client, path), { forged: true }));
+    }
+  }
 });
 
 test("operator can update only notification fields on its own membership", async () => {

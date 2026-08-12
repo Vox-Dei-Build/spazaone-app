@@ -5,6 +5,7 @@ import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/forms/date_row.dart';
 import 'package:pasella/shared/widgets/forms/transaction_form_scaffold.dart';
 import 'package:provider/provider.dart';
+import 'package:pasella/utils/feature_flags.dart';
 
 /// Add Payment screen — migrated onto [TransactionFormScaffold]. The
 /// pre-migration version shipped with a `Form` and no `formKey`, which
@@ -22,15 +23,88 @@ class AddPaymentScreen extends StatelessWidget {
     this.mobileNumber,
   });
 
+  Future<void> _preparePaymentLink(
+    BuildContext context,
+    AddPaymentViewModel viewModel,
+  ) async {
+    final emailController = TextEditingController();
+    var channel = 'eft';
+    final selection = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Send payment link'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Paystack will collect the amount entered on this screen. '
+                'The customer balance changes only after verified payment.',
+              ),
+              const SizedBox(height: LayoutConstants.spaceMd),
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                decoration: const InputDecoration(
+                  labelText: 'Customer email',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: LayoutConstants.spaceMd),
+              DropdownButtonFormField<String>(
+                value: channel,
+                decoration: const InputDecoration(
+                  labelText: 'Payment method',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'eft', child: Text('Instant EFT')),
+                  DropdownMenuItem(
+                    value: 'capitec_pay',
+                    child: Text('Capitec Pay'),
+                  ),
+                  DropdownMenuItem(value: 'qr', child: Text('QR payment')),
+                  DropdownMenuItem(value: 'card', child: Text('Card')),
+                ],
+                onChanged: (value) => setState(() => channel = value ?? 'eft'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'email': emailController.text.trim(),
+                'channel': channel,
+              }),
+              child: const Text('Create link'),
+            ),
+          ],
+        ),
+      ),
+    );
+    emailController.dispose();
+    if (selection == null || !context.mounted) return;
+    await viewModel.createAndSharePaymentLink(
+      context,
+      email: selection['email'] ?? '',
+      channel: selection['channel'] ?? 'eft',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create:
-          (_) => AddPaymentViewModel(
-            customerName: customerName,
-            customerId: customerId,
-            mobileNumber: mobileNumber,
-          ),
+      create: (_) => AddPaymentViewModel(
+        customerName: customerName,
+        customerId: customerId,
+        mobileNumber: mobileNumber,
+      ),
       child: Consumer<AddPaymentViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
@@ -83,6 +157,22 @@ class AddPaymentScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (FeatureFlags.enableOnlineSales) ...[
+                  const SizedBox(height: LayoutConstants.spaceLg),
+                  OutlinedButton.icon(
+                    onPressed: viewModel.isLoading
+                        ? null
+                        : () => _preparePaymentLink(context, viewModel),
+                    icon: const Icon(Icons.link),
+                    label: const Text('Send Payment Link'),
+                  ),
+                  const SizedBox(height: LayoutConstants.spaceSm),
+                  const Text(
+                    'Manual Add Payment remains available for cash and external EFT.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                ],
               ],
             ),
           );

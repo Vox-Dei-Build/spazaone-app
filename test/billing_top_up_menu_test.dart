@@ -7,7 +7,6 @@ void main() {
     tester,
   ) async {
     var onlineTaps = 0;
-    var whatsappTaps = 0;
     var helpTaps = 0;
 
     await tester.pumpWidget(
@@ -20,7 +19,6 @@ void main() {
               showOnline: true,
               showHelp: true,
               onOnline: () => onlineTaps++,
-              onWhatsApp: () => whatsappTaps++,
               onHelp: () => helpTaps++,
             ),
           ),
@@ -29,7 +27,7 @@ void main() {
     );
 
     expect(find.text('Pay online'), findsOneWidget);
-    expect(find.text('Top up on WhatsApp'), findsOneWidget);
+    expect(find.text('Top up on WhatsApp'), findsNothing);
     expect(find.text('How top-ups work'), findsOneWidget);
     expect(find.textContaining('campaign credits'), findsNothing);
     expect(find.textContaining('linked stores'), findsNothing);
@@ -45,10 +43,8 @@ void main() {
     expect(lastTile.height, greaterThan(90));
 
     await tester.tap(find.text('Pay online'));
-    await tester.tap(find.text('Top up on WhatsApp'));
     await tester.tap(find.text('How top-ups work'));
     expect(onlineTaps, 1);
-    expect(whatsappTaps, 1);
     expect(helpTaps, 1);
     expect(tester.takeException(), isNull);
   });
@@ -64,7 +60,6 @@ void main() {
               showOnline: false,
               showHelp: false,
               onOnline: () {},
-              onWhatsApp: () {},
               onHelp: () {},
             ),
           ),
@@ -74,7 +69,11 @@ void main() {
 
     expect(find.text('Pay online'), findsNothing);
     expect(find.text('How top-ups work'), findsNothing);
-    expect(find.text('Top up on WhatsApp'), findsOneWidget);
+    expect(find.text('Top up on WhatsApp'), findsNothing);
+    expect(
+      find.textContaining('No manual WhatsApp top-up is required'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

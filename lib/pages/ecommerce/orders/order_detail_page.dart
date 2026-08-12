@@ -115,7 +115,14 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     //    *what just changed* — and, if a customer message is on the
     //    way, that the next step is in progress (not silent).
     final messenger = ScaffoldMessenger.of(context);
-    if (result.sendIntent) {
+    if (result.customerNotification != null) {
+      messenger.showSnackBar(
+        _serverNotificationSnackBar(
+          result.stateLabel,
+          result.customerNotification!,
+        ),
+      );
+    } else if (result.sendIntent) {
       messenger.showSnackBar(
         SnackBar(
           content: Text('${result.stateLabel} · Notifying customer…'),
@@ -543,6 +550,36 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           ),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 6),
+        );
+    }
+  }
+
+  SnackBar _serverNotificationSnackBar(
+    String stateLabel,
+    String delivery,
+  ) {
+    switch (delivery) {
+      case 'sent':
+        return SnackBar(
+          content: Text('$stateLabel · Customer notified'),
+          backgroundColor: Colors.green,
+        );
+      case 'queued':
+        return SnackBar(
+          content: Text('$stateLabel · Customer update queued for retry.'),
+          backgroundColor: Colors.blueGrey,
+        );
+      case 'not_deliverable':
+        return SnackBar(
+          content: Text('$stateLabel · No customer phone number available.'),
+          backgroundColor: Colors.orange,
+        );
+      case 'skipped':
+        return SnackBar(content: Text(stateLabel));
+      default:
+        return SnackBar(
+          content: Text('$stateLabel · Customer notification needs attention.'),
+          backgroundColor: Colors.orange,
         );
     }
   }

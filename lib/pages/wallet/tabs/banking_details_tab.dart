@@ -5,6 +5,8 @@ import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/add_banking_details.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/widgets/private_region.dart';
+import 'package:pasella/services/payment_setup_service.dart';
+import 'package:pasella/services/store_session.dart';
 
 class BankingDetailsTab extends StatefulWidget {
   const BankingDetailsTab({super.key});
@@ -16,6 +18,7 @@ class BankingDetailsTab extends StatefulWidget {
 class _BankingDetailsTabState extends State<BankingDetailsTab> {
   late WalletViewModel walletViewModel = WalletViewModel();
   bool isLoading = true;
+  bool isVerifying = false;
 
   @override
   void initState() {
@@ -88,6 +91,58 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
               fontSize: SizeConfig.textMultiplier * 2,
               width: SizeConfig.imageSizeMultiplier * 65,
             ),
+            if (walletViewModel.editingDocumentId != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const ValueKey('verify-paystack-settlement-account'),
+                onPressed: isVerifying
+                    ? null
+                    : () async {
+                        setState(() => isVerifying = true);
+                        try {
+                          final result = await PaymentSetupService
+                              .prepareSettlementProfile(
+                            merchantId: StoreSession.instance.storeId,
+                            bankingDetailsId:
+                                walletViewModel.editingDocumentId!,
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result['status'] == 'pending_review'
+                                    ? 'Account resolved. Spaza One approval is still required before online collections.'
+                                    : 'Settlement account is already under review.',
+                              ),
+                            ),
+                          );
+                        } on PaymentSetupException catch (error) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error.message),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        } finally {
+                          if (mounted) setState(() => isVerifying = false);
+                        }
+                      },
+                icon: isVerifying
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.verified_user_outlined),
+                label: const Text('Verify for online settlements'),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'The resolved account name and masked account are reviewed before any customer payment can settle here.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),

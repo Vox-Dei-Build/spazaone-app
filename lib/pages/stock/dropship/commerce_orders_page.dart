@@ -3,6 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
+import 'package:pasella/models/orders/canonical_order_status.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/actions_dock.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/amounts_card.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/header_card.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/order_progress_tracker.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/products_section_enhanced.dart';
+import 'package:pasella/pages/ecommerce/orders/widgets/section.dart';
+import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/services/payment_receipt_tracker.dart';
@@ -93,11 +101,10 @@ Future<void> showCommerceOrderDetails(
   BuildContext context,
   CommerceOrder order,
 ) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (_) => _OrderDetails(order: order),
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => _OrderDetails(order: order),
+    ),
   );
 }
 
@@ -189,7 +196,7 @@ class _OrderCard extends StatelessWidget {
                       style: TextStyle(color: Colors.grey.shade700),
                     ),
                     const SizedBox(height: 6),
-                    _StatusChip(status: order.status),
+                    _StatusChip(status: order.canonicalStatus.label),
                   ],
                 ),
               ),
@@ -366,9 +373,9 @@ class _OrderDetailsState extends State<_OrderDetails> {
   Future<void> _refund() async {
     final reference = await _textDialog(
       context,
-      title: 'Confirm refund completed',
-      label: 'Refund reference or note',
-      confirmLabel: 'Record refund',
+      title: 'Confirm manual refund completed',
+      label: 'Cash return or transfer reference',
+      confirmLabel: 'Confirm manual refund',
     );
     if (reference == null) return;
     await _act('mark_refunded', refundReference: reference);
@@ -387,159 +394,215 @@ class _OrderDetailsState extends State<_OrderDetails> {
     ]
         .map((value) => value?.toString().trim() ?? '')
         .where((value) => value.isNotEmpty);
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        24,
-        20,
-        24,
-        MediaQuery.paddingOf(context).bottom + 24,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    final canonical = order.canonicalStatus;
+    final payment = buildPaymentStatusMeta(
+      context,
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod,
+    );
+    final lifecycleColor = switch (canonical) {
+      CanonicalOrderStatus.awaitingPayment => Colors.amber,
+      CanonicalOrderStatus.paid => Colors.green,
+      CanonicalOrderStatus.preparing => Colors.indigo,
+      CanonicalOrderStatus.onTheWay => Colors.blue,
+      CanonicalOrderStatus.delivered => Colors.teal,
+      CanonicalOrderStatus.cancelled => Colors.red,
+      CanonicalOrderStatus.refunded => Colors.purple,
+    };
+    final terminal = canonical == CanonicalOrderStatus.cancelled ||
+        canonical == CanonicalOrderStatus.refunded;
+    final stage = switch (canonical) {
+      CanonicalOrderStatus.awaitingPayment => OrderStage.newOrder,
+      CanonicalOrderStatus.paid => OrderStage.accepted,
+      CanonicalOrderStatus.preparing => OrderStage.accepted,
+      CanonicalOrderStatus.onTheWay => OrderStage.outForDelivery,
+      CanonicalOrderStatus.delivered => OrderStage.completed,
+      CanonicalOrderStatus.cancelled => OrderStage.accepted,
+      CanonicalOrderStatus.refunded => OrderStage.accepted,
+    };
+    final items = <Map<String, dynamic>>[
+      {
+        'name': order.productTitle,
+        'productName': order.productTitle,
+        'quantity': 1,
+        'sellingPrice': order.amountDueMinor / 100,
+        'lineTotal': order.amountDueMinor / 100,
+      },
+    ];
+    final actions = _actions();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Order details')),
+      bottomNavigationBar: actions.isEmpty
+          ? null
+          : ActionsDock(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: actions,
+              ),
+            ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 72),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Text(
-                  'Order ${_reference(order.id)}',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+              OrderProgressTracker(
+                stage: stage,
+                isDelivery: true,
+                isTerminal: terminal,
+                terminalLabel: canonical == CanonicalOrderStatus.refunded
+                    ? 'Order refunded'
+                    : canonical == CanonicalOrderStatus.cancelled
+                        ? 'Order cancelled'
+                        : null,
+              ),
+              const SizedBox(height: 16),
+              HeaderCard(
+                customerName: order.buyerName,
+                statusText: canonical.label,
+                statusColor: lifecycleColor,
+                totalText: CurrencyUtil.format(order.amountDueMinor / 100),
+                dateText: order.createdAt == null
+                    ? 'Date unavailable'
+                    : DateFormat('dd MMM yyyy · HH:mm')
+                        .format(order.createdAt!),
+                paymentMethod: _paymentMethodLabel(order),
+                paymentStatus: order.paymentStatus,
+                orderId: order.id,
+                paymentStatusText: payment.label,
+                paymentStatusColor: payment.color,
+                collectionPill: PillMeta(canonical.label, lifecycleColor),
+              ),
+              const SizedBox(height: 20),
+              ProductsSectionEnhanced(
+                items: items,
+                fallbackUserId: order.sellerId,
+              ),
+              const SizedBox(height: 20),
+              Section(
+                title: 'Amounts',
+                child: AmountsCard(
+                  subtotal: order.amountDueMinor / 100,
+                  delivery: 0,
+                  discount: 0,
+                  total: order.amountDueMinor / 100,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Section(
+                title: 'Customer & delivery',
+                child: Card(
+                  elevation: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(order.buyerName,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        if (order.buyerPhone.isNotEmpty) Text(order.buyerPhone),
+                        const SizedBox(height: 8),
+                        Text(addressLines.join(', ')),
+                        if ((address['plusCode']?.toString() ?? '').isNotEmpty)
+                          SelectableText('Plus Code: ${address['plusCode']}'),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => _copyOrderDetails(addressLines),
+                          icon: const Icon(Icons.copy_all_outlined),
+                          label: const Text('Copy all order details'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              _StatusChip(status: order.status),
+              if (order.paymentStatus == 'refund_pending' &&
+                  order.paymentMethod == 'paystack') ...[
+                const SizedBox(height: 20),
+                Card(
+                  color: Colors.orange.shade50,
+                  child: const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.hourglass_top, color: Colors.orange),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Refund pending provider confirmation. Operations '
+                            'will complete this case; no manual confirmation is '
+                            'required from the merchant.',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              _SupplierOperationsPanel(order: order),
+              if (order.trackingNumber?.isNotEmpty == true) ...[
+                const SizedBox(height: 20),
+                Section(
+                  title: 'Tracking',
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SelectableText(order.trackingNumber ?? ''),
+                          if (order.trackingUrl?.isNotEmpty == true)
+                            SelectableText(order.trackingUrl!),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
-          if (order.createdAt != null) ...[
-            const SizedBox(height: 6),
-            Text(DateFormat('dd MMM yyyy · HH:mm').format(order.createdAt!)),
-          ],
-          const Divider(height: 32),
-          Text(order.productTitle,
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 14),
-          _DetailRow(
-              label: order.paymentStatus == 'paid'
-                  ? 'Payment confirmed'
-                  : 'Order total',
-              value: CurrencyUtil.format(order.amountDueMinor / 100)),
-          if (order.buyerPaymentPreference.isNotEmpty)
-            _DetailRow(
-              label: 'Buyer selected',
-              value: switch (order.buyerPaymentPreference) {
-                'transfer' => 'EFT / deposit',
-                'eft' => 'EFT / deposit',
-                'cash' => 'Cash',
-                'pay_at_shop' => 'Pay at shop',
-                'bnpl' => 'Pay later',
-                final value => value,
-              },
-            ),
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: EdgeInsets.zero,
-            title: const Text('Financial details'),
-            children: [
-              _DetailRow(
-                  label: 'Delivery product cost',
-                  value: CurrencyUtil.format(order.baseCostMinor / 100)),
-              _DetailRow(
-                  label: 'Spaza One fee',
-                  value: CurrencyUtil.format(order.feeMinor / 100)),
-              _DetailRow(
-                  label: 'Your margin',
-                  value: CurrencyUtil.format(order.marginMinor / 100),
-                  highlight: true),
-            ],
-          ),
-          if (order.supplierId == 'cj_dropshipping' &&
-              order.status == 'paid') ...[
-            const Divider(height: 32),
-            const Text('Place delivery order',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            const Text('Fulfilment partner: CJdropshipping'),
-            const SizedBox(height: 4),
-            const Text('Use these details to place the paid delivery order.'),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () => launchUrl(
-                Uri.parse('https://www.cjdropshipping.com'),
-                mode: LaunchMode.externalApplication,
-              ),
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Open fulfilment partner'),
-            ),
-            if (order.supplierSku.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SelectableText('SKU: ${order.supplierSku}'),
-            ],
-            if (order.supplierVariantId.isNotEmpty)
-              SelectableText('Variant: ${order.supplierVariantId}'),
-            if (order.supplierOrderId.isNotEmpty)
-              SelectableText('Delivery order: ${order.supplierOrderId}'),
-            if (order.logisticName.isNotEmpty)
-              Text(
-                'Delivery estimate: ${order.logisticAging.isEmpty ? 'Check when placing the order' : '${order.logisticAging} days'}',
-              ),
-          ] else if (order.supplierId == 'cj_dropshipping' &&
-              order.supplierOrderId.isNotEmpty) ...[
-            const Divider(height: 32),
-            const Text(
-              'Delivery order record',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            SelectableText('Delivery order: ${order.supplierOrderId}'),
-          ],
-          const Divider(height: 32),
-          Text(order.buyerName,
-              style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text(order.buyerPhone),
-          const SizedBox(height: 8),
-          Text(addressLines.join(', ')),
-          if ((address['plusCode']?.toString() ?? '').isNotEmpty)
-            SelectableText('Plus Code: ${address['plusCode']}'),
-          if (order.status != 'pending_payment') ...[
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final details = [
-                  order.buyerName,
-                  order.buyerPhone,
-                  addressLines.join(', '),
-                  if ((address['plusCode']?.toString() ?? '').isNotEmpty)
-                    'Plus Code: ${address['plusCode']}',
-                  if (order.supplierSku.isNotEmpty) 'SKU: ${order.supplierSku}',
-                  if (order.supplierVariantId.isNotEmpty)
-                    'Variant: ${order.supplierVariantId}',
-                ].join('\n');
-                await Clipboard.setData(ClipboardData(text: details));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Order details copied.')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.copy_all_outlined),
-              label: const Text('Copy all order details'),
-            ),
-          ],
-          if (order.trackingNumber?.isNotEmpty == true) ...[
-            const Divider(height: 32),
-            const Text('Tracking',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            SelectableText(order.trackingNumber ?? ''),
-            if (order.trackingUrl?.isNotEmpty == true)
-              SelectableText(order.trackingUrl!),
-          ],
-          const SizedBox(height: 24),
-          ..._actions(),
-        ],
+        ),
       ),
     );
+  }
+
+  String _paymentMethodLabel(CommerceOrder value) {
+    final selected = value.buyerPaymentPreference;
+    if (selected.isNotEmpty) {
+      return switch (selected) {
+        'transfer' || 'eft' => 'EFT / deposit',
+        'cash' => 'Cash',
+        'pay_at_shop' => 'Pay at shop',
+        'bnpl' => 'Pay later',
+        _ => selected,
+      };
+    }
+    return value.paymentMethod == 'paystack'
+        ? 'Online payment'
+        : 'Manual payment';
+  }
+
+  Future<void> _copyOrderDetails(Iterable<String> addressLines) async {
+    final address = order.deliveryAddress;
+    final details = [
+      order.buyerName,
+      order.buyerPhone,
+      addressLines.join(', '),
+      if ((address['plusCode']?.toString() ?? '').isNotEmpty)
+        'Plus Code: ${address['plusCode']}',
+      if (order.supplierSku.isNotEmpty) 'SKU: ${order.supplierSku}',
+      if (order.supplierVariantId.isNotEmpty)
+        'Variant: ${order.supplierVariantId}',
+    ].where((value) => value.isNotEmpty).join('\n');
+    await Clipboard.setData(ClipboardData(text: details));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order details copied.')),
+      );
+    }
   }
 
   List<Widget> _actions() {
@@ -585,7 +648,8 @@ class _OrderDetailsState extends State<_OrderDetails> {
           () => _act('mark_delivered'),
         );
       case 'cancelled':
-        if (order.paymentStatus == 'refund_pending') {
+        if (order.paymentStatus == 'refund_pending' &&
+            order.paymentMethod == 'manual') {
           secondaryActions.add(_OrderOverflowAction.refund);
         }
     }
@@ -619,7 +683,7 @@ class _OrderDetailsState extends State<_OrderDetails> {
               if (secondaryActions.contains(_OrderOverflowAction.refund))
                 const PopupMenuItem(
                   value: _OrderOverflowAction.refund,
-                  child: Text('Confirm refund completed'),
+                  child: Text('Confirm manual refund completed'),
                 ),
             ],
             child: const Padding(
@@ -646,6 +710,88 @@ class _OrderDetailsState extends State<_OrderDetails> {
           ));
     }
     return buttons;
+  }
+}
+
+class _SupplierOperationsPanel extends StatelessWidget {
+  const _SupplierOperationsPanel({required this.order});
+
+  final CommerceOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCj = order.supplierId == 'cj_dropshipping';
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: ExpansionTile(
+        leading: const Icon(Icons.admin_panel_settings_outlined),
+        title: const Text('Fulfilment operations'),
+        subtitle: const Text('Internal delivery and margin details'),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          if (isCj && order.status == 'paid') ...[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Place delivery order',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Fulfilment partner: CJdropshipping'),
+            ),
+            const SizedBox(height: 12),
+          ] else if (order.supplierOrderId.isNotEmpty) ...[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Delivery order record',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          _DetailRow(
+            label: 'Delivery product cost',
+            value: CurrencyUtil.format(order.baseCostMinor / 100),
+          ),
+          _DetailRow(
+            label: 'Spaza One fee',
+            value: CurrencyUtil.format(order.feeMinor / 100),
+          ),
+          _DetailRow(
+            label: 'Your margin',
+            value: CurrencyUtil.format(order.marginMinor / 100),
+            highlight: true,
+          ),
+          if (order.supplierSku.isNotEmpty)
+            SelectableText('SKU: ${order.supplierSku}'),
+          if (order.supplierVariantId.isNotEmpty)
+            SelectableText('Variant: ${order.supplierVariantId}'),
+          if (order.supplierOrderId.isNotEmpty)
+            SelectableText('Delivery order: ${order.supplierOrderId}'),
+          if (order.logisticAging.isNotEmpty)
+            Text('Delivery estimate: ${order.logisticAging} days'),
+          if (isCj && order.status == 'paid') ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse('https://www.cjdropshipping.com'),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open fulfilment partner'),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

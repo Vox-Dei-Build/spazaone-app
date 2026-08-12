@@ -25,6 +25,7 @@ type CampaignCreditOperation = {
     | "promotion-settlement"
     | "promotion-recovery"
     | "paystack-topup"
+    | "admin-adjustment"
     | "sales-transfer"
     | "legacy-wallet-sync";
   initiatedBy?: string;

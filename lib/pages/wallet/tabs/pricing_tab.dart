@@ -65,7 +65,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
     final eftPercent = rc?.getDouble('PAYSTACK_EFT_PERCENT') ?? 0;
     final intPercent = rc?.getDouble('PAYSTACK_INT_PERCENT') ?? 0;
     final intFlat = rc?.getDouble('PAYSTACK_INT_FLAT') ?? 0;
-    final settlementFee = rc?.getDouble('PAYSTACK_SETTLEMENT_FEE') ?? 0;
+    final transferFee = rc?.getDouble('PAYSTACK_TRANSFER_FEE') ?? 0;
     final vatPercent = rc?.getDouble('PAYSTACK_VAT_PERCENT') ?? 0;
 
     // Per-segment SMS rates and per-message WhatsApp rates. See
@@ -103,7 +103,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
                 'are sent.',
               ),
               _buildBulletPoint(
-                'Request a payout at any time from the Withdraw tab.',
+                'Verified online proceeds settle to your approved bank account.',
               ),
             ],
             _sectionGap(),
@@ -204,7 +204,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
                 'fee charged by your payment provider.',
               ),
               _buildBulletPoint(
-                'Wallet balance can be used for in-app purchases.',
+                'Campaign Credits are used for optional marketing and messaging.',
               ),
               _sectionGap(),
             ],
@@ -227,8 +227,9 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
                 '${CurrencyUtil.format(intFlat)} (excl. VAT)',
               ),
               _buildBulletPoint(
-                'Settlement (payouts): ${CurrencyUtil.format(settlementFee)} '
-                'per transfer (excl. VAT)',
+                'Automatic settlement payouts are free. Outbound bank '
+                'transfers initiated through Paystack cost '
+                '${CurrencyUtil.format(transferFee)} (excl. VAT)',
               ),
               _sectionGap(),
               _sectionTitle('Worked examples'),

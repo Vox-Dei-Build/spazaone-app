@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
-import 'package:pasella/pages/wallet/widgets/payout_request.dart';
 import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
 import 'package:pasella/utils/feature_flags.dart';
+import 'package:pasella/services/payment_setup_service.dart';
+import 'package:pasella/services/store_session.dart';
 
 class SalesBalanceTab extends StatefulWidget {
   const SalesBalanceTab({super.key});
@@ -19,91 +20,18 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
   SalesView _selected = SalesView.sales;
 
   @override
+  void dispose() {
+    walletVM.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     Widget content;
     if (_selected == SalesView.cashAdvance) {
       content = const CashAdvanceTab();
     } else {
-      content = StreamBuilder<WalletState>(
-        stream: walletVM.walletStateStream,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final walletState = snapshot.data!;
-          final double salesBalance = walletState.salesVirtualBalance;
-          final bool canWithdraw = salesBalance > 0 &&
-              walletState.hasBankAccount &&
-              !walletState.hasPendingPayout;
-          // PAS-UX-10: see cash_advance_tab — Lorem-Picsum hero image
-          // replaced with branded colour band so the merchant
-          // payments surface stops fingerprinting picsum.photos and
-          // stops showing random stock photos as the visual for a
-          // payout card.
-          const heroColor = Color(0xff2B325F);
-
-          return SingleChildScrollView(
-            padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildCard(
-                  heroColor: heroColor,
-                  heroIcon: Icons.account_balance_outlined,
-                  title: 'Withdraw',
-                  description: 'Withdraw your sales balance to your bank',
-                  primaryBtn: FilledButton.icon(
-                    onPressed: canWithdraw
-                        ? () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const PayoutPage(),
-                              ),
-                            );
-                          }
-                        : null,
-                    icon: Icon(Icons.payments_outlined,
-                        size: SizeConfig.textMultiplier * 1.5),
-                    label: Text("Withdraw",
-                        style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.5)),
-                  ),
-                  secondaryBtn: FeatureFlags.enableMoveFunds
-                      ? OutlinedButton.icon(
-                          onPressed: salesBalance > 0
-                              ? () => walletVM.transferToVirtualBalance(
-                                  context, salesBalance)
-                              : null,
-                          icon: Icon(Icons.swap_horiz,
-                              size: SizeConfig.textMultiplier * 1.5),
-                          label: Text("Move funds",
-                              style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.5)),
-                        )
-                      : const SizedBox.shrink(),
-                  footer: !canWithdraw
-                      ? Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            walletState.hasPendingPayout
-                                ? 'Pending payout request.'
-                                : walletState.salesVirtualBalance <= 0
-                                    ? 'Insufficient balance.'
-                                    : 'Please add banking details first.',
-                            style: TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: SizeConfig.textMultiplier * 1.5),
-                          ),
-                        )
-                      : null,
-                ),
-              ],
-            ),
-          );
-        },
-      );
+      content = const _SettlementOverview();
     }
 
     return Column(
@@ -113,13 +41,13 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
             data: Theme.of(context).copyWith(
               segmentedButtonTheme: SegmentedButtonThemeData(
                 style: ButtonStyle(
-                  backgroundColor: MaterialStateProperty.resolveWith(
-                    (states) => states.contains(MaterialState.selected)
+                  backgroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
                         ? Colors.green
                         : Colors.white,
                   ),
-                  foregroundColor: MaterialStateProperty.resolveWith(
-                    (states) => states.contains(MaterialState.selected)
+                  foregroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
                         ? Colors.white
                         : Colors.black87,
                   ),
@@ -153,70 +81,108 @@ class _SalesBalanceTabState extends State<SalesBalanceTab> {
       ],
     );
   }
+}
 
-  Widget _buildCard({
-    required Color heroColor,
-    required IconData heroIcon,
-    required String title,
-    required String description,
-    required Widget primaryBtn,
-    required Widget secondaryBtn,
-    Widget? footer,
-  }) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 4,
-      margin: EdgeInsets.only(bottom: SizeConfig.heightMultiplier * 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Container(
-              height: 120,
-              width: double.infinity,
-              color: heroColor,
-              child: Icon(
-                heroIcon,
-                size: 56,
-                color: Colors.white.withOpacity(0.9),
+class _SettlementOverview extends StatelessWidget {
+  const _SettlementOverview();
+
+  String _money(int minor) => 'R ${(minor / 100).toStringAsFixed(2)}';
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<MerchantPaymentOverview>(
+      future: PaymentSetupService.overview(StoreSession.instance.storeId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Settlement information is temporarily unavailable. Your manual sales records are unchanged.',
+                textAlign: TextAlign.center,
               ),
             ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.6,
-                    color: Colors.black87,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                Row(
+          );
+        }
+        final overview = snapshot.data!;
+        final profile = overview.profile;
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: primaryBtn),
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-                    Expanded(child: secondaryBtn),
+                    const Text(
+                      'Online settlement destination',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      profile.maskedAccount.isEmpty
+                          ? 'No verified settlement account'
+                          : '${profile.bankName} · ${profile.maskedAccount}',
+                    ),
+                    if (profile.resolvedAccountName.isNotEmpty)
+                      Text(profile.resolvedAccountName),
+                    const SizedBox(height: 8),
+                    Text(
+                      overview.enabled
+                          ? 'Enabled for verified online collections'
+                          : profile.bankVerificationStatus == 'pending_review'
+                              ? 'Pending Spaza One review'
+                              : 'Online collections are not enabled',
+                    ),
                   ],
                 ),
-                if (footer != null) footer,
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 12),
+            const Text(
+              'Recent settlements',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            if (overview.settlements.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'No verified online settlements yet. Cash, manual transfer and Pay Later remain in their existing records.',
+                  ),
+                ),
+              )
+            else
+              for (final settlement in overview.settlements)
+                Card(
+                  child: ListTile(
+                    title: Text(
+                      'Order ${settlement.orderId.substring(0, settlement.orderId.length < 8 ? settlement.orderId.length : 8)}',
+                    ),
+                    subtitle: Text(
+                      'Spaza One ${_money(settlement.platformFeeMinor)} · Paystack ${_money(settlement.providerFeeMinor)}',
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _money(settlement.merchantNetProceedsMinor),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        Text(settlement.status.replaceAll('_', ' ')),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        );
+      },
     );
   }
 }

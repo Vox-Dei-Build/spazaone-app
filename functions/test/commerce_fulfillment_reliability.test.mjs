@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { commerceNotificationResult } from "../lib/commerce/notifications.js";
+import {
+  commerceNotificationDocumentId,
+  commerceNotificationResult,
+} from "../lib/commerce/notifications.js";
 import { orderCreatedOutboxIsDue } from "../lib/commerce/orderCreatedNotificationOutbox.js";
 import { validatedTrackingUrl } from "../lib/commerce/tracking.js";
 
@@ -46,6 +49,35 @@ test("missing customer phone is never reported as notified", () => {
   assert.equal(
     commerceNotificationResult("skipped_no_phone", "push_sent", false).customer,
     "not_deliverable",
+  );
+});
+
+test("one outbox identity covers both order kinds without collisions", () => {
+  const notice = {
+    orderId: "order-1",
+    sellerId: "seller-1",
+    buyerName: "Buyer",
+    buyerPhone: "0820000000",
+    status: "preparing",
+    amountDueMinor: 10_000,
+    orderKind: "merchant_stock",
+    eventKey: "accept_order",
+  };
+  const first = commerceNotificationDocumentId(notice);
+  assert.equal(first, commerceNotificationDocumentId(notice));
+  assert.notEqual(
+    first,
+    commerceNotificationDocumentId({
+      ...notice,
+      orderKind: "supplier_delivery",
+    }),
+  );
+  assert.notEqual(
+    first,
+    commerceNotificationDocumentId({
+      ...notice,
+      eventKey: "assign_driver",
+    }),
   );
 });
 

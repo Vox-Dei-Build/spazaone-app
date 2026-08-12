@@ -2,6 +2,16 @@
 import { db, functions } from "../config/main";
 import { FieldValue } from "firebase-admin/firestore";
 import { computeCartSig } from "./cartSig";
+import {
+  authenticateFirebaseRequest,
+  verifyBotRequest,
+} from "../security/requestAuth";
+import { assertStoreAccess } from "../stores/storeAccess";
+import { paymentReadiness } from "../payments/v2/readiness";
+import {
+  releaseOwnedInventoryReservation,
+  reserveOwnedInventoryForSale,
+} from "../payments/v2/inventoryReservations";
 
 type PaymentType = "Cash" | "Online" | "BNPL" | string;
 type FulfillmentType = "pickup" | "delivery" | string;
@@ -12,7 +22,10 @@ function idempotencyDocId(value: string | null): string | null {
   return encodeURIComponent(normalized).slice(0, 500);
 }
 
-export const checkoutCart = functions.https.onRequest(async (req, res) => {
+const checkoutCartHandler = async (
+  req: functions.https.Request,
+  res: functions.Response,
+) => {
   if (req.method !== "POST") {
     res.status(405).send("Method Not Allowed");
     return;
@@ -37,6 +50,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       mediaRefs = [],
       preview = false, // <— only flag we keep
       idempotencyKey = null, // optional, for deduping sale creation
+      paymentRail = null,
     } = (req.body || {}) as {
       merchantId: string;
       customerId: string;
@@ -55,6 +69,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       mediaRefs?: string[];
       preview?: boolean;
       idempotencyKey?: string | null;
+      paymentRail?: string | null;
     };
 
     if (!merchantId || !customerId) {
@@ -63,6 +78,8 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     }
 
     const ptype = String(paymentType || "").toLowerCase();
+    const isPaystackV2 =
+      ptype === "online" && String(paymentRail ?? "") === "paystack_v2";
     const idempotencyId = idempotencyDocId(idempotencyKey);
     const idempotencyRef = idempotencyId
       ? db
@@ -71,6 +88,29 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
           .collection("checkoutIdempotency")
           .doc(idempotencyId)
       : null;
+
+    if (isPaystackV2) {
+      if (!idempotencyRef) {
+        res.status(400).json({ error: "An idempotency key is required." });
+        return;
+      }
+      if (!verifyBotRequest(req)) {
+        const uid = await authenticateFirebaseRequest(req, res);
+        if (!uid) return;
+        await assertStoreAccess(uid, merchantId);
+      }
+      const readiness = await paymentReadiness({
+        merchantId,
+        purpose: "merchant_order",
+      });
+      if (!readiness.enabled) {
+        res.status(409).json({
+          error: "Online payments are not available for this shop yet.",
+          reason: readiness.reason,
+        });
+        return;
+      }
+    }
 
     if (idempotencyRef) {
       const existing = await idempotencyRef.get();
@@ -287,6 +327,13 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
             return;
           }
           // Supersede: cancel old & drop its cart lock atomically
+          const reservationId = String(os.inventoryReservationId ?? "").trim();
+          if (reservationId && os.inventoryReserved === true) {
+            await releaseOwnedInventoryReservation({
+              reservationId,
+              reason: "cart_changed",
+            });
+          }
           await db.runTransaction(async (tx) => {
             const prevRef = db
               .collection("users")
@@ -347,10 +394,47 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
         dateAdded: now,
         updatedAt: now,
         inventoryFinalized: false,
+        ...(isPaystackV2
+          ? { paymentRail: "paystack_v2", source: "paystack_v2" }
+          : {}),
         idempotencyKey: idempotencyKey || null,
       },
       { merge: true },
     );
+
+    if (isPaystackV2) {
+      try {
+        await reserveOwnedInventoryForSale({
+          merchantId,
+          orderId: saleRef.id,
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "unknown";
+        await saleRef.set(
+          {
+            status: "cancelled",
+            paymentStatus: "cancelled",
+            cancelledReason: code,
+            cancelledAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        const unavailable = [
+          "INVENTORY_UNAVAILABLE",
+          "INVENTORY_PRODUCT_UNAVAILABLE",
+          "INVENTORY_PRICE_CHANGED",
+          "SALE_TOTAL_CHANGED",
+        ].includes(code);
+        res.status(unavailable ? 409 : 500).json({
+          error: unavailable
+            ? "The cart changed or an item is no longer available. Review the cart and try again."
+            : "The order could not reserve stock. No payment was opened.",
+          code: unavailable ? code : "INVENTORY_RESERVATION_FAILED",
+        });
+        return;
+      }
+    }
 
     if (idempotencyRef) {
       await idempotencyRef.set(
@@ -395,4 +479,8 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ error: "Failed to checkout" });
     return;
   }
-});
+};
+
+export const checkoutCart = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(checkoutCartHandler);

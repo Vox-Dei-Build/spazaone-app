@@ -9,7 +9,9 @@ class PillMeta {
 enum OrderStatus {
   all,
   pending,
+  awaitingPayment,
   accepted,
+  preparing,
   paid,
   cancelled,
   refunded,
@@ -17,6 +19,7 @@ enum OrderStatus {
   uncollected,
   collected,
   outForDelivery,
+  onTheWay,
   delivered,
   bnplPending,
   bnplOutstanding,
@@ -25,40 +28,46 @@ enum OrderStatus {
 
 extension OrderStatusLabel on OrderStatus {
   String get label => switch (this) {
-        OrderStatus.all => 'All',
-        OrderStatus.pending => 'Pending',
-        OrderStatus.accepted => 'Accepted',
-        OrderStatus.paid => 'Paid',
-        OrderStatus.cancelled => 'Cancelled',
-        OrderStatus.refunded => 'Refunded',
-        OrderStatus.rejected => 'Rejected',
-        OrderStatus.uncollected => 'Uncollected',
-        OrderStatus.collected => 'Collected',
-        OrderStatus.outForDelivery => 'Out for Delivery',
-        OrderStatus.delivered => 'Delivered',
-        OrderStatus.bnplPending => 'Pay Later Pending',
-        OrderStatus.bnplOutstanding => 'Pay Later Outstanding',
-        OrderStatus.bnplRejected => 'Pay Later Rejected',
-      };
+    OrderStatus.all => 'All',
+    OrderStatus.pending => 'Pending',
+    OrderStatus.awaitingPayment => 'Awaiting payment',
+    OrderStatus.accepted => 'Accepted',
+    OrderStatus.preparing => 'Preparing',
+    OrderStatus.paid => 'Paid',
+    OrderStatus.cancelled => 'Cancelled',
+    OrderStatus.refunded => 'Refunded',
+    OrderStatus.rejected => 'Rejected',
+    OrderStatus.uncollected => 'Uncollected',
+    OrderStatus.collected => 'Collected',
+    OrderStatus.outForDelivery => 'Out for Delivery',
+    OrderStatus.onTheWay => 'On the way',
+    OrderStatus.delivered => 'Delivered',
+    OrderStatus.bnplPending => 'Pay Later Pending',
+    OrderStatus.bnplOutstanding => 'Pay Later Outstanding',
+    OrderStatus.bnplRejected => 'Pay Later Rejected',
+  };
 }
 
 extension OrderStatusX on OrderStatus {
   Color color(BuildContext c) => switch (this) {
-        OrderStatus.pending => Colors.amber,
-        OrderStatus.accepted => Colors.indigo,
-        OrderStatus.paid => Colors.green,
-        OrderStatus.cancelled => Colors.red,
-        OrderStatus.refunded => Colors.purple,
-        OrderStatus.rejected => Colors.red,
-        OrderStatus.uncollected => Colors.orange,
-        OrderStatus.collected => Colors.teal,
-        OrderStatus.outForDelivery => Colors.blue,
-        OrderStatus.delivered => Colors.teal,
-        OrderStatus.bnplRejected => Colors.deepOrange,
-        OrderStatus.bnplPending => Colors.amber,
-        OrderStatus.bnplOutstanding => Colors.brown,
-        OrderStatus.all => Theme.of(c).colorScheme.outline,
-      };
+    OrderStatus.pending => Colors.amber,
+    OrderStatus.awaitingPayment => Colors.amber,
+    OrderStatus.accepted => Colors.indigo,
+    OrderStatus.preparing => Colors.indigo,
+    OrderStatus.paid => Colors.green,
+    OrderStatus.cancelled => Colors.red,
+    OrderStatus.refunded => Colors.purple,
+    OrderStatus.rejected => Colors.red,
+    OrderStatus.uncollected => Colors.orange,
+    OrderStatus.collected => Colors.teal,
+    OrderStatus.outForDelivery => Colors.blue,
+    OrderStatus.onTheWay => Colors.blue,
+    OrderStatus.delivered => Colors.teal,
+    OrderStatus.bnplRejected => Colors.deepOrange,
+    OrderStatus.bnplPending => Colors.amber,
+    OrderStatus.bnplOutstanding => Colors.brown,
+    OrderStatus.all => Theme.of(c).colorScheme.outline,
+  };
 
   // String parser (kept for convenience)
   static OrderStatus fromString(
@@ -92,6 +101,9 @@ extension OrderStatusX on OrderStatus {
     if (x.contains('cancel') || ps == 'cancelled') {
       return OrderStatus.cancelled;
     }
+    if (x == 'awaiting_payment') return OrderStatus.awaitingPayment;
+    if (x == 'preparing') return OrderStatus.preparing;
+    if (x == 'on_the_way') return OrderStatus.onTheWay;
     if (x == 'delivered') return OrderStatus.delivered;
     if (x == 'shipped' || x == 'out_for_delivery') {
       return OrderStatus.outForDelivery;
@@ -159,6 +171,7 @@ OrderStatus resolveOrderStatus({
   if (s == 'delivered' || s.contains('delivered')) {
     return OrderStatus.delivered;
   }
+  if (s == 'on_the_way') return OrderStatus.onTheWay;
   if (s == 'out_for_delivery' || s.contains('out_for_delivery')) {
     return OrderStatus.outForDelivery;
   }
@@ -166,6 +179,7 @@ OrderStatus resolveOrderStatus({
   if (isCollected || s.contains('collected')) return OrderStatus.collected;
 
   if (s == 'submitted_for_fulfilment') return OrderStatus.accepted;
+  if (s == 'preparing') return OrderStatus.preparing;
 
   // 3) Cancellation/refund must win over an older paid payment snapshot.
   if (s.contains('refund') || ps == 'refunded') return OrderStatus.refunded;
@@ -182,6 +196,8 @@ OrderStatus resolveOrderStatus({
     return OrderStatus.accepted;
   }
 
+  if (s == 'awaiting_payment') return OrderStatus.awaitingPayment;
+
   if (s.contains('uncollected') || ps == 'uncollected') {
     return OrderStatus.uncollected;
   }
@@ -192,8 +208,12 @@ OrderStatus resolveOrderStatus({
   }
 
   // 7) Fallback to parser
-  return OrderStatusX.fromString(status,
-      paymentMethod: paymentMethod, type: type, paymentStatus: paymentStatus);
+  return OrderStatusX.fromString(
+    status,
+    paymentMethod: paymentMethod,
+    type: type,
+    paymentStatus: paymentStatus,
+  );
 }
 
 String statusLabel(OrderStatus st) => st.label;
@@ -237,6 +257,9 @@ StatusMeta buildPaymentStatusMeta(
     return const StatusMeta('Paid', Colors.green);
   }
   if (ps == 'refunded') return const StatusMeta('Refunded', Colors.purple);
+  if (ps == 'refund_pending') {
+    return const StatusMeta('Refund pending', Colors.orange);
+  }
   if (ps == 'rejected' || ps == 'failed') {
     return const StatusMeta('Rejected', Colors.red);
   }
@@ -249,7 +272,9 @@ StatusMeta buildPaymentStatusMeta(
 
   // Fallback: show raw value with neutral outline color
   return StatusMeta(
-      paymentStatus ?? 'Unknown', Theme.of(c).colorScheme.outline);
+    paymentStatus ?? 'Unknown',
+    Theme.of(c).colorScheme.outline,
+  );
 }
 
 PillMeta? buildCollectionPill({

@@ -96,7 +96,8 @@ class _AddBankingDetailsPageState extends State<AddBankingDetailsPage> {
                           onTap: () async {
                             if (_formKey.currentState!.validate()) {
                               try {
-                                await widget.walletViewModel.saveBankingDetails();
+                                await widget.walletViewModel
+                                    .saveBankingDetails();
                                 showSnackbar(context, 'Banking details saved ✅',
                                     Colors.green);
                                 Navigator.pop(context);

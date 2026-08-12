@@ -15,7 +15,7 @@ class PaystackFormScreen extends StatefulWidget {
   const PaystackFormScreen({Key? key}) : super(key: key);
 
   @override
-  _PaystackFormScreenState createState() => _PaystackFormScreenState();
+  State<PaystackFormScreen> createState() => _PaystackFormScreenState();
 }
 
 class _PaystackFormScreenState extends State<PaystackFormScreen> {
@@ -23,6 +23,9 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
   final TextEditingController emailController = TextEditingController();
   final String currentUserId = StoreSession.instance.storeId;
   bool isLoading = false;
+  CampaignTopupChannel selectedChannel = CampaignTopupChannel.eft;
+
+  String _money(int minor) => 'R ${(minor / 100).toStringAsFixed(2)}';
 
   @override
   void dispose() {
@@ -43,13 +46,17 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
       return;
     }
 
-    final amount = double.tryParse(amountController.text.trim()) ?? 0;
-    if (amount <= 0) {
+    late final int creditAmountMinor;
+    try {
+      creditAmountMinor =
+          PaystackService.minorUnitsFromRandText(amountController.text);
+    } on CampaignTopupException catch (error) {
       messenger.showSnackBar(
-        const SnackBar(content: Text("Enter a valid amount")),
+        SnackBar(content: Text(error.message)),
       );
       return;
     }
+    final amount = creditAmountMinor / 100;
 
     if (currentUserId.isEmpty) {
       messenger.showSnackBar(
@@ -61,44 +68,67 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
     setState(() => isLoading = true);
 
     final amountBucket = amountBucketZAR(amount);
-    const method = 'paystack_card';
+    final method = 'paystack_${selectedChannel.wireName}';
     await TelemetryService.instance.capture(
       WalletTopupStarted(amountBucket: amountBucket, method: method),
     );
 
     try {
-      // 🔑 This calls the initializer with purpose: 'topup' and minor units handled inside the service.
-      final init = await PaystackService.initializeTopUp(
-        userId: currentUserId,
-        amount: amount, // rands
+      final quote = await PaystackService.quoteCampaignCreditV2(
+        merchantId: currentUserId,
+        creditAmountMinor: creditAmountMinor,
+        channel: selectedChannel,
+      );
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Confirm online top-up'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Campaign credits: ${_money(quote.creditAmountMinor)}'),
+              const SizedBox(height: 8),
+              Text('Paystack fee: ${_money(quote.providerFeeMinor)}'),
+              const Divider(height: 24),
+              Text(
+                'Total to pay: ${_money(quote.totalChargeMinor)}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Spaza One adds no collection fee. Your credits are added only after Paystack verifies the payment.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Continue to Paystack'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) {
+        if (mounted) setState(() => isLoading = false);
+        return;
+      }
+      final init = await PaystackService.initializeCampaignCreditV2(
+        merchantId: currentUserId,
+        creditAmountMinor: creditAmountMinor,
         email: emailController.text.trim(),
+        channel: selectedChannel,
+        idempotencyKey:
+            'topup:$currentUserId:${DateTime.now().microsecondsSinceEpoch}',
       );
 
       if (!mounted) return;
       setState(() => isLoading = false);
-
-      if (init == null) {
-        // Failed to create link
-        await TelemetryService.instance.capture(
-          WalletTopupFailed(
-            amountBucket: amountBucket,
-            method: method,
-            failureCode: 'init_null',
-          ),
-        );
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PaymentResponseScreen(
-              isSuccess: false,
-              message: "Transaction failed. Please try again.",
-              amount: amount,
-              reference: "—",
-            ),
-          ),
-        );
-        return;
-      }
 
       // Open Paystack checkout
       final success = await Navigator.push<bool>(
@@ -118,6 +148,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         await TelemetryService.instance.capture(
           WalletTopupCompleted(amountBucket: amountBucket, method: method),
         );
+        if (!mounted) return;
         await Navigator.push(
           context,
           MaterialPageRoute(
@@ -157,15 +188,15 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
           failureCode: 'exception',
         ),
       );
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PaymentResponseScreen(
-            isSuccess: false,
-            message: "Transaction failed. Please try again.",
-            amount: double.tryParse(amountController.text.trim()) ?? 0,
-            reference: "—",
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is CampaignTopupException
+                ? e.message
+                : 'Online top-up is temporarily unavailable. Please try again.',
           ),
+          backgroundColor: Colors.red,
         ),
       );
     }
@@ -192,6 +223,35 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
               validator: (value) => (value == null || value.isEmpty)
                   ? 'This field is required'
                   : null,
+            ),
+            SizedBox(height: SizeConfig.heightMultiplier * 1.5),
+            DropdownButtonFormField<CampaignTopupChannel>(
+              value: selectedChannel,
+              decoration: const InputDecoration(
+                labelText: 'Payment method *',
+                prefixIcon: Icon(Icons.account_balance_outlined),
+                border: OutlineInputBorder(),
+              ),
+              items: CampaignTopupChannel.values
+                  .map(
+                    (channel) => DropdownMenuItem(
+                      value: channel,
+                      child: Text(channel.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: isLoading
+                  ? null
+                  : (channel) {
+                      if (channel != null) {
+                        setState(() => selectedChannel = channel);
+                      }
+                    },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Card top-ups stay unavailable until Paystack can guarantee the exact local or international fee before checkout.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 1.5),
             CustomTextField(

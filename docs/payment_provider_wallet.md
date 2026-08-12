@@ -18,7 +18,7 @@
 
 ## Paystack Fees (South Africa)
 
-### 1. Local Payments (cards, Scan to Pay, SnapScan, EFT)
+### 1. Local Payments (cards, Scan to Pay, SnapScan)
 
 - 2.9% + R1.00 per transaction (excl. VAT)
 - Add 15% VAT on the fee.
@@ -36,10 +36,11 @@
 - With VAT: ~3.55%–3.6% effective.
 - Supports Visa, Mastercard, Amex, etc.
 
-### 4. Settlement (Payouts)
+### 4. Settlement payouts and outbound transfers
 
-- R3.00 per transfer to your bank account (excl. VAT → R3.45 incl. VAT).
-- Same flat fee whether successful or failed.
+- Automatic Paystack settlement payouts are free.
+- A separate outbound transfer initiated through Paystack's Transfers API is
+  R3.00 (excl. VAT → R3.45 incl. VAT), whether successful or failed.
 
 ## Worked Examples
 
@@ -71,5 +72,6 @@
 - EFT is cheapest (2.3% effective).
 - Local cards average ~3.3–3.4%.
 - International cards cost the most (~3.6%).
-- Always add R3.45 per payout to bank (settlement fee).
-
+- Do not add a fee for normal automatic settlement payouts.
+- Add R3.45 only when SpazaOne explicitly initiates an outbound bank transfer
+  through Paystack's Transfers API.

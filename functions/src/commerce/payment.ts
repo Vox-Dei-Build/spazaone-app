@@ -25,6 +25,11 @@ import {
   deliveryEstimateFromAging,
   reserveCheckoutQuote,
 } from "./prepareCommerceCheckout";
+import {
+  initializeSupplierOrderPaymentV2,
+  supplierPaymentEconomics,
+} from "../payments/v2/supplierOrders";
+import { paymentReadiness } from "../payments/v2/readiness";
 
 type VerifiedPaystackTransaction = {
   reference?: unknown;
@@ -486,7 +491,7 @@ function commerceOrderReturnUrl(
 /** Public endpoint that creates an order and initializes its own payment. */
 export const createCommerceOrder = functions
   .runWith({
-    secrets: ["CJ_API_KEY", "PASELLA_BOT_TOKEN"],
+    secrets: ["CJ_API_KEY", "PASELLA_BOT_TOKEN", "PAYSTACK_SECRET_KEY"],
     timeoutSeconds: 120,
     memory: "512MB",
   })
@@ -503,14 +508,9 @@ export const createCommerceOrder = functions
     try {
       const whatsappBotOrder =
         req.body?.orderChannel === "whatsapp" && verifyBotRequest(req);
-      const digitalPaymentsEnabled =
-        commercePaymentsEnabled() && !whatsappBotOrder;
-      if (!digitalPaymentsEnabled && !whatsappBotOrder) {
-        res.status(503).json({
-          error: "Spaza One online checkout is not available yet.",
-        });
-        return;
-      }
+      // Public supplier checkout is governed by Payments V2 readiness below.
+      // WhatsApp keeps the existing seller-arranged manual payment path.
+      const digitalPaymentsEnabled = !whatsappBotOrder;
       const paymentMethod: "paystack" | "manual" = digitalPaymentsEnabled
         ? "paystack"
         : "manual";
@@ -612,8 +612,21 @@ export const createCommerceOrder = functions
           existingOrder.data()?.payment?.authorizationUrl ?? "",
         );
         if (!authorizationUrl) {
-          res.status(409).json({
-            error: "Payment is still being prepared. Please try again.",
+          const existingToken = String(attemptData.checkoutToken ?? "");
+          if (!existingToken)
+            throw new Error("CHECKOUT_ATTEMPT_IDENTITY_INVALID");
+          const initialized = await initializeSupplierOrderPaymentV2({
+            orderId: existingOrderId,
+            email: buyer.email,
+            callbackUrl: commerceOrderReturnUrl(
+              listingId,
+              existingOrderId,
+              existingToken,
+            ),
+          });
+          res.status(200).json({
+            authorizationUrl: initialized.authorizationUrl,
+            reused: true,
           });
           return;
         }
@@ -665,6 +678,16 @@ export const createCommerceOrder = functions
         String(listingData.sellerId ?? "") !== expectedSellerId
       ) {
         throw new Error("LISTING_UNAVAILABLE");
+      }
+      if (digitalPaymentsEnabled) {
+        if (String(listingData.supplierId ?? "") !== "cj_dropshipping") {
+          throw new Error("LISTING_UNAVAILABLE");
+        }
+        const readiness = await paymentReadiness({
+          merchantId: clean(listingData.sellerId, "SELLER", 128),
+          purpose: "supplier_order",
+        });
+        if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
       }
       let externalQuoteReservation: CheckoutQuoteReservation | null = null;
       if (String(listingData.supplierId ?? "") === "cj_dropshipping") {
@@ -790,12 +813,31 @@ export const createCommerceOrder = functions
           ? cjQuote.landedCostMinor +
             requireMinorUnits(source.markupMinor, "markup")
           : source.sellPriceMinor;
-        const pricing = priceCommerceOrder({
-          baseCostMinor,
-          sellPriceMinor,
-          quantity: 1,
-          paymentFeeMinor: digitalPaymentsEnabled ? undefined : 0,
-        });
+        const supplierEconomics =
+          digitalPaymentsEnabled && cjQuote
+            ? supplierPaymentEconomics({
+                landedCostMinor: cjQuote.landedCostMinor,
+                markupMinor: requireMinorUnits(source.markupMinor, "markup"),
+              })
+            : null;
+        const pricing = supplierEconomics
+          ? {
+              currency: "ZAR" as const,
+              quantity: 1,
+              baseCostMinor: supplierEconomics.landedCostMinor,
+              sellPriceMinor:
+                supplierEconomics.landedCostMinor +
+                supplierEconomics.markupMinor,
+              feeMinor: supplierEconomics.collectionFeeMinor,
+              marginMinor: supplierEconomics.markupMinor,
+              amountDueMinor: supplierEconomics.customerTotalMinor,
+            }
+          : priceCommerceOrder({
+              baseCostMinor,
+              sellPriceMinor,
+              quantity: 1,
+              paymentFeeMinor: 0,
+            });
         if (pricing.amountDueMinor > 10_000_000) {
           throw new Error("AMOUNT_INVALID");
         }
@@ -863,6 +905,12 @@ export const createCommerceOrder = functions
           sellPriceMinor: pricing.sellPriceMinor,
           feeMinor: pricing.feeMinor,
           marginMinor: pricing.marginMinor,
+          markupMinor: cjQuote
+            ? requireMinorUnits(source.markupMinor, "markup")
+            : pricing.marginMinor,
+          collectionFeeMinor: supplierEconomics?.collectionFeeMinor ?? 0,
+          safetyMarginMinor: supplierEconomics?.safetyMarginMinor ?? 0,
+          ...(supplierEconomics ? { money: supplierEconomics.money } : {}),
           ...supplierSnapshot,
           fulfilmentMode: String(
             source.fulfilmentMode ?? "manual_supplier_order",
@@ -963,8 +1011,18 @@ export const createCommerceOrder = functions
           existing.data()?.payment?.authorizationUrl ?? "",
         );
         if (!authorizationUrl) {
-          res.status(409).json({
-            error: "Payment is still being prepared. Please try again.",
+          const initialized = await initializeSupplierOrderPaymentV2({
+            orderId: orderRef.id,
+            email: buyer.email,
+            callbackUrl: commerceOrderReturnUrl(
+              listingId,
+              orderRef.id,
+              reserved.checkoutToken,
+            ),
+          });
+          res.status(200).json({
+            authorizationUrl: initialized.authorizationUrl,
+            reused: true,
           });
           return;
         }
@@ -993,50 +1051,12 @@ export const createCommerceOrder = functions
         });
         return;
       }
-      const reference = `SPAZA-COM-${orderRef.id}-${randomBytes(4).toString("hex")}`;
-      const secret = paystackSecret();
-      const initialize = await axios.post(
-        "https://api.paystack.co/transaction/initialize",
-        {
-          email: buyer.email,
-          amount: orderData.amountDueMinor,
-          currency: "ZAR",
-          channels: ["card", "eft", "qr"],
-          reference,
-          callback_url: returnUrl,
-          metadata: {
-            purpose: "commerce_order",
-            orderId: orderRef.id,
-            sellerId: orderData.sellerId,
-            listingId,
-            schemaVersion: 1,
-          },
-        },
-        {
-          headers: { Authorization: `Bearer ${secret}` },
-          timeout: 15000,
-        },
-      );
-      const authorizationUrl = String(
-        initialize.data?.data?.authorization_url ?? "",
-      );
-      const providerReference = String(
-        initialize.data?.data?.reference ?? reference,
-      );
-      if (!authorizationUrl) throw new Error("PAYSTACK_INIT_INVALID");
-      await orderRef.set(
-        {
-          payment: {
-            provider: "paystack",
-            reference: providerReference,
-            authorizationUrl,
-            initializedAt: FieldValue.serverTimestamp(),
-          },
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-      res.status(200).json({ authorizationUrl });
+      const initialized = await initializeSupplierOrderPaymentV2({
+        orderId: orderRef.id,
+        email: buyer.email,
+        callbackUrl: returnUrl,
+      });
+      res.status(200).json({ authorizationUrl: initialized.authorizationUrl });
     } catch (error) {
       logCommerceError("createCommerceOrder failed", error);
       res.status(publicStatus(error)).json({
