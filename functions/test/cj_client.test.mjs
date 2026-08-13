@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  cjProviderFailureCode,
   calculateCjRequestSlot,
   catalogProductWithZaDelivery,
   cjSandboxFundingCapacityUsdMinor,
@@ -13,6 +14,25 @@ import {
   prioritizedCjVariants,
   usdMinor,
 } from "../lib/commerce/cjClient.js";
+
+test("CJ HTTP errors preserve an authoritative order-not-found result", () => {
+  assert.equal(
+    cjProviderFailureCode({
+      responseStatus: 400,
+      upstreamCode: "1600300",
+      upstreamMessage: "order not found",
+      networkCode: "ERR_BAD_REQUEST",
+    }),
+    "CJ_ORDER_NOT_FOUND",
+  );
+  assert.equal(
+    cjProviderFailureCode({
+      responseStatus: 503,
+      networkCode: "ECONNRESET",
+    }),
+    "CJ_UNAVAILABLE",
+  );
+});
 
 const fx = {
   rate: 18,

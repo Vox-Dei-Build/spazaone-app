@@ -155,6 +155,37 @@ export function createRequestScheduler(intervalMs: number) {
   };
 }
 
+export function cjProviderFailureCode(input: {
+  responseStatus?: unknown;
+  upstreamCode?: unknown;
+  upstreamMessage?: unknown;
+  networkCode?: unknown;
+}): string {
+  const responseStatus = Number(input.responseStatus);
+  const upstreamCode = text(input.upstreamCode, 40);
+  const upstreamMessage = text(input.upstreamMessage, 200).toLowerCase();
+  const networkCode = text(input.networkCode, 40);
+  if (
+    upstreamCode === "1600300" ||
+    upstreamMessage.includes("order not found") ||
+    upstreamMessage.includes("order does not exist")
+  ) {
+    return "CJ_ORDER_NOT_FOUND";
+  }
+  if (
+    responseStatus === 429 ||
+    upstreamCode === "1600200" ||
+    upstreamMessage.includes("too many requests")
+  ) {
+    return "CJ_RATE_LIMITED";
+  }
+  if (responseStatus === 401 || ["1600001", "1600003"].includes(upstreamCode)) {
+    return "CJ_AUTH_FAILED";
+  }
+  if (networkCode) return "CJ_UNAVAILABLE";
+  return "CJ_UPSTREAM_REJECTED";
+}
+
 // CJ enforces one request per second for this integration. Keep every request,
 // including token exchange, on the same queue so a single function instance
 // never creates the burst that previously made valid variants look unavailable.
@@ -462,9 +493,14 @@ async function cjRequest<T = unknown>(
       requestId: text(upstream.requestId, 80) || null,
       networkCode: networkCode || null,
     });
+    const normalizedFailure = cjProviderFailureCode({
+      responseStatus,
+      upstreamCode,
+      upstreamMessage: upstream.message,
+      networkCode,
+    });
     const rateLimited =
-      responseStatus === 429 ||
-      upstreamCode === "1600200" ||
+      normalizedFailure === "CJ_RATE_LIMITED" ||
       (error instanceof Error && error.message === "CJ_RATE_LIMITED");
     if (retry && rateLimited) {
       await new Promise((resolve) =>
@@ -480,7 +516,12 @@ async function cjRequest<T = unknown>(
       await accessToken(true);
       return cjRequest<T>(config, false);
     }
-    if (responseStatus === 401) throw new Error("CJ_AUTH_FAILED");
+    if (normalizedFailure === "CJ_ORDER_NOT_FOUND") {
+      throw new Error("CJ_ORDER_NOT_FOUND");
+    }
+    if (normalizedFailure === "CJ_AUTH_FAILED") {
+      throw new Error("CJ_AUTH_FAILED");
+    }
     if (rateLimited) throw new Error("CJ_RATE_LIMITED");
     if (error instanceof Error && error.message.startsWith("CJ_")) throw error;
     throw new Error("CJ_UNAVAILABLE");
