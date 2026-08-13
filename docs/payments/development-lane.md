@@ -91,16 +91,22 @@ replay use the same run ID. Production apply additionally requires explicit
 backup evidence and action-time confirmation.
 
 Cloud Paystack QA is also dry-run by default. It enables only the synthetic
-development merchant and only Campaign Credits, leaving every real/public
-merchant disabled. Rehearse, apply, verify and later roll back with one run ID:
+development merchant, leaving every real/public merchant disabled. The 4.8.0
+candidate exercises all four coupled capabilities with an already verified
+Paystack Test subaccount. Rehearse, apply, verify and later roll back with one
+run ID:
 
 ```sh
 npm --prefix functions run development:payment-qa -- \
   --project spazaone-dev
 npm --prefix functions run development:payment-qa -- \
-  --project spazaone-dev --run-id campaign-qa-YYYYMMDD --execute
+  --project spazaone-dev --run-id commerce-qa-YYYYMMDD \
+  --capabilities campaign_credit,merchant_order,account_settlement,supplier_order \
+  --test-subaccount-code <verified-test-subaccount-code> --execute
 npm --prefix functions run development:payment-qa -- \
-  --project spazaone-dev --run-id campaign-qa-YYYYMMDD --verify
+  --project spazaone-dev --run-id commerce-qa-YYYYMMDD \
+  --capabilities campaign_credit,merchant_order,account_settlement,supplier_order \
+  --test-subaccount-code <verified-test-subaccount-code> --verify
 ```
 
 The campaign smoke command creates a bounded R10 test-mode checkout and writes
