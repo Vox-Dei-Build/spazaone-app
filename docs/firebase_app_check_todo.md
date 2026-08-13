@@ -1,8 +1,8 @@
 # Firebase App Check — Activation Backlog
 
-**Status:** Not started. Tracked here, not in a ticket yet.
-**Owner:** unassigned
-**Priority:** medium — security hardening + likely fixes a class of Crashlytics noise.
+**Status:** Development rollout active; production enforcement intentionally pending.
+**Owner:** Engineering/Security release gate
+**Priority:** release evidence and production hardening.
 
 ## Why this matters
 
@@ -14,17 +14,23 @@ Firestore bill. App Check verifies that requests come from a genuine
 build of our app on a genuine device before the backend will accept
 them.
 
-## Current state (audit, 2026-05)
+## Current state (verified, 2026-08)
 
 - `firebase_app_check: ^0.3.2` is declared in `pubspec.yaml`.
-- The plugin is **never `activate`d** in `lib/main.dart`. No provider
-  is registered, so no token is ever issued.
-- Two files attempt to read a token and attach it as an
-  `X-Firebase-AppCheck` header on manual HTTP calls; both currently
-  receive `null`:
+- The plugin is activated after Firebase initialization. Debug builds use the
+  debug provider; signed release builds use Play Integrity on Android and App
+  Attest on iOS.
+- Manual HTTP clients attach an `X-Firebase-AppCheck` header where required:
   - `lib/pages/sales/widgets/online_sales_list.dart:149`
   - `lib/pages/sales/widgets/online_sale_detail_page.dart:49`
-- No Cloud Function sets `enforceAppCheck: true`.
+- Security-sensitive HTTP payment and bot endpoints verify App Check now. The
+  broader Firebase services remain in monitoring mode while old production
+  builds age out.
+- The physical Android development token is registered in `spazaone-dev` and a
+  clean restart proved token exchange without exposing the token.
+- The exact signed iOS `4.8.0+88` development app is installed and launches on
+  a physical iPhone. The detached device runner did not surface its debug token,
+  so iOS registration/exchange remains an explicit release-evidence task.
 - Suspected contributor to the recurring Crashlytics signature
   `[firebase_functions/unknown] java.util.concurrent.ExecutionException:
   1 out of 2 underlying tasks failed`. The Android Functions SDK awaits
@@ -38,24 +44,13 @@ them.
 
 ### Phase 1 — Activate, monitor-only
 
-1. In `lib/main.dart`, immediately after `Firebase.initializeApp()`:
-   ```dart
-   await FirebaseAppCheck.instance.activate(
-     androidProvider: kDebugMode
-         ? AndroidProvider.debug
-         : AndroidProvider.playIntegrity,
-     appleProvider: kDebugMode
-         ? AppleProvider.debug
-         : AppleProvider.deviceCheck, // or .appAttest on iOS 14+
-   );
-   ```
-2. In Firebase Console → App Check, register the Android + iOS apps
+1. In Firebase Console → App Check, register the Android + iOS apps
    with Play Integrity / DeviceCheck. Leave every service in
    **Unenforced** mode.
-3. Generate debug tokens for local dev + CI emulators and add them to
+2. Generate debug tokens for local dev + CI emulators and add them to
    the console's debug token list. Document the procedure in the
    project README so new contributors don't get locked out.
-4. Ship to production. Watch the App Check dashboard for ~1–2 weeks.
+3. Ship to production. Watch the App Check dashboard for ~1–2 weeks.
    Wait for ≥99% verified per service before moving on.
 
 ### Phase 2 — Enforce, service by service
