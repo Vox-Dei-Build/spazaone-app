@@ -35,6 +35,7 @@ import {
   consumeSupplierFunding,
   reserveSupplierFunding,
 } from "../lib/payments/v2/supplierFunding.js";
+import { runPaymentsV2Reconciliation } from "../lib/payments/v2/reconciliation.js";
 
 const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "");
 const emulatorProject = String(
@@ -68,6 +69,8 @@ async function clear() {
     "supplierFundingState",
     "supplierIntegrationState",
     "operationsAlerts",
+    "financialReconciliationRuns",
+    "paymentOperations",
     "users",
   ]) {
     await db.recursiveDelete(db.collection(name));
@@ -962,4 +965,42 @@ test("concurrent supplier funding reservations cannot overcommit CJ balance", as
     axios.defaults.adapter = originalAdapter;
     delete process.env.CJ_API_KEY;
   }
+});
+
+test("on-demand reconciliation writes one bound operations receipt", async () => {
+  await clear();
+  const input = {
+    windowDays: 30,
+    source: "on_demand",
+    actorUid: "spaza-admin-emulator",
+    operationId: "reconcile-480-emulator",
+    reason: "Verify final development candidate",
+  };
+  const first = await runPaymentsV2Reconciliation(input);
+  assert.deepEqual(first, {
+    runId: first.runId,
+    checkedCount: 0,
+    mismatchCount: 0,
+    status: "balanced",
+    truncated: false,
+  });
+  assert.deepEqual(await runPaymentsV2Reconciliation(input), first);
+
+  const operations = await db
+    .collection("paymentOperations")
+    .where("operationId", "==", input.operationId)
+    .get();
+  assert.equal(operations.size, 1);
+  assert.equal(operations.docs[0].get("status"), "completed");
+  assert.equal(operations.docs[0].get("type"), "payment_reconciliation");
+  assert.equal(operations.docs[0].get("windowDays"), 30);
+  assert.equal(operations.docs[0].get("reconciliation.status"), "balanced");
+
+  await assert.rejects(
+    runPaymentsV2Reconciliation({
+      ...input,
+      reason: "Attempt to reuse the operation ID",
+    }),
+    /RECONCILIATION_OPERATION_ID_REUSED/,
+  );
 });

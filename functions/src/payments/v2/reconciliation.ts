@@ -215,6 +215,37 @@ export type ReconciliationRunResult = {
   truncated: boolean;
 };
 
+type ReconciliationOperationBinding = {
+  operationId: string;
+  actorUid: string;
+  reason: string;
+  windowDays: number;
+};
+
+export function reconciliationOperationBindingMatches(
+  existing: Record<string, unknown>,
+  requested: ReconciliationOperationBinding,
+): boolean {
+  return (
+    existing.operationId === requested.operationId &&
+    existing.actorUid === requested.actorUid &&
+    existing.reason === requested.reason &&
+    Number(existing.windowDays) === requested.windowDays
+  );
+}
+
+function resultFromRun(
+  value: Record<string, unknown>,
+): ReconciliationRunResult {
+  return {
+    runId: String(value.runId ?? ""),
+    checkedCount: Number(value.checkedCount ?? 0),
+    mismatchCount: Number(value.mismatchCount ?? 0),
+    status: value.status === "balanced" ? "balanced" : "mismatch",
+    truncated: value.truncated === true,
+  };
+}
+
 export function reconciliationOutcome(input: {
   mismatchCount: number;
   windowTruncated: boolean;
@@ -248,92 +279,225 @@ export async function runPaymentsV2Reconciliation(input: {
   const runRef = deterministicId
     ? db.doc(`financialReconciliationRuns/${deterministicId}`)
     : db.collection("financialReconciliationRuns").doc();
-  const prior = await runRef.get();
-  if (prior.exists) {
-    const value = prior.data() ?? {};
-    return {
-      runId: runRef.id,
-      checkedCount: Number(value.checkedCount ?? 0),
-      mismatchCount: Number(value.mismatchCount ?? 0),
-      status: value.status === "balanced" ? "balanced" : "mismatch",
-      truncated: value.truncated === true,
-    };
+  const onDemand = input.source === "on_demand";
+  const operationBinding: ReconciliationOperationBinding | null = onDemand
+    ? {
+        operationId: String(input.operationId ?? "").trim(),
+        actorUid: String(input.actorUid ?? "").trim(),
+        reason: String(input.reason ?? "").trim(),
+        windowDays,
+      }
+    : null;
+  if (
+    operationBinding &&
+    (!operationBinding.operationId ||
+      !operationBinding.actorUid ||
+      !operationBinding.reason)
+  ) {
+    throw new Error("RECONCILIATION_OPERATION_BINDING_INVALID");
   }
-  const cutoff = Timestamp.fromMillis(
-    Date.now() - windowDays * 24 * 60 * 60 * 1000,
-  );
-  const intents = await db
-    .collection("paymentIntents")
-    .where("updatedAt", ">=", cutoff)
-    .orderBy("updatedAt", "asc")
-    .limit(501)
-    .get();
-  const windowTruncated = intents.size > 500;
-  const results = [];
-  for (const doc of intents.docs.slice(0, 500)) {
-    const value = doc.data();
-    const issues = [
-      ...reconcileIntentData(value),
-      ...(await reconcileIntentRelations(doc.id, value)),
-    ];
-    results.push({ intentId: doc.id, issues });
-  }
-  const mismatches = results.filter((result) => result.issues.length > 0);
-  const outcome = reconciliationOutcome({
-    mismatchCount: mismatches.length,
-    windowTruncated,
-  });
-  const mismatchSamples = [
-    ...mismatches,
-    ...(windowTruncated
-      ? [
+  const operationRef = operationBinding
+    ? db.doc(
+        `paymentOperations/${stableDocumentId("op", [
+          "payment_reconciliation",
+          operationBinding.operationId,
+        ])}`,
+      )
+    : null;
+  let priorResult: ReconciliationRunResult | null = null;
+  if (operationBinding && operationRef) {
+    await db.runTransaction(async (tx) => {
+      const [prior, operation] = await Promise.all([
+        tx.get(runRef),
+        tx.get(operationRef),
+      ]);
+      if (prior.exists) {
+        const value = prior.data() ?? {};
+        if (!reconciliationOperationBindingMatches(value, operationBinding)) {
+          throw new Error("RECONCILIATION_OPERATION_ID_REUSED");
+        }
+        if (
+          operation.exists &&
+          !reconciliationOperationBindingMatches(
+            operation.data() ?? {},
+            operationBinding,
+          )
+        ) {
+          throw new Error("RECONCILIATION_OPERATION_ID_REUSED");
+        }
+        priorResult = resultFromRun(value);
+        tx.set(
+          operationRef,
           {
-            intentId: "__reconciliation_window__",
-            issues: [{ code: "RECONCILIATION_WINDOW_TRUNCATED" }],
+            ...operationBinding,
+            type: "payment_reconciliation",
+            source: "admin_on_demand",
+            status: "completed",
+            reconciliation: priorResult,
+            leaseExpiresAt: null,
+            updatedAt: FieldValue.serverTimestamp(),
+            schemaVersion: 2,
           },
-        ]
-      : []),
-  ];
-  const truncated = windowTruncated || mismatchSamples.length > 100;
-  await runRef.set({
-    runId: runRef.id,
-    windowStart: cutoff,
-    checkedCount: results.length,
-    mismatchCount: outcome.mismatchCount,
-    status: outcome.status,
-    mismatchSamples: mismatchSamples.slice(0, 100),
-    reconciliationContract: {
-      providerEvent: true,
-      providerCharge: true,
-      immutableFeeSnapshot: true,
-      settlement: true,
-      refundTotals: true,
-      businessProjection: true,
-      completeWindow: !windowTruncated,
-    },
-    truncated,
-    source: input.source,
-    actorUid: input.actorUid ?? null,
-    operationId: input.operationId ?? null,
-    reason: input.reason ?? null,
-    schemaVersion: 2,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-  if (outcome.status === "mismatch") {
-    console.error("[payments-v2] reconciliation mismatch", {
+          { merge: true },
+        );
+        return;
+      }
+      if (operation.exists) {
+        const value = operation.data() ?? {};
+        if (!reconciliationOperationBindingMatches(value, operationBinding)) {
+          throw new Error("RECONCILIATION_OPERATION_ID_REUSED");
+        }
+        const leaseExpiresAt = value.leaseExpiresAt as
+          | { toMillis?: () => number }
+          | undefined;
+        if (
+          value.status === "running" &&
+          Number(leaseExpiresAt?.toMillis?.() ?? 0) > Date.now()
+        ) {
+          throw new Error("RECONCILIATION_OPERATION_IN_PROGRESS");
+        }
+        tx.update(operationRef, {
+          status: "running",
+          attemptCount: FieldValue.increment(1),
+          leaseExpiresAt: Timestamp.fromMillis(Date.now() + 10 * 60 * 1000),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+      tx.create(operationRef, {
+        ...operationBinding,
+        type: "payment_reconciliation",
+        source: "admin_on_demand",
+        status: "running",
+        attemptCount: 1,
+        leaseExpiresAt: Timestamp.fromMillis(Date.now() + 10 * 60 * 1000),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        schemaVersion: 2,
+      });
+    });
+    if (priorResult) return priorResult;
+  } else {
+    const prior = await runRef.get();
+    if (prior.exists) return resultFromRun(prior.data() ?? {});
+  }
+  const executeReconciliation = async (): Promise<ReconciliationRunResult> => {
+    const cutoff = Timestamp.fromMillis(
+      Date.now() - windowDays * 24 * 60 * 60 * 1000,
+    );
+    const intents = await db
+      .collection("paymentIntents")
+      .where("updatedAt", ">=", cutoff)
+      .orderBy("updatedAt", "asc")
+      .limit(501)
+      .get();
+    const windowTruncated = intents.size > 500;
+    const results = [];
+    for (const doc of intents.docs.slice(0, 500)) {
+      const value = doc.data();
+      const issues = [
+        ...reconcileIntentData(value),
+        ...(await reconcileIntentRelations(doc.id, value)),
+      ];
+      results.push({ intentId: doc.id, issues });
+    }
+    const mismatches = results.filter((result) => result.issues.length > 0);
+    const outcome = reconciliationOutcome({
+      mismatchCount: mismatches.length,
+      windowTruncated,
+    });
+    const mismatchSamples = [
+      ...mismatches,
+      ...(windowTruncated
+        ? [
+            {
+              intentId: "__reconciliation_window__",
+              issues: [{ code: "RECONCILIATION_WINDOW_TRUNCATED" }],
+            },
+          ]
+        : []),
+    ];
+    const truncated = windowTruncated || mismatchSamples.length > 100;
+    const runRecord = {
+      runId: runRef.id,
+      windowStart: cutoff,
+      checkedCount: results.length,
+      mismatchCount: outcome.mismatchCount,
+      status: outcome.status,
+      mismatchSamples: mismatchSamples.slice(0, 100),
+      reconciliationContract: {
+        providerEvent: true,
+        providerCharge: true,
+        immutableFeeSnapshot: true,
+        settlement: true,
+        refundTotals: true,
+        businessProjection: true,
+        completeWindow: !windowTruncated,
+      },
+      truncated,
+      source: input.source,
+      actorUid: input.actorUid ?? null,
+      operationId: input.operationId ?? null,
+      reason: input.reason ?? null,
+      windowDays,
+      schemaVersion: 2,
+      createdAt: FieldValue.serverTimestamp(),
+    };
+    if (operationBinding && operationRef) {
+      const batch = db.batch();
+      batch.create(runRef, runRecord);
+      batch.update(operationRef, {
+        status: "completed",
+        reconciliation: {
+          runId: runRef.id,
+          checkedCount: results.length,
+          mismatchCount: outcome.mismatchCount,
+          status: outcome.status,
+          truncated,
+        },
+        leaseExpiresAt: null,
+        completedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+    } else {
+      await runRef.set(runRecord);
+    }
+    if (outcome.status === "mismatch") {
+      console.error("[payments-v2] reconciliation mismatch", {
+        runId: runRef.id,
+        checkedCount: results.length,
+        mismatchCount: outcome.mismatchCount,
+        windowTruncated,
+      });
+    }
+    return {
       runId: runRef.id,
       checkedCount: results.length,
       mismatchCount: outcome.mismatchCount,
-      windowTruncated,
-    });
-  }
-  return {
-    runId: runRef.id,
-    checkedCount: results.length,
-    mismatchCount: outcome.mismatchCount,
-    status: outcome.status,
-    truncated,
+      status: outcome.status,
+      truncated,
+    };
   };
+  try {
+    return await executeReconciliation();
+  } catch (error) {
+    if (operationRef) {
+      await operationRef.set(
+        {
+          status: "failed",
+          leaseExpiresAt: null,
+          failureReason:
+            error instanceof Error
+              ? error.message.slice(0, 200)
+              : "RECONCILIATION_FAILED",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+    throw error;
+  }
 }
 
 export const reconcilePaymentsV2OnDemand = functions

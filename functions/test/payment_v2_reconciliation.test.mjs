@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   reconcileIntentData,
+  reconciliationOperationBindingMatches,
   reconciliationOutcome,
 } from "../lib/payments/v2/reconciliation.js";
 
@@ -67,5 +68,36 @@ test("a truncated reconciliation window can never report balanced", () => {
   assert.deepEqual(
     reconciliationOutcome({ mismatchCount: 0, windowTruncated: false }),
     { mismatchCount: 0, status: "balanced" },
+  );
+});
+
+test("an audited reconciliation operation cannot be rebound on retry", () => {
+  const binding = {
+    operationId: "reconcile-480-final",
+    actorUid: "spaza-admin-qa",
+    reason: "Final development release reconciliation",
+    windowDays: 30,
+  };
+  assert.equal(reconciliationOperationBindingMatches(binding, binding), true);
+  assert.equal(
+    reconciliationOperationBindingMatches(
+      { ...binding, reason: "Different reason" },
+      binding,
+    ),
+    false,
+  );
+  assert.equal(
+    reconciliationOperationBindingMatches(
+      { ...binding, windowDays: 7 },
+      binding,
+    ),
+    false,
+  );
+  assert.equal(
+    reconciliationOperationBindingMatches(
+      { ...binding, actorUid: "another-admin" },
+      binding,
+    ),
+    false,
   );
 });
