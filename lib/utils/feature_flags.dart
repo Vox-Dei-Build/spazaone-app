@@ -18,6 +18,9 @@ class EmulatorQaFeatureProfile {
     required this.otpResendInDialog,
     required this.onlineSales,
     required this.campaignCreditPaystack,
+    required this.ownedOrderPayments,
+    required this.accountSettlementPayments,
+    required this.supplierOrderPayments,
     required this.merchantOnboardingIntro,
   });
 
@@ -29,6 +32,10 @@ class EmulatorQaFeatureProfile {
   static const onlineSalesKey = 'QA_FEATURE_ONLINE_SALES';
   static const campaignCreditPaystackKey =
       'QA_FEATURE_CAMPAIGN_CREDIT_PAYSTACK';
+  static const ownedOrderPaymentsKey = 'QA_FEATURE_OWNED_ORDER_PAYMENTS';
+  static const accountSettlementPaymentsKey =
+      'QA_FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS';
+  static const supplierOrderPaymentsKey = 'QA_FEATURE_SUPPLIER_ORDER_PAYMENTS';
   static const onboardingIntroKey = 'QA_FEATURE_MERCHANT_ONBOARDING_INTRO';
 
   static const _multiStoreValue = String.fromEnvironment(multiStoreKey);
@@ -39,6 +46,12 @@ class EmulatorQaFeatureProfile {
   static const _onlineSalesValue = String.fromEnvironment(onlineSalesKey);
   static const _campaignCreditPaystackValue =
       String.fromEnvironment(campaignCreditPaystackKey);
+  static const _ownedOrderPaymentsValue =
+      String.fromEnvironment(ownedOrderPaymentsKey);
+  static const _accountSettlementPaymentsValue =
+      String.fromEnvironment(accountSettlementPaymentsKey);
+  static const _supplierOrderPaymentsValue =
+      String.fromEnvironment(supplierOrderPaymentsKey);
   static const _onboardingIntroValue =
       String.fromEnvironment(onboardingIntroKey);
 
@@ -49,6 +62,9 @@ class EmulatorQaFeatureProfile {
   final bool otpResendInDialog;
   final bool onlineSales;
   final bool campaignCreditPaystack;
+  final bool ownedOrderPayments;
+  final bool accountSettlementPayments;
+  final bool supplierOrderPayments;
   final bool merchantOnboardingIntro;
 
   factory EmulatorQaFeatureProfile.fromEnvironment() {
@@ -60,6 +76,9 @@ class EmulatorQaFeatureProfile {
       otpResendKey: _otpResendValue,
       onlineSalesKey: _onlineSalesValue,
       campaignCreditPaystackKey: _campaignCreditPaystackValue,
+      ownedOrderPaymentsKey: _ownedOrderPaymentsValue,
+      accountSettlementPaymentsKey: _accountSettlementPaymentsValue,
+      supplierOrderPaymentsKey: _supplierOrderPaymentsValue,
       onboardingIntroKey: _onboardingIntroValue,
     });
   }
@@ -83,6 +102,9 @@ class EmulatorQaFeatureProfile {
       otpResendInDialog: requiredBool(otpResendKey),
       onlineSales: requiredBool(onlineSalesKey),
       campaignCreditPaystack: requiredBool(campaignCreditPaystackKey),
+      ownedOrderPayments: requiredBool(ownedOrderPaymentsKey),
+      accountSettlementPayments: requiredBool(accountSettlementPaymentsKey),
+      supplierOrderPayments: requiredBool(supplierOrderPaymentsKey),
       merchantOnboardingIntro: requiredBool(onboardingIntroKey),
     );
   }
@@ -103,11 +125,15 @@ class FeatureFlags {
   static bool enableTopUpPaystack = false;
   static bool enableMoveFunds = false;
 
-  /// Enables automatic online-sales reporting once Spaza One's payment
-  /// provider integration has completed compliance and is ready for sellers.
-  /// The implementation remains available behind this remote kill switch;
-  /// the safe default is the explanatory coming-soon state.
+  /// Presents the Online commerce hub. This does not enable any payment:
+  /// each purpose also requires its client gate and server readiness.
   static bool enableOnlineSales = false;
+
+  /// Independent client rollback gates beneath the Online hub presentation.
+  /// Authoritative server readiness is still required for every initialization.
+  static bool enableOwnedOrderPayments = false;
+  static bool enableAccountSettlementPayments = false;
+  static bool enableSupplierOrderPayments = false;
 
   /// Multi-store/operator emergency rollback switch.
   ///
@@ -185,6 +211,9 @@ class FeatureFlags {
     enableOtpResendInDialog = profile.otpResendInDialog;
     enableOnlineSales = profile.onlineSales;
     enableTopUpPaystack = profile.campaignCreditPaystack;
+    enableOwnedOrderPayments = profile.ownedOrderPayments;
+    enableAccountSettlementPayments = profile.accountSettlementPayments;
+    enableSupplierOrderPayments = profile.supplierOrderPayments;
     enableMerchantOnboardingIntro = profile.merchantOnboardingIntro;
   }
 
@@ -226,6 +255,18 @@ class FeatureFlags {
     );
     enableOnlineSales = rc.getBool(
       'FEATURE_ONLINE_SALES_ENABLED',
+      defaultValue: false,
+    );
+    enableOwnedOrderPayments = rc.getBool(
+      'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED',
+      defaultValue: false,
+    );
+    enableAccountSettlementPayments = rc.getBool(
+      'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED',
+      defaultValue: false,
+    );
+    enableSupplierOrderPayments = rc.getBool(
+      'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED',
       defaultValue: false,
     );
     enableMultiStoreOperators = rc.getBool(

@@ -14,6 +14,7 @@ import {
   providerEventDocumentId,
 } from "../lib/payments/v2/financialCore.js";
 import { resolvePaymentReadiness } from "../lib/payments/v2/readiness.js";
+import { buildBuyerPaymentsV2 } from "../lib/payments/v2/buyerReadiness.js";
 import { requireAdminAdjustmentMinor } from "../lib/payments/v2/admin.js";
 import {
   assertBankAccountOnlyVerificationPayload,
@@ -223,6 +224,28 @@ test("campaign credits do not require a settlement subaccount", () => {
     }).reason,
     "merchant_capability_disabled",
   );
+});
+
+test("buyer-safe readiness exposes channels only for ready capabilities", () => {
+  const ready = { enabled: true, reason: "ready" };
+  const disabled = { enabled: false, reason: "merchant_not_enabled" };
+  const payments = buildBuyerPaymentsV2({
+    campaignCredits: ready,
+    ownedOrders: disabled,
+    accountPayments: disabled,
+    supplierOrders: ready,
+  });
+
+  assert.equal(payments.schemaVersion, 2);
+  assert.deepEqual(payments.campaignCredits.channels, [
+    "card",
+    "eft",
+    "capitec_pay",
+    "qr",
+  ]);
+  assert.deepEqual(payments.ownedOrders.channels, []);
+  assert.equal(payments.manualTransferForOwnedOrders, true);
+  assert.equal(payments.supplierOrdersRequireOnlinePayment, true);
 });
 
 test("South African settlement verification always requires admin review", () => {

@@ -6,33 +6,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
 import { requireBotRequest } from "../security/requestAuth";
-import { paymentReadiness } from "../payments/v2/readiness";
-
-const BUYER_PAYMENT_CHANNELS = ["card", "eft", "capitec_pay", "qr"] as const;
-
-async function buyerSafePaymentsV2(merchantId: string) {
-  const [campaignCredits, ownedOrders, accountPayments, supplierOrders] =
-    await Promise.all([
-      paymentReadiness({ merchantId, purpose: "campaign_credit" }),
-      paymentReadiness({ merchantId, purpose: "merchant_order" }),
-      paymentReadiness({ merchantId, purpose: "account_settlement" }),
-      paymentReadiness({ merchantId, purpose: "supplier_order" }),
-    ]);
-  const safe = (value: Awaited<ReturnType<typeof paymentReadiness>>) => ({
-    ready: value.enabled,
-    reason: value.reason,
-    channels: value.enabled ? [...BUYER_PAYMENT_CHANNELS] : [],
-  });
-  return {
-    schemaVersion: 2,
-    campaignCredits: safe(campaignCredits),
-    ownedOrders: safe(ownedOrders),
-    accountPayments: safe(accountPayments),
-    supplierOrders: safe(supplierOrders),
-    manualTransferForOwnedOrders: !ownedOrders.enabled,
-    supplierOrdersRequireOnlinePayment: true,
-  };
-}
+import { buyerSafePaymentsV2 } from "../payments/v2/buyerReadiness";
 
 function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   const pa = a.split(".").map(Number);

@@ -235,6 +235,10 @@ flutter run -d emulator-5554 \
   --dart-define=QA_FEATURE_OTP_AUTOSUBMIT=false \
   --dart-define=QA_FEATURE_OTP_RESEND_IN_DIALOG=false \
   --dart-define=QA_FEATURE_ONLINE_SALES=false \
+  --dart-define=QA_FEATURE_CAMPAIGN_CREDIT_PAYSTACK=false \
+  --dart-define=QA_FEATURE_OWNED_ORDER_PAYMENTS=false \
+  --dart-define=QA_FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS=false \
+  --dart-define=QA_FEATURE_SUPPLIER_ORDER_PAYMENTS=false \
   --dart-define=QA_FEATURE_MERCHANT_ONBOARDING_INTRO=true
 ```
 

@@ -8,7 +8,7 @@
     },
     "FEATURE_TOP_UP_PAYSTACK_ENABLED": {
       "defaultValue": {
-        "value": "false"
+        "value": "true"
       },
       "description": "Development kill switch for Campaign Credit Paystack checkout."
     },
@@ -50,9 +50,27 @@
     },
     "FEATURE_ONLINE_SALES_ENABLED": {
       "defaultValue": {
-        "value": "false"
+        "value": "true"
       },
-      "description": "Development kill switch for owned-stock and account payment affordances."
+      "description": "Development presentation switch for the Online commerce hub."
+    },
+    "FEATURE_OWNED_ORDER_PAYMENTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for owned-stock online payments."
+    },
+    "FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for customer-account payments."
+    },
+    "FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for supplier-product online payments."
     },
     "FEATURE_BANKING_DETAILS_ENABLED": {
       "defaultValue": {

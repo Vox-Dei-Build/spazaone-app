@@ -119,6 +119,13 @@ class RemoteConfigService implements RemoteConfigBoolReader {
               dotenv.env['FEATURE_ONLINE_SALES_ENABLED'] == 'true',
           'FEATURE_TOP_UP_PAYSTACK_ENABLED':
               dotenv.env['FEATURE_TOP_UP_PAYSTACK_ENABLED'] == 'true',
+          'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED':
+              dotenv.env['FEATURE_OWNED_ORDER_PAYMENTS_ENABLED'] == 'true',
+          'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED':
+              dotenv.env['FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED'] ==
+                  'true',
+          'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED':
+              dotenv.env['FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED'] == 'true',
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED':
               (dotenv.env['FEATURE_MULTI_STORE_OPERATORS_ENABLED'] ?? 'true') ==
                   'true',

@@ -64,6 +64,25 @@ void main() {
     expect(FeatureFlags.enableTopUpPaystack, isTrue);
   });
 
+  test('commerce payment capabilities fail closed and switch independently',
+      () {
+    FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
+    expect(FeatureFlags.enableOwnedOrderPayments, isFalse);
+    expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableSupplierOrderPayments, isFalse);
+
+    FeatureFlags.applyFlagsForTesting(
+      _FakeRemoteConfig({
+        'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED': true,
+        'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED': false,
+        'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED': true,
+      }),
+    );
+    expect(FeatureFlags.enableOwnedOrderPayments, isTrue);
+    expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableSupplierOrderPayments, isTrue);
+  });
+
   test('emulator QA profile applies every release-relevant value together', () {
     final profile = EmulatorQaFeatureProfile.fromValues(const {
       EmulatorQaFeatureProfile.multiStoreKey: 'true',
@@ -73,6 +92,9 @@ void main() {
       EmulatorQaFeatureProfile.otpResendKey: 'false',
       EmulatorQaFeatureProfile.onlineSalesKey: 'false',
       EmulatorQaFeatureProfile.campaignCreditPaystackKey: 'true',
+      EmulatorQaFeatureProfile.ownedOrderPaymentsKey: 'true',
+      EmulatorQaFeatureProfile.accountSettlementPaymentsKey: 'false',
+      EmulatorQaFeatureProfile.supplierOrderPaymentsKey: 'true',
       EmulatorQaFeatureProfile.onboardingIntroKey: 'true',
     });
 
@@ -86,6 +108,9 @@ void main() {
     expect(FeatureFlags.enableOtpResendInDialog, isFalse);
     expect(FeatureFlags.enableOnlineSales, isFalse);
     expect(FeatureFlags.enableTopUpPaystack, isTrue);
+    expect(FeatureFlags.enableOwnedOrderPayments, isTrue);
+    expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableSupplierOrderPayments, isTrue);
     expect(FeatureFlags.enableMerchantOnboardingIntro, isTrue);
   });
 

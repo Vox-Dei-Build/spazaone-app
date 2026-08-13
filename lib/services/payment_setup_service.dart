@@ -38,18 +38,136 @@ class MerchantSettlement {
   final int merchantNetProceedsMinor;
 }
 
+class MerchantPaymentCapability {
+  const MerchantPaymentCapability({
+    required this.ready,
+    required this.reason,
+    required this.channels,
+  });
+
+  final bool ready;
+  final String reason;
+  final List<String> channels;
+
+  static const unavailable = MerchantPaymentCapability(
+    ready: false,
+    reason: 'unavailable',
+    channels: <String>[],
+  );
+
+  factory MerchantPaymentCapability.fromMap(Map<String, dynamic> data) {
+    return MerchantPaymentCapability(
+      ready: data['ready'] == true,
+      reason: data['reason']?.toString() ?? 'unavailable',
+      channels: List<String>.unmodifiable(
+        (data['channels'] as List? ?? const <dynamic>[])
+            .whereType<String>()
+            .where((value) => value.trim().isNotEmpty),
+      ),
+    );
+  }
+}
+
+class MerchantPaymentsV2 {
+  const MerchantPaymentsV2({
+    required this.schemaVersion,
+    required this.campaignCredits,
+    required this.ownedOrders,
+    required this.accountPayments,
+    required this.supplierOrders,
+  });
+
+  final int schemaVersion;
+  final MerchantPaymentCapability campaignCredits;
+  final MerchantPaymentCapability ownedOrders;
+  final MerchantPaymentCapability accountPayments;
+  final MerchantPaymentCapability supplierOrders;
+
+  factory MerchantPaymentsV2.fromMap(
+    Map<String, dynamic> data, {
+    required Map<String, dynamic> legacyReadiness,
+  }) {
+    MerchantPaymentCapability capability(String key) {
+      return MerchantPaymentCapability.fromMap(
+        Map<String, dynamic>.from(data[key] as Map? ?? const {}),
+      );
+    }
+
+    final owned = data['ownedOrders'] is Map
+        ? capability('ownedOrders')
+        : MerchantPaymentCapability(
+            ready: legacyReadiness['enabled'] == true,
+            reason: legacyReadiness['reason']?.toString() ?? 'unavailable',
+            channels: const <String>[],
+          );
+    return MerchantPaymentsV2(
+      schemaVersion: (data['schemaVersion'] as num? ?? 1).toInt(),
+      campaignCredits: data['campaignCredits'] is Map
+          ? capability('campaignCredits')
+          : MerchantPaymentCapability.unavailable,
+      ownedOrders: owned,
+      accountPayments: data['accountPayments'] is Map
+          ? capability('accountPayments')
+          : MerchantPaymentCapability.unavailable,
+      supplierOrders: data['supplierOrders'] is Map
+          ? capability('supplierOrders')
+          : MerchantPaymentCapability.unavailable,
+    );
+  }
+}
+
 class MerchantPaymentOverview {
   const MerchantPaymentOverview({
-    required this.enabled,
-    required this.reason,
+    required this.paymentsV2,
     required this.profile,
     required this.settlements,
   });
 
-  final bool enabled;
-  final String reason;
+  final MerchantPaymentsV2 paymentsV2;
   final SettlementProfileSummary profile;
   final List<MerchantSettlement> settlements;
+
+  /// Backward-compatible owned-order readiness alias for 4.8.0 consumers.
+  bool get enabled => paymentsV2.ownedOrders.ready;
+  String get reason => paymentsV2.ownedOrders.reason;
+
+  factory MerchantPaymentOverview.fromMap(Map<String, dynamic> data) {
+    final readiness =
+        Map<String, dynamic>.from(data['readiness'] as Map? ?? {});
+    final paymentsData =
+        Map<String, dynamic>.from(data['paymentsV2'] as Map? ?? {});
+    final profile = Map<String, dynamic>.from(data['profile'] as Map? ?? {});
+    final settlements = (data['settlements'] as List? ?? const [])
+        .whereType<Map>()
+        .map((value) => Map<String, dynamic>.from(value))
+        .map(
+          (value) => MerchantSettlement(
+            orderId: value['orderId']?.toString() ?? '',
+            status: value['status']?.toString() ?? 'pending',
+            grossAmountMinor: (value['grossAmountMinor'] as num? ?? 0).toInt(),
+            platformFeeMinor: (value['platformFeeMinor'] as num? ?? 0).toInt(),
+            providerFeeMinor: (value['providerFeeMinor'] as num? ?? 0).toInt(),
+            merchantNetProceedsMinor:
+                (value['merchantNetProceedsMinor'] as num? ?? 0).toInt(),
+          ),
+        )
+        .toList();
+    return MerchantPaymentOverview(
+      paymentsV2: MerchantPaymentsV2.fromMap(
+        paymentsData,
+        legacyReadiness: readiness,
+      ),
+      profile: SettlementProfileSummary(
+        status: profile['status']?.toString() ?? 'not_started',
+        bankVerificationStatus:
+            profile['bankVerificationStatus']?.toString() ?? 'not_started',
+        bankName: profile['bankName']?.toString() ?? '',
+        resolvedAccountName: profile['resolvedAccountName']?.toString() ?? '',
+        maskedAccount: profile['maskedAccount']?.toString() ?? '',
+      ),
+      settlements: settlements,
+    );
+  }
 }
 
 class PaymentSetupException implements Exception {
@@ -100,36 +218,6 @@ class PaymentSetupService {
         .httpsCallable('getMerchantPaymentOverviewV2')
         .call({'merchantId': merchantId});
     final data = Map<String, dynamic>.from(response.data as Map);
-    final readiness =
-        Map<String, dynamic>.from(data['readiness'] as Map? ?? {});
-    final profile = Map<String, dynamic>.from(data['profile'] as Map? ?? {});
-    final settlements = (data['settlements'] as List? ?? const [])
-        .whereType<Map>()
-        .map((value) => Map<String, dynamic>.from(value))
-        .map(
-          (value) => MerchantSettlement(
-            orderId: value['orderId']?.toString() ?? '',
-            status: value['status']?.toString() ?? 'pending',
-            grossAmountMinor: (value['grossAmountMinor'] as num? ?? 0).toInt(),
-            platformFeeMinor: (value['platformFeeMinor'] as num? ?? 0).toInt(),
-            providerFeeMinor: (value['providerFeeMinor'] as num? ?? 0).toInt(),
-            merchantNetProceedsMinor:
-                (value['merchantNetProceedsMinor'] as num? ?? 0).toInt(),
-          ),
-        )
-        .toList();
-    return MerchantPaymentOverview(
-      enabled: readiness['enabled'] == true,
-      reason: readiness['reason']?.toString() ?? 'not_ready',
-      profile: SettlementProfileSummary(
-        status: profile['status']?.toString() ?? 'not_started',
-        bankVerificationStatus:
-            profile['bankVerificationStatus']?.toString() ?? 'not_started',
-        bankName: profile['bankName']?.toString() ?? '',
-        resolvedAccountName: profile['resolvedAccountName']?.toString() ?? '',
-        maskedAccount: profile['maskedAccount']?.toString() ?? '',
-      ),
-      settlements: settlements,
-    );
+    return MerchantPaymentOverview.fromMap(data);
   }
 }

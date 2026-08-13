@@ -1,7 +1,7 @@
 import { db, functions } from "../../config/main";
 import { authorizeCallableMerchantOrBot } from "../../security/requestAuth";
 import { requireStoreId } from "../../stores/storeAccess";
-import { paymentReadiness } from "./readiness";
+import { buyerSafePaymentsV2 } from "./buyerReadiness";
 
 function timestampMillis(value: unknown): number {
   const candidate = value as { toMillis?: () => number } | undefined;
@@ -17,14 +17,14 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
         "Access denied.",
       );
     }
-    const [profile, settlements, readiness] = await Promise.all([
+    const [profile, settlements, paymentsV2] = await Promise.all([
       db.doc(`merchantPaymentProfiles/${merchantId}`).get(),
       db
         .collection("settlements")
         .where("merchantId", "==", merchantId)
         .limit(50)
         .get(),
-      paymentReadiness({ merchantId, purpose: "merchant_order" }),
+      buyerSafePaymentsV2(merchantId),
     ]);
     const profileData = profile.data() ?? {};
     const pendingSettlement = (profileData.pendingSettlement ?? {}) as Record<
@@ -52,7 +52,12 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
       .slice(0, 20);
     return {
       merchantId,
-      readiness,
+      // Backward-compatible 4.8.0 alias. New clients must use paymentsV2.
+      readiness: {
+        enabled: paymentsV2.ownedOrders.ready,
+        reason: paymentsV2.ownedOrders.reason,
+      },
+      paymentsV2,
       profile: {
         status: String(profileData.status ?? "not_started"),
         bankVerificationStatus: String(

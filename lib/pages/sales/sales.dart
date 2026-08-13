@@ -6,7 +6,7 @@ import 'package:pasella/pages/sales/widgets/add_sale.dart';
 import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
-import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
+import 'package:pasella/pages/sales/widgets/online_commerce_hub.dart';
 import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
 import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
@@ -219,8 +219,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                 }
                               },
                             ),
-                            if (_selectedSalesView == SalesViewType.cash ||
-                                FeatureFlags.enableOnlineSales) ...[
+                            if (_selectedSalesView == SalesViewType.cash) ...[
                               DateFilterBar(
                                 selectedDay: _selectedDay,
                                 startDate: _startDate,
@@ -287,15 +286,13 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                           left: false,
                                           right: false,
                                           bottom: true,
-                                          child: OnlineSalesList(
-                                            key: ValueKey<String>(
-                                              '${_selectedDay?.toIso8601String() ?? ''}|'
-                                              '${_startDate?.toIso8601String() ?? ''}|'
-                                              '${_endDate?.toIso8601String() ?? ''}',
-                                            ),
+                                          child: OnlineCommerceHub(
                                             selectedDay: _selectedDay,
                                             startDate: _startDate,
                                             endDate: _endDate,
+                                            onDaySelect: _onDateSelected,
+                                            onRangeSelect: _onDateRangeSelected,
+                                            onClearDates: _clearDateFilter,
                                           ),
                                         )
                                       : const _OnlineSalesComingSoon(),
@@ -379,14 +376,15 @@ class _OnlineSalesComingSoon extends StatelessWidget {
             ),
             const SizedBox(height: LayoutConstants.spaceLg),
             const Text(
-              'Online sales are coming soon',
+              'Online selling is currently off',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: LayoutConstants.spaceSm),
             Text(
-              'Spaza One is finalising a payments partnership. Until then, '
-              'take orders on WhatsApp and record completed sales manually.',
+              'Your existing sales records are unchanged. Spaza One will show '
+              'each online capability here when it is enabled and ready for '
+              'your store.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade700,
