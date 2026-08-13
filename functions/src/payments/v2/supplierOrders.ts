@@ -724,6 +724,9 @@ export async function processSupplierFulfilmentV2(
   }
   const orderNumber = `SPAZA-${orderId}`.slice(0, 50);
   let cjOrderId = String(data.cjOrderId ?? "").trim();
+  let cjPaymentOrderId = String(
+    data.cjPaymentOrderId ?? data.cjShipmentOrderId ?? data.cjOrderId ?? "",
+  ).trim();
   let providerPaid: boolean | null = null;
   try {
     const liveQuote = await quoteCjVariant({
@@ -799,6 +802,7 @@ export async function processSupplierFulfilmentV2(
           },
         });
         cjOrderId = created.orderId;
+        cjPaymentOrderId = created.orderId;
         shipmentOrderId = created.shipmentOrderId;
         sandbox = created.sandbox;
         actualPaymentUsdMinor = created.actualPaymentUsdMinor;
@@ -825,6 +829,7 @@ export async function processSupplierFulfilmentV2(
     await ref.set(
       {
         cjOrderId,
+        cjPaymentOrderId: cjPaymentOrderId || cjOrderId,
         cjShipmentOrderId: shipmentOrderId || null,
         cjOrderNumber: orderNumber,
         cjSandbox: sandbox,
@@ -861,7 +866,7 @@ export async function processSupplierFulfilmentV2(
     if (providerPaid === false) {
       try {
         if (["CREATED", "IN_CART"].includes(String(detail?.status ?? ""))) {
-          await confirmCjOrder(cjOrderId);
+          await confirmCjOrder(cjPaymentOrderId || cjOrderId);
           detail = await getCjOrderDetail(orderNumber);
           cjOrderId = detail.orderId;
           providerPaid = detail.paid;
@@ -869,7 +874,7 @@ export async function processSupplierFulfilmentV2(
             detail.actualPaymentUsdMinor ?? actualPaymentUsdMinor;
         }
         if (providerPaid === false) {
-          await payCjOrderFromBalance(cjOrderId);
+          await payCjOrderFromBalance(cjPaymentOrderId || cjOrderId);
         }
       } catch (payError) {
         try {
