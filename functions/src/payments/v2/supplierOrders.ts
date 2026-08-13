@@ -1535,7 +1535,7 @@ export const resolveSupplierFulfilmentReviewV2 = functions
     const reservationRef = db.doc(
       `supplierFundingReservations/${reservationId}`,
     );
-    const fundingStateRef = db.doc("supplierIntegrationState/cjFunding");
+    const fundingStateRef = db.doc("supplierFundingState/cj");
     let refundCaseId = "";
     let deduped = false;
     await db.runTransaction(async (tx) => {
