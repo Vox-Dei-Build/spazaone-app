@@ -20,6 +20,7 @@ import {
   maskedAccountHolderName,
   protectedIdentityFingerprint,
   settlementVerificationBudgetDecision,
+  settlementVerificationAuthorizationDecision,
   settlementDestinationRetirementDecision,
   settlementProfileAction,
   settlementVerificationDecision,
@@ -224,7 +225,7 @@ test("campaign credits do not require a settlement subaccount", () => {
   );
 });
 
-test("South African settlement auto-approval requires every low-risk flag", () => {
+test("South African settlement verification always requires admin review", () => {
   const clean = {
     verified: true,
     accountOpen: true,
@@ -234,7 +235,7 @@ test("South African settlement auto-approval requires every low-risk flag", () =
   };
   assert.deepEqual(settlementVerificationDecision(clean), {
     eligible: true,
-    autoApprove: true,
+    autoApprove: false,
   });
   assert.deepEqual(
     settlementVerificationDecision({
@@ -246,6 +247,46 @@ test("South African settlement auto-approval requires every low-risk flag", () =
   assert.deepEqual(
     settlementVerificationDecision({ ...clean, accountHolderMatch: false }),
     { eligible: false, autoApprove: false },
+  );
+});
+
+test("settlement verification requires a live admin authorization budget", () => {
+  const nowMs = Date.now();
+  assert.deepEqual(
+    settlementVerificationAuthorizationDecision({
+      state: "authorized",
+      expiresAtMs: nowMs + 60_000,
+      remainingAttempts: 2,
+      nowMs,
+    }),
+    { allowed: true, reason: "allowed" },
+  );
+  assert.equal(
+    settlementVerificationAuthorizationDecision({
+      state: "revoked",
+      expiresAtMs: nowMs + 60_000,
+      remainingAttempts: 2,
+      nowMs,
+    }).reason,
+    "BANK_VALIDATION_PREAUTH_REQUIRED",
+  );
+  assert.equal(
+    settlementVerificationAuthorizationDecision({
+      state: "authorized",
+      expiresAtMs: nowMs - 1,
+      remainingAttempts: 2,
+      nowMs,
+    }).reason,
+    "BANK_VALIDATION_PREAUTH_EXPIRED",
+  );
+  assert.equal(
+    settlementVerificationAuthorizationDecision({
+      state: "authorized",
+      expiresAtMs: nowMs + 60_000,
+      remainingAttempts: 0,
+      nowMs,
+    }).reason,
+    "BANK_VALIDATION_PREAUTH_CONSUMED",
   );
 });
 
@@ -427,7 +468,7 @@ test("settlement setup dedupes destinations and reviews every replacement", () =
       hadActiveAccount: false,
       validationAutoApprove: true,
     }),
-    "auto_approve",
+    "pending_review",
   );
 });
 

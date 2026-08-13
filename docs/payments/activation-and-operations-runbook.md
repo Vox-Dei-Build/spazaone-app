@@ -93,9 +93,9 @@ programme.
   never stored. The server retains a keyed fingerprint, account/document type,
   verification flags, masked account holder and account last four only.
 - Validation is deduplicated and protected by the billable-verification limits
-  below. Fully verified, open, credit-accepting, holder-matched, older first
-  destinations may auto-approve. Exceptions and every bank change require
-  audited manual review.
+  below. Provider verification never grants settlement authority by itself;
+  every new destination remains inactive and pending an audited Spaza One
+  admin review.
 
 ### Billable-verification fraud controls
 
@@ -109,6 +109,10 @@ accounts rather than charging or validating cards.
 - A valid Firebase ID token and valid App Check attestation are both required.
   Only the merchant owner or an active store admin may initiate validation;
   ordinary operators cannot.
+- Before the endpoint can call Paystack, a `spazaAdmin` must open a single
+  audited 24-hour authorization with at most two attempts. New stores and new
+  app installs have no verification authority by default. Authorization is
+  consumed transactionally and can be revoked immediately.
 - Exact active or pending destinations deduplicate before another validation.
 - Limits are two provider attempts per merchant per UTC day, six per merchant
   lifetime before support review and ten for the entire platform per UTC day.
@@ -125,6 +129,9 @@ accounts rather than charging or validating cards.
 - Resumption requires an authenticated `spazaAdmin` configuration action with
   an audit reason. Never lift the circuit breaker without reviewing merchant,
   device/App Check and provider-billing evidence.
+- A successful validation creates an inactive Paystack subaccount in
+  `pending_review`; a second, explicit `spazaAdmin` review is required before
+  the destination or collection capabilities can be enabled.
 
 ## Reconciliation evidence
 

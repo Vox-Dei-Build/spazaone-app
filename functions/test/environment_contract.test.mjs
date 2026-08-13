@@ -111,6 +111,13 @@ test("billable settlement verification is app-attested and bank-only", () => {
     /assertStoreAccess\(uid, merchantId, \["owner", "admin"\]\)/,
   );
   assert.match(endpoint, /assertBankAccountOnlyVerificationPayload/);
+  assert.match(source, /settlementVerificationAuthorizationDecision/);
+  assert.doesNotMatch(source, /settlement_profile_auto_approved/);
+  assert.ok(
+    source.indexOf("initialAuthorizationDecision") <
+      source.indexOf("https://api.paystack.co/bank"),
+    "admin preauthorization must be checked before every Paystack bank API call",
+  );
   assert.match(source, /https:\/\/api\.paystack\.co\/bank\/validate/);
   assert.doesNotMatch(source, /decision\/bin|authorization\/verify|\/card\//);
 });

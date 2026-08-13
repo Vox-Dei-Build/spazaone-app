@@ -40,6 +40,8 @@ function requireMerchantId(value: unknown): string {
 }
 
 const MAX_ADMIN_ADJUSTMENT_MINOR = 10_000_000;
+const SETTLEMENT_VERIFICATION_AUTHORIZATION_TTL_MS = 24 * 60 * 60 * 1000;
+const SETTLEMENT_VERIFICATION_AUTHORIZATION_ATTEMPTS = 2;
 
 export function requireAdminAdjustmentMinor(value: unknown): number {
   const amount = Number(value);
@@ -234,6 +236,117 @@ export const setMerchantPaymentState = functions.https.onCall(
       });
     });
     return { merchantId, status, capabilities };
+  },
+);
+
+/**
+ * Opens one short, bounded settlement-verification window after an admin has
+ * reviewed the merchant. New accounts cannot use Paystack's billable bank
+ * validation endpoint merely by creating a store or installing the app.
+ */
+export const authorizeMerchantSettlementVerificationV2 = functions.https.onCall(
+  async (data, context) => {
+    const adminUid = requireAdmin(context);
+    const merchantId = requireMerchantId(data?.merchantId);
+    const operationId = requireOperationId(data?.operationId);
+    const authorized = data?.authorized;
+    if (typeof authorized !== "boolean") {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Choose whether settlement verification is authorized.",
+      );
+    }
+    const reason = String(data?.reason ?? "")
+      .trim()
+      .slice(0, 500);
+    if (!reason) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "An audit reason is required.",
+      );
+    }
+
+    const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
+    const auditId = stableDocumentId("audit", [
+      "settlement_verification_authorization",
+      adminUid,
+      operationId,
+    ]);
+    const auditRef = db.doc(`paymentAdministrationAudit/${auditId}`);
+    const expiresAtMs = authorized
+      ? Date.now() + SETTLEMENT_VERIFICATION_AUTHORIZATION_TTL_MS
+      : 0;
+    let resultingExpiresAtMs = expiresAtMs;
+    let deduped = false;
+
+    await db.runTransaction(async (tx) => {
+      const existingAudit = await tx.get(auditRef);
+      if (existingAudit.exists) {
+        const previous = existingAudit.data() ?? {};
+        if (
+          String(previous.merchantId) !== merchantId ||
+          previous.authorized !== authorized ||
+          String(previous.reason) !== reason
+        ) {
+          throw new functions.https.HttpsError(
+            "already-exists",
+            "That operationId is already bound to another authorization.",
+          );
+        }
+        resultingExpiresAtMs = Number(previous.expiresAtMs ?? 0);
+        deduped = true;
+        return;
+      }
+
+      const now = FieldValue.serverTimestamp();
+      tx.set(
+        profileRef,
+        {
+          merchantId,
+          settlementVerificationAuthorization: {
+            state: authorized ? "authorized" : "revoked",
+            expiresAtMs,
+            remainingAttempts: authorized
+              ? SETTLEMENT_VERIFICATION_AUTHORIZATION_ATTEMPTS
+              : 0,
+            authorizedBy: adminUid,
+            authorizedAt: now,
+            operationId,
+          },
+          schemaVersion: 2,
+          updatedAt: now,
+          updatedBy: adminUid,
+        },
+        { merge: true },
+      );
+      tx.create(auditRef, {
+        auditId,
+        action: authorized
+          ? "settlement_verification_authorized"
+          : "settlement_verification_revoked",
+        merchantId,
+        actorUid: adminUid,
+        operationId,
+        authorized,
+        expiresAtMs,
+        maximumAttempts: authorized
+          ? SETTLEMENT_VERIFICATION_AUTHORIZATION_ATTEMPTS
+          : 0,
+        reason,
+        createdAt: now,
+        schemaVersion: 2,
+      });
+    });
+
+    return {
+      merchantId,
+      authorized,
+      expiresAtMs: resultingExpiresAtMs,
+      maximumAttempts: authorized
+        ? SETTLEMENT_VERIFICATION_AUTHORIZATION_ATTEMPTS
+        : 0,
+      deduped,
+    };
   },
 );
 

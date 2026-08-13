@@ -124,6 +124,26 @@ export function settlementVerificationBudgetDecision(input: {
   };
 }
 
+export function settlementVerificationAuthorizationDecision(input: {
+  state: unknown;
+  expiresAtMs: unknown;
+  remainingAttempts: unknown;
+  nowMs: number;
+}): { allowed: boolean; reason: string } {
+  const expiresAtMs = Number(input.expiresAtMs ?? 0);
+  const remainingAttempts = Number(input.remainingAttempts ?? 0);
+  if (String(input.state ?? "") !== "authorized") {
+    return { allowed: false, reason: "BANK_VALIDATION_PREAUTH_REQUIRED" };
+  }
+  if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs < input.nowMs) {
+    return { allowed: false, reason: "BANK_VALIDATION_PREAUTH_EXPIRED" };
+  }
+  if (!Number.isSafeInteger(remainingAttempts) || remainingAttempts < 1) {
+    return { allowed: false, reason: "BANK_VALIDATION_PREAUTH_CONSUMED" };
+  }
+  return { allowed: true, reason: "allowed" };
+}
+
 export function settlementVerificationDecision(flags: VerificationFlags): {
   eligible: boolean;
   autoApprove: boolean;
@@ -135,7 +155,9 @@ export function settlementVerificationDecision(flags: VerificationFlags): {
     flags.accountHolderMatch;
   return {
     eligible,
-    autoApprove: eligible && flags.accountOpenForMoreThanThreeMonths,
+    // Provider evidence is necessary but never sufficient to grant settlement
+    // authority. A Spaza One admin must approve every new destination.
+    autoApprove: false,
   };
 }
 
@@ -183,7 +205,6 @@ export function settlementVerificationIdentity(input: {
 export type SettlementProfileAction =
   | "dedupe_active"
   | "dedupe_pending"
-  | "auto_approve"
   | "pending_review";
 
 export function settlementProfileAction(input: {
@@ -194,9 +215,7 @@ export function settlementProfileAction(input: {
 }): SettlementProfileAction {
   if (input.sameActiveDestination) return "dedupe_active";
   if (input.samePendingDestination) return "dedupe_pending";
-  return input.hadActiveAccount || !input.validationAutoApprove
-    ? "pending_review"
-    : "auto_approve";
+  return "pending_review";
 }
 
 const FINAL_PAYMENT_INTENT_STATUSES = new Set([
@@ -332,6 +351,18 @@ function publicError(error: unknown): { status: number; message: string } {
       503,
       "Bank verification is temporarily paused for a security review.",
     ],
+    BANK_VALIDATION_PREAUTH_REQUIRED: [
+      403,
+      "Settlement verification needs Spaza One approval before it can start.",
+    ],
+    BANK_VALIDATION_PREAUTH_EXPIRED: [
+      403,
+      "The settlement-verification approval expired. Contact support to continue.",
+    ],
+    BANK_VALIDATION_PREAUTH_CONSUMED: [
+      403,
+      "The approved settlement-verification attempts were used. Contact support to continue.",
+    ],
     BANK_CARD_INPUT_REJECTED: [
       400,
       "Use bank account details for settlements. Card details are not accepted here.",
@@ -459,6 +490,24 @@ export const prepareMerchantSettlementProfileV2 = functions
         res.status(404).json({ error: "Banking details not found." });
         return;
       }
+      profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
+      const existing = await profileRef.get();
+      const existingData = existing.data() ?? {};
+      const initialAuthorization =
+        (existingData.settlementVerificationAuthorization ?? {}) as Record<
+          string,
+          unknown
+        >;
+      const initialAuthorizationDecision =
+        settlementVerificationAuthorizationDecision({
+          state: initialAuthorization.state,
+          expiresAtMs: initialAuthorization.expiresAtMs,
+          remainingAttempts: initialAuthorization.remainingAttempts,
+          nowMs: Date.now(),
+        });
+      if (!initialAuthorizationDecision.allowed) {
+        throw new Error(initialAuthorizationDecision.reason);
+      }
       const raw = banking.data() ?? {};
       const account = accountNumber(raw.accountNumber);
       const requestedBankName = String(raw.bankName ?? "").trim();
@@ -508,9 +557,6 @@ export const prepareMerchantSettlementProfileV2 = functions
         identity,
       );
       const attemptFingerprint = sha256([fingerprint, documentFingerprint]);
-      profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
-      const existing = await profileRef.get();
-      const existingData = existing.data() ?? {};
       const pending = (existingData.pendingSettlement ?? {}) as Record<
         string,
         unknown
@@ -589,6 +635,18 @@ export const prepareMerchantSettlementProfileV2 = functions
         ) {
           throw new Error("BANK_VALIDATION_ALREADY_PROCESSING");
         }
+        const authorization = (value.settlementVerificationAuthorization ??
+          {}) as Record<string, unknown>;
+        const authorizationDecision =
+          settlementVerificationAuthorizationDecision({
+            state: authorization.state,
+            expiresAtMs: authorization.expiresAtMs,
+            remainingAttempts: authorization.remainingAttempts,
+            nowMs,
+          });
+        if (!authorizationDecision.allowed) {
+          throw new Error(authorizationDecision.reason);
+        }
         const merchantDayAttempts =
           value.validationAttemptWindow === windowKey
             ? Number(value.validationAttemptCount ?? 0) + 1
@@ -606,6 +664,8 @@ export const prepareMerchantSettlementProfileV2 = functions
           throw new Error(budgetDecision.reason);
         }
         const now = FieldValue.serverTimestamp();
+        const remainingAuthorizedAttempts =
+          Number(authorization.remainingAttempts) - 1;
         tx.set(
           profileRef!,
           {
@@ -617,6 +677,14 @@ export const prepareMerchantSettlementProfileV2 = functions
             validationAttemptWindow: windowKey,
             validationAttemptCount: merchantDayAttempts,
             validationLifetimeAttemptCount: merchantLifetimeAttempts,
+            settlementVerificationAuthorization: {
+              ...authorization,
+              state:
+                remainingAuthorizedAttempts > 0 ? "authorized" : "consumed",
+              remainingAttempts: remainingAuthorizedAttempts,
+              lastUsedAt: now,
+              lastUsedBy: uid,
+            },
             updatedAt: now,
           },
           { merge: true },
@@ -751,16 +819,7 @@ export const prepareMerchantSettlementProfileV2 = functions
       }
 
       const hadActiveAccount = activeSubaccount(existingData);
-      const action = settlementProfileAction({
-        sameActiveDestination: false,
-        samePendingDestination: false,
-        hadActiveAccount,
-        validationAutoApprove: decision.autoApprove,
-      });
-      const manualReview = action === "pending_review";
-      if (manualReview) {
-        await setPaystackSubaccountActive(secret, subaccountCode, false);
-      }
+      await setPaystackSubaccountActive(secret, subaccountCode, false);
       const settlement = {
         bankName: String(bank.name ?? requestedBankName),
         bankCode,
@@ -791,18 +850,11 @@ export const prepareMerchantSettlementProfileV2 = functions
           );
         }
         const now = FieldValue.serverTimestamp();
-        const capabilities = {
-          ...((previous.capabilities as Record<string, boolean> | undefined) ??
-            {}),
-          ...(manualReview
-            ? {}
-            : Object.fromEntries(
-                SETTLEMENT_CAPABILITIES.map((purpose) => [purpose, true]),
-              )),
-        };
+        const capabilities =
+          (previous.capabilities as Record<string, boolean> | undefined) ?? {};
         const update: Record<string, unknown> = {
           merchantId,
-          status: manualReview ? "pending_review" : "enabled",
+          status: "pending_review",
           capabilities,
           submittedBy: uid,
           submittedAt: now,
@@ -811,32 +863,20 @@ export const prepareMerchantSettlementProfileV2 = functions
           schemaVersion: 2,
           updatedAt: now,
         };
-        if (manualReview) {
-          update.pendingSettlement = {
-            ...settlement,
-            replacesAccountFingerprint: previous.accountFingerprint ?? null,
-            submittedAt: now,
-          };
-          if (!hadActiveAccount) {
-            update.bankVerificationStatus = "pending_review";
-          }
-        } else {
-          Object.assign(update, settlement, {
-            bankVerificationStatus: "approved",
-            bankAutoApproved: true,
-            bankReviewedBy: "paystack_validation_policy",
-            bankReviewedAt: now,
-            pendingSettlement: FieldValue.delete(),
-          });
+        update.pendingSettlement = {
+          ...settlement,
+          replacesAccountFingerprint: previous.accountFingerprint ?? null,
+          submittedAt: now,
+        };
+        if (!hadActiveAccount) {
+          update.bankVerificationStatus = "pending_review";
         }
         tx.set(profileRef!, update, { merge: true });
         tx.create(profileRef!.collection("audit").doc(auditId), {
           auditId,
           merchantId,
           actorUid: uid,
-          action: manualReview
-            ? "settlement_profile_submitted"
-            : "settlement_profile_auto_approved",
+          action: "settlement_profile_submitted",
           previousAccountFingerprint: previous.accountFingerprint ?? null,
           accountFingerprint: fingerprint,
           bankName: settlement.bankName,
@@ -848,13 +888,13 @@ export const prepareMerchantSettlementProfileV2 = functions
       res.status(200).json(
         profileSummary({
           merchantId,
-          status: manualReview ? "pending_review" : "enabled",
+          status: "pending_review",
           bankName: settlement.bankName,
           accountName: settlement.resolvedAccountName,
           accountLast4: settlement.accountLast4,
           accountFingerprint: fingerprint,
           deduped: false,
-          autoApproved: !manualReview,
+          autoApproved: false,
         }),
       );
     } catch (error) {
