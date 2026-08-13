@@ -760,14 +760,17 @@ export async function processSupplierFulfilmentV2(
     let actualPaymentUsdMinor: number | null = null;
     let detail: Awaited<ReturnType<typeof getCjOrderDetail>> | null = null;
     try {
-      detail = await getCjOrderDetail(cjOrderId || orderNumber);
+      // CJ's create-order response may expose a parent/shipment identifier
+      // before its query API exposes the canonical payable sub-order ID. The
+      // immutable merchant order number remains the authoritative recovery
+      // key for retries.
+      detail = await getCjOrderDetail(orderNumber);
       cjOrderId = detail.orderId;
       providerPaid = detail.paid;
       actualPaymentUsdMinor = detail.actualPaymentUsdMinor;
     } catch (error) {
-      if (supplierFailureCode(error) !== "CJ_ORDER_NOT_FOUND" || cjOrderId) {
-        throw error;
-      }
+      if (supplierFailureCode(error) !== "CJ_ORDER_NOT_FOUND") throw error;
+      if (cjOrderId) throw new Error("CJ_CREATE_OUTCOME_AMBIGUOUS");
     }
     if (!detail) {
       try {
