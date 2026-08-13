@@ -12,6 +12,42 @@
       },
       "description": "Development kill switch for Campaign Credit Paystack checkout."
     },
+    "FEATURE_MULTI_STORE_OPERATORS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Keep the current production multi-store and operator experience enabled in development."
+    },
+    "FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Use the current single phone-number entry experience on clean development installs."
+    },
+    "FEATURE_DEFER_AUTH_CONSENT_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Defer telemetry consent until after development authentication, matching the current onboarding UX."
+    },
+    "FEATURE_OTP_AUTOSUBMIT_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Enable the current OTP auto-submit experience in development."
+    },
+    "FEATURE_OTP_RESEND_IN_DIALOG_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Keep OTP resend inside the current development verification dialog."
+    },
+    "FEATURE_MERCHANT_ONBOARDING_INTRO_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Show the current merchant setup introduction for new development profiles."
+    },
     "FEATURE_ONLINE_SALES_ENABLED": {
       "defaultValue": {
         "value": "false"
