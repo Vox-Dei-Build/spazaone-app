@@ -173,12 +173,12 @@ npm --prefix functions run development:campaign-smoke:verify -- \
   reservation, provider reference or charge. The buyer-safe response now
   states that supplier checkout is temporarily unavailable and that no charge
   occurred, without exposing provider funding details.
-- Flutter tests passed 291/291; Functions quality gates passed 149/149;
-  Firestore rules passed 14/14; Payments V2 emulator integration passed 10/10;
-  Botpress tests passed 332/332; both production and development ADK builds
-  passed. Android development APK and unsigned iOS development app builds also
-  completed. `flutter analyze` has no warnings or errors and retains 273
-  pre-existing informational lints.
+- Flutter tests passed 297/297; Functions quality gates passed 155/155;
+  Firestore/Storage rules passed 15/15; Payments V2 emulator integration
+  passed 11/11; Botpress tests passed 336/336; both production and development
+  ADK builds passed. Android development APK and unsigned iOS development app
+  builds also completed. `flutter analyze` has no warnings or errors and
+  retains 273 pre-existing informational lints.
 
 Guarded development deployments use the separately registered target:
 
@@ -219,6 +219,13 @@ supplied Firebase project or account override.
 - [x] Complete dark backend deployed with Payments V2, commerce,
   reconciliation, notification and voice surfaces. Re-count from the exact
   candidate at deploy time rather than relying on a stale fixed total.
+- [x] Development client presentation and all four client rollback gates are
+  enabled. The synthetic merchant has matching server capabilities; every
+  other merchant still fails closed without explicit server authorization.
+- [x] The development commerce hub exposes truthful per-purpose readiness,
+  buyer-safe disabled reasons, server-approved channels, Payment Setup actions
+  and combined owned/supplier order reporting. Production client defaults and
+  all production capability controls remain disabled.
 - [x] Paystack business `1158209` visibly verified as Approved and the Test
   Webhook routed to
   `https://us-central1-spazaone-dev.cloudfunctions.net/verifyPaystackTransaction`.
@@ -251,6 +258,10 @@ supplied Firebase project or account override.
   `4.8.0+88`; app tests and environment fail-closed checks pass.
 - [x] Paystack Test hosted checkout/webhook/reconciliation verified for
   Campaign Credits, owned stock and account settlement.
+- [x] A complete 30-day development reconciliation checked 16 intents with zero
+  mismatches and no truncation. The audited on-demand receipt and retry binding
+  pass unit/emulator integration; live callable proof awaits an explicitly
+  authorized development admin identity.
 - [ ] Android and iOS exact signed-candidate checkout/refund journeys verified.
 - [ ] WhatsApp text/voice journeys verified against the exact candidate and
   the isolated SpazaOne Development bot.
