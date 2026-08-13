@@ -186,6 +186,10 @@ export function cjProviderFailureCode(input: {
   return "CJ_UPSTREAM_REJECTED";
 }
 
+export function cjBalancePaymentPath(sandbox: boolean): string {
+  return sandbox ? "/shopping/sandbox/simulatePay" : "/shopping/pay/payBalance";
+}
+
 // CJ enforces one request per second for this integration. Keep every request,
 // including token exchange, on the same queue so a single function instance
 // never creates the burst that previously made valid variants look unavailable.
@@ -1043,12 +1047,12 @@ export async function createCjDropshipOrder(
 export async function payCjOrderFromBalance(
   orderIdValue: unknown,
 ): Promise<void> {
-  requireCjPurchaseAuthority();
+  const sandbox = requireCjPurchaseAuthority();
   const orderId = text(orderIdValue, 200);
   if (!orderId) throw new Error("CJ_ORDER_ID_INVALID");
   await cjRequest({
     method: "POST",
-    url: "/shopping/pay/payBalance",
+    url: cjBalancePaymentPath(sandbox),
     data: { orderId },
   });
 }

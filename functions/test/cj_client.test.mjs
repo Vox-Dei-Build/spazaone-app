@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cjProviderFailureCode,
+  cjBalancePaymentPath,
   calculateCjRequestSlot,
   catalogProductWithZaDelivery,
   cjSandboxFundingCapacityUsdMinor,
@@ -32,6 +33,11 @@ test("CJ HTTP errors preserve an authoritative order-not-found result", () => {
     }),
     "CJ_UNAVAILABLE",
   );
+});
+
+test("CJ sandbox payments use the documented simulation endpoint", () => {
+  assert.equal(cjBalancePaymentPath(true), "/shopping/sandbox/simulatePay");
+  assert.equal(cjBalancePaymentPath(false), "/shopping/pay/payBalance");
 });
 
 const fx = {
