@@ -208,6 +208,11 @@ supplied Firebase project or account override.
   development, `spazaone-dev`, with every provider in test mode.
 - [x] Authentication initialized with Phone sign-in and development Android
   SHA-1/SHA-256 fingerprints registered.
+- [x] Phone Auth restricted to an explicit South Africa SMS allowlist and real
+  OTP delivery plus automatic verification proved on the physical Android
+  development app. A separate fictional Firebase test identity exists for
+  development automation; its fixed code is stored only in the macOS
+  Keychain. No real phone number or OTP is retained in repository evidence.
 - [x] Storage initialized in private-by-default mode and repository Storage
   rules deployed.
 - [x] Speech-to-Text enabled for Botpress voice QA.
@@ -219,7 +224,9 @@ supplied Firebase project or account override.
   `https://us-central1-spazaone-dev.cloudfunctions.net/verifyPaystackTransaction`.
 - [x] Seven-day cleanup policy configured for rebuildable development
   Function container images.
-- [ ] App Check debug registrations created for the two development apps.
+- [x] Android development App Check debug registration created and token
+  exchange proved on the physical Samsung without recording the token.
+- [ ] iOS development App Check debug registration and device proof complete.
 - [ ] Complete provider-side Paystack key rotation. The current dashboard's
   rotation control rotates both Test and Live secret keys together and asks
   for the account password, so it cannot be used as a Test-only automation
