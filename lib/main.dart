@@ -533,11 +533,18 @@ Future<void> _initializeCoreServices() async {
   await dotenv.load();
 
   if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: FirebaseEnvironment.options(
-        DefaultFirebaseOptions.currentPlatform,
-      ),
-    );
+    if (FirebaseEnvironment.shouldUseNativePlatformOptions(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    )) {
+      await Firebase.initializeApp();
+    } else {
+      await Firebase.initializeApp(
+        options: FirebaseEnvironment.options(
+          DefaultFirebaseOptions.currentPlatform,
+        ),
+      );
+    }
   }
   await FirebaseEnvironment.connect();
 

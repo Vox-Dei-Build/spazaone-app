@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/config/firebase_environment.dart';
 import 'package:pasella/config/spaza_environment.dart';
@@ -90,6 +91,46 @@ void main() {
   });
 
   group('FirebaseEnvironment', () {
+    test('uses flavor-selected native options on physical mobile builds', () {
+      for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+        expect(
+          FirebaseEnvironment.shouldUseNativePlatformOptions(
+            isWeb: false,
+            platform: platform,
+            emulatorMode: false,
+          ),
+          isTrue,
+        );
+      }
+    });
+
+    test('keeps explicit options for emulator, web, and desktop builds', () {
+      expect(
+        FirebaseEnvironment.shouldUseNativePlatformOptions(
+          isWeb: false,
+          platform: TargetPlatform.android,
+          emulatorMode: true,
+        ),
+        isFalse,
+      );
+      expect(
+        FirebaseEnvironment.shouldUseNativePlatformOptions(
+          isWeb: true,
+          platform: TargetPlatform.android,
+          emulatorMode: false,
+        ),
+        isFalse,
+      );
+      expect(
+        FirebaseEnvironment.shouldUseNativePlatformOptions(
+          isWeb: false,
+          platform: TargetPlatform.macOS,
+          emulatorMode: false,
+        ),
+        isFalse,
+      );
+    });
+
     test('rejects emulator mode outside local builds', () {
       expect(
         () => FirebaseEnvironment.resolveOptions(

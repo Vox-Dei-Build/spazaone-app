@@ -26,6 +26,21 @@ class FirebaseEnvironment {
     defaultValue: '',
   );
 
+  /// Mobile flavors carry their Firebase identity in the native Android and
+  /// iOS configuration selected by Gradle/Xcode. Using the `.env`-backed
+  /// generated options on those platforms would bypass that flavor selection
+  /// and can pair a development package with the production Firebase app.
+  static bool shouldUseNativePlatformOptions({
+    required bool isWeb,
+    required TargetPlatform platform,
+    bool? emulatorMode,
+  }) {
+    final usesEmulators = emulatorMode ?? useEmulators;
+    return !usesEmulators &&
+        !isWeb &&
+        (platform == TargetPlatform.android || platform == TargetPlatform.iOS);
+  }
+
   static FirebaseOptions options(FirebaseOptions production) {
     return resolveOptions(
       production,
