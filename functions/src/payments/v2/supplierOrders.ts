@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
 import { paystackSecret } from "../../config/environment";
 import {
+  confirmCjOrder,
   createCjDropshipOrder,
   deleteCjOrderIfUnpaid,
   getCjOrderDetail,
@@ -859,7 +860,17 @@ export async function processSupplierFulfilmentV2(
     }
     if (providerPaid === false) {
       try {
-        await payCjOrderFromBalance(cjOrderId);
+        if (["CREATED", "IN_CART"].includes(String(detail?.status ?? ""))) {
+          await confirmCjOrder(cjOrderId);
+          detail = await getCjOrderDetail(orderNumber);
+          cjOrderId = detail.orderId;
+          providerPaid = detail.paid;
+          actualPaymentUsdMinor =
+            detail.actualPaymentUsdMinor ?? actualPaymentUsdMinor;
+        }
+        if (providerPaid === false) {
+          await payCjOrderFromBalance(cjOrderId);
+        }
       } catch (payError) {
         try {
           detail = await getCjOrderDetail(cjOrderId);

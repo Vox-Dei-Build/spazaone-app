@@ -120,6 +120,18 @@ export type CjCreatedOrder = {
   requestId: string;
 };
 
+/** Moves a create-only CJ order to UNPAID before any payment attempt. */
+export async function confirmCjOrder(orderIdValue: unknown): Promise<void> {
+  requireCjPurchaseAuthority();
+  const orderId = text(orderIdValue, 200);
+  if (!orderId) throw new Error("CJ_ORDER_ID_INVALID");
+  await cjRequest({
+    method: "PATCH",
+    url: "/shopping/order/confirmOrder",
+    data: { orderId },
+  });
+}
+
 export type CjOrderDetail = {
   orderId: string;
   orderNumber: string;
