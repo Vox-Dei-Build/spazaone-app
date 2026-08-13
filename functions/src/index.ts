@@ -43,6 +43,7 @@ export { getMerchantPaymentOverviewV2 } from "./payments/v2/merchantOverview";
 export {
   reconcileSupplierTrackingV2,
   reconcileSupplierTrackingV2OnDemand,
+  resolveSupplierFulfilmentReviewV2,
   retrySupplierFulfilmentsV2,
 } from "./payments/v2/supplierOrders";
 export { expireSupplierFundingReservations } from "./payments/v2/supplierFunding";

@@ -35,7 +35,11 @@ import {
   OwnedOrderChannel,
 } from "./ownedOrders";
 import { paymentReadiness } from "./readiness";
-import { executePaystackRefundV2, requestRefundCaseV2 } from "./refunds";
+import {
+  executePaystackRefundV2,
+  openRefundCaseInTransactionV2,
+  requestRefundCaseV2,
+} from "./refunds";
 import {
   confirmSupplierFunding,
   consumeSupplierFunding,
@@ -468,6 +472,35 @@ type SupplierFulfilmentOutcome =
   | "refund_pending"
   | "retry"
   | "operations_review";
+
+export type SupplierOperationsResolution = "retry" | "refund";
+
+/**
+ * Operations may resolve a supplier ambiguity only after CJ independently
+ * proves that no provider order exists. This keeps a paid or ambiguously paid
+ * CJ order out of every automatic retry/refund path.
+ */
+export function supplierOperationsResolutionDecision(input: {
+  action: unknown;
+  fulfilmentStatus: unknown;
+  cjOrderId?: unknown;
+  providerOrderAbsent: boolean | null;
+}): SupplierOperationsResolution {
+  const action = String(input.action ?? "") as SupplierOperationsResolution;
+  if (!(["retry", "refund"] as const).includes(action)) {
+    throw new Error("SUPPLIER_REVIEW_ACTION_INVALID");
+  }
+  if (String(input.fulfilmentStatus ?? "") !== "operations_review") {
+    throw new Error("SUPPLIER_REVIEW_STATE_INVALID");
+  }
+  if (String(input.cjOrderId ?? "").trim()) {
+    throw new Error("CJ_ORDER_EXISTS_REVIEW_REQUIRED");
+  }
+  if (input.providerOrderAbsent !== true) {
+    throw new Error("CJ_OUTCOME_STILL_AMBIGUOUS");
+  }
+  return action;
+}
 
 export function supplierFulfilmentFailureDisposition(input: {
   code: string;
@@ -1364,6 +1397,349 @@ export const reconcileSupplierTrackingV2OnDemand = functions
       schemaVersion: 2,
     });
     return { deduped: false, operationId, ...reconciliation };
+  });
+
+/**
+ * Audited recovery for a paid supplier order placed into operations review.
+ * The command first asks CJ for the immutable Spaza One order number and only
+ * permits retry/refund when CJ authoritatively reports that no order exists.
+ */
+export const resolveSupplierFulfilmentReviewV2 = functions
+  .runWith({
+    secrets: ["CJ_API_KEY", "PAYSTACK_SECRET_KEY"],
+    timeoutSeconds: 300,
+  })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Authentication required.",
+      );
+    }
+    if (context.auth.token.spazaAdmin !== true) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Spaza One operations access required.",
+      );
+    }
+    const actorUid = context.auth.uid;
+    const fulfilmentId = text(data?.fulfilmentId, "FULFILMENT_ID", 200);
+    const operationId = String(data?.operationId ?? "").trim();
+    const reason = String(data?.reason ?? "")
+      .trim()
+      .slice(0, 500);
+    if (!/^[A-Za-z0-9:_-]{8,120}$/.test(operationId) || reason.length < 8) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "A unique operation ID and audit reason are required.",
+      );
+    }
+    const action = String(data?.action ?? "") as SupplierOperationsResolution;
+    if (!(["retry", "refund"] as const).includes(action)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Choose retry or refund.",
+      );
+    }
+
+    const auditRef = db.doc(
+      `paymentOperations/${stableDocumentId("op", [
+        "supplier_fulfilment_review",
+        operationId,
+      ])}`,
+    );
+    const priorAudit = await auditRef.get();
+    if (priorAudit.exists) {
+      const previous = priorAudit.data() ?? {};
+      if (
+        previous.fulfilmentId !== fulfilmentId ||
+        previous.action !== action ||
+        previous.reason !== reason
+      ) {
+        throw new functions.https.HttpsError(
+          "already-exists",
+          "That operation ID is already bound to another resolution.",
+        );
+      }
+      const previousOrderId = text(previous.orderId, "ORDER_ID");
+      const previousIntentId = text(previous.intentId, "INTENT_ID");
+      const previousRefundCaseId = String(previous.refundCaseId ?? "");
+      let fundingReleased = Boolean(previous.fundingReleased);
+      let refundSubmission = previous.refundSubmission ?? null;
+      if (action === "refund" && previous.status !== "completed") {
+        // The review transaction atomically released funding before the audit
+        // was created. A retry here resumes only the provider submission.
+        fundingReleased = true;
+        refundSubmission = await executePaystackRefundV2(previousRefundCaseId);
+        await auditRef.set(
+          {
+            status: "completed",
+            fundingReleased,
+            refundSubmission,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+      return {
+        operationId,
+        fulfilmentId: String(previous.fulfilmentId),
+        orderId: previousOrderId,
+        intentId: previousIntentId,
+        action,
+        providerOrderAbsent: true,
+        refundCaseId: previousRefundCaseId || null,
+        fundingReleased,
+        refundSubmission,
+        deduped: true,
+      };
+    }
+
+    const fulfilmentRef = db.doc(`supplierFulfilments/${fulfilmentId}`);
+    const initial = await fulfilmentRef.get();
+    if (!initial.exists) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Fulfilment not found.",
+      );
+    }
+    const initialData = initial.data() ?? {};
+    const orderId = text(initialData.orderId, "ORDER_ID");
+    const intentId = text(initialData.intentId, "INTENT_ID");
+    const orderNumber = `SPAZA-${orderId}`.slice(0, 50);
+    let providerOrderAbsent: boolean | null = null;
+    try {
+      await getCjOrderDetail(orderNumber);
+      providerOrderAbsent = false;
+    } catch (error) {
+      if (supplierFailureCode(error) === "CJ_ORDER_NOT_FOUND") {
+        providerOrderAbsent = true;
+      }
+    }
+    try {
+      supplierOperationsResolutionDecision({
+        action,
+        fulfilmentStatus: initialData.status,
+        cjOrderId: initialData.cjOrderId,
+        providerOrderAbsent,
+      });
+    } catch (error) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        supplierFailureCode(error),
+      );
+    }
+
+    const reservationId = supplierFundingReservationId(orderId);
+    const reservationRef = db.doc(
+      `supplierFundingReservations/${reservationId}`,
+    );
+    const fundingStateRef = db.doc("supplierIntegrationState/cjFunding");
+    let refundCaseId = "";
+    let deduped = false;
+    await db.runTransaction(async (tx) => {
+      const [audit, fulfilment, order, intent, reservation, fundingState] =
+        await Promise.all([
+          tx.get(auditRef),
+          tx.get(fulfilmentRef),
+          tx.get(db.doc(`commerceOrders/${orderId}`)),
+          tx.get(db.doc(`paymentIntents/${intentId}`)),
+          tx.get(reservationRef),
+          tx.get(fundingStateRef),
+        ]);
+      if (audit.exists) {
+        const previous = audit.data() ?? {};
+        if (
+          previous.fulfilmentId !== fulfilmentId ||
+          previous.action !== action ||
+          previous.reason !== reason
+        ) {
+          throw new functions.https.HttpsError(
+            "already-exists",
+            "That operation ID is already bound to another resolution.",
+          );
+        }
+        refundCaseId = String(previous.refundCaseId ?? "");
+        deduped = true;
+        return;
+      }
+      if (!fulfilment.exists || !order.exists || !intent.exists) {
+        throw new Error("SUPPLIER_REVIEW_CORE_MISSING");
+      }
+      const fulfilmentData = fulfilment.data() ?? {};
+      supplierOperationsResolutionDecision({
+        action,
+        fulfilmentStatus: fulfilmentData.status,
+        cjOrderId: fulfilmentData.cjOrderId,
+        providerOrderAbsent: true,
+      });
+      if (
+        fulfilmentData.orderId !== orderId ||
+        fulfilmentData.intentId !== intentId ||
+        intent.get("purpose") !== "supplier_order" ||
+        intent.get("businessBinding.id") !== orderId ||
+        intent.get("status") !== "paid"
+      ) {
+        throw new Error("SUPPLIER_REVIEW_BINDING_INVALID");
+      }
+      const now = FieldValue.serverTimestamp();
+      if (action === "retry") {
+        if (
+          !reservation.exists ||
+          reservation.get("status") !== "active" ||
+          Number(reservation.get("expiresAtMs") ?? 0) <= Date.now()
+        ) {
+          throw new Error("SUPPLIER_FUNDING_STATE_INVALID");
+        }
+        tx.update(fulfilmentRef, {
+          status: "retry",
+          failureCode: FieldValue.delete(),
+          owner: FieldValue.delete(),
+          leaseUntilMs: 0,
+          reviewedAt: now,
+          reviewedBy: actorUid,
+          updatedAt: now,
+        });
+        tx.update(db.doc(`commerceOrders/${orderId}`), {
+          fulfilmentStatus: "paid",
+          operationsOwner: FieldValue.delete(),
+          updatedAt: now,
+        });
+      } else {
+        if (!reservation.exists || reservation.get("status") !== "active") {
+          throw new Error("SUPPLIER_FUNDING_STATE_INVALID");
+        }
+        const requiredUsdMinor = requirePositiveMinorUnits(
+          reservation.get("requiredUsdMinor"),
+          "supplier_funding_required",
+        );
+        const outstandingUsdMinor = Number(
+          fundingState.get("outstandingUsdMinor") ?? 0,
+        );
+        const providerBalanceUsdMinor = Number(
+          fundingState.get("providerBalanceUsdMinor") ?? 0,
+        );
+        if (
+          !Number.isSafeInteger(outstandingUsdMinor) ||
+          outstandingUsdMinor < requiredUsdMinor ||
+          !Number.isSafeInteger(providerBalanceUsdMinor)
+        ) {
+          throw new Error("SUPPLIER_FUNDING_STATE_INVALID");
+        }
+        const expectedAmountMinor = requirePositiveMinorUnits(
+          intent.get("expectedAmountMinor"),
+          "refund_amount",
+        );
+        const refund = await openRefundCaseInTransactionV2(tx, {
+          intentId,
+          idempotencyKey: `supplier-review:${orderId}`,
+          refundAmountMinor: expectedAmountMinor,
+          reason,
+          owner: "operations",
+          commerceOrderId: orderId,
+        });
+        refundCaseId = refund.refundCaseId;
+        tx.update(fulfilmentRef, {
+          status: "refund_pending",
+          failureCode: "operations_authorized_pre_create_refund",
+          owner: "operations",
+          leaseUntilMs: 0,
+          reviewedAt: now,
+          reviewedBy: actorUid,
+          updatedAt: now,
+        });
+        tx.update(db.doc(`commerceOrders/${orderId}`), {
+          status: "cancelled",
+          fulfilmentStatus: "cancelled",
+          paymentStatus: "refund_pending",
+          refundCaseId,
+          operationsOwner: "operations",
+          updatedAt: now,
+          statusHistory: FieldValue.arrayUnion({
+            from: "paid",
+            to: "cancelled",
+            actor: "supplier_operations_review",
+            reason,
+            at: new Date().toISOString(),
+          }),
+        });
+        const nextOutstandingUsdMinor = outstandingUsdMinor - requiredUsdMinor;
+        tx.update(reservationRef, {
+          status: "released",
+          closeReason: "operations_authorized_pre_create_refund",
+          closedAt: now,
+          updatedAt: now,
+        });
+        tx.set(
+          fundingStateRef,
+          {
+            outstandingUsdMinor: nextOutstandingUsdMinor,
+            remainingUsdMinor: Math.max(
+              0,
+              providerBalanceUsdMinor - nextOutstandingUsdMinor,
+            ),
+            updatedAt: now,
+          },
+          { merge: true },
+        );
+      }
+      tx.create(auditRef, {
+        operationId,
+        type: "supplier_fulfilment_review_resolution",
+        action,
+        reason,
+        actorUid,
+        fulfilmentId,
+        orderId,
+        intentId,
+        providerOrderAbsent: true,
+        providerAbsenceCheckedAt: now,
+        refundCaseId: refundCaseId || null,
+        status: "authorized",
+        schemaVersion: 2,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    let fundingReleased = false;
+    let refundSubmission: Record<string, unknown> | null = null;
+    if (!deduped && action === "refund") {
+      fundingReleased = true;
+      refundSubmission = await executePaystackRefundV2(refundCaseId);
+      await auditRef.set(
+        {
+          status: "completed",
+          fundingReleased,
+          refundSubmission,
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    } else if (!deduped) {
+      await auditRef.set(
+        {
+          status: "completed",
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+    return {
+      operationId,
+      fulfilmentId,
+      orderId,
+      intentId,
+      action,
+      providerOrderAbsent: true,
+      refundCaseId: refundCaseId || null,
+      fundingReleased,
+      refundSubmission,
+      deduped,
+    };
   });
 
 export const reconcileSupplierTrackingV2 = functions

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   profitableSupplierChannels,
   supplierFulfilmentFailureDisposition,
+  supplierOperationsResolutionDecision,
   supplierPaymentEconomics,
 } from "../lib/payments/v2/supplierOrders.js";
 
@@ -108,5 +109,43 @@ test("supplier provider failures choose one safe accountable outcome", () => {
     }),
     "operations_review",
     "an extant provider order blocks automatic refund even on a bad charge",
+  );
+});
+
+test("operations resolves a supplier ambiguity only after CJ proves absence", () => {
+  assert.equal(
+    supplierOperationsResolutionDecision({
+      action: "retry",
+      fulfilmentStatus: "operations_review",
+      providerOrderAbsent: true,
+    }),
+    "retry",
+  );
+  assert.equal(
+    supplierOperationsResolutionDecision({
+      action: "refund",
+      fulfilmentStatus: "operations_review",
+      providerOrderAbsent: true,
+    }),
+    "refund",
+  );
+  assert.throws(
+    () =>
+      supplierOperationsResolutionDecision({
+        action: "retry",
+        fulfilmentStatus: "operations_review",
+        providerOrderAbsent: null,
+      }),
+    /CJ_OUTCOME_STILL_AMBIGUOUS/,
+  );
+  assert.throws(
+    () =>
+      supplierOperationsResolutionDecision({
+        action: "refund",
+        fulfilmentStatus: "operations_review",
+        cjOrderId: "cj-existing-order",
+        providerOrderAbsent: false,
+      }),
+    /CJ_ORDER_EXISTS_REVIEW_REQUIRED/,
   );
 });
