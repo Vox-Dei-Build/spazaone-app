@@ -302,7 +302,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(height: SizeConfig.heightMultiplier * 0.5),
                     _balanceRow(
                       'Paid from',
-                      'Shared campaign credits',
+                      'Shared SpazaOne balance',
                       valueBold: true,
                     ),
                     SizedBox(height: SizeConfig.heightMultiplier * 0.5),
@@ -311,7 +311,9 @@ class CostConfirmationSheet extends StatelessWidget {
                   SizedBox(height: SizeConfig.heightMultiplier * 0.5),
                   _balanceRow(
                     'Balance after',
-                    canAfford ? CurrencyUtil.format(after) : 'Top up to send',
+                    canAfford
+                        ? CurrencyUtil.format(after)
+                        : 'Add money to send',
                     valueColor: canAfford
                         ? Colors.green.shade800
                         : Colors.orange.shade800,
@@ -378,7 +380,7 @@ class CostConfirmationSheet extends StatelessWidget {
                 children: [
                   ElevatedButton.icon(
                     icon: const Icon(Icons.account_balance_wallet),
-                    label: const Text('Top Up Wallet'),
+                    label: const Text('Add money'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -386,9 +388,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     ),
                     onPressed: () {
                       Navigator.of(context).pop(CostSheetOutcome.dismissed);
-                      // PAS-UX-WTC: jump straight to the Top-Up tab —
-                      // landing on Withdraw here is what made merchants
-                      // think the "Top Up" CTA didn't work.
+                      // Legacy `topUp` maps directly to Add money.
                       Provider.of<AppModel>(context, listen: false).goToBilling(
                         context,
                         initialTab: WalletInitialTab.topUp,

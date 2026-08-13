@@ -7,8 +7,8 @@ import 'package:provider/provider.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 /// Inline footer that shows the user's live wallet balance vs. an action's
-/// cost, and renders either a confirm button (if affordable) or a "Top Up
-/// Wallet" CTA (if not).
+/// cost, and renders either a confirm button (if affordable) or an Add money
+/// CTA (if not).
 ///
 /// Replaces the duplicated StreamBuilder pattern previously in the run-/view-
 /// promotion screens (`run_promotion_page.dart:208-284`,
@@ -39,7 +39,7 @@ class WalletAffordabilityFooter extends StatelessWidget {
   /// provided, the affordability state controls only the right-hand button.
   final Widget? leadingAction;
 
-  /// What to do when the user taps "Top Up Wallet". Defaults to popping to
+  /// What to do when the user taps Add money. Defaults to popping to
   /// root + [AppModel.goToBilling].
   final VoidCallback? onTopUp;
 
@@ -112,9 +112,9 @@ class WalletAffordabilityFooter extends StatelessWidget {
     final canAfford = balance >= cost;
 
     final balanceLabel =
-        sharedCampaignCredits ? 'Shared campaign credits' : 'Campaign credits';
+        sharedCampaignCredits ? 'Shared SpazaOne balance' : 'SpazaOne balance';
     final statusText = loading
-        ? 'Checking campaign credits…'
+        ? 'Checking your SpazaOne balance…'
         : '$balanceLabel ${CurrencyUtil.format(balance)}'
             '${canAfford ? ' · ${CurrencyUtil.format(balance - cost)} after' : ' · ${CurrencyUtil.format(cost - balance)} short'}'
             '${sharedCampaignCredits ? ' • Sending as $activeStoreName' : ''}';
@@ -156,7 +156,7 @@ class WalletAffordabilityFooter extends StatelessWidget {
       primaryAction = ElevatedButton.icon(
         icon: const Icon(Icons.account_balance_wallet),
         label: const Text(
-          'Top Up Wallet',
+          'Add money',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

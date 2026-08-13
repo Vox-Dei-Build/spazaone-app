@@ -48,7 +48,7 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Verify settlement account'),
+          title: const Text('Verify bank account'),
           content: PrivateRegion(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -155,8 +155,8 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
         SnackBar(
           content: Text(
             result['status'] == 'enabled'
-                ? 'Settlement account verified. Online collections will use this destination when payments are enabled.'
-                : 'Account validated. SpazaOne review is required before online collections.',
+                ? 'Bank account verified for online sales.'
+                : 'Bank account checked. SpazaOne review is required before online payments can start.',
           ),
         ),
       );
@@ -234,18 +234,18 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.verified_user_outlined),
-                label: const Text('Verify for online settlements'),
+                label: const Text('Verify for online payments'),
               ),
               const SizedBox(height: 8),
               Text(
-                'New or changed bank accounts are validated before customer payments can settle here. Bank changes may require SpazaOne review.',
+                'New or changed bank accounts are checked before online sales can be paid into them. Bank changes may require SpazaOne review.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ] else if (walletViewModel.editingDocumentId != null) ...[
               const SizedBox(height: 12),
               const Text(
-                'Only the store owner or an administrator can verify a settlement account.',
+                'Only the store owner or an administrator can verify the bank account for online sales.',
                 textAlign: TextAlign.center,
               ),
             ],

@@ -125,7 +125,7 @@ class _OnlineCommerceHubState extends State<OnlineCommerceHub> {
         final payments = overview.paymentsV2;
         final capabilities = <_CapabilityPresentation>[
           _CapabilityPresentation(
-            title: 'Campaign Credits',
+            title: 'Add to your SpazaOne balance',
             icon: Icons.campaign_outlined,
             state: effectiveCommerceCapability(
               clientEnabled: FeatureFlags.enableTopUpPaystack,
@@ -135,7 +135,7 @@ class _OnlineCommerceHubState extends State<OnlineCommerceHub> {
             onAction: _openCredits,
           ),
           _CapabilityPresentation(
-            title: 'Owned-stock orders',
+            title: 'Sell your products online',
             icon: Icons.inventory_2_outlined,
             state: effectiveCommerceCapability(
               clientEnabled: FeatureFlags.enableOwnedOrderPayments,
@@ -145,7 +145,7 @@ class _OnlineCommerceHubState extends State<OnlineCommerceHub> {
             onAction: _openPaymentSetup,
           ),
           _CapabilityPresentation(
-            title: 'Account payments',
+            title: 'Customer account payments',
             icon: Icons.account_balance_wallet_outlined,
             state: effectiveCommerceCapability(
               clientEnabled: FeatureFlags.enableAccountSettlementPayments,
@@ -155,7 +155,7 @@ class _OnlineCommerceHubState extends State<OnlineCommerceHub> {
             onAction: _openPaymentSetup,
           ),
           _CapabilityPresentation(
-            title: 'Supplier orders',
+            title: 'Supplier-delivered products',
             icon: Icons.local_shipping_outlined,
             state: effectiveCommerceCapability(
               clientEnabled: FeatureFlags.enableSupplierOrderPayments,
@@ -275,7 +275,7 @@ class _CapabilityCard extends StatelessWidget {
         return 'Ready for secure online payment';
       case 'merchant_not_enabled':
       case 'merchant_capability_disabled':
-        return 'Complete Payment Setup or wait for approval';
+        return 'Set up online payments or wait for approval';
       case 'global_suspended':
         return 'Temporarily paused for safety';
       case 'client_disabled':
@@ -352,7 +352,7 @@ class _CapabilityCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: capability.onAction,
                 icon: const Icon(Icons.account_balance_outlined, size: 18),
-                label: const Text('Payment Setup'),
+                label: const Text('Set up online payments'),
               )
             else if (state.ready)
               TextButton(

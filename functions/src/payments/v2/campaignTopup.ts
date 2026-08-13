@@ -178,27 +178,29 @@ function publicError(error: unknown): { status: number; message: string } {
   }
   const code = error instanceof Error ? error.message : "";
   const known: Record<string, [number, string]> = {
-    CREDIT_AMOUNT_INVALID: [400, "Enter a valid campaign credit amount."],
-    CREDIT_AMOUNT_TOO_LARGE: [400, "Campaign credit amount is too large."],
+    CREDIT_AMOUNT_INVALID: [400, "Enter a valid amount to add."],
+    CREDIT_AMOUNT_TOO_LARGE: [400, "The amount to add is too large."],
     TOPUP_CHANNEL_INVALID: [400, "Choose an available payment method."],
     TOPUP_EXACT_GROSS_UP_UNAVAILABLE: [
       409,
-      "That exact top-up is unavailable.",
+      "That exact amount is unavailable.",
     ],
-    PAYMENT_CAPABILITY_DISABLED: [409, "Online top-ups are not available yet."],
+    PAYMENT_CAPABILITY_DISABLED: [409, "Adding money is not available yet."],
     PAYMENT_INITIALIZATION_IN_PROGRESS: [
       409,
-      "Payment setup is already in progress.",
+      "This payment is already being prepared.",
     ],
   };
   const mapped = known[code];
   return mapped
     ? { status: mapped[0], message: mapped[1] }
-    : { status: 500, message: "Payment setup failed." };
+    : { status: 500, message: "The payment could not be prepared." };
 }
 
 async function authenticatedQuote(req: functions.https.Request, res: any) {
-  const uid = await authenticateFirebaseRequest(req, res);
+  const uid = await authenticateFirebaseRequest(req, res, {
+    requireAppCheck: true,
+  });
   if (!uid) return null;
   const merchantId = requireStoreId(req.body?.storeId ?? req.body?.merchantId);
   await assertStoreAccess(uid, merchantId);
@@ -220,6 +222,95 @@ async function authenticatedQuote(req: functions.https.Request, res: any) {
     }),
   };
 }
+
+type CampaignTopupPublicStatus =
+  | "checking"
+  | "paid"
+  | "failed"
+  | "expired"
+  | "refund_pending"
+  | "refunded"
+  | "needs_review";
+
+export function publicCampaignTopupStatus(input: {
+  intentStatus: unknown;
+  purchaseExists: boolean;
+}): CampaignTopupPublicStatus {
+  const status = String(input.intentStatus ?? "");
+  if (status === "paid") {
+    // The webhook-owned business projection is part of payment truth. A paid
+    // provider intent without its campaign purchase is never celebrated.
+    return input.purchaseExists ? "paid" : "checking";
+  }
+  if (["created", "initialized", "pending"].includes(status)) {
+    return "checking";
+  }
+  if (status === "failed") return "failed";
+  if (status === "expired") return "expired";
+  if (status === "refund_pending") return "refund_pending";
+  if (status === "refunded") return "refunded";
+  return "needs_review";
+}
+
+/**
+ * Owner-bound, buyer-safe campaign top-up status. This endpoint only reads
+ * Spaza One's webhook-owned truth; it never verifies with Paystack or mutates
+ * financial state.
+ */
+export const getCampaignTopupStatusV2 = functions.https.onRequest(
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+    try {
+      const uid = await authenticateFirebaseRequest(req, res, {
+        requireAppCheck: true,
+      });
+      if (!uid) return;
+      const merchantId = requireStoreId(
+        req.body?.storeId ?? req.body?.merchantId,
+      );
+      await assertStoreAccess(uid, merchantId);
+      const intentId = String(req.body?.intentId ?? "").trim();
+      if (!/^pi_[a-f0-9]{64}$/.test(intentId)) {
+        res.status(400).json({ error: "Payment attempt is invalid." });
+        return;
+      }
+
+      const [intent, purchase] = await Promise.all([
+        db.doc(`paymentIntents/${intentId}`).get(),
+        db.doc(`campaignCreditPurchases/${intentId}`).get(),
+      ]);
+      if (!intent.exists) {
+        res.status(404).json({ error: "Payment attempt was not found." });
+        return;
+      }
+      const data = intent.data() ?? {};
+      if (
+        String(data.merchantId ?? "") !== merchantId ||
+        String(data.purpose ?? "") !== "campaign_credit"
+      ) {
+        res.status(403).json({ error: "Access denied." });
+        return;
+      }
+      const updatedAt = data.updatedAt as { toMillis?: () => number };
+      res.status(200).json({
+        status: publicCampaignTopupStatus({
+          intentStatus: data.status,
+          purchaseExists: purchase.exists,
+        }),
+        creditAmountMinor: Number(data.campaignCreditAmountMinor ?? 0),
+        totalChargeMinor: Number(data.expectedAmountMinor ?? 0),
+        updatedAtMs:
+          typeof updatedAt?.toMillis === "function" ? updatedAt.toMillis() : 0,
+      });
+    } catch (error) {
+      const response = publicError(error);
+      res.status(response.status).json({ error: response.message });
+    }
+  },
+);
 
 export const getCampaignTopupQuoteV2 = functions.https.onRequest(
   async (req, res) => {

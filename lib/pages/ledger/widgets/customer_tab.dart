@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/ledger/widgets/customer_search_box.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
 
@@ -146,18 +145,11 @@ class _CustomerTabState extends State<CustomerTab> {
             category: "Customer",
             emptyAsset: 'assets/images/customer.webp',
             emptyText:
-                'Add your first customer so you can record a sale and send a WhatsApp confirmation.',
+                'No customers yet',
             hasCustomersNotifier: widget.hasCustomersNotifier,
             emptyCtaLabel:
-                widget.onAddCustomer == null ? null : 'Add your first customer',
+                widget.onAddCustomer == null ? null : 'Add customer',
             onEmptyCtaTap: widget.onAddCustomer,
-            // PAS-AUTH-03: bring Customers up to Stock-parity by
-            // surfacing the existing TUTORIAL_CAPTURE_CUSTOMERS Loom
-            // video on the empty state. The remote-config key already
-            // existed; it just wasn't wired into the surface that needs
-            // it most.
-            tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_CUSTOMERS,
-            tutorialTitle: 'How to add and message customers',
           ),
         ),
       ],

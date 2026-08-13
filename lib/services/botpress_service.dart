@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/config/function_endpoints.dart';
+import 'package:pasella/models/conversation/conversation_presentation.dart';
 
 class BotpressConversationException implements Exception {
   const BotpressConversationException(this.code, this.message);
@@ -60,6 +61,11 @@ class BotpressService {
         final tags = (msg['tags'] as Map?)?.cast<String, dynamic>() ?? const {};
         final replyTo = tags['whatsapp:replyTo']?.toString();
         final payloadType = payload['type']?.toString();
+        final presentation = ConversationPresentationV1.fromPayload(
+          payload,
+          fallbackText: text,
+          fallbackMediaUrl: mediaUrl,
+        );
 
         return {
           'id': msg['id'],
@@ -76,6 +82,7 @@ class BotpressService {
           // bubble can render menu options / cards instead of a blank string.
           'payloadType': payloadType,
           'payload': payload,
+          'presentationModel': presentation,
         };
       }).toList(growable: false);
     } on BotpressConversationException {

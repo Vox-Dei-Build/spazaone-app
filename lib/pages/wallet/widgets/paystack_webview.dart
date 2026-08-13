@@ -4,7 +4,7 @@ import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/widgets/private_region.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import 'payment_response_screen.dart';
+enum HostedCheckoutOutcome { returned, closed, failed }
 
 class PaystackWebView extends StatefulWidget {
   final String url;
@@ -19,7 +19,7 @@ class PaystackWebView extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _PaystackWebViewState createState() => _PaystackWebViewState();
+  State<PaystackWebView> createState() => _PaystackWebViewState();
 }
 
 class _PaystackWebViewState extends State<PaystackWebView> {
@@ -39,12 +39,21 @@ class _PaystackWebViewState extends State<PaystackWebView> {
           onPageFinished: (String url) {
             if (mounted) setState(() => isLoading = false);
             if (url == 'https://standard.paystack.co/close') {
-              if (mounted) Navigator.pop(context, true); // Payment successful
+              if (mounted) {
+                Navigator.pop(context, HostedCheckoutOutcome.returned);
+              }
+            }
+          },
+          onWebResourceError: (error) {
+            if (error.isForMainFrame == true && mounted) {
+              Navigator.of(context).pop(HostedCheckoutOutcome.failed);
             }
           },
           onNavigationRequest: (NavigationRequest request) {
             if (request.url == 'https://standard.paystack.co/close') {
-              if (mounted) Navigator.of(context).pop(); // close webview
+              if (mounted) {
+                Navigator.of(context).pop(HostedCheckoutOutcome.returned);
+              }
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
@@ -52,23 +61,6 @@ class _PaystackWebViewState extends State<PaystackWebView> {
         ),
       )
       ..loadRequest(Uri.parse(widget.url));
-  }
-
-  /// 🟢 Handle Payment Result and Navigate to Response Screen
-  // ignore: unused_element
-  void _handlePaymentResult(bool success) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => PaymentResponseScreen(
-          isSuccess: success,
-          message: success
-              ? 'Your payment was successfully processed!'
-              : 'Oops! Something went wrong with your payment.',
-          amount: widget.amount,
-          reference: widget.reference,
-        ),
-      ),
-    );
   }
 
   @override
@@ -85,8 +77,7 @@ class _PaystackWebViewState extends State<PaystackWebView> {
               IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () {
-                  Navigator.of(context).pop(); //close webview
-                  Navigator.of(context).pop(); //close paystack form
+                  Navigator.of(context).pop(HostedCheckoutOutcome.closed);
                 },
               ),
             ],

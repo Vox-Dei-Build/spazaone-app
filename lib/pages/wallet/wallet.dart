@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/tabs/sales_balance_tab.dart';
-import 'package:pasella/pages/wallet/tabs/top_up_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/pages/wallet/widgets/campaign_topup_verification_screen.dart';
+import 'package:pasella/pages/wallet/widgets/paystack_form.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
+import 'package:pasella/services/campaign_topup_pending_store.dart';
+import 'package:pasella/services/payment_setup_service.dart';
+import 'package:pasella/services/paystack_service.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -14,8 +20,18 @@ import 'package:pasella/utils/wallet_utils.dart';
 import 'package:provider/provider.dart';
 
 /// Legacy enum values are retained for deep-link compatibility. In 4.8,
-/// `withdraw` opens Settlements and `topUp` opens Campaign Credits.
+/// `withdraw` scrolls to online sales payouts and `topUp` opens Add money.
 enum WalletInitialTab { withdraw, topUp, account }
+
+enum WalletInitialDestination { payouts, addMoney, money }
+
+@visibleForTesting
+WalletInitialDestination walletInitialDestination(WalletInitialTab tab) =>
+    switch (tab) {
+      WalletInitialTab.withdraw => WalletInitialDestination.payouts,
+      WalletInitialTab.topUp => WalletInitialDestination.addMoney,
+      WalletInitialTab.account => WalletInitialDestination.money,
+    };
 
 /// Visual summary for the balances merchants use most.
 class BillingBalancePanel extends StatelessWidget {
@@ -42,8 +58,9 @@ class BillingBalancePanel extends StatelessWidget {
         ? Colors.orange.shade800
         : Colors.green.shade700;
     final campaign = _BillingBalanceItem(
-      label: 'Campaign Credits',
-      scope: sharedCampaignCredits ? 'All stores' : null,
+      label: 'SpazaOne balance',
+      scope: sharedCampaignCredits ? 'Shared across your shops' : null,
+      description: 'Use this balance for customer messages and promotions.',
       amount: campaignBalance,
       icon: Icons.campaign_outlined,
       color: campaignColor,
@@ -71,34 +88,25 @@ class BillingBalancePanel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         children: [
-          SizedBox(
-            height: 112,
-            child: _BillingBalanceTile(
-              key: const ValueKey('billing-balance-campaign'),
-              item: campaign,
-              horizontal: true,
-            ),
+          _BillingBalanceTile(
+            key: const ValueKey('billing-balance-campaign'),
+            item: campaign,
+            horizontal: true,
           ),
           if (salesBalance > 0) ...[
             const SizedBox(height: 10),
-            SizedBox(
-              height: 88,
-              child: _BillingBalanceTile(
-                key: const ValueKey('billing-balance-legacy'),
-                item: legacy,
-                horizontal: true,
-              ),
+            _BillingBalanceTile(
+              key: const ValueKey('billing-balance-legacy'),
+              item: legacy,
+              horizontal: true,
             ),
           ],
           if (cashAdvanceBalance != null) ...[
             const SizedBox(height: 10),
-            SizedBox(
-              height: 88,
-              child: _BillingBalanceTile(
-                key: const ValueKey('billing-balance-cash-advance'),
-                item: items.last,
-                horizontal: true,
-              ),
+            _BillingBalanceTile(
+              key: const ValueKey('billing-balance-cash-advance'),
+              item: items.last,
+              horizontal: true,
             ),
           ],
         ],
@@ -114,11 +122,13 @@ class _BillingBalanceItem {
     required this.icon,
     required this.color,
     this.scope,
+    this.description,
     this.onTap,
   });
 
   final String label;
   final String? scope;
+  final String? description;
   final double amount;
   final IconData icon;
   final Color color;
@@ -148,13 +158,46 @@ class _BillingBalanceTile extends StatelessWidget {
       ),
     );
     final content = horizontal
-        ? Row(
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _BalanceIcon(item: item),
-              const SizedBox(width: 12),
-              Expanded(child: _BalanceLabel(item: item)),
-              const SizedBox(width: 12),
-              FittedBox(fit: BoxFit.scaleDown, child: amount),
+              Row(
+                children: [
+                  _BalanceIcon(item: item),
+                  const SizedBox(width: 12),
+                  Expanded(child: _BalanceLabel(item: item)),
+                  const SizedBox(width: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 96),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: amount,
+                    ),
+                  ),
+                ],
+              ),
+              if (item.description case final description?) ...[
+                const SizedBox(height: 12),
+                Text(
+                  description,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey.shade800,
+                        height: 1.3,
+                      ),
+                ),
+              ],
+              if (item.onTap != null) ...[
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: item.onTap,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Add money'),
+                  ),
+                ),
+              ],
             ],
           )
         : Column(
@@ -267,188 +310,190 @@ class WalletPage extends StatefulWidget {
   State<WalletPage> createState() => _WalletPageState();
 }
 
-class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
-  late TabController _tabController;
+class _WalletPageState extends State<WalletPage> {
   final WalletViewModel walletVM = WalletViewModel();
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _payoutsKey = GlobalKey();
+  late Future<MerchantPaymentOverview> _overviewFuture;
+  bool _handledInitialDestination = false;
+  String? _pendingIntentId;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
-      length: _getTabCount(),
-      vsync: this,
-      initialIndex: _getInitialTabIndex(),
+    _overviewFuture =
+        PaymentSetupService.overview(StoreSession.instance.storeId);
+    _pendingIntentId = CampaignTopupPendingStore.read(
+      StoreSession.instance.storeId,
     );
-    _tabController.addListener(() {
-      if (!mounted) return;
-      setState(() {}); // Rerender when tab changes
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_handledInitialDestination) return;
+    _handledInitialDestination = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _resumePendingThenOpenInitial();
     });
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _scrollController.dispose();
     walletVM.dispose();
     super.dispose();
   }
 
-  int _getTabCount() {
-    // Settlements is always present. Credits and setup/info respect the
-    // existing feature flags so released configurations remain compatible.
-    int count = 1; // Settlements
-    if (FeatureFlags.enableTopUp) count++;
-    if (FeatureFlags.enableCashAdvance ||
-        FeatureFlags.enableTransactionHistory ||
-        FeatureFlags.enableBankingDetails ||
-        FeatureFlags.enablePricingInfo) {
-      count++; // Info tab
+  Future<void> _resumePendingThenOpenInitial() async {
+    final pendingStatus = await _checkPendingPayment();
+    if (!context.mounted || pendingStatus != null) {
+      return;
     }
-    return count;
-  }
-
-  bool get _hasInfoTab =>
-      FeatureFlags.enableCashAdvance ||
-      FeatureFlags.enableTransactionHistory ||
-      FeatureFlags.enableBankingDetails ||
-      FeatureFlags.enablePricingInfo;
-
-  int _getInitialTabIndex() {
-    switch (widget.initialTab) {
-      case WalletInitialTab.account:
-        return 0;
-      case WalletInitialTab.topUp:
-        return _topUpTabIndex() ?? 0;
-      case WalletInitialTab.withdraw:
-        return _withdrawTabIndex();
+    if (widget.initialAccountView case final view?) {
+      _openInfo(view);
+      return;
+    }
+    switch (walletInitialDestination(widget.initialTab)) {
+      case WalletInitialDestination.addMoney:
+        if (FeatureFlags.enableTopUp) _openAddMoney();
+      case WalletInitialDestination.payouts:
+        final target = _payoutsKey.currentContext;
+        if (target != null) {
+          await Scrollable.ensureVisible(
+            target,
+            duration: const Duration(milliseconds: 350),
+          );
+        }
+      case WalletInitialDestination.money:
+        break;
     }
   }
 
-  int _withdrawTabIndex() {
-    var index = 0;
-    if (_hasInfoTab) index++;
-    if (FeatureFlags.enableTopUp) index++;
-    return index;
+  Future<CampaignTopupStatus?> _checkPendingPayment() async {
+    final merchantId = StoreSession.instance.storeId;
+    final pendingIntent = _pendingIntentId;
+    if (pendingIntent == null) return null;
+    final status = await Navigator.of(context).push<CampaignTopupStatus>(
+      MaterialPageRoute(
+        builder: (_) => CampaignTopupVerificationScreen(
+          statusReader: () => PaystackService.campaignTopupStatusV2(
+            merchantId: merchantId,
+            intentId: pendingIntent,
+          ),
+        ),
+      ),
+    );
+    if (status != null && status != CampaignTopupStatus.checking) {
+      await CampaignTopupPendingStore.clear(merchantId);
+      if (mounted) setState(() => _pendingIntentId = null);
+    }
+    return status;
   }
 
-  /// PAS-UX-WTC: index of the Top-Up tab in the current configuration,
-  /// or null when [FeatureFlags.enableTopUp] is off. Used by the App
-  /// Balance card's inline "Top up" action so it can jump to the tab
-  /// without needing a separate navigation surface.
-  int? _topUpTabIndex() {
-    if (!FeatureFlags.enableTopUp) return null;
-    return _hasInfoTab ? 1 : 0;
+  void _openInfo(InfoView view) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BillingAccountDestinationPage(
+          view: view,
+          walletVM: walletVM,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAddMoney({List<String>? channels}) async {
+    await Navigator.of(context).push<CampaignTopupStatus>(
+      MaterialPageRoute(
+        builder: (_) => PaystackFormScreen(
+          allowedChannels: channels ?? const ['eft', 'capitec_pay', 'qr'],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _pendingIntentId = CampaignTopupPendingStore.read(
+        StoreSession.instance.storeId,
+      );
+      _overviewFuture = PaymentSetupService.overview(
+        StoreSession.instance.storeId,
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final campaignWallet = context.watch<WalletBalanceProvider>();
-    // 🔥 Dynamically generate the tab views based on feature flags
-    final List<Widget> tabViews = [];
-    final List<Tab> tabLabels = [];
+    return Scaffold(
+      appBar: const CustomAppBar(title: 'Money'),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              StreamBuilder<WalletState>(
+                stream: walletVM.walletStateStream,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-    final bool hasInfoTab = _hasInfoTab;
+                  final walletState = snapshot.data!;
 
-    if (hasInfoTab) {
-      tabLabels.add(const Tab(text: 'Setup & Info'));
-      tabViews.add(
-        InfoCenterTab(
-          walletVM: walletVM,
-          initialView: widget.initialAccountView,
-        ),
-      );
-    }
-
-    if (FeatureFlags.enableTopUp) {
-      tabLabels.add(const Tab(text: 'Campaign Credits'));
-      tabViews.add(const TopUpTab());
-    }
-
-    // Verified online proceeds settle directly; there is no public withdrawal
-    // action for V2 money.
-    tabLabels.add(const Tab(text: 'Settlements'));
-    tabViews.add(const SalesBalanceTab());
-
-    return DefaultTabController(
-      length: tabLabels.length,
-      child: Scaffold(
-        appBar: const CustomAppBar(title: 'Billing & Payments'),
-        body: SafeArea(
-          child: Padding(
-            padding: LayoutConstants.padding10Horizontal,
-            child: Column(
-              children: [
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-
-                // 🟢 Dynamically show the correct balance based on selected tab
-                StreamBuilder<WalletState>(
-                  stream: walletVM.walletStateStream,
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    final walletState = snapshot.data!;
-
-                    return ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+                  return Column(
+                    children: [
+                      BillingBalancePanel(
+                        campaignBalance: campaignWallet.virtualBalance,
+                        salesBalance: walletState.salesVirtualBalance,
+                        storeName: campaignWallet.activeStoreName,
+                        sharedCampaignCredits:
+                            campaignWallet.sharedCampaignCredits,
+                        onCampaignTap:
+                            FeatureFlags.enableTopUp ? _openAddMoney : null,
+                        cashAdvanceBalance: FeatureFlags.enableCashAdvance
+                            ? walletState.cashAdvanceBalance
+                            : null,
                       ),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            BillingBalancePanel(
-                              campaignBalance: campaignWallet.virtualBalance,
-                              salesBalance: walletState.salesVirtualBalance,
-                              storeName: campaignWallet.activeStoreName,
-                              sharedCampaignCredits:
-                                  campaignWallet.sharedCampaignCredits,
-                              onCampaignTap: FeatureFlags.enableTopUp
-                                  ? () {
-                                      final index = _topUpTabIndex();
-                                      if (index != null) {
-                                        _tabController.animateTo(index);
-                                      }
-                                    }
-                                  : null,
-                              cashAdvanceBalance: FeatureFlags.enableCashAdvance
-                                  ? walletState.cashAdvanceBalance
-                                  : null,
-                            ),
-                            if (FeatureFlags.enableCashAdvance &&
-                                walletState.cashAdvanceWithdrawn > 0)
-                              _repaymentCard(walletState),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                      if (FeatureFlags.enableCashAdvance &&
+                          walletState.cashAdvanceWithdrawn > 0)
+                        _repaymentCard(walletState),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              if (_pendingIntentId != null) ...[
+                _PendingPaymentActivity(
+                  onCheckAgain: () => unawaited(_checkPendingPayment()),
                 ),
-
-                // 🟢 Tab Bar
-                TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  labelStyle: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.8,
-                    fontWeight: FontWeight.normal,
-                  ),
-                  unselectedLabelStyle: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.8,
-                    fontWeight: FontWeight.normal,
-                  ),
-                  tabs: tabLabels,
-                ),
-
-                // 🟢 Expanded Tab Views
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: tabViews,
-                  ),
-                ),
+                const SizedBox(height: 8),
               ],
-            ),
+              BillingAccountMenu(
+                showHistory: FeatureFlags.enableTransactionHistory,
+                showBanking: FeatureFlags.enableBankingDetails,
+                showFees: FeatureFlags.enablePricingInfo,
+                onHistory: () => _openInfo(InfoView.history),
+                onBanking: () => _openInfo(InfoView.banking),
+                onFees: () => _openInfo(InfoView.info),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                key: _payoutsKey,
+                child: FutureBuilder<MerchantPaymentOverview>(
+                  future: _overviewFuture,
+                  builder: (context, snapshot) => MoneyPayoutsSection(
+                    overview: snapshot.data,
+                    loading: snapshot.connectionState != ConnectionState.done,
+                    hasError: snapshot.hasError,
+                    onSetup: FeatureFlags.enableBankingDetails
+                        ? () => _openInfo(InfoView.banking)
+                        : null,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -585,6 +630,36 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PendingPaymentActivity extends StatelessWidget {
+  const _PendingPaymentActivity({required this.onCheckAgain});
+
+  final VoidCallback onCheckAgain;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.orange.withValues(alpha: .08),
+      child: ListTile(
+        leading: const SizedBox.square(
+          dimension: 22,
+          child: CircularProgressIndicator(strokeWidth: 2.4),
+        ),
+        title: const Text(
+          'We are still checking your payment',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text(
+          'Your SpazaOne balance will update only after confirmation.',
+        ),
+        trailing: TextButton(
+          onPressed: onCheckAgain,
+          child: const Text('Check'),
+        ),
       ),
     );
   }

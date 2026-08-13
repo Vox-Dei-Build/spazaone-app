@@ -70,7 +70,7 @@ void main() {
           expect(find.bySemanticsLabel('Spaza One'), findsOneWidget);
           expect(
             find.bySemanticsLabel(
-              RegExp('shared campaign credits.*Low balance.*Top Up'),
+              RegExp('Shared SpazaOne balance.*Low balance.*Add money'),
             ),
             findsOneWidget,
           );

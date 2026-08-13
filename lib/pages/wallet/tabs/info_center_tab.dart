@@ -8,11 +8,9 @@ import 'package:pasella/utils/feature_flags.dart';
 
 enum InfoView { history, banking, info }
 
-/// Billing's Account landing page.
+/// Money account destinations.
 ///
-/// Account remains a top-level Billing tab, but its destinations use ordinary
-/// list navigation instead of another segmented control nested inside the
-/// tab. Each destination opens as a full page with standard back navigation.
+/// Compact destinations opened from the single Money page.
 class InfoCenterTab extends StatefulWidget {
   const InfoCenterTab({
     super.key,
@@ -103,7 +101,8 @@ class BillingAccountMenu extends StatelessWidget {
         _AccountDestination(
           key: const ValueKey('billing-account-history'),
           icon: Icons.receipt_long_outlined,
-          title: 'Transaction history',
+          title: 'Money activity',
+          subtitle: 'Payments and balance activity',
           color: Colors.green.shade700,
           onTap: onHistory,
         ),
@@ -111,7 +110,8 @@ class BillingAccountMenu extends StatelessWidget {
         _AccountDestination(
           key: const ValueKey('billing-account-banking'),
           icon: Icons.account_balance_outlined,
-          title: 'Payment setup',
+          title: 'Set up online payments',
+          subtitle: 'Choose where online sales are paid',
           color: Colors.blue.shade700,
           onTap: onBanking,
         ),
@@ -119,7 +119,8 @@ class BillingAccountMenu extends StatelessWidget {
         _AccountDestination(
           key: const ValueKey('billing-account-fees'),
           icon: Icons.info_outline,
-          title: 'Fees and limits',
+          title: 'Costs and limits',
+          subtitle: 'Payment costs and account limits',
           color: Colors.orange.shade800,
           onTap: onFees,
         ),
@@ -133,12 +134,11 @@ class BillingAccountMenu extends StatelessWidget {
       key: const ValueKey('billing-account-dashboard'),
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           for (var index = 0; index < destinations.length; index++) ...[
             if (index > 0) const SizedBox(height: 10),
-            Expanded(
-              child: _AccountMenuTile(destination: destinations[index]),
-            ),
+            _AccountMenuTile(destination: destinations[index]),
           ],
         ],
       ),
@@ -151,6 +151,7 @@ class _AccountDestination {
     required this.key,
     required this.icon,
     required this.title,
+    required this.subtitle,
     required this.color,
     required this.onTap,
   });
@@ -158,6 +159,7 @@ class _AccountDestination {
   final Key key;
   final IconData icon;
   final String title;
+  final String subtitle;
   final Color color;
   final VoidCallback onTap;
 }
@@ -182,7 +184,7 @@ class _AccountMenuTile extends StatelessWidget {
       child: InkWell(
         onTap: destination.onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
               Container(
@@ -200,14 +202,28 @@ class _AccountMenuTile extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(
-                  destination.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      destination.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      destination.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey.shade700,
+                          ),
+                    ),
+                  ],
                 ),
               ),
               Icon(
@@ -235,11 +251,11 @@ class BillingAccountDestinationPage extends StatelessWidget {
   String get _title {
     switch (view) {
       case InfoView.history:
-        return 'Transaction History';
+        return 'Money activity';
       case InfoView.banking:
-        return 'Payment Setup';
+        return 'Set up online payments';
       case InfoView.info:
-        return 'Fees and Limits';
+        return 'Costs and limits';
     }
   }
 

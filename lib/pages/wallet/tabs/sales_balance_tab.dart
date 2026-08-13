@@ -1,188 +1,143 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
-import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
-import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/services/payment_setup_service.dart';
-import 'package:pasella/services/store_session.dart';
 
-class SalesBalanceTab extends StatefulWidget {
-  const SalesBalanceTab({super.key});
+class MoneyPayoutsSection extends StatelessWidget {
+  const MoneyPayoutsSection({
+    super.key,
+    required this.overview,
+    this.loading = false,
+    this.hasError = false,
+    this.onSetup,
+  });
 
-  @override
-  State<SalesBalanceTab> createState() => _SalesBalanceTabState();
-}
+  final MerchantPaymentOverview? overview;
+  final bool loading;
+  final bool hasError;
+  final VoidCallback? onSetup;
 
-enum SalesView { sales, cashAdvance }
+  String _money(int minor) => 'R ${(minor / 100).toStringAsFixed(2)}';
 
-class _SalesBalanceTabState extends State<SalesBalanceTab> {
-  final WalletViewModel walletVM = WalletViewModel();
-  SalesView _selected = SalesView.sales;
-
-  @override
-  void dispose() {
-    walletVM.dispose();
-    super.dispose();
-  }
+  String _status(String raw) => switch (raw) {
+        'paid' || 'completed' => 'Paid',
+        'pending' || 'processing' => 'On the way',
+        'failed' || 'review_required' => 'Needs attention',
+        _ => raw.replaceAll('_', ' '),
+      };
 
   @override
   Widget build(BuildContext context) {
-    Widget content;
-    if (_selected == SalesView.cashAdvance) {
-      content = const CashAdvanceTab();
-    } else {
-      content = const _SettlementOverview();
-    }
-
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (FeatureFlags.enableCashAdvance)
-          Theme(
-            data: Theme.of(context).copyWith(
-              segmentedButtonTheme: SegmentedButtonThemeData(
-                style: ButtonStyle(
-                  backgroundColor: WidgetStateProperty.resolveWith(
-                    (states) => states.contains(WidgetState.selected)
-                        ? Colors.green
-                        : Colors.white,
+        Text(
+          'Online sales payouts',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 10),
+        if (loading)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (hasError || overview == null)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Payout information is temporarily unavailable. Your sales records are unchanged.',
+              ),
+            ),
+          )
+        else ...[
+          _PayoutBankCard(overview: overview!, onSetup: onSetup),
+          const SizedBox(height: 18),
+          Text(
+            'Recent payouts',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 8),
+          if (overview!.settlements.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No online sales payouts yet.'),
+              ),
+            )
+          else
+            for (final payout in overview!.settlements)
+              Card(
+                child: ListTile(
+                  title: Text(
+                    'Order ${payout.orderId.substring(0, payout.orderId.length < 8 ? payout.orderId.length : 8)}',
                   ),
-                  foregroundColor: WidgetStateProperty.resolveWith(
-                    (states) => states.contains(WidgetState.selected)
-                        ? Colors.white
-                        : Colors.black87,
+                  subtitle: const Text('Money from an online sale'),
+                  trailing: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        _money(payout.merchantNetProceedsMinor),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      Text(_status(payout.status)),
+                    ],
                   ),
                 ),
               ),
-            ),
-            child: Padding(
-              padding:
-                  EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier),
-              child: SegmentedButton<SalesView>(
-                segments: const [
-                  ButtonSegment(
-                    value: SalesView.sales,
-                    label: Text('Sales'),
-                    icon: Icon(Icons.monetization_on),
-                  ),
-                  ButtonSegment(
-                    value: SalesView.cashAdvance,
-                    label: Text('Cash Advance'),
-                    icon: Icon(Icons.account_balance),
-                  ),
-                ],
-                selected: <SalesView>{_selected},
-                onSelectionChanged: (selection) {
-                  setState(() => _selected = selection.first);
-                },
-              ),
-            ),
-          ),
-        Expanded(child: content),
+        ],
       ],
     );
   }
 }
 
-class _SettlementOverview extends StatelessWidget {
-  const _SettlementOverview();
+class _PayoutBankCard extends StatelessWidget {
+  const _PayoutBankCard({required this.overview, this.onSetup});
 
-  String _money(int minor) => 'R ${(minor / 100).toStringAsFixed(2)}';
+  final MerchantPaymentOverview overview;
+  final VoidCallback? onSetup;
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<MerchantPaymentOverview>(
-      future: PaymentSetupService.overview(StoreSession.instance.storeId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError || !snapshot.hasData) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Settlement information is temporarily unavailable. Your manual sales records are unchanged.',
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
-        }
-        final overview = snapshot.data!;
-        final profile = overview.profile;
-        return ListView(
-          padding: const EdgeInsets.all(16),
+    final profile = overview.profile;
+    final pending = profile.bankVerificationStatus == 'pending_review';
+    final hasBank = profile.maskedAccount.isNotEmpty;
+    final body = overview.enabled
+        ? 'Online payments are on.'
+        : pending
+            ? 'We are checking your bank details.'
+            : 'Set up your bank account to accept online payments.';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Online settlement destination',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      profile.maskedAccount.isEmpty
-                          ? 'No verified settlement account'
-                          : '${profile.bankName} · ${profile.maskedAccount}',
-                    ),
-                    if (profile.resolvedAccountName.isNotEmpty)
-                      Text(profile.resolvedAccountName),
-                    const SizedBox(height: 8),
-                    Text(
-                      overview.enabled
-                          ? 'Enabled for verified online collections'
-                          : profile.bankVerificationStatus == 'pending_review'
-                              ? 'Pending Spaza One review'
-                              : 'Online collections are not enabled',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
             const Text(
-              'Recent settlements',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              'Bank account for online sales',
+              style: TextStyle(fontWeight: FontWeight.w700),
             ),
+            if (hasBank) ...[
+              const SizedBox(height: 8),
+              Text('${profile.bankName} · ${profile.maskedAccount}'),
+            ],
             const SizedBox(height: 8),
-            if (overview.settlements.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'No verified online settlements yet. Cash, manual transfer and Pay Later remain in their existing records.',
-                  ),
-                ),
-              )
-            else
-              for (final settlement in overview.settlements)
-                Card(
-                  child: ListTile(
-                    title: Text(
-                      'Order ${settlement.orderId.substring(0, settlement.orderId.length < 8 ? settlement.orderId.length : 8)}',
-                    ),
-                    subtitle: Text(
-                      'Spaza One ${_money(settlement.platformFeeMinor)} · Paystack ${_money(settlement.providerFeeMinor)}',
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          _money(settlement.merchantNetProceedsMinor),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        Text(settlement.status.replaceAll('_', ' ')),
-                      ],
-                    ),
-                  ),
-                ),
+            Text(body),
+            if (!overview.enabled && !pending && onSetup != null) ...[
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: onSetup,
+                child: const Text('Set up bank account'),
+              ),
+            ],
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }

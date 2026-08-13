@@ -238,7 +238,6 @@ test("buyer-safe readiness exposes channels only for ready capabilities", () => 
 
   assert.equal(payments.schemaVersion, 2);
   assert.deepEqual(payments.campaignCredits.channels, [
-    "card",
     "eft",
     "capitec_pay",
     "qr",

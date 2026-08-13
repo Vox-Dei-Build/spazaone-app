@@ -56,8 +56,6 @@ class TransactionViewModel extends ChangeNotifier {
   /// surface" — the picker collapses gracefully.
   List<Product> get suggestedProducts => const [];
 
-  /// Optional flow-specific guidance shown above the product picker.
-  String? get productSelectionNotice => null;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   int currentPage = 0;
   int itemsPerPage = 5;

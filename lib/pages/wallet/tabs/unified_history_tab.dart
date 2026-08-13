@@ -47,7 +47,7 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
 
           if (merged.isEmpty) {
             return const _EmptyState(
-              message: "No transactions or messages yet.",
+              message: "No money activity yet.",
             );
           }
 

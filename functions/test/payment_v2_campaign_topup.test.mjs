@@ -4,6 +4,7 @@ import {
   CAMPAIGN_TOPUP_CHANNELS,
   campaignTopupProviderFeeMinor,
   quoteCampaignTopup,
+  publicCampaignTopupStatus,
 } from "../lib/payments/v2/campaignTopup.js";
 
 test("campaign top-up quote credits the exact selected value", () => {
@@ -83,5 +84,30 @@ test("card top-ups fail closed because local versus international is unknown", (
   assert.throws(
     () => quoteCampaignTopup({ creditAmountMinor: 10_000, channel: "card" }),
     /TOPUP_CHANNEL_INVALID/,
+  );
+});
+
+test("top-up status celebrates only after the webhook business projection exists", () => {
+  assert.equal(
+    publicCampaignTopupStatus({ intentStatus: "paid", purchaseExists: false }),
+    "checking",
+  );
+  assert.equal(
+    publicCampaignTopupStatus({ intentStatus: "paid", purchaseExists: true }),
+    "paid",
+  );
+  assert.equal(
+    publicCampaignTopupStatus({
+      intentStatus: "refund_pending",
+      purchaseExists: true,
+    }),
+    "refund_pending",
+  );
+  assert.equal(
+    publicCampaignTopupStatus({
+      intentStatus: "refunded",
+      purchaseExists: true,
+    }),
+    "refunded",
   );
 });

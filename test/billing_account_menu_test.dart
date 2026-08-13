@@ -30,24 +30,22 @@ void main() {
     );
 
     expect(find.byType(SegmentedButton), findsNothing);
-    expect(find.text('Transaction history'), findsOneWidget);
-    expect(find.text('Payment setup'), findsOneWidget);
-    expect(find.text('Fees and limits'), findsOneWidget);
-    expect(find.text('Payments, top-ups and message charges'), findsNothing);
-    expect(find.text('Account used for deposits and payouts'), findsNothing);
-    expect(find.text('Messaging, payment and payout costs'), findsNothing);
+    expect(find.text('Money activity'), findsOneWidget);
+    expect(find.text('Set up online payments'), findsOneWidget);
+    expect(find.text('Costs and limits'), findsOneWidget);
+    expect(find.text('Payments and balance activity'), findsOneWidget);
     final dashboard = tester.getRect(
       find.byKey(const ValueKey('billing-account-dashboard')),
     );
     final lastTile = tester.getRect(
       find.byKey(const ValueKey('billing-account-fees')),
     );
-    expect(lastTile.bottom, greaterThan(dashboard.bottom - 20));
-    expect(lastTile.height, greaterThan(90));
+    expect(lastTile.bottom, lessThanOrEqualTo(dashboard.bottom));
+    expect(lastTile.height, lessThan(90));
 
-    await tester.tap(find.text('Transaction history'));
-    await tester.tap(find.text('Payment setup'));
-    await tester.tap(find.text('Fees and limits'));
+    await tester.tap(find.text('Money activity'));
+    await tester.tap(find.text('Set up online payments'));
+    await tester.tap(find.text('Costs and limits'));
     expect(historyTaps, 1);
     expect(bankingTaps, 1);
     expect(feesTaps, 1);

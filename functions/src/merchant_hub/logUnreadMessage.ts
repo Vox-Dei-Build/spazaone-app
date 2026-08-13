@@ -114,6 +114,10 @@ function buildCustomerMessageNotificationData(
  */
 
 const INBOUND_PUSH_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
+const MAX_PRESENTATION_BYTES = 32_000;
+const MAX_PRESENTATION_OPTIONS = 40;
+const MAX_PRESENTATION_CARDS = 20;
+const MAX_PRESENTATION_TEXT = 4_000;
 
 const digitsOnly = (raw: unknown) => String(raw ?? "").replace(/\D/g, "");
 
@@ -140,6 +144,120 @@ const parseTimestampMs = (raw: unknown): number | null => {
   if (typeof raw !== "string" || !raw) return null;
   const parsed = Date.parse(raw);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const safePresentationText = (value: unknown): string | undefined => {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text ? text.slice(0, MAX_PRESENTATION_TEXT) : undefined;
+};
+
+const safePresentationUrl = (value: unknown): string | undefined => {
+  const text = safePresentationText(value);
+  if (!text) return undefined;
+  try {
+    const parsed = new URL(text);
+    return parsed.protocol === "https:" ? parsed.toString() : undefined;
+  } catch (_) {
+    return undefined;
+  }
+};
+
+const safePresentationReference = (value: unknown): string | undefined => {
+  const text = typeof value === "string" ? value.trim() : "";
+  return /^[A-Za-z0-9:_-]{1,256}$/.test(text) ? text : undefined;
+};
+
+const sanitizePresentationOptions = (value: unknown): unknown[] =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, MAX_PRESENTATION_OPTIONS)
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const option = entry as Record<string, unknown>;
+      const label = safePresentationText(
+        option.label ?? option.title ?? option.text,
+      );
+      if (!label) return [];
+      const description = safePresentationText(option.description);
+      return [{ label, ...(description ? { description } : {}) }];
+    });
+
+export const sanitizePresentation = (
+  value: unknown,
+): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object") return null;
+  try {
+    if (
+      Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_PRESENTATION_BYTES
+    ) {
+      return null;
+    }
+  } catch (_) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  if (Number(raw.schemaVersion ?? raw.version) !== 1) return null;
+  const allowedKinds = new Set([
+    "text",
+    "image",
+    "choices",
+    "list",
+    "carousel",
+    "audio",
+    "video",
+    "document",
+    "location",
+    "unsupported",
+  ]);
+  const type = safePresentationText(raw.type ?? raw.kind)?.toLowerCase();
+  if (!type || !allowedKinds.has(type)) return null;
+  const text = safePresentationText(raw.text);
+  const title = safePresentationText(raw.title);
+  const footer = safePresentationText(raw.footer);
+  const mediaUrl = safePresentationUrl(raw.mediaUrl);
+  const fileName = safePresentationText(raw.fileName);
+  const replyToId = safePresentationReference(raw.replyToId ?? raw.replyTo);
+  const hasLatitude = raw.latitude !== null && raw.latitude !== undefined;
+  const hasLongitude = raw.longitude !== null && raw.longitude !== undefined;
+  const latitude = hasLatitude ? Number(raw.latitude) : Number.NaN;
+  const longitude = hasLongitude ? Number(raw.longitude) : Number.NaN;
+  const validLocation =
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180;
+  const cards = (Array.isArray(raw.cards) ? raw.cards : [])
+    .slice(0, MAX_PRESENTATION_CARDS)
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const card = entry as Record<string, unknown>;
+      const cardTitle = safePresentationText(card.title);
+      if (!cardTitle) return [];
+      const subtitle = safePresentationText(card.subtitle);
+      const imageUrl = safePresentationUrl(card.imageUrl);
+      return [
+        {
+          title: cardTitle,
+          ...(subtitle ? { subtitle } : {}),
+          ...(imageUrl ? { imageUrl } : {}),
+          actions: sanitizePresentationOptions(card.actions),
+        },
+      ];
+    });
+  return {
+    schemaVersion: 1,
+    type,
+    ...(text ? { text } : {}),
+    ...(title ? { title } : {}),
+    ...(footer ? { footer } : {}),
+    ...(mediaUrl ? { mediaUrl } : {}),
+    ...(fileName ? { fileName } : {}),
+    ...(replyToId ? { replyToId } : {}),
+    ...(validLocation ? { latitude, longitude } : {}),
+    options: sanitizePresentationOptions(raw.options),
+    cards,
+  };
 };
 
 /**
@@ -193,6 +311,7 @@ export const logUnreadMessage = functions
         kind,
         externalId,
         timestamp,
+        presentation,
       } = req.body ?? {};
 
       if (!merchantId || !customerNumber || !message) {
@@ -212,6 +331,7 @@ export const logUnreadMessage = functions
         typeof timestamp === "string" && timestamp
           ? timestamp
           : new Date().toISOString();
+      const safePresentation = sanitizePresentation(presentation);
 
       const merchantRef = db.collection("users").doc(merchantId);
       const merchantDoc = await merchantRef.get();
@@ -274,6 +394,7 @@ export const logUnreadMessage = functions
         channel: resolvedChannel,
         kind: resolvedKind,
         ...(externalId ? { externalId } : {}),
+        ...(safePresentation ? { presentation: safePresentation } : {}),
       };
 
       // FCM push only fires for inbound (legacy + new customer messages).

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/models/conversation/conversation_presentation.dart';
 import 'message_card.dart';
 
 class MessagesListView extends StatefulWidget {
@@ -83,6 +84,13 @@ class _MessagesListViewState extends State<MessagesListView> {
   List<_MessageRow> _buildRows() {
     final rows = <_MessageRow>[];
     String? currentDateKey;
+    final messagesById = <String, Map<String, dynamic>>{};
+    for (final message in widget.messages) {
+      for (final key in ['id', 'sid']) {
+        final id = message[key]?.toString().trim();
+        if (id != null && id.isNotEmpty) messagesById[id] = message;
+      }
+    }
 
     for (final message in widget.messages) {
       final date = _asDate(message['dateSent'])?.toLocal();
@@ -93,7 +101,27 @@ class _MessagesListViewState extends State<MessagesListView> {
         rows.add(_MessageRow.header(dateKey));
         currentDateKey = dateKey;
       }
-      rows.add(_MessageRow.message(message));
+      final presentation = ConversationPresentationV1.fromMessage(message);
+      final replyTo =
+          message['replyTo']?.toString().trim() ?? presentation.replyToId;
+      final quoted = replyTo == null ? null : messagesById[replyTo];
+      if (quoted == null) {
+        rows.add(_MessageRow.message(message));
+      } else {
+        final quotedPresentation =
+            ConversationPresentationV1.fromMessage(quoted);
+        final quotedText = quotedPresentation.text ??
+            quotedPresentation.title ??
+            quoted['message']?.toString();
+        rows.add(
+          _MessageRow.message({
+            ...message,
+            if (quotedText != null && quotedText.trim().isNotEmpty)
+              'quotedText': quotedText.trim(),
+            'quotedDirection': quoted['direction'],
+          }),
+        );
+      }
     }
     return rows;
   }

@@ -23,11 +23,16 @@ export type BuyerPaymentsV2 = {
   supplierOrdersRequireOnlinePayment: true;
 };
 
-function safeCapability(value: PaymentReadiness): BuyerPaymentCapability {
+function safeCapability(
+  value: PaymentReadiness,
+  channels: Array<(typeof BUYER_PAYMENT_CHANNELS)[number]> = [
+    ...BUYER_PAYMENT_CHANNELS,
+  ],
+): BuyerPaymentCapability {
   return {
     ready: value.enabled,
     reason: value.reason,
-    channels: value.enabled ? [...BUYER_PAYMENT_CHANNELS] : [],
+    channels: value.enabled ? channels : [],
   };
 }
 
@@ -39,7 +44,11 @@ export function buildBuyerPaymentsV2(input: {
 }): BuyerPaymentsV2 {
   return {
     schemaVersion: 2,
-    campaignCredits: safeCapability(input.campaignCredits),
+    campaignCredits: safeCapability(input.campaignCredits, [
+      "eft",
+      "capitec_pay",
+      "qr",
+    ]),
     ownedOrders: safeCapability(input.ownedOrders),
     accountPayments: safeCapability(input.accountPayments),
     supplierOrders: safeCapability(input.supplierOrders),

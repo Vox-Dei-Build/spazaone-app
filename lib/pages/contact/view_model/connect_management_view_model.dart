@@ -9,6 +9,7 @@ import 'package:pasella/services/botpress_service.dart';
 import 'package:pasella/services/twilio_service.dart';
 import 'package:pasella/services/secure_function_client.dart';
 import 'package:pasella/utils/phone_util.dart';
+import 'package:pasella/models/conversation/conversation_presentation.dart';
 
 class ConnectManagementViewModel {
   final String customerId;
@@ -356,6 +357,13 @@ class ConnectManagementViewModel {
     merged['payloadType'] = _notificationValue(preferred['payloadType']) ??
         _notificationValue(secondary['payloadType']);
     merged['payload'] = preferred['payload'] ?? secondary['payload'];
+    final richestPresentation = selectRichestConversationPresentation(
+      preferred,
+      secondary,
+    );
+    merged['presentationModel'] = richestPresentation;
+    merged['presentation'] =
+        preferred['presentation'] ?? secondary['presentation'];
     merged['replyTo'] = _notificationValue(preferred['replyTo']) ??
         _notificationValue(secondary['replyTo']);
     merged['readAt'] = preferred['readAt'] ?? secondary['readAt'];
@@ -513,6 +521,18 @@ class ConnectManagementViewModel {
   }
 }
 
+@visibleForTesting
+ConversationPresentationV1 selectRichestConversationPresentation(
+  Map<String, dynamic> first,
+  Map<String, dynamic> second,
+) {
+  final firstPresentation = ConversationPresentationV1.fromMessage(first);
+  final secondPresentation = ConversationPresentationV1.fromMessage(second);
+  return firstPresentation.richnessScore >= secondPresentation.richnessScore
+      ? firstPresentation
+      : secondPresentation;
+}
+
 /// V1 truth-surface helpers (`fix/pas-wa-v1-bot-message-truth`).
 ///
 /// We keep these as module-private helpers to keep the ViewModel surface
@@ -582,6 +602,7 @@ extension _TruthSurfaceSubscription on ConnectManagementViewModel {
       'isSMS': channel == 'sms',
       'isAI': senderRole == 'bot',
       'kind': entry['kind']?.toString() ?? 'text',
+      'presentation': entry['presentation'],
       'source': 'truth-surface',
       'isRead': entry['isRead'] == true,
       'readAt': _asDate(entry['readAt']),

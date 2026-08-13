@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 
 void main() {
-  testWidgets('Billing separates campaign credits from legacy money', (
+  testWidgets('Money separates SpazaOne balance from legacy money', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -22,8 +22,12 @@ void main() {
       ),
     );
 
-    expect(find.text('Campaign Credits'), findsOneWidget);
-    expect(find.text('All stores'), findsOneWidget);
+    expect(find.text('SpazaOne balance'), findsOneWidget);
+    expect(find.text('Shared across your shops'), findsOneWidget);
+    expect(
+      find.text('Use this balance for customer messages and promotions.'),
+      findsOneWidget,
+    );
     expect(find.text('Legacy Balance'), findsOneWidget);
     expect(find.text('Sales balance'), findsNothing);
     expect(find.text('Koekie Food Security'), findsOneWidget);
@@ -58,8 +62,53 @@ void main() {
       ),
     );
 
-    expect(find.text('Campaign Credits'), findsOneWidget);
+    expect(find.text('SpazaOne balance'), findsOneWidget);
     expect(find.text('Legacy Balance'), findsNothing);
     expect(find.byKey(const ValueKey('billing-balance-legacy')), findsNothing);
+  });
+
+  test('legacy Money deep links map to their single-page destinations', () {
+    expect(
+      walletInitialDestination(WalletInitialTab.topUp),
+      WalletInitialDestination.addMoney,
+    );
+    expect(
+      walletInitialDestination(WalletInitialTab.withdraw),
+      WalletInitialDestination.payouts,
+    );
+    expect(
+      walletInitialDestination(WalletInitialTab.account),
+      WalletInitialDestination.money,
+    );
+  });
+
+  testWidgets('Money balance hero fits narrow screens with large text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(1.8),
+          ),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: BillingBalancePanel(
+              campaignBalance: 100,
+              salesBalance: 0,
+              storeName: 'Test Shop',
+              sharedCampaignCredits: true,
+              onCampaignTap: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Add money'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

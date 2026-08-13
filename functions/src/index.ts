@@ -32,6 +32,7 @@ export * from "./payments/v2/reconciliation";
 export {
   createCampaignTopupV2,
   getCampaignTopupQuoteV2,
+  getCampaignTopupStatusV2,
 } from "./payments/v2/campaignTopup";
 export { expireOwnedInventoryReservations } from "./payments/v2/inventoryReservations";
 export { createOwnedOrderPaymentV2 } from "./payments/v2/ownedOrders";

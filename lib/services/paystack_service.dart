@@ -26,7 +26,7 @@ extension CampaignTopupChannelWire on CampaignTopupChannel {
       };
 
   String get label => switch (this) {
-        CampaignTopupChannel.eft => 'EFT (Ozow)',
+        CampaignTopupChannel.eft => 'Ozow (Instant EFT)',
         CampaignTopupChannel.capitecPay => 'Capitec Pay',
         CampaignTopupChannel.qr => 'Scan to Pay QR',
       };
@@ -48,6 +48,32 @@ class CampaignTopupQuote {
   double get creditAmount => creditAmountMinor / 100;
   double get providerFee => providerFeeMinor / 100;
   double get totalCharge => totalChargeMinor / 100;
+}
+
+enum CampaignTopupStatus {
+  checking,
+  paid,
+  failed,
+  expired,
+  refundPending,
+  refunded,
+  needsReview,
+}
+
+class CampaignTopupStatusResult {
+  const CampaignTopupStatusResult({
+    required this.status,
+    required this.creditAmountMinor,
+    required this.totalChargeMinor,
+    required this.updatedAtMs,
+  });
+
+  final CampaignTopupStatus status;
+  final int creditAmountMinor;
+  final int totalChargeMinor;
+  final int updatedAtMs;
+
+  bool get isTerminal => status != CampaignTopupStatus.checking;
 }
 
 class CampaignTopupException implements Exception {
@@ -72,7 +98,7 @@ class PaystackService {
     final result = rands * 100 + cents;
     if (result <= 0 || result > 10000000) {
       throw const CampaignTopupException(
-        'Enter a campaign credit amount between R0.01 and R100,000.',
+        'Enter an amount between R0.01 and R100,000.',
       );
     }
     return result;
@@ -127,7 +153,7 @@ class PaystackService {
     if (response.statusCode != 200) {
       throw CampaignTopupException(
         payload['error']?.toString() ??
-            'Online top-up is temporarily unavailable. Please try again.',
+            'Adding money is temporarily unavailable. Please try again.',
       );
     }
     return payload;
@@ -184,6 +210,34 @@ class PaystackService {
       reference: reference,
       intentId: intentId,
       quote: quote,
+    );
+  }
+
+  static Future<CampaignTopupStatusResult> campaignTopupStatusV2({
+    required String merchantId,
+    required String intentId,
+  }) async {
+    final payload = await _postV2('getCampaignTopupStatusV2', {
+      'merchantId': merchantId,
+      'intentId': intentId,
+    });
+    final status = switch (payload['status']?.toString()) {
+      'checking' => CampaignTopupStatus.checking,
+      'paid' => CampaignTopupStatus.paid,
+      'failed' => CampaignTopupStatus.failed,
+      'expired' => CampaignTopupStatus.expired,
+      'refund_pending' => CampaignTopupStatus.refundPending,
+      'refunded' => CampaignTopupStatus.refunded,
+      'needs_review' => CampaignTopupStatus.needsReview,
+      _ => throw const CampaignTopupException(
+          'Payment status could not be verified. Please try again.',
+        ),
+    };
+    return CampaignTopupStatusResult(
+      status: status,
+      creditAmountMinor: (payload['creditAmountMinor'] as num? ?? 0).toInt(),
+      totalChargeMinor: (payload['totalChargeMinor'] as num? ?? 0).toInt(),
+      updatedAtMs: (payload['updatedAtMs'] as num? ?? 0).toInt(),
     );
   }
 

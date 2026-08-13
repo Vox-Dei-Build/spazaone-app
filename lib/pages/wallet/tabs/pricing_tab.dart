@@ -95,7 +95,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
             ),
             _buildBulletPoint(
               'Open Transaction history under Account to review every '
-              'payment, top-up and message charge.',
+              'payment, money added and message charge.',
             ),
             if (FeatureFlags.enableBalancePayout) ...[
               _buildBulletPoint(
@@ -204,7 +204,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
                 'fee charged by your payment provider.',
               ),
               _buildBulletPoint(
-                'Campaign Credits are used for optional marketing and messaging.',
+                'Your SpazaOne balance pays for customer messages and promotions.',
               ),
               _sectionGap(),
             ],
@@ -214,7 +214,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
             // -----------------------------------------------------------
             if (FeatureFlags.enablePricingInfo &&
                 FeatureFlags.enableTopUpPaystack) ...[
-              _sectionTitle('Paystack fees (South Africa)'),
+              _sectionTitle('Payment fees (South Africa)'),
               _buildBulletPoint(
                 'Local payments: ${localPercent.toStringAsFixed(1)}% + '
                 '${CurrencyUtil.format(localFlat)} (excl. VAT)',
@@ -227,8 +227,8 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
                 '${CurrencyUtil.format(intFlat)} (excl. VAT)',
               ),
               _buildBulletPoint(
-                'Automatic settlement payouts are free. Outbound bank '
-                'transfers initiated through Paystack cost '
+                'Automatic online sales payouts are free. Outbound bank '
+                'transfers initiated through the payment provider cost '
                 '${CurrencyUtil.format(transferFee)} (excl. VAT)',
               ),
               _sectionGap(),

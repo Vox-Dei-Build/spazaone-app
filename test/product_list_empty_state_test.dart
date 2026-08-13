@@ -28,7 +28,6 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ProductListEmptyState(
-            userId: '', // empty so the coach mark bypasses Hive
             showOnboarding: showOnboarding,
             onAddProduct: onAddProduct,
           ),

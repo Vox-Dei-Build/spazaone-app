@@ -36,10 +36,6 @@ class AddCreditViewModel extends TransactionViewModel {
   @override
   List<Product> get suggestedProducts => _suggestedProducts;
 
-  @override
-  String get productSelectionNotice =>
-      'Pay Later is for stock you have on hand. Dropshipping products stay in Orders.';
-
   /// Max number of recent credit transactions to scan for the
   /// heuristic. Keeps the read bounded and the suggestion list
   /// dominated by current buying patterns rather than ancient ones.

@@ -3,7 +3,6 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
-import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
 
 class ProductList extends StatelessWidget {
   final StockViewModel viewModel;
@@ -49,7 +48,6 @@ class ProductList extends StatelessWidget {
           // catalogue.
           final showOnboarding = groupName == null && onAddProduct != null;
           return ProductListEmptyState(
-            userId: viewModel.userId,
             showOnboarding: showOnboarding,
             onAddProduct: onAddProduct,
           );
@@ -96,12 +94,10 @@ class ProductList extends StatelessWidget {
 class ProductListEmptyState extends StatelessWidget {
   const ProductListEmptyState({
     super.key,
-    required this.userId,
     required this.showOnboarding,
     required this.onAddProduct,
   });
 
-  final String userId;
   final bool showOnboarding;
   final VoidCallback? onAddProduct;
 
@@ -144,21 +140,14 @@ class ProductListEmptyState extends StatelessWidget {
             ),
             if (showOnboarding) ...[
               const SizedBox(height: 20),
-              ActivationCoachmark(
-                userId: userId,
-                coachmarkKey: 'add_first_product_from_products',
-                title: 'Add a product',
-                message: 'Add an item to start selling.',
-                icon: Icons.inventory_2_outlined,
-                child: ElevatedButton.icon(
-                  onPressed: onAddProduct,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add product'),
-                  style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: SizeConfig.imageSizeMultiplier * 6,
-                      vertical: SizeConfig.heightMultiplier * 1.5,
-                    ),
+              ElevatedButton.icon(
+                onPressed: onAddProduct,
+                icon: const Icon(Icons.add),
+                label: const Text('Add product'),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.imageSizeMultiplier * 6,
+                    vertical: SizeConfig.heightMultiplier * 1.5,
                   ),
                 ),
               ),
