@@ -61,8 +61,8 @@ catalog in the normal seller flow.
 - `commerceOrders/{orderId}` is the dropshipping order source of truth. It
   contains buyer and delivery data plus immutable snapshots of CJ product cost,
   freight, origin, delivery service, USD amounts, FX rate/reserve, landed cost,
-  selling price, payment fee, margin and amount due. Manual orders snapshot a
-  zero payment fee.
+  quantity, selling price, selected Paystack channel and fee, safety margin,
+  merchant markup and amount due.
 - `commerceCheckoutAttempts/{hash}` deduplicates repeated checkout submissions.
   `commerceCheckoutPreparations/{id}` binds the selected listing, customer,
   delivery destination, live quote, amount and expiry before the final order
@@ -76,57 +76,31 @@ African postal code, the server obtains one authoritative CJ stock/freight
 quote, reapplies the seller's fixed markup, validates the margin, and snapshots
 the order. Historical orders are never repriced.
 
-## Compliance and payment activation gate
+## Capability and payment activation gate
 
-Digital payment is intentionally disabled until Spaza One completes provider
-onboarding and compliance approval. `COMMERCE_PAYMENTS_ENABLED` defaults to
-false and only the exact value `true` activates Paystack checkout.
+Supplier payment is controlled by the environment master gate plus the separate
+global and merchant `supplier_order` controls. Every gate fails closed. The
+production controls remain dark until the complete 4.8.0 evidence pack and
+governed activation confirmation; development can enable the same path against
+Paystack Test and CJ sandbox.
 
 While the gate is off:
 
 - sellers browse the Spaza One supplier catalogue, set markup and publish the
   result as a normal seller product;
-- supplier-fulfilled products use the same Promote action and existing
-  WhatsApp catalogue/storefront flow as seller-owned products; no special
-  product checkout link is exposed;
-- the buyer opens the seller's normal WhatsApp storefront and chooses the
-  listing from the same catalogue as the seller's other products;
-- the buyer sees only three checkout steps: choose the product, send a delivery
-  location, then review and place the order;
-- a WhatsApp location pin is preferred. A single typed address or voice note is
-  accepted when location sharing is difficult, including village, township,
-  section, stand, landmark, nearest-town and Plus Code descriptions. The bot
-  asks at most one essential clarification. If geocoding is unavailable or
-  returns no result, the server accepts a manual-review address only when that
-  answer contains an extractable nearest town, South African province and
-  four-digit postal code; it preserves the original directions, landmark,
-  location pin and Plus Code for the merchant;
-- the review offers EFT/deposit or pay at shop. Cash on delivery and Paystack
-  are not offered. Existing physical-shop merchants offer pay at shop by
-  default for compatibility, either supported merchant flag may explicitly
-  disable it, and the buyer must explicitly choose when both routes exist;
-- the authenticated bot backend live-quotes CJ delivery and creates the order
-  request without taking an online payment. The preparation stores a
-  server-only quote reservation bounded by the same 15-minute expiry, so
-  concurrent final-create retries do not repeat supplier calls;
-- Spaza One snapshots the live CJ landed cost, selling price, zero payment fee
-  and seller margin in an isolated `commerceOrder`;
-- the order, checkout-attempt binding and order-created notification outbox are
-  written atomically. A retry repairs a missing legacy outbox, leases delivery
-  once, and reuses the unread event key without incrementing twice. The
-  scheduled notification worker drains both created-order and later
-  status/tracking outboxes, with bounded attempts and no resend of a channel
-  already recorded as successful;
-- a successful EFT order response includes the exact amount, reference and
-  banking instructions. Saving or editing banking details never confirms a
-  customer's payment;
-- the seller confirms payment under Customer → Orders only after payment is
-  actually received; and
-- only then can the seller place the delivery order and continue fulfilment.
+- supplier listings can remain visible in the shared catalogue, but checkout
+  stops before order, payment intent or funding-reservation creation with
+  buyer-safe unavailable copy; and
+- no merchant bank details, manual EFT/deposit path, pay-at-shop path or cash
+  path is offered for a supplier listing.
 
-Paystack code remains dormant and no Paystack API is called while the flag is
-false. The gate is a release control, not a substitute for Paystack's own
-compliance or account activation checks.
+When every gate is enabled, the buyer can select exactly one supplier listing
+and quantity `1..min(live CJ stock, 20)`. WhatsApp accepts a location pin,
+typed address or voice-note fallback, asks at most one essential clarification,
+then obtains a fresh quantity-aware quote. The server returns only profitable
+Card, Instant EFT, Capitec Pay and Scan to Pay channels. Final order creation,
+funding reservation and Paystack initialization are idempotent; payment and
+refund truth remains webhook/provider-confirmed.
 
 The existing Sales → Online implementation is separately gated by Remote
 Config key `FEATURE_ONLINE_SALES_ENABLED`, which defaults to false. Until an
@@ -148,16 +122,15 @@ and sales reporting are coming soon; Cash sales continue unchanged.
   the bot secret, confirms that the listing belongs to the routed shop and
   reprices the CJ variant from the delivery postal code.
 - Public browser order creation fails closed while digital payments are
-  disabled. The public checkout page is retained only for a future approved
-  digital-payment release and does not expose a manual order form.
+  disabled. When enabled, it first obtains a server quote and channel list,
+  then submits the bound preparation; it never exposes a manual order form.
 - Buyer payment initialization is a dedicated commerce operation. It does not
   call wallet top-up endpoints, credit a wallet, or write a manual Sale.
 - A verified Paystack event still fails closed unless the commerce-payment gate
   is enabled and the stored order was initialized as Paystack with the exact
   provider and reference. It then checks ZAR, amount, order, seller and listing
   metadata and applies `paid` in one Firestore transaction with its
-  processed-reference marker. A manual WhatsApp order can never pass this
-  boundary.
+  processed-reference marker.
 - Sellers and active store operators can read only their store's orders. Direct
   client writes to canonical listings, orders, checkout attempts, payment
   markers and supplier integration state are denied.
@@ -168,30 +141,26 @@ and sales reporting are coming soon; Cash sales continue unchanged.
 
 `pending_payment → paid → submitted_for_fulfilment → shipped → delivered`
 
-For the current manual flow, `pending_payment` means the buyer sent an order
-request and the seller still needs to confirm payment. This confirmation is an
-audited server-side transition; it does not create a manual Sales record or
-credit a wallet.
+`pending_payment` means the buyer has an initialized hosted checkout whose
+truth is still owned by the verified Paystack webhook. A return URL, closed app
+or delayed callback never advances it. After payment, the server re-quotes the
+same quantity, confirms its serialized CJ funding reservation, creates the CJ
+order, verifies the actual charge and pays the balance before moving to
+`preparing`. Buyer-facing copy never identifies CJ or another fulfilment
+partner.
 
-For the MVP, the seller—not a Spaza One administrator—places and pays for the
-delivery order using the snapshotted SKU, variant and buyer address shown under
-that customer's Orders tab. The partner-specific instructions are disclosed to
-the merchant only after payment, on the explicit “Place delivery order” step.
-Buyer-facing copy never mentions CJ, a supplier, or a fulfilment partner. After
-placing the delivery order, the merchant adds only a tracking number and an
-optional tracking link, then taps “Save & notify”. The customer never has to
-know or type a carrier name.
-
-Cancellation is allowed from `pending_payment`, `paid`, or
-`submitted_for_fulfilment`. A paid cancellation sets order status `cancelled`
-and payment status `refund_pending`; once the manual or provider refund is
-completed, the store owner records it and the order becomes `refunded`.
+An unpaid order can be cancelled without a refund. Before CJ acceptance, a
+paid cancellation remains `refund_pending` until Paystack confirms the refund.
+After CJ acceptance it becomes an audited operations request; the customer is
+never promised an immediate cancellation or refund. Automated CJ status and
+tracking reconciliation is primary, with merchant-entered tracking retained
+only as an audited fallback.
 
 ## Deployment configuration
 
-- Store the CJ key with
-  `npx firebase-tools@latest --project pasella-ledger functions:secrets:set CJ_API_KEY`.
-  Never place it in Flutter, Firestore, source control, or a command argument.
+- Store CJ and Paystack credentials in the registered environment's Secret
+  Manager. Credential mutation is a separate governed action. Never place a
+  secret in Flutter, Firestore, source control, chat or a command argument.
 - Configure `GEOCODING_API_KEY` in Functions Secret Manager before deploying
   `prepareCommerceCheckout`, and restrict that key to the server-side geocoding
   API. The validated manual rural fallback works without it, but automatic
@@ -202,11 +171,10 @@ completed, the store owner records it and the order becomes `refunded`.
 - `CJ_FX_BUFFER_BPS` optionally changes the default 3% FX reserve. `300` means
   300 basis points. This protects the landed-cost quote from FX/payment spread;
   every applied value is snapshotted on the order.
-- `COMMERCE_CHECKOUT_BASE_URL` is not used by the current WhatsApp-only manual
-  flow. Configure it only when testing the future approved digital checkout.
-- Keep `COMMERCE_PAYMENTS_ENABLED=false` in production until Spaza One has
-  completed compliance approval and Paystack onboarding. Manual order requests
-  continue working with the flag off.
+- Configure `COMMERCE_CHECKOUT_BASE_URL` for the hosted supplier checkout in
+  development and the exact approved production candidate.
+- Keep `COMMERCE_PAYMENTS_ENABLED=false` and the separate `supplier_order`
+  release controls off in production until every combined-release gate passes.
 - Keep the dedicated `verifyCommercePaystackTransaction` endpoint exported so
   the existing Paystack integration is preserved. While compliance is pending,
   it returns `503 COMMERCE_PAYMENTS_DISABLED` and cannot move an order to paid.
@@ -214,33 +182,34 @@ completed, the store owner records it and the order becomes `refunded`.
 - Keep `FEATURE_ONLINE_SALES_ENABLED=false` until approved automatic payment
   collection and reconciliation are ready. The previous Online reporting code
   remains intact behind this switch.
-- After approval, configure the Paystack secret through Secret Manager, verify
-  test-mode checkout/webhooks/refunds, scope-deploy the already exported
-  `verifyCommercePaystackTransaction`, then set
-  `COMMERCE_PAYMENTS_ENABLED=true` in the same controlled release.
+- After approval, verify the exact signed Functions, app and bot candidates,
+  the test and controlled-live checkout/webhook/refund evidence, the CJ
+  low-value purchase and zero-variance reconciliation before activation.
 - The existing `verifyPaystackTransaction` webhook may receive a verified
   `commerce_order` event through the account's shared webhook URL, but the
   commerce gate and stored Paystack binding are still mandatory before it can
   reach the isolated order transition. It never falls through to wallet/Sales
   mutation.
-- Confirm Twilio, WhatsApp and SMS credentials are available to Functions.
-  Confirm Paystack only as part of the approved activation release.
-  Notification failure is recorded but does not roll back payment or
-  fulfilment state.
+- Confirm the direct Botpress WhatsApp integration and development bot are
+  bound to `spazaone-dev`. Twilio is compatibility-only and is not a release
+  dependency. Notification failure is recorded but does not roll back payment
+  or fulfilment state.
 - Roll out the coupled backend in this order: deploy the two managed
   `commerceOrders` indexes and wait until both are `READY`; deploy and smoke
   test the scoped catalogue, preparation, commerce-order, unread and
   notification Functions while bot live checkout remains disabled; publish
-  the updated WhatsApp bot with `PASELLA_ENABLE_LIVE_CHECKOUT=false`; verify the
-  coupled candidates; then enable live checkout for the approved 100% release.
+  the updated development WhatsApp bot with `PASELLA_ENABLE_LIVE_CHECKOUT=false`;
+  verify the coupled candidates; then deploy the production candidates dark at
+  the governed confirmation boundary. Activate all four approved capabilities
+  together only after the final signoffs and live evidence.
   Never expose commerce orders to the older bot, which could route reorder or
   cancellation through legacy Sales. Let the default categories warm and
   smoke-test a delivery-product promotion image before releasing the app. No
   migration of manual Sales, existing products, stock or wallets is required.
 
-## Manual QA checklist
+## Release QA checklist
 
-### Before payment approval
+### Dark-mode regression
 
 - Leave `COMMERCE_PAYMENTS_ENABLED` unset or false and confirm catalogue search,
   product opening and listing creation work without live supplier requests.
@@ -248,16 +217,12 @@ completed, the store owner records it and the order becomes `refunded`.
   the same campaign flow as a seller-owned product. Confirm no supplier-only
   checkout URL or direct-product ordering link is shown.
 - Open the seller's normal WhatsApp storefront, select the listing and confirm
-  the bot shows exactly three buyer steps: choose product, send location, and
-  review/place order. Confirm “Browse more” and previous-page actions remain
-  visible on the catalogue cards.
-- Confirm Spaza One creates one manual `commerceOrder`, snapshots zero payment
-  fee and never calls Paystack or creates a manual Sales record.
-- Confirm an EFT buyer receives one in-conversation order reference, exact
-  total and banking instructions; confirm pay-at-shop copy contains no banking
-  block and neither route says cash on delivery.
-- Under the matching customer → Orders, confirm manual payment with a
-  method/reference, then place the delivery order and record its order number.
+  the bot stops before order creation with customer-safe unavailable copy while
+  the capability is dark. Confirm “Browse more” and previous-page actions
+  remain visible on the catalogue cards.
+- Confirm disabled supplier checkout creates no `commerceOrder`, Paystack
+  intent, supplier funding reservation or manual Sales record and never exposes
+  merchant banking details.
 
 The digital-payment checks require an approved test account and
 `COMMERCE_PAYMENTS_ENABLED=true` in a non-production environment.
@@ -280,9 +245,8 @@ The digital-payment checks require an approved test account and
   marking the product unavailable. Confirm an explicit no-route result is
   hidden and scheduled for a later refresh.
 - Enter a markup and confirm estimated selling price, payment fee and margin.
-- With manual payments, confirm any positive markup is accepted and the payment
-  fee snapshot is zero. With digital payments enabled, confirm markup below the
-  estimated provider fee is rejected.
+- Confirm markup below the selected online provider fee plus the R1 safety
+  margin is rejected.
 - Create the listing and confirm it appears in Products as supplier fulfilled
   without changing an existing seller product. Confirm it is available in the
   same WhatsApp catalogue and promotion picker as other listed products.
@@ -302,8 +266,10 @@ The digital-payment checks require an approved test account and
   rural address and one voice note containing village/township, stand/section,
   landmark and nearest-town details. Confirm no more than one clarification is
   asked.
-- Confirm mixed carts, quantity above one, malformed addresses and a listing
-  belonging to another shop are rejected.
+- Confirm a supplier order contains exactly one listing and quantity is
+  accepted from 1 through the lower of live CJ stock and the server risk cap
+  of 20. Mixed supplier/owned carts, over-stock quantities, malformed
+  addresses and a listing belonging to another shop must be rejected.
 - Add fake price/cost/margin fields with an HTTP client; confirm they are
   ignored.
 - Confirm out-of-stock, unsupported delivery and unavailable FX/provider states
@@ -311,15 +277,17 @@ The digital-payment checks require an approved test account and
 - Open the dormant browser checkout while payments are disabled and confirm it
   shows WhatsApp-only guidance instead of a buyer-details form.
 - Open that buyer in Customers → Orders. Confirm the dropship order appears in
-  the same filtered list as existing customer orders and can be fulfilled from
-  there. Confirm an order notification opens this customer Orders tab.
+  the same filtered list as existing customer orders and its automated status
+  and tracking are visible there. Confirm an order notification opens this
+  customer Orders tab.
 
 ### Payment and snapshots
 
-- For the current flow, confirm the seller—not the buyer client—can transition
-  an order from awaiting manual confirmation to paid.
-- Confirm the order stores `paymentMethod: manual`, a zero fee and the manual
-  confirmation audit details.
+- Confirm neither the seller nor buyer client can mark an online order paid;
+  only the verified, idempotent Paystack webhook can advance payment truth.
+- Quote the requested quantity and confirm only profitable Card, Instant EFT,
+  Capitec Pay and Scan to Pay options are offered. A channel that would leave
+  less than the R1 safety margin must be hidden.
 - Complete a Paystack test payment and confirm the return page moves from
   pending to paid only after the verified webhook (post-approval only).
 - Confirm the order stores CJ product and freight USD values, FX rate/date and
@@ -332,25 +300,27 @@ The digital-payment checks require an approved test account and
 
 ### Seller fulfilment
 
-- Confirm partner details, supplier SKU, variant, delivery service, buyer
-  address and margin remain hidden until payment is confirmed, then appear in
-  the merchant-only “Place delivery order” step.
-- Place the delivery order using the buyer address and merchant funding; select
-  “Mark delivery order as placed”.
-- Save a tracking number with and without an optional tracking link, then mark
-  delivered. Confirm no carrier-name field exists, invalid state skips are
-  rejected, and buyer/seller notification attempts are recorded.
+- Confirm supplier details, SKU, variant, delivery service, buyer address and
+  margin remain merchant-only. After Paystack confirmation the server must
+  re-quote, confirm the serialized funding reservation, create the CJ order,
+  verify its actual charge and pay it before moving to preparing.
+- Reconcile CJ pending/processing, shipped/tracking and delivered states
+  through the unified notification outbox. Manual tracking remains an audited
+  fallback and no carrier-name field is required.
 
 ### Cancellation, access and regression
 
 - Cancel an unpaid order and confirm no refund is required.
-- Cancel a paid order and confirm it becomes `refund_pending`; record the
-  manual or provider refund reference/note and confirm `refunded`.
+- Before CJ acceptance, cancel a paid order only through the provider refund
+  path and confirm it remains `refund_pending` until Paystack confirms it.
+  After CJ acceptance, cancellation creates an operations request and never an
+  immediate refund promise.
 - Confirm another seller and the public cannot read the order or canonical
   listing, while the owning store can.
-- Recheck normal products, stock, manual Sales, reports, wallets and existing
-  WhatsApp ordering. Paystack remains hidden. A normal product must still use
-  the existing cart/`checkoutCart`/Sales path.
+- Recheck normal products, stock, app-only manual Sales/Add Payment/Transfer,
+  reports, wallets and WhatsApp ordering. A normal product must still use the
+  existing cart/`checkoutCart`/Sales path and offer Cash, secure online payment,
+  and Pay Later where supported; direct WhatsApp must not offer manual EFT.
 
 ## 100% release and campaign gate
 
@@ -376,15 +346,17 @@ Functions and bot candidates pass the following twenty end-to-end journeys:
 13. Rural customer completes it with a typed landmark/stand/nearest-town
     address and at most one clarification.
 14. Low-connectivity customer completes it with a voice-note address fallback.
-15. EFT review shows an exact total; creation returns banking details and one
-    stable reference.
-16. Pay-at-shop review and confirmation contain no COD or banking language.
+15. Supplier review shows an exact quantity/freight total and only profitable
+    online channels; it never exposes merchant banking details.
+16. Closing the app or delaying the hosted return never creates payment truth;
+    only the verified webhook advances the order.
 17. A retried or duplicated confirmation creates exactly one order and returns
     the same reference.
 18. An expired, repriced, cross-store or tampered preparation fails safely and
     creates no order.
-19. Merchant confirms payment, sees the place-delivery-order instructions,
-    then saves tracking number plus optional link with one customer update.
+19. A verified payment automatically progresses through one funded CJ order;
+    duplicate workers/events create no second order or payment, and tracking
+    produces one customer update per state.
 20. Disabled checkout, unavailable delivery and supplier/network failure each
     return concise customer-safe recovery copy without exposing supplier names
     or internal errors.
@@ -396,21 +368,21 @@ survive concurrent order increment/clear, a recovered outbox does not duplicate
 notifications or unread counts, and ten concurrent final confirmations create
 one order with no repeated supplier calls.
 
-After those twenty pass, run the exact release candidates for 48 hours with
-zero duplicate orders, zero missing EFT instructions, zero checkout crashes,
-zero cross-store/customer binding failures, and no unexplained rise in checkout
-failure reason codes. Any breach is a hard no-go for both the 100% release and
-the campaign; the recovery action is to keep the campaign off and use the
-checkout kill switch or previous released candidates.
+After those twenty and the named cross-functional gates pass, activation may
+proceed at 100% without a pilot or waiting period. Monitor continuously for
+duplicate orders, unexplained cents, checkout crashes, cross-store/customer
+binding failures and failed kill switches. Any breach is a hard no-go for both
+the release and campaign; keep the campaign off and use the relevant
+capability kill switch or previous signed candidates.
 
-## Automation follow-up
+## Automated supplier fulfilment
 
-After the seller-funded MVP is validated, use CJ's order APIs to create and pay
-supplier orders idempotently, persist the CJ order ID, consume tracking updates,
-and reconcile supplier cancellations and disputes. Fully automatic ordering
-requires an explicit funding model: a prefunded Spaza One CJ balance, seller
-wallet deduction, or another approved settlement arrangement. Existing order
-price/margin snapshots must remain immutable when automation is added.
+The 4.8.0 candidate creates and pays CJ orders idempotently from a prefunded,
+server-reserved Spaza One CJ balance. It persists provider IDs and immutable
+cent/USD snapshots, distinguishes unpaid/paid/ambiguous outcomes before any
+retry or refund, and reconciles tracking and delivery through the shared
+outbox. Any funding shortage, unexplained charge, duplicate movement or CJ
+ambiguity is a release stop condition with visible operations ownership.
 
 Catalogue browsing no longer depends on CJ throughput, but each real buyer
 order still needs a live supplier quote. Before order volume approaches the

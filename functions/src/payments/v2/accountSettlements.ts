@@ -12,6 +12,7 @@ import {
   verifyBotRequest,
 } from "../../security/requestAuth";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
+import { normalizePhoneNumber } from "../../utils/phoneUtils";
 import {
   buildMoneySnapshot,
   calculatePlatformFeeMinor,
@@ -106,6 +107,10 @@ function publicError(error: unknown): { status: number; message: string } {
       "Online account payments are not enabled for this shop yet.",
     ],
     CUSTOMER_NOT_FOUND: [404, "Customer account not found."],
+    CUSTOMER_BINDING_MISMATCH: [
+      403,
+      "This WhatsApp chat is not linked to that customer account.",
+    ],
     CUSTOMER_ACCOUNT_SETTLED: [409, "This account is already settled."],
     ACCOUNT_PAYMENT_EXCEEDS_BALANCE: [
       409,
@@ -156,6 +161,17 @@ export const createAccountSettlementLinkV2 = functions
       ]);
       if (!customer.exists) throw new Error("CUSTOMER_NOT_FOUND");
       const customerData = customer.data() ?? {};
+      if (initiatedBy === "botpress") {
+        const claimedPhone = normalizePhoneNumber(
+          String(req.body?.customerPhone ?? "").replace("whatsapp:", ""),
+        );
+        const storedPhone = normalizePhoneNumber(
+          String(customerData.number ?? ""),
+        );
+        if (!claimedPhone || !storedPhone || claimedPhone !== storedPhone) {
+          throw new Error("CUSTOMER_BINDING_MISMATCH");
+        }
+      }
       const outstanding = accountOutstandingMinor(customerData.balance);
       if (outstanding <= 0) throw new Error("CUSTOMER_ACCOUNT_SETTLED");
       const requested =

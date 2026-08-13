@@ -5,7 +5,8 @@ import { db, functions } from "../../config/main";
 import { paystackSecret } from "../../config/environment";
 import {
   createCjDropshipOrder,
-  getCjBalanceUsdMinor,
+  deleteCjOrderIfUnpaid,
+  getCjOrderDetail,
   payCjOrderFromBalance,
   quoteCjVariant,
 } from "../../commerce/cjClient";
@@ -13,6 +14,7 @@ import {
   deliverCommerceOrderNotificationOutbox,
   enqueueCommerceOrderNotification,
 } from "../../commerce/notifications";
+import { validatedTrackingUrl } from "../../commerce/tracking";
 import {
   buildMoneySnapshot,
   calculatePlatformFeeMinor,
@@ -26,11 +28,24 @@ import {
   providerEventDocumentId,
   recordProviderEventV2,
 } from "./financialCore";
-import { estimatedOwnedOrderProviderFeeMinor } from "./ownedOrders";
+import {
+  estimatedOwnedOrderProviderFeeMinor,
+  isOwnedOrderChannel,
+  OWNED_ORDER_CHANNELS,
+  OwnedOrderChannel,
+} from "./ownedOrders";
 import { paymentReadiness } from "./readiness";
 import { executePaystackRefundV2, requestRefundCaseV2 } from "./refunds";
+import {
+  confirmSupplierFunding,
+  consumeSupplierFunding,
+  releaseSupplierFunding,
+  reserveSupplierFunding,
+  supplierFundingReservationId,
+} from "./supplierFunding";
 
 export type SupplierPaymentEconomics = {
+  quantity: number;
   landedCostMinor: number;
   markupMinor: number;
   collectionFeeMinor: number;
@@ -46,12 +61,19 @@ export function supplierPaymentEconomics(input: {
   landedCostMinor: number;
   markupMinor: number;
   safetyMarginMinor?: number;
+  quantity?: number;
+  channel?: OwnedOrderChannel;
 }): SupplierPaymentEconomics {
   const landed = requirePositiveMinorUnits(
     input.landedCostMinor,
     "landed_cost",
   );
-  const markup = requirePositiveMinorUnits(input.markupMinor, "markup");
+  const unitMarkup = requirePositiveMinorUnits(input.markupMinor, "markup");
+  const quantity = Number(input.quantity ?? 1);
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
+    throw new Error("SUPPLIER_QUANTITY_INVALID");
+  }
+  const markup = unitMarkup * quantity;
   const safety = requireMinorUnits(
     input.safetyMarginMinor ?? 100,
     "safety_margin",
@@ -78,9 +100,10 @@ export function supplierPaymentEconomics(input: {
   if (low - collectionFeeMinor !== subtotal) {
     throw new Error("SUPPLIER_COLLECTION_GROSS_UP_INVALID");
   }
+  const channel = input.channel ?? "eft";
   const providerFee = estimatedOwnedOrderProviderFeeMinor({
     amountMinor: low,
-    channel: "eft",
+    channel,
   });
   if (markup - providerFee < safety) {
     throw new Error("SUPPLIER_MARGIN_BELOW_SAFETY");
@@ -98,6 +121,7 @@ export function supplierPaymentEconomics(input: {
     throw new Error("SUPPLIER_MARGIN_BELOW_SAFETY");
   }
   return {
+    quantity,
     landedCostMinor: landed,
     markupMinor: markup,
     collectionFeeMinor,
@@ -107,6 +131,22 @@ export function supplierPaymentEconomics(input: {
     merchantNetProceedsMinor: money.merchantNetProceedsMinor,
     money,
   };
+}
+
+export function profitableSupplierChannels(input: {
+  landedCostMinor: number;
+  markupMinor: number;
+  safetyMarginMinor?: number;
+  quantity?: number;
+}): OwnedOrderChannel[] {
+  return OWNED_ORDER_CHANNELS.filter((channel) => {
+    try {
+      supplierPaymentEconomics({ ...input, channel });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  });
 }
 
 function text(value: unknown, field: string, max = 200): string {
@@ -129,6 +169,7 @@ export async function initializeSupplierOrderPaymentV2(input: {
   orderId: string;
   email: string;
   callbackUrl: string;
+  channel?: OwnedOrderChannel;
 }): Promise<{
   authorizationUrl: string;
   reference: string;
@@ -148,6 +189,8 @@ export async function initializeSupplierOrderPaymentV2(input: {
   const order = await orderRef.get();
   if (!order.exists) throw new Error("SUPPLIER_ORDER_NOT_FOUND");
   const orderData = order.data() ?? {};
+  const channel = input.channel ?? orderData.requestedPaymentChannel;
+  if (!isOwnedOrderChannel(channel)) throw new Error("ORDER_CHANNEL_INVALID");
   const sellerId = text(orderData.sellerId, "SELLER_ID");
   if (
     String(orderData.supplierId ?? "") !== "cj_dropshipping" ||
@@ -175,7 +218,18 @@ export async function initializeSupplierOrderPaymentV2(input: {
     landedCostMinor: orderData.baseCostMinor,
     markupMinor: orderData.markupMinor,
     safetyMarginMinor: orderData.safetyMarginMinor,
+    quantity: orderData.quantity ?? orderData.totals?.quantity ?? 1,
+    channel,
   });
+  const profitableChannels = profitableSupplierChannels({
+    landedCostMinor: orderData.baseCostMinor,
+    markupMinor: orderData.markupMinor,
+    safetyMarginMinor: orderData.safetyMarginMinor,
+    quantity: orderData.quantity ?? orderData.totals?.quantity ?? 1,
+  });
+  if (!profitableChannels.includes(channel)) {
+    throw new Error("SUPPLIER_CHANNEL_UNPROFITABLE");
+  }
   if (economics.customerTotalMinor !== Number(orderData.amountDueMinor)) {
     throw new Error("SUPPLIER_ORDER_AMOUNT_CHANGED");
   }
@@ -188,9 +242,6 @@ export async function initializeSupplierOrderPaymentV2(input: {
       orderData.supplierShippingCostUsdMinor,
       "shipping_cost_usd",
     );
-  if ((await getCjBalanceUsdMinor()) < requiredUsdMinor) {
-    throw new Error("CJ_BALANCE_INSUFFICIENT");
-  }
   const created = await createPaymentIntentV2({
     merchantId: sellerId,
     purpose: "supplier_order",
@@ -199,6 +250,11 @@ export async function initializeSupplierOrderPaymentV2(input: {
     businessBinding: { type: "supplier_order", id: orderId },
     money: economics.money,
     initiatedBy: "public_checkout",
+  });
+  const funding = await reserveSupplierFunding({
+    orderId,
+    intentId: created.intentId,
+    requiredUsdMinor,
   });
   const intentRef = db.doc(`paymentIntents/${created.intentId}`);
   const reference = supplierReference(created.intentId);
@@ -237,13 +293,14 @@ export async function initializeSupplierOrderPaymentV2(input: {
       initializationClaimId: claimId,
       initializationLeaseUntilMs: Date.now() + 45_000,
       initializationAttempts: FieldValue.increment(1),
-      selectedChannel: "eft",
+      selectedChannel: channel,
       paystackSubaccountCode: subaccountCode,
       settlementDestination: {
         bankName: String(profileData.bankName ?? ""),
         accountName: String(profileData.resolvedAccountName ?? ""),
         accountLast4: String(profileData.accountLast4 ?? ""),
       },
+      supplierFundingReservationId: funding.reservationId,
       updatedAt: now,
     });
     tx.set(
@@ -253,12 +310,13 @@ export async function initializeSupplierOrderPaymentV2(input: {
         payment: {
           provider: "paystack",
           reference,
-          channel: "eft",
+          channel,
           schemaVersion: 2,
         },
         collectionFeeMinor: economics.collectionFeeMinor,
         safetyMarginMinor: economics.safetyMarginMinor,
         money: economics.money,
+        supplierFundingReservationId: funding.reservationId,
         updatedAt: now,
       },
       { merge: true },
@@ -281,7 +339,7 @@ export async function initializeSupplierOrderPaymentV2(input: {
         email,
         amount: economics.customerTotalMinor,
         currency: "ZAR",
-        channels: ["eft"],
+        channels: [channel],
         reference,
         callback_url: callbackUrl,
         subaccount: subaccountCode,
@@ -294,7 +352,7 @@ export async function initializeSupplierOrderPaymentV2(input: {
           intentId: created.intentId,
           orderId,
           sellerId,
-          selectedChannel: "eft",
+          selectedChannel: channel,
         },
       },
       {
@@ -405,13 +463,182 @@ async function queueSupplierRefund(input: {
   });
 }
 
+type SupplierFulfilmentOutcome =
+  | "accepted"
+  | "refund_pending"
+  | "retry"
+  | "operations_review";
+
+export function supplierFulfilmentFailureDisposition(input: {
+  code: string;
+  cjOrderId?: string;
+  providerOrderAbsent: boolean | null;
+}): Exclude<SupplierFulfilmentOutcome, "accepted"> {
+  if (
+    ["CJ_RATE_LIMITED", "CJ_UNAVAILABLE"].includes(input.code) &&
+    !input.cjOrderId
+  ) {
+    return "retry";
+  }
+  if (
+    [
+      "CJ_PRICE_OR_ROUTE_CHANGED",
+      "CJ_BALANCE_INSUFFICIENT",
+      "CJ_UPSTREAM_REJECTED",
+      "CJ_ACTUAL_CHARGE_EXCEEDS_SNAPSHOT",
+    ].includes(input.code) &&
+    input.providerOrderAbsent === true
+  ) {
+    return "refund_pending";
+  }
+  return "operations_review";
+}
+
+function supplierFailureCode(error: unknown): string {
+  return error instanceof Error
+    ? String(error.message || "CJ_UNAVAILABLE").slice(0, 120)
+    : "CJ_UNAVAILABLE";
+}
+
+async function recordSupplierOperationsReview(input: {
+  fulfilmentId: string;
+  orderId: string;
+  intentId: string;
+  code: string;
+  cjOrderId?: string;
+}): Promise<void> {
+  const now = FieldValue.serverTimestamp();
+  const alertId = stableDocumentId("alert", [
+    "supplier_fulfilment",
+    input.fulfilmentId,
+    input.code,
+  ]);
+  const batch = db.batch();
+  batch.set(
+    db.doc(`supplierFulfilments/${input.fulfilmentId}`),
+    {
+      status: "operations_review",
+      failureCode: input.code,
+      owner: "operations",
+      cjOrderId: input.cjOrderId || null,
+      leaseUntilMs: 0,
+      updatedAt: now,
+    },
+    { merge: true },
+  );
+  if (input.orderId) {
+    batch.set(
+      db.doc(`commerceOrders/${input.orderId}`),
+      {
+        fulfilmentStatus: "operations_review",
+        operationsOwner: "operations",
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+  }
+  batch.set(
+    db.doc(`operationsAlerts/${alertId}`),
+    {
+      alertId,
+      type: "supplier_fulfilment_ambiguity",
+      fulfilmentId: input.fulfilmentId,
+      orderId: input.orderId,
+      intentId: input.intentId,
+      cjOrderId: input.cjOrderId || null,
+      code: input.code,
+      owner: "operations",
+      status: "open",
+      schemaVersion: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    { merge: true },
+  );
+  await batch.commit();
+}
+
+async function recordSupplierTrackingRetry(input: {
+  fulfilmentId: string;
+  orderId: string;
+  intentId: string;
+  cjOrderId: string;
+  code: string;
+}): Promise<void> {
+  const now = FieldValue.serverTimestamp();
+  const alertId = stableDocumentId("alert", [
+    "supplier_tracking_retry",
+    input.fulfilmentId,
+    input.code,
+  ]);
+  const batch = db.batch();
+  batch.set(
+    db.doc(`supplierFulfilments/${input.fulfilmentId}`),
+    {
+      trackingFailureCode: input.code,
+      trackingRetryAfterMs: Date.now() + 30 * 60 * 1000,
+      updatedAt: now,
+    },
+    { merge: true },
+  );
+  batch.set(
+    db.doc(`operationsAlerts/${alertId}`),
+    {
+      alertId,
+      type: "supplier_tracking_provider_unavailable",
+      fulfilmentId: input.fulfilmentId,
+      orderId: input.orderId,
+      intentId: input.intentId,
+      cjOrderId: input.cjOrderId,
+      code: input.code,
+      owner: "operations",
+      status: "open",
+      retryable: true,
+      schemaVersion: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    { merge: true },
+  );
+  await batch.commit();
+}
+
+async function markSupplierRetry(
+  fulfilmentId: string,
+  code: string,
+  cjOrderId = "",
+): Promise<void> {
+  await db.doc(`supplierFulfilments/${fulfilmentId}`).set(
+    {
+      status: "retry",
+      failureCode: code,
+      cjOrderId: cjOrderId || null,
+      leaseUntilMs: 0,
+      nextAttemptAfterMs: Date.now() + 5 * 60 * 1000,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+async function providerOrderAbsent(
+  orderNumber: string,
+): Promise<boolean | null> {
+  try {
+    await getCjOrderDetail(orderNumber);
+    return false;
+  } catch (error) {
+    return supplierFailureCode(error) === "CJ_ORDER_NOT_FOUND" ? true : null;
+  }
+}
+
 /**
  * Claims one paid supplier order, revalidates CJ, checks the pre-funded USD
  * balance, creates the order, pays it, and only then advances to preparing.
  */
 export async function processSupplierFulfilmentV2(
   fulfilmentIdValue: unknown,
-): Promise<{ status: "accepted" | "refund_pending"; deduped: boolean }> {
+): Promise<{ status: SupplierFulfilmentOutcome; deduped: boolean }> {
   const fulfilmentId = text(fulfilmentIdValue, "FULFILMENT_ID", 200);
   const ref = db.doc(`supplierFulfilments/${fulfilmentId}`);
   const claimId = stableDocumentId("claim", [fulfilmentId, String(Date.now())]);
@@ -420,7 +647,9 @@ export async function processSupplierFulfilmentV2(
     if (!snapshot.exists) throw new Error("SUPPLIER_FULFILMENT_NOT_FOUND");
     const data = snapshot.data() ?? {};
     if (data.status === "accepted") return { deduped: true, data };
-    if (data.status === "refund_pending") return { deduped: true, data };
+    if (["refund_pending", "operations_review"].includes(data.status)) {
+      return { deduped: true, data };
+    }
     if (
       data.status === "processing" &&
       Number(data.leaseUntilMs ?? 0) > Date.now()
@@ -444,18 +673,30 @@ export async function processSupplierFulfilmentV2(
   if (claimed.deduped) {
     return {
       status:
-        claimed.data.status === "accepted" ? "accepted" : "refund_pending",
+        claimed.data.status === "accepted"
+          ? "accepted"
+          : claimed.data.status === "operations_review"
+            ? "operations_review"
+            : "refund_pending",
       deduped: true,
     };
   }
   const data = claimed.data;
   const intentId = text(data.intentId, "INTENT_ID");
   const orderId = text(data.orderId, "ORDER_ID");
+  const quantity = Number(data.quantity ?? 1);
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
+    throw new Error("SUPPLIER_QUANTITY_INVALID");
+  }
+  const orderNumber = `SPAZA-${orderId}`.slice(0, 50);
+  let cjOrderId = String(data.cjOrderId ?? "").trim();
+  let providerPaid: boolean | null = null;
   try {
     const liveQuote = await quoteCjVariant({
       productId: text(data.productId, "PRODUCT_ID"),
       variantId: text(data.variantId, "VARIANT_ID"),
       postalCode: text(data.shipping?.postalCode, "POSTAL_CODE", 20),
+      quantity,
     });
     const expectedProductUsd = requirePositiveMinorUnits(
       data.productCostUsdMinor,
@@ -475,37 +716,138 @@ export async function processSupplierFulfilmentV2(
     ) {
       throw new Error("CJ_PRICE_OR_ROUTE_CHANGED");
     }
-    const balanceUsdMinor = await getCjBalanceUsdMinor();
-    if (balanceUsdMinor < verifiedTotalUsd) {
-      throw new Error("CJ_BALANCE_INSUFFICIENT");
-    }
-    const created = await createCjDropshipOrder({
-      orderNumber: `SPAZA-${orderId}`.slice(0, 50),
-      variantId: liveQuote.variant.variantId,
-      quantity: 1,
-      logisticName: liveQuote.logisticName,
-      fromCountryCode: liveQuote.originCountryCode,
-      shipping: {
-        postalCode: text(data.shipping?.postalCode, "POSTAL_CODE", 20),
-        country: "South Africa",
-        countryCode: "ZA",
-        province: text(data.shipping?.province, "PROVINCE", 50),
-        city: text(data.shipping?.city, "CITY", 50),
-        phone: text(data.shipping?.phone, "PHONE", 20),
-        customerName: text(data.shipping?.customerName, "CUSTOMER_NAME", 50),
-        address1: text(data.shipping?.address1, "ADDRESS", 200),
-        address2: String(data.shipping?.address2 ?? "").slice(0, 200),
-        email: String(data.shipping?.email ?? "").slice(0, 50),
-      },
+    const fundingReservationId = supplierFundingReservationId(orderId);
+    await confirmSupplierFunding({
+      orderId,
+      intentId,
+      requiredUsdMinor: verifiedTotalUsd,
     });
-    const actualPaymentUsdMinor = requirePositiveMinorUnits(
-      created.actualPaymentUsdMinor,
-      "cj_actual_payment_usd",
+    let shipmentOrderId = String(data.cjShipmentOrderId ?? "");
+    let sandbox = Boolean(data.cjSandbox);
+    let actualPaymentUsdMinor: number | null = null;
+    let detail: Awaited<ReturnType<typeof getCjOrderDetail>> | null = null;
+    try {
+      detail = await getCjOrderDetail(cjOrderId || orderNumber);
+      cjOrderId = detail.orderId;
+      providerPaid = detail.paid;
+      actualPaymentUsdMinor = detail.actualPaymentUsdMinor;
+    } catch (error) {
+      if (supplierFailureCode(error) !== "CJ_ORDER_NOT_FOUND" || cjOrderId) {
+        throw error;
+      }
+    }
+    if (!detail) {
+      try {
+        const created = await createCjDropshipOrder({
+          orderNumber,
+          variantId: liveQuote.variant.variantId,
+          quantity,
+          logisticName: liveQuote.logisticName,
+          fromCountryCode: liveQuote.originCountryCode,
+          shipping: {
+            postalCode: text(data.shipping?.postalCode, "POSTAL_CODE", 20),
+            country: "South Africa",
+            countryCode: "ZA",
+            province: text(data.shipping?.province, "PROVINCE", 50),
+            city: text(data.shipping?.city, "CITY", 50),
+            phone: text(data.shipping?.phone, "PHONE", 20),
+            customerName: text(
+              data.shipping?.customerName,
+              "CUSTOMER_NAME",
+              50,
+            ),
+            address1: text(data.shipping?.address1, "ADDRESS", 200),
+            address2: String(data.shipping?.address2 ?? "").slice(0, 200),
+            email: String(data.shipping?.email ?? "").slice(0, 50),
+          },
+        });
+        cjOrderId = created.orderId;
+        shipmentOrderId = created.shipmentOrderId;
+        sandbox = created.sandbox;
+        actualPaymentUsdMinor = created.actualPaymentUsdMinor;
+      } catch (createError) {
+        // A timed-out create may still have succeeded. CJ accepts our custom
+        // order number for an authoritative recovery lookup.
+        try {
+          detail = await getCjOrderDetail(orderNumber);
+          cjOrderId = detail.orderId;
+          providerPaid = detail.paid;
+          actualPaymentUsdMinor = detail.actualPaymentUsdMinor;
+        } catch (recoveryError) {
+          if (
+            supplierFailureCode(recoveryError) === "CJ_ORDER_NOT_FOUND" &&
+            supplierFailureCode(createError) === "CJ_UPSTREAM_REJECTED"
+          ) {
+            throw createError;
+          }
+          throw new Error("CJ_CREATE_OUTCOME_AMBIGUOUS");
+        }
+      }
+    }
+    if (!cjOrderId) throw new Error("CJ_CREATE_OUTCOME_AMBIGUOUS");
+    await ref.set(
+      {
+        cjOrderId,
+        cjShipmentOrderId: shipmentOrderId || null,
+        cjOrderNumber: orderNumber,
+        cjSandbox: sandbox,
+        cjActualPaymentUsdMinor: actualPaymentUsdMinor,
+        providerPaymentState:
+          providerPaid === true
+            ? "paid"
+            : providerPaid === false
+              ? "unpaid"
+              : "unknown",
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
     );
+    if (!detail) {
+      detail = await getCjOrderDetail(cjOrderId);
+      providerPaid = detail.paid;
+      actualPaymentUsdMinor =
+        detail.actualPaymentUsdMinor ?? actualPaymentUsdMinor;
+    }
+    if (actualPaymentUsdMinor == null) {
+      throw new Error("CJ_ACTUAL_CHARGE_AMBIGUOUS");
+    }
+    requirePositiveMinorUnits(actualPaymentUsdMinor, "cj_actual_payment_usd");
     if (actualPaymentUsdMinor > verifiedTotalUsd) {
+      if (providerPaid === false && (await deleteCjOrderIfUnpaid(cjOrderId))) {
+        cjOrderId = "";
+      }
       throw new Error("CJ_ACTUAL_CHARGE_EXCEEDS_SNAPSHOT");
     }
-    await payCjOrderFromBalance(created.orderId);
+    if (providerPaid === null) {
+      throw new Error("CJ_PAYMENT_STATE_AMBIGUOUS");
+    }
+    if (providerPaid === false) {
+      try {
+        await payCjOrderFromBalance(cjOrderId);
+      } catch (payError) {
+        try {
+          detail = await getCjOrderDetail(cjOrderId);
+          providerPaid = detail.paid;
+          actualPaymentUsdMinor =
+            detail.actualPaymentUsdMinor ?? actualPaymentUsdMinor;
+        } catch (_) {
+          throw new Error("CJ_PAYMENT_OUTCOME_AMBIGUOUS");
+        }
+        if (providerPaid === false) {
+          await markSupplierRetry(
+            fulfilmentId,
+            supplierFailureCode(payError),
+            cjOrderId,
+          );
+          return { status: "retry", deduped: false };
+        }
+        if (providerPaid !== true) {
+          throw new Error("CJ_PAYMENT_OUTCOME_AMBIGUOUS");
+        }
+      }
+    }
+    const fundingConsumed = await consumeSupplierFunding(fundingReservationId);
+    if (!fundingConsumed) throw new Error("SUPPLIER_FUNDING_CONSUME_FAILED");
     let notificationId = "";
     await db.runTransaction(async (tx) => {
       const current = await tx.get(ref);
@@ -515,11 +857,12 @@ export async function processSupplierFulfilmentV2(
       const now = FieldValue.serverTimestamp();
       tx.update(ref, {
         status: "accepted",
-        cjOrderId: created.orderId,
-        cjShipmentOrderId: created.shipmentOrderId,
-        cjOrderNumber: created.orderNumber,
+        cjOrderId,
+        cjShipmentOrderId: shipmentOrderId,
+        cjOrderNumber: orderNumber,
         cjActualPaymentUsdMinor: actualPaymentUsdMinor,
-        cjSandbox: created.sandbox,
+        cjSandbox: sandbox,
+        providerPaymentState: "paid",
         cjPaidAt: now,
         leaseUntilMs: 0,
         updatedAt: now,
@@ -529,9 +872,9 @@ export async function processSupplierFulfilmentV2(
         fulfilmentStatus: "submitted_for_fulfilment",
         supplierOrder: {
           provider: "cj_dropshipping",
-          orderId: created.orderId,
-          shipmentOrderId: created.shipmentOrderId,
-          sandbox: created.sandbox,
+          orderId: cjOrderId,
+          shipmentOrderId,
+          sandbox,
           actualPaymentUsdMinor,
           paidAt: now,
         },
@@ -553,7 +896,7 @@ export async function processSupplierFulfilmentV2(
         paymentMethod: "paystack",
         amountDueMinor: Number(data.amountDueMinor),
         orderKind: "supplier_delivery",
-        eventKey: `cj-accepted-${created.orderId}`,
+        eventKey: `cj-accepted-${cjOrderId}`,
       });
     });
     if (notificationId) {
@@ -563,19 +906,45 @@ export async function processSupplierFulfilmentV2(
     }
     return { status: "accepted", deduped: false };
   } catch (error) {
-    const code = error instanceof Error ? error.message : "CJ_UNAVAILABLE";
-    await queueSupplierRefund({ intentId, orderId, reason: code });
-    await ref.set(
-      {
-        status: "refund_pending",
-        failureCode: code,
-        owner: "operations",
-        leaseUntilMs: 0,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-    return { status: "refund_pending", deduped: false };
+    const code = supplierFailureCode(error);
+    const preliminaryDisposition = supplierFulfilmentFailureDisposition({
+      code,
+      cjOrderId,
+      providerOrderAbsent: null,
+    });
+    if (preliminaryDisposition === "retry") {
+      await markSupplierRetry(fulfilmentId, code);
+      return { status: "retry", deduped: false };
+    }
+    const absence = cjOrderId ? false : await providerOrderAbsent(orderNumber);
+    const disposition = supplierFulfilmentFailureDisposition({
+      code,
+      cjOrderId,
+      providerOrderAbsent: absence,
+    });
+    if (disposition === "refund_pending") {
+      await releaseSupplierFunding(supplierFundingReservationId(orderId), code);
+      await queueSupplierRefund({ intentId, orderId, reason: code });
+      await ref.set(
+        {
+          status: "refund_pending",
+          failureCode: code,
+          owner: "operations",
+          leaseUntilMs: 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return { status: "refund_pending", deduped: false };
+    }
+    await recordSupplierOperationsReview({
+      fulfilmentId,
+      orderId,
+      intentId,
+      code: absence === null ? `${code}_PROVIDER_CHECK_AMBIGUOUS` : code,
+      cjOrderId,
+    });
+    return { status: "operations_review", deduped: false };
   }
 }
 
@@ -588,6 +957,9 @@ export async function applyVerifiedSupplierPaymentV2(
   const orderId = text(metadata.orderId, "ORDER_ID");
   const reference = text(transaction.reference, "REFERENCE");
   const amountMinor = requirePositiveMinorUnits(transaction.amount, "amount");
+  const paidChannel = String(transaction.channel ?? "").trim();
+  if (!isOwnedOrderChannel(paidChannel))
+    throw new Error("ORDER_CHANNEL_INVALID");
   const providerFeeMinor = requireMinorUnits(
     transaction.fees ?? 0,
     "provider_fee",
@@ -633,6 +1005,9 @@ export async function applyVerifiedSupplierPaymentV2(
       Number(intentData.expectedAmountMinor) !== amountMinor ||
       metadata.sellerId !== orderData.sellerId ||
       metadata.orderId !== orderId ||
+      metadata.selectedChannel !== intentData.selectedChannel ||
+      paidChannel !== intentData.selectedChannel ||
+      paidChannel !== orderData.requestedPaymentChannel ||
       orderData.payment?.reference !== reference
     ) {
       throw new Error("SUPPLIER_PAYMENT_BINDING_MISMATCH");
@@ -717,6 +1092,11 @@ export async function applyVerifiedSupplierPaymentV2(
         email: String(orderData.buyer?.email ?? ""),
       },
       amountDueMinor: amountMinor,
+      quantity: Number(orderData.quantity ?? orderData.totals?.quantity ?? 1),
+      supplierFundingReservationId: String(
+        orderData.supplierFundingReservationId ??
+          supplierFundingReservationId(orderId),
+      ),
       schemaVersion: 2,
       createdAt: now,
       updatedAt: now,
@@ -749,6 +1129,251 @@ export async function applyVerifiedSupplierPaymentV2(
   });
   return { deduped, intentId, orderId };
 }
+
+export type SupplierTrackingReconciliationResult = {
+  checked: number;
+  advanced: number;
+  unchanged: number;
+  needsOperationsReview: number;
+};
+
+export function commerceStatusForCj(
+  status: string,
+): "preparing" | "shipped" | "delivered" | null {
+  if (["PENDING", "PROCESSING", "UNSHIPPED"].includes(status)) {
+    return "preparing";
+  }
+  if (status === "SHIPPED") return "shipped";
+  if (status === "DELIVERED") return "delivered";
+  return null;
+}
+
+const COMMERCE_STATUS_RANK: Record<string, number> = {
+  paid: 0,
+  submitted_for_fulfilment: 1,
+  preparing: 2,
+  shipped: 3,
+  on_the_way: 3,
+  delivered: 4,
+};
+
+/** Reconciles CJ state into commerce orders using the unified outbox. */
+export async function runSupplierTrackingReconciliationV2(input?: {
+  limit?: number;
+  source?: "scheduled" | "admin_on_demand";
+  actorUid?: string;
+}): Promise<SupplierTrackingReconciliationResult> {
+  const limit = Math.min(100, Math.max(1, Number(input?.limit ?? 25)));
+  const candidates = await db
+    .collection("supplierFulfilments")
+    .where("status", "==", "accepted")
+    .limit(limit)
+    .get();
+  const result: SupplierTrackingReconciliationResult = {
+    checked: 0,
+    advanced: 0,
+    unchanged: 0,
+    needsOperationsReview: 0,
+  };
+  for (const fulfilment of candidates.docs) {
+    result.checked += 1;
+    const data = fulfilment.data();
+    const orderId = String(data.orderId ?? "");
+    const intentId = String(data.intentId ?? "");
+    const cjOrderId = String(data.cjOrderId ?? "");
+    if (!orderId || !intentId || !cjOrderId) {
+      result.needsOperationsReview += 1;
+      await recordSupplierOperationsReview({
+        fulfilmentId: fulfilment.id,
+        orderId,
+        intentId,
+        cjOrderId,
+        code: "CJ_TRACKING_BINDING_MISSING",
+      });
+      continue;
+    }
+    let detail: Awaited<ReturnType<typeof getCjOrderDetail>>;
+    try {
+      detail = await getCjOrderDetail(cjOrderId);
+    } catch (error) {
+      const trackingCode = supplierFailureCode(error);
+      if (["CJ_UNAVAILABLE", "CJ_RATE_LIMITED"].includes(trackingCode)) {
+        result.unchanged += 1;
+        await recordSupplierTrackingRetry({
+          fulfilmentId: fulfilment.id,
+          orderId,
+          intentId,
+          cjOrderId,
+          code: trackingCode,
+        });
+        continue;
+      }
+      result.needsOperationsReview += 1;
+      await recordSupplierOperationsReview({
+        fulfilmentId: fulfilment.id,
+        orderId,
+        intentId,
+        cjOrderId,
+        code: `CJ_TRACKING_${trackingCode}`,
+      });
+      continue;
+    }
+    if (detail.status === "CANCELLED") {
+      result.needsOperationsReview += 1;
+      await recordSupplierOperationsReview({
+        fulfilmentId: fulfilment.id,
+        orderId,
+        intentId,
+        cjOrderId,
+        code: "CJ_ORDER_CANCELLED_AFTER_PAYMENT",
+      });
+      continue;
+    }
+    let safeTrackingUrl: string | null = null;
+    try {
+      safeTrackingUrl = validatedTrackingUrl(detail.trackingUrl);
+    } catch (_) {
+      safeTrackingUrl = null;
+    }
+    const targetStatus = commerceStatusForCj(detail.status);
+    let notificationId = "";
+    let advanced = false;
+    await db.runTransaction(async (tx) => {
+      const [currentFulfilment, order] = await Promise.all([
+        tx.get(fulfilment.ref),
+        tx.get(db.doc(`commerceOrders/${orderId}`)),
+      ]);
+      if (!currentFulfilment.exists || !order.exists) {
+        throw new Error("CJ_TRACKING_BINDING_MISSING");
+      }
+      const orderData = order.data() ?? {};
+      const currentStatus = String(orderData.status ?? "");
+      const now = FieldValue.serverTimestamp();
+      tx.update(fulfilment.ref, {
+        cjStatus: detail.status,
+        trackingNumber: detail.trackingNumber || null,
+        trackingUrl: safeTrackingUrl,
+        trackingReconciledAt: now,
+        trackingReconciliationSource: input?.source ?? "scheduled",
+        trackingReconciliationActorUid: input?.actorUid ?? null,
+        updatedAt: now,
+      });
+      if (
+        !targetStatus ||
+        (COMMERCE_STATUS_RANK[targetStatus] ?? -1) <=
+          (COMMERCE_STATUS_RANK[currentStatus] ?? -1)
+      ) {
+        return;
+      }
+      advanced = true;
+      tx.update(order.ref, {
+        status: targetStatus,
+        fulfilmentStatus: targetStatus,
+        trackingNumber: detail.trackingNumber || null,
+        trackingUrl: safeTrackingUrl,
+        tracking: {
+          carrier: "",
+          number: detail.trackingNumber || "",
+          url: safeTrackingUrl ?? "",
+        },
+        "supplierOrder.status": detail.status,
+        "supplierOrder.trackingNumber": detail.trackingNumber || null,
+        "supplierOrder.trackingUrl": safeTrackingUrl,
+        updatedAt: now,
+        statusHistory: FieldValue.arrayUnion({
+          from: currentStatus,
+          to: targetStatus,
+          actor: "supplier_tracking_reconciliation",
+          providerStatus: detail.status,
+          at: new Date().toISOString(),
+        }),
+      });
+      notificationId = enqueueCommerceOrderNotification(tx, {
+        orderId,
+        sellerId: String(orderData.sellerId ?? data.sellerId ?? ""),
+        customerId: String(orderData.customerId ?? data.customerId ?? ""),
+        buyerName: String(orderData.buyer?.name ?? "Customer"),
+        buyerPhone: String(orderData.buyer?.phone ?? ""),
+        status: targetStatus,
+        paymentMethod: "paystack",
+        amountDueMinor: Number(orderData.amountDueMinor ?? data.amountDueMinor),
+        orderKind: "supplier_delivery",
+        trackingNumber: detail.trackingNumber || undefined,
+        trackingUrl: safeTrackingUrl || undefined,
+        eventKey: `cj-${detail.status.toLowerCase()}-${cjOrderId}`,
+      });
+    });
+    if (advanced) {
+      result.advanced += 1;
+      if (notificationId) {
+        await deliverCommerceOrderNotificationOutbox(notificationId).catch(
+          () => undefined,
+        );
+      }
+    } else {
+      result.unchanged += 1;
+    }
+  }
+  return result;
+}
+
+export const reconcileSupplierTrackingV2OnDemand = functions
+  .runWith({ secrets: ["CJ_API_KEY"], timeoutSeconds: 300 })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Authentication required.",
+      );
+    }
+    if (context.auth.token.spazaAdmin !== true) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Spaza One operations access required.",
+      );
+    }
+    const operationId = String(data?.operationId ?? "").trim();
+    const reason = String(data?.reason ?? "").trim();
+    if (!/^[A-Za-z0-9:_-]{8,120}$/.test(operationId) || reason.length < 8) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "A unique operation ID and audit reason are required.",
+      );
+    }
+    const auditRef = db.doc(
+      `paymentOperations/${stableDocumentId("op", [
+        "supplier_tracking_reconciliation",
+        operationId,
+      ])}`,
+    );
+    if ((await auditRef.get()).exists) {
+      return { deduped: true, operationId };
+    }
+    const reconciliation = await runSupplierTrackingReconciliationV2({
+      limit: data?.limit,
+      source: "admin_on_demand",
+      actorUid: context.auth.uid,
+    });
+    await auditRef.create({
+      operationId,
+      type: "supplier_tracking_reconciliation",
+      reason: reason.slice(0, 500),
+      actorUid: context.auth.uid,
+      reconciliation,
+      createdAt: FieldValue.serverTimestamp(),
+      schemaVersion: 2,
+    });
+    return { deduped: false, operationId, ...reconciliation };
+  });
+
+export const reconcileSupplierTrackingV2 = functions
+  .runWith({ secrets: ["CJ_API_KEY"], timeoutSeconds: 300 })
+  .pubsub.schedule("every 30 minutes")
+  .timeZone("Africa/Johannesburg")
+  .onRun(async () => {
+    await runSupplierTrackingReconciliationV2({ source: "scheduled" });
+    return null;
+  });
 
 export const retrySupplierFulfilmentsV2 = functions
   .runWith({ secrets: ["CJ_API_KEY", "PAYSTACK_SECRET_KEY"] })

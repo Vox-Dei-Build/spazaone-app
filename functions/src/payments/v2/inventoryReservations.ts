@@ -6,6 +6,8 @@ type ReservedItem = {
   productId: string;
   quantity: number;
   unitAmountMinor: number;
+  availableBefore: number;
+  availableAfter: number;
 };
 
 function requireId(value: unknown, field: string): string {
@@ -132,6 +134,8 @@ export async function reserveOwnedInventoryForSale(input: {
         productId,
         quantity: requested,
         unitAmountMinor: currentUnitMinor,
+        availableBefore: available,
+        availableAfter: available - requested,
       });
     }
     const saleAmountMinor = Math.round(
@@ -155,6 +159,7 @@ export async function reserveOwnedInventoryForSale(input: {
       items,
       totalAmountMinor,
       currency: "ZAR",
+      inventorySnapshotVersion: 1,
       expiresAt: Timestamp.fromMillis(Date.now() + expiresInMs),
       schemaVersion: 2,
       createdAt: now,

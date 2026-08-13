@@ -15,11 +15,11 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 const _earningStatuses = {
   'paid',
   'submitted_for_fulfilment',
+  'preparing',
   'shipped',
   'delivered',
 };
@@ -359,12 +359,29 @@ class _OrderDetailsState extends State<_OrderDetails> {
   }
 
   Future<void> _cancel() async {
-    final startsRefund = order.paymentStatus == 'paid';
+    final supplierAccepted = order.supplierId == 'cj_dropshipping' &&
+        (order.supplierOrderId.isNotEmpty ||
+            const {
+              'submitted_for_fulfilment',
+              'preparing',
+              'shipped',
+              'on_the_way',
+              'delivered',
+            }.contains(order.status));
+    final startsRefund = order.paymentStatus == 'paid' && !supplierAccepted;
     final reason = await _textDialog(
       context,
-      title: startsRefund ? 'Cancel and start refund' : 'Cancel order',
+      title: supplierAccepted
+          ? 'Request cancellation review'
+          : startsRefund
+              ? 'Cancel and start refund'
+              : 'Cancel order',
       label: 'Reason for cancellation',
-      confirmLabel: startsRefund ? 'Cancel and start refund' : 'Cancel order',
+      confirmLabel: supplierAccepted
+          ? 'Send to operations'
+          : startsRefund
+              ? 'Cancel and start refund'
+              : 'Cancel order',
     );
     if (reason == null) return;
     await _act('cancel', reason: reason);
@@ -424,7 +441,7 @@ class _OrderDetailsState extends State<_OrderDetails> {
       {
         'name': order.productTitle,
         'productName': order.productTitle,
-        'quantity': 1,
+        'quantity': order.quantity,
         'sellingPrice': order.amountDueMinor / 100,
         'lineTotal': order.amountDueMinor / 100,
       },
@@ -630,15 +647,16 @@ class _OrderDetailsState extends State<_OrderDetails> {
         }
         secondaryActions.add(_OrderOverflowAction.cancel);
       case 'paid':
-        addPrimary(
-          order.supplierId == 'cj_dropshipping'
-              ? 'Place delivery order'
-              : 'Submit for fulfilment',
-          Icons.outbox_outlined,
-          _fulfill,
-        );
+        if (order.supplierId != 'cj_dropshipping') {
+          addPrimary(
+            'Submit for fulfilment',
+            Icons.outbox_outlined,
+            _fulfill,
+          );
+        }
         secondaryActions.add(_OrderOverflowAction.cancel);
       case 'submitted_for_fulfilment':
+      case 'preparing':
         addPrimary('Add tracking', Icons.local_shipping_outlined, _ship);
         secondaryActions.add(_OrderOverflowAction.cancel);
       case 'shipped':
@@ -676,7 +694,10 @@ class _OrderDetailsState extends State<_OrderDetails> {
                   value: _OrderOverflowAction.cancel,
                   child: Text(
                     order.paymentStatus == 'paid'
-                        ? 'Cancel and start refund'
+                        ? order.supplierId == 'cj_dropshipping' &&
+                                order.supplierOrderId.isNotEmpty
+                            ? 'Request cancellation review'
+                            : 'Cancel and start refund'
                         : 'Cancel order',
                   ),
                 ),
@@ -737,14 +758,17 @@ class _SupplierOperationsPanel extends StatelessWidget {
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Place delivery order',
+                'Automatic fulfilment pending',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(height: 4),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text('Fulfilment partner: CJdropshipping'),
+              child: Text(
+                'Spaza One will recheck supplier cost, funding and payment '
+                'before submitting this order automatically.',
+              ),
             ),
             const SizedBox(height: 12),
           ] else if (order.supplierOrderId.isNotEmpty) ...[
@@ -770,6 +794,12 @@ class _SupplierOperationsPanel extends StatelessWidget {
             value: CurrencyUtil.format(order.marginMinor / 100),
             highlight: true,
           ),
+          _DetailRow(label: 'Quantity', value: '${order.quantity}'),
+          if (order.paymentChannel.isNotEmpty)
+            _DetailRow(
+              label: 'Payment channel',
+              value: order.paymentChannel.replaceAll('_', ' '),
+            ),
           if (order.supplierSku.isNotEmpty)
             SelectableText('SKU: ${order.supplierSku}'),
           if (order.supplierVariantId.isNotEmpty)
@@ -778,17 +808,6 @@ class _SupplierOperationsPanel extends StatelessWidget {
             SelectableText('Delivery order: ${order.supplierOrderId}'),
           if (order.logisticAging.isNotEmpty)
             Text('Delivery estimate: ${order.logisticAging} days'),
-          if (isCj && order.status == 'paid') ...[
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => launchUrl(
-                Uri.parse('https://www.cjdropshipping.com'),
-                mode: LaunchMode.externalApplication,
-              ),
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Open fulfilment partner'),
-            ),
-          ],
         ],
       ),
     );

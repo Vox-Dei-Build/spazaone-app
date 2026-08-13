@@ -1,11 +1,48 @@
 import axios from "axios";
-import { createHash } from "crypto";
+import { createHash, createHmac, randomUUID } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
 import { paystackSecret } from "../../config/environment";
 import { authenticateFirebaseRequest } from "../../security/requestAuth";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
-import { stableDocumentId } from "./domain";
+import { PaymentPurpose, stableDocumentId } from "./domain";
+
+const SETTLEMENT_CAPABILITIES: PaymentPurpose[] = [
+  "merchant_order",
+  "supplier_order",
+  "account_settlement",
+];
+const VALIDATION_LEASE_MS = 45_000;
+const MAX_VALIDATIONS_PER_WINDOW = 3;
+
+type AccountType = "personal" | "business";
+type DocumentType =
+  | "identityNumber"
+  | "passportNumber"
+  | "businessRegistrationNumber";
+
+type VerificationFlags = {
+  verified: boolean;
+  accountOpen: boolean;
+  accountAcceptsCredits: boolean;
+  accountHolderMatch: boolean;
+  accountOpenForMoreThanThreeMonths: boolean;
+};
+
+export function settlementVerificationDecision(flags: VerificationFlags): {
+  eligible: boolean;
+  autoApprove: boolean;
+} {
+  const eligible =
+    flags.verified &&
+    flags.accountOpen &&
+    flags.accountAcceptsCredits &&
+    flags.accountHolderMatch;
+  return {
+    eligible,
+    autoApprove: eligible && flags.accountOpenForMoreThanThreeMonths,
+  };
+}
 
 function normalizedName(value: unknown): string {
   return String(value ?? "")
@@ -20,10 +57,134 @@ function accountNumber(value: unknown): string {
   return account;
 }
 
-function accountFingerprint(bankCode: string, account: string): string {
-  return createHash("sha256")
-    .update(`paystack-za\u001f${bankCode}\u001f${account}`)
+export function settlementVerificationIdentity(input: {
+  accountType: unknown;
+  documentType: unknown;
+  documentNumber: unknown;
+}): {
+  accountType: AccountType;
+  documentType: DocumentType;
+  documentNumber: string;
+} {
+  const accountType = String(input.accountType ?? "").trim() as AccountType;
+  const documentType = String(input.documentType ?? "").trim() as DocumentType;
+  const documentNumber = String(input.documentNumber ?? "").trim();
+  if (!(["personal", "business"] as string[]).includes(accountType)) {
+    throw new Error("BANK_ACCOUNT_TYPE_INVALID");
+  }
+  const allowedDocumentTypes: DocumentType[] =
+    accountType === "business"
+      ? ["businessRegistrationNumber"]
+      : ["identityNumber", "passportNumber"];
+  if (!allowedDocumentTypes.includes(documentType)) {
+    throw new Error("BANK_DOCUMENT_TYPE_INVALID");
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9/ -]{3,38}[A-Za-z0-9]$/.test(documentNumber)) {
+    throw new Error("BANK_DOCUMENT_NUMBER_INVALID");
+  }
+  return { accountType, documentType, documentNumber };
+}
+
+export type SettlementProfileAction =
+  | "dedupe_active"
+  | "dedupe_pending"
+  | "auto_approve"
+  | "pending_review";
+
+export function settlementProfileAction(input: {
+  sameActiveDestination: boolean;
+  samePendingDestination: boolean;
+  hadActiveAccount: boolean;
+  validationAutoApprove: boolean;
+}): SettlementProfileAction {
+  if (input.sameActiveDestination) return "dedupe_active";
+  if (input.samePendingDestination) return "dedupe_pending";
+  return input.hadActiveAccount || !input.validationAutoApprove
+    ? "pending_review"
+    : "auto_approve";
+}
+
+const FINAL_PAYMENT_INTENT_STATUSES = new Set([
+  "cancelled",
+  "expired",
+  "failed",
+  "paid",
+  "refunded",
+]);
+
+export function settlementDestinationRetirementDecision(input: {
+  settlementStatuses: string[];
+  paymentIntentStatuses: string[];
+  settlementWindowComplete: boolean;
+  paymentIntentWindowComplete: boolean;
+}): { safe: boolean; reason: string } {
+  if (!input.settlementWindowComplete || !input.paymentIntentWindowComplete) {
+    return { safe: false, reason: "history_truncated" };
+  }
+  if (
+    input.settlementStatuses.some((status) =>
+      ["pending", "processing", "submitted"].includes(status),
+    )
+  ) {
+    return { safe: false, reason: "pending_settlement" };
+  }
+  if (
+    input.paymentIntentStatuses.some(
+      (status) => !FINAL_PAYMENT_INTENT_STATUSES.has(status),
+    )
+  ) {
+    return { safe: false, reason: "in_flight_payment" };
+  }
+  return { safe: true, reason: "clear" };
+}
+
+function sha256(parts: string[]): string {
+  return createHash("sha256").update(parts.join("\u001f")).digest("hex");
+}
+
+function accountFingerprint(
+  secret: string,
+  bankCode: string,
+  account: string,
+): string {
+  if (!secret) throw new Error("PAYSTACK_SECRET_UNAVAILABLE");
+  return createHmac("sha256", secret)
+    .update("paystack-za-account\u001f")
+    .update(bankCode)
+    .update("\u001f")
+    .update(account)
     .digest("hex");
+}
+
+export function protectedIdentityFingerprint(
+  secret: string,
+  identity: {
+    documentType: DocumentType;
+    documentNumber: string;
+  },
+): string {
+  if (!secret) throw new Error("PAYSTACK_SECRET_UNAVAILABLE");
+  return createHmac("sha256", secret)
+    .update("paystack-za-identity\u001f")
+    .update(identity.documentType)
+    .update("\u001f")
+    .update(identity.documentNumber.replace(/[ /-]/g, "").toUpperCase())
+    .digest("hex");
+}
+
+export function maskedAccountHolderName(value: unknown): string {
+  const parts = String(value ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts
+    .map((part) =>
+      part.length <= 2
+        ? `${part[0] ?? ""}•`
+        : `${part[0]}${"•".repeat(Math.min(8, part.length - 1))}`,
+    )
+    .join(" ")
+    .slice(0, 100);
 }
 
 function publicError(error: unknown): { status: number; message: string } {
@@ -39,13 +200,34 @@ function publicError(error: unknown): { status: number; message: string } {
   const code = error instanceof Error ? error.message : "";
   const known: Record<string, [number, string]> = {
     BANK_ACCOUNT_INVALID: [400, "Enter a valid bank account number."],
+    BANK_ACCOUNT_TYPE_INVALID: [400, "Choose personal or business account."],
+    BANK_DOCUMENT_TYPE_INVALID: [
+      400,
+      "Choose an identity document that matches the account type.",
+    ],
+    BANK_DOCUMENT_NUMBER_INVALID: [
+      400,
+      "Enter a valid identity or registration number.",
+    ],
     BANK_NOT_SUPPORTED: [
       409,
-      "That bank could not be matched safely. Contact support.",
+      "That bank is not currently enabled for Paystack verification.",
     ],
-    BANK_ACCOUNT_NOT_RESOLVED: [
+    BANK_ACCOUNT_NOT_VALIDATED: [
       409,
-      "Paystack could not verify that bank account.",
+      "Paystack could not validate this account for settlements.",
+    ],
+    BANK_VALIDATION_RATE_LIMITED: [
+      429,
+      "Too many verification attempts. Try again later or contact support.",
+    ],
+    BANK_VALIDATION_ALREADY_PROCESSING: [
+      409,
+      "This account verification is already processing.",
+    ],
+    BANK_VALIDATION_OUTCOME_UNKNOWN: [
+      409,
+      "Paystack may still be processing this account. Contact support before retrying.",
     ],
     PAYSTACK_SUBACCOUNT_INVALID: [
       502,
@@ -61,6 +243,70 @@ function publicError(error: unknown): { status: number; message: string } {
       };
 }
 
+function paystackSafeProviderCode(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const status = Number(error.response?.status);
+    return Number.isFinite(status)
+      ? `PAYSTACK_HTTP_${status}`
+      : `PAYSTACK_${String(error.code ?? "UNAVAILABLE").slice(0, 40)}`;
+  }
+  return error instanceof Error
+    ? String(error.message || "PAYSTACK_UNAVAILABLE").slice(0, 80)
+    : "PAYSTACK_UNAVAILABLE";
+}
+
+async function setPaystackSubaccountActive(
+  secret: string,
+  subaccountCode: string,
+  active: boolean,
+): Promise<void> {
+  const response = await axios.put(
+    `https://api.paystack.co/subaccount/${encodeURIComponent(subaccountCode)}`,
+    { active },
+    {
+      headers: { Authorization: `Bearer ${secret}` },
+      timeout: 20_000,
+    },
+  );
+  if (
+    response.data?.status !== true ||
+    response.data?.data?.active !== active
+  ) {
+    throw new Error("PAYSTACK_SUBACCOUNT_UPDATE_INVALID");
+  }
+}
+
+function activeSubaccount(data: Record<string, unknown>): boolean {
+  return (
+    data.bankVerificationStatus === "approved" &&
+    /^ACCT_[A-Za-z0-9]+$/.test(String(data.paystackSubaccountCode ?? ""))
+  );
+}
+
+function profileSummary(input: {
+  merchantId: string;
+  status: string;
+  bankName: unknown;
+  accountName: unknown;
+  accountLast4: unknown;
+  accountFingerprint: string;
+  deduped: boolean;
+  autoApproved?: boolean;
+}): Record<string, unknown> {
+  return {
+    merchantId: input.merchantId,
+    status: input.status,
+    bankName: String(input.bankName ?? ""),
+    resolvedAccountName: String(input.accountName ?? ""),
+    maskedAccount: input.accountLast4
+      ? `•••• ${String(input.accountLast4)}`
+      : "",
+    accountFingerprint: input.accountFingerprint,
+    deduped: input.deduped,
+    autoApproved: input.autoApproved === true,
+  };
+}
+
 export const prepareMerchantSettlementProfileV2 = functions
   .runWith({ secrets: ["PAYSTACK_SECRET_KEY"] })
   .https.onRequest(async (req, res) => {
@@ -68,6 +314,9 @@ export const prepareMerchantSettlementProfileV2 = functions
       res.status(405).json({ error: "Method Not Allowed" });
       return;
     }
+    let profileRef: FirebaseFirestore.DocumentReference | undefined;
+    let claimId = "";
+    let providerStage: "none" | "validating" | "creating_subaccount" = "none";
     try {
       const uid = await authenticateFirebaseRequest(req, res);
       if (!uid) return;
@@ -78,6 +327,11 @@ export const prepareMerchantSettlementProfileV2 = functions
         res.status(400).json({ error: "Choose saved banking details." });
         return;
       }
+      const identity = settlementVerificationIdentity({
+        accountType: req.body?.accountType,
+        documentType: req.body?.documentType,
+        documentNumber: req.body?.documentNumber,
+      });
       const [banking, merchant] = await Promise.all([
         db.doc(`users/${merchantId}/bankingDetails/${bankingDetailsId}`).get(),
         db.doc(`users/${merchantId}`).get(),
@@ -89,11 +343,13 @@ export const prepareMerchantSettlementProfileV2 = functions
       const raw = banking.data() ?? {};
       const account = accountNumber(raw.accountNumber);
       const requestedBankName = String(raw.bankName ?? "").trim();
+      const submittedAccountName = String(raw.accountHolderName ?? "").trim();
+      if (!submittedAccountName) throw new Error("BANK_ACCOUNT_NOT_VALIDATED");
       const businessName = String(
         merchant.data()?.shopName ??
           merchant.data()?.businessName ??
           merchant.data()?.name ??
-          raw.accountHolderName ??
+          submittedAccountName ??
           "Spaza One merchant",
       )
         .trim()
@@ -101,69 +357,181 @@ export const prepareMerchantSettlementProfileV2 = functions
       const secret = paystackSecret();
       const banksResponse = await axios.get("https://api.paystack.co/bank", {
         headers: { Authorization: `Bearer ${secret}` },
-        params: { country: "south africa", currency: "ZAR", perPage: 200 },
+        params: {
+          country: "south africa",
+          currency: "ZAR",
+          enabled_for_verification: true,
+          perPage: 200,
+        },
         timeout: 15_000,
       });
       const banks = Array.isArray(banksResponse.data?.data)
         ? banksResponse.data.data
         : [];
-      const bank = banks.find(
-        (candidate: any) =>
-          normalizedName(candidate?.name) === normalizedName(requestedBankName),
+      const requestedBranchCode = String(raw.branchCode ?? "").replace(
+        /\s/g,
+        "",
       );
+      const bank = banks.find((candidate: any) => {
+        const candidateCode = String(candidate?.code ?? "").replace(/\s/g, "");
+        return (
+          (requestedBranchCode && candidateCode === requestedBranchCode) ||
+          normalizedName(candidate?.name) === normalizedName(requestedBankName)
+        );
+      });
       const bankCode = String(bank?.code ?? "").trim();
-      if (!bankCode) throw new Error("BANK_NOT_SUPPORTED");
-      const fingerprint = accountFingerprint(bankCode, account);
-      const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
+      if (!bankCode || bank?.enabled_for_verification === false) {
+        throw new Error("BANK_NOT_SUPPORTED");
+      }
+      const fingerprint = accountFingerprint(secret, bankCode, account);
+      const documentFingerprint = protectedIdentityFingerprint(
+        secret,
+        identity,
+      );
+      const attemptFingerprint = sha256([fingerprint, documentFingerprint]);
+      profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
       const existing = await profileRef.get();
       const existingData = existing.data() ?? {};
-      if (
+      const pending = (existingData.pendingSettlement ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const sameActiveDestination =
         existingData.accountFingerprint === fingerprint &&
+        existingData.identityFingerprint === documentFingerprint &&
+        activeSubaccount(existingData);
+      const samePendingDestination =
+        pending.accountFingerprint === fingerprint &&
+        pending.identityFingerprint === documentFingerprint &&
         /^ACCT_[A-Za-z0-9]+$/.test(
-          String(existingData.paystackSubaccountCode ?? ""),
-        )
-      ) {
-        res.status(200).json({
-          merchantId,
-          status: existingData.bankVerificationStatus,
-          bankName: existingData.bankName,
-          resolvedAccountName: existingData.resolvedAccountName,
-          maskedAccount: `•••• ${existingData.accountLast4}`,
-          accountFingerprint: fingerprint,
-          deduped: true,
-        });
+          String(pending.paystackSubaccountCode ?? ""),
+        );
+      const dedupeAction = settlementProfileAction({
+        sameActiveDestination,
+        samePendingDestination,
+        hadActiveAccount: activeSubaccount(existingData),
+        validationAutoApprove: false,
+      });
+      if (dedupeAction === "dedupe_active") {
+        res.status(200).json(
+          profileSummary({
+            merchantId,
+            status: String(existingData.status ?? "enabled"),
+            bankName: existingData.bankName,
+            accountName: existingData.resolvedAccountName,
+            accountLast4: existingData.accountLast4,
+            accountFingerprint: fingerprint,
+            deduped: true,
+            autoApproved: existingData.bankAutoApproved === true,
+          }),
+        );
         return;
       }
-      const resolveResponse = await axios.get(
-        "https://api.paystack.co/bank/resolve",
+      if (dedupeAction === "dedupe_pending") {
+        res.status(200).json(
+          profileSummary({
+            merchantId,
+            status: "pending_review",
+            bankName: pending.bankName,
+            accountName: pending.resolvedAccountName,
+            accountLast4: pending.accountLast4,
+            accountFingerprint: fingerprint,
+            deduped: true,
+          }),
+        );
+        return;
+      }
+
+      claimId = randomUUID();
+      const nowMs = Date.now();
+      const windowKey = new Date(nowMs).toISOString().slice(0, 13);
+      await db.runTransaction(async (tx) => {
+        const current = await tx.get(profileRef!);
+        const value = current.data() ?? {};
+        if (
+          value.validationAttemptFingerprint === attemptFingerprint &&
+          value.validationAttemptState === "provider_outcome_unknown"
+        ) {
+          throw new Error("BANK_VALIDATION_OUTCOME_UNKNOWN");
+        }
+        if (
+          value.validationAttemptState === "processing" &&
+          Number(value.validationAttemptLeaseUntilMs ?? 0) > nowMs
+        ) {
+          throw new Error("BANK_VALIDATION_ALREADY_PROCESSING");
+        }
+        const attemptCount =
+          value.validationAttemptWindow === windowKey
+            ? Number(value.validationAttemptCount ?? 0) + 1
+            : 1;
+        if (attemptCount > MAX_VALIDATIONS_PER_WINDOW) {
+          throw new Error("BANK_VALIDATION_RATE_LIMITED");
+        }
+        tx.set(
+          profileRef!,
+          {
+            merchantId,
+            validationAttemptClaimId: claimId,
+            validationAttemptFingerprint: attemptFingerprint,
+            validationAttemptState: "processing",
+            validationAttemptLeaseUntilMs: nowMs + VALIDATION_LEASE_MS,
+            validationAttemptWindow: windowKey,
+            validationAttemptCount: attemptCount,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+
+      providerStage = "validating";
+      const validateResponse = await axios.post(
+        "https://api.paystack.co/bank/validate",
+        {
+          bank_code: bankCode,
+          country_code: "ZA",
+          account_number: account,
+          account_name: submittedAccountName,
+          account_type: identity.accountType,
+          document_type: identity.documentType,
+          document_number: identity.documentNumber,
+        },
         {
           headers: { Authorization: `Bearer ${secret}` },
-          params: { account_number: account, bank_code: bankCode },
-          timeout: 15_000,
+          timeout: 20_000,
         },
       );
-      const resolved = resolveResponse.data?.data ?? {};
-      const resolvedAccount = String(resolved.account_number ?? "").trim();
-      const resolvedAccountName = String(resolved.account_name ?? "").trim();
-      if (
-        resolveResponse.data?.status !== true ||
-        resolvedAccount !== account ||
-        !resolvedAccountName
-      ) {
-        throw new Error("BANK_ACCOUNT_NOT_RESOLVED");
+      const validated = validateResponse.data?.data ?? {};
+      const flags: VerificationFlags = {
+        verified: validated.verified === true,
+        accountOpen: validated.accountOpen === true,
+        accountAcceptsCredits: validated.accountAcceptsCredits === true,
+        accountHolderMatch: validated.accountHolderMatch === true,
+        accountOpenForMoreThanThreeMonths:
+          validated.accountOpenForMoreThanThreeMonths === true,
+      };
+      const decision = settlementVerificationDecision(flags);
+      if (validateResponse.data?.status !== true || !decision.eligible) {
+        throw new Error("BANK_ACCOUNT_NOT_VALIDATED");
       }
+
+      providerStage = "creating_subaccount";
       const subaccountResponse = await axios.post(
         "https://api.paystack.co/subaccount",
         {
           business_name: businessName,
-          bank_code: bankCode,
+          settlement_bank: bankCode,
           account_number: account,
           percentage_charge: 1.5,
           description: `Spaza One settlement for ${merchantId}`,
+          metadata: JSON.stringify({
+            merchantId,
+            accountFingerprint: fingerprint,
+            schemaVersion: 2,
+          }),
         },
         {
           headers: { Authorization: `Bearer ${secret}` },
-          timeout: 15_000,
+          timeout: 20_000,
         },
       );
       const subaccount = subaccountResponse.data?.data ?? {};
@@ -174,77 +542,149 @@ export const prepareMerchantSettlementProfileV2 = functions
       ) {
         throw new Error("PAYSTACK_SUBACCOUNT_INVALID");
       }
-      const holderMatches =
-        normalizedName(raw.accountHolderName) ===
-        normalizedName(resolvedAccountName);
+
+      const hadActiveAccount = activeSubaccount(existingData);
+      const action = settlementProfileAction({
+        sameActiveDestination: false,
+        samePendingDestination: false,
+        hadActiveAccount,
+        validationAutoApprove: decision.autoApprove,
+      });
+      const manualReview = action === "pending_review";
+      if (manualReview) {
+        await setPaystackSubaccountActive(secret, subaccountCode, false);
+      }
+      const settlement = {
+        bankName: String(bank.name ?? requestedBankName),
+        bankCode,
+        resolvedAccountName: maskedAccountHolderName(submittedAccountName),
+        accountLast4: account.slice(-4),
+        accountFingerprint: fingerprint,
+        identityFingerprint: documentFingerprint,
+        accountType: identity.accountType,
+        documentType: identity.documentType,
+        paystackSubaccountCode: subaccountCode,
+        paystackSubaccountId: String(subaccount.id ?? ""),
+        paystackSubaccountVerified: subaccount.is_verified === true,
+        verificationFlags: flags,
+      };
       const auditId = stableDocumentId("audit", [
         merchantId,
         uid,
         fingerprint,
-        String(Date.now()),
+        claimId,
       ]);
       await db.runTransaction(async (tx) => {
-        const current = await tx.get(profileRef);
+        const current = await tx.get(profileRef!);
         const previous = current.data() ?? {};
+        if (previous.validationAttemptClaimId !== claimId) {
+          throw new functions.https.HttpsError(
+            "aborted",
+            "The verification attempt was superseded.",
+          );
+        }
         const now = FieldValue.serverTimestamp();
-        tx.set(
-          profileRef,
-          {
-            merchantId,
-            status: "pending_review",
-            capabilities: {},
-            bankVerificationStatus: "pending_review",
-            bankName: String(bank.name ?? requestedBankName),
-            bankCode,
-            resolvedAccountName,
-            submittedAccountHolderName: String(raw.accountHolderName ?? ""),
-            accountHolderExactMatch: holderMatches,
-            accountLast4: account.slice(-4),
-            accountFingerprint: fingerprint,
-            paystackSubaccountCode: subaccountCode,
-            paystackSubaccountId: String(subaccount.id ?? ""),
-            paystackSubaccountVerified: subaccount.is_verified === true,
-            submittedBy: uid,
+        const capabilities = {
+          ...((previous.capabilities as Record<string, boolean> | undefined) ??
+            {}),
+          ...(manualReview
+            ? {}
+            : Object.fromEntries(
+                SETTLEMENT_CAPABILITIES.map((purpose) => [purpose, true]),
+              )),
+        };
+        const update: Record<string, unknown> = {
+          merchantId,
+          status: manualReview ? "pending_review" : "enabled",
+          capabilities,
+          submittedBy: uid,
+          submittedAt: now,
+          validationAttemptState: "completed",
+          validationAttemptLeaseUntilMs: 0,
+          schemaVersion: 2,
+          updatedAt: now,
+        };
+        if (manualReview) {
+          update.pendingSettlement = {
+            ...settlement,
+            replacesAccountFingerprint: previous.accountFingerprint ?? null,
             submittedAt: now,
-            schemaVersion: 2,
-            updatedAt: now,
-          },
-          { merge: true },
-        );
-        tx.create(profileRef.collection("audit").doc(auditId), {
+          };
+          if (!hadActiveAccount) {
+            update.bankVerificationStatus = "pending_review";
+          }
+        } else {
+          Object.assign(update, settlement, {
+            bankVerificationStatus: "approved",
+            bankAutoApproved: true,
+            bankReviewedBy: "paystack_validation_policy",
+            bankReviewedAt: now,
+            pendingSettlement: FieldValue.delete(),
+          });
+        }
+        tx.set(profileRef!, update, { merge: true });
+        tx.create(profileRef!.collection("audit").doc(auditId), {
           auditId,
           merchantId,
           actorUid: uid,
-          action: "settlement_profile_submitted",
+          action: manualReview
+            ? "settlement_profile_submitted"
+            : "settlement_profile_auto_approved",
           previousAccountFingerprint: previous.accountFingerprint ?? null,
           accountFingerprint: fingerprint,
-          bankName: String(bank.name ?? requestedBankName),
-          accountLast4: account.slice(-4),
-          accountHolderExactMatch: holderMatches,
+          bankName: settlement.bankName,
+          accountLast4: settlement.accountLast4,
+          verificationFlags: flags,
           createdAt: now,
         });
       });
-      res.status(200).json({
-        merchantId,
-        status: "pending_review",
-        bankName: String(bank.name ?? requestedBankName),
-        resolvedAccountName,
-        maskedAccount: `•••• ${account.slice(-4)}`,
-        accountFingerprint: fingerprint,
-        accountHolderExactMatch: holderMatches,
-        deduped: false,
-      });
+      res.status(200).json(
+        profileSummary({
+          merchantId,
+          status: manualReview ? "pending_review" : "enabled",
+          bankName: settlement.bankName,
+          accountName: settlement.resolvedAccountName,
+          accountLast4: settlement.accountLast4,
+          accountFingerprint: fingerprint,
+          deduped: false,
+          autoApproved: !manualReview,
+        }),
+      );
     } catch (error) {
+      const code = error instanceof Error ? error.message : "unknown";
+      let responseError = error;
+      if (profileRef && claimId) {
+        const providerOutcomeUnknown = providerStage === "creating_subaccount";
+        await profileRef
+          .set(
+            {
+              validationAttemptState: providerOutcomeUnknown
+                ? "provider_outcome_unknown"
+                : "failed",
+              validationAttemptFailureCode: code.slice(0, 120),
+              validationAttemptLeaseUntilMs: 0,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          )
+          .catch(() => undefined);
+        if (providerOutcomeUnknown && code !== "PAYSTACK_SUBACCOUNT_INVALID") {
+          responseError = new Error("BANK_VALIDATION_OUTCOME_UNKNOWN");
+        }
+      }
       console.error("[payments-v2] settlement profile preparation failed", {
-        code: error instanceof Error ? error.message : "unknown",
+        code:
+          responseError instanceof Error ? responseError.message : "unknown",
+        stage: providerStage,
       });
-      const response = publicError(error);
+      const response = publicError(responseError);
       res.status(response.status).json({ error: response.message });
     }
   });
 
-export const reviewMerchantSettlementProfileV2 = functions.https.onCall(
-  async (data, context) => {
+export const reviewMerchantSettlementProfileV2 = functions
+  .runWith({ secrets: ["PAYSTACK_SECRET_KEY"] })
+  .https.onCall(async (data, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError(
         "unauthenticated",
@@ -277,6 +717,145 @@ export const reviewMerchantSettlementProfileV2 = functions.https.onCall(
       );
     }
     const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
+    const reviewClaimId = randomUUID();
+    let claimedProfile: Record<string, unknown> = {};
+    await db.runTransaction(async (tx) => {
+      const profile = await tx.get(profileRef);
+      const current = profile.data() ?? {};
+      const pending = (current.pendingSettlement ?? {}) as Record<
+        string,
+        unknown
+      >;
+      if (!profile.exists || current.status !== "pending_review") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "This settlement profile is not awaiting review.",
+        );
+      }
+      if (pending.accountFingerprint !== expectedFingerprint) {
+        throw new functions.https.HttpsError(
+          "aborted",
+          "The banking destination changed during review.",
+        );
+      }
+      if (
+        current.bankReviewState === "processing" &&
+        Number(current.bankReviewLeaseUntilMs ?? 0) > Date.now()
+      ) {
+        throw new functions.https.HttpsError(
+          "aborted",
+          "This settlement review is already processing.",
+        );
+      }
+      claimedProfile = current;
+      tx.update(profileRef, {
+        bankReviewState: "processing",
+        bankReviewClaimId: reviewClaimId,
+        bankReviewLeaseUntilMs: Date.now() + 60_000,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    const pending = (claimedProfile.pendingSettlement ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const pendingSubaccountCode = String(pending.paystackSubaccountCode ?? "");
+    const currentSubaccountCode = String(
+      claimedProfile.paystackSubaccountCode ?? "",
+    );
+    if (!/^ACCT_[A-Za-z0-9]+$/.test(pendingSubaccountCode)) {
+      await profileRef.set(
+        {
+          bankReviewState: "invalid_pending_destination",
+          bankReviewLeaseUntilMs: 0,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The pending Paystack settlement destination is invalid.",
+      );
+    }
+    if (approved && /^ACCT_[A-Za-z0-9]+$/.test(currentSubaccountCode)) {
+      const [settlements, paymentIntents] = await Promise.all([
+        db
+          .collection("settlements")
+          .where("subaccountCode", "==", currentSubaccountCode)
+          .limit(1001)
+          .get(),
+        db
+          .collection("paymentIntents")
+          .where("paystackSubaccountCode", "==", currentSubaccountCode)
+          .limit(1001)
+          .get(),
+      ]);
+      const retirement = settlementDestinationRetirementDecision({
+        settlementStatuses: settlements.docs.map((doc) =>
+          String(doc.get("status") ?? ""),
+        ),
+        paymentIntentStatuses: paymentIntents.docs.map((doc) =>
+          String(doc.get("status") ?? ""),
+        ),
+        settlementWindowComplete: settlements.size <= 1000,
+        paymentIntentWindowComplete: paymentIntents.size <= 1000,
+      });
+      if (retirement.reason === "history_truncated") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Settlement history is too large for a safe destination change. Run reconciliation first.",
+        );
+      }
+      if (!retirement.safe) {
+        await profileRef.set(
+          {
+            bankReviewState:
+              retirement.reason === "in_flight_payment"
+                ? "blocked_in_flight_payment"
+                : "blocked_pending_settlement",
+            bankReviewLeaseUntilMs: 0,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          retirement.reason === "in_flight_payment"
+            ? "The old destination still has an in-flight payment. Expire or reconcile it before approval."
+            : "The old destination still has a pending settlement. Reconcile it before approval.",
+        );
+      }
+    }
+    const secret = paystackSecret();
+    try {
+      if (
+        approved &&
+        /^ACCT_[A-Za-z0-9]+$/.test(currentSubaccountCode) &&
+        currentSubaccountCode !== pendingSubaccountCode
+      ) {
+        await setPaystackSubaccountActive(secret, currentSubaccountCode, false);
+      }
+      await setPaystackSubaccountActive(
+        secret,
+        pendingSubaccountCode,
+        approved,
+      );
+    } catch (error) {
+      await profileRef.set(
+        {
+          bankReviewState: "provider_outcome_unknown",
+          bankReviewLeaseUntilMs: 0,
+          bankReviewFailureCode: paystackSafeProviderCode(error),
+          status: "pending_review",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      throw new functions.https.HttpsError(
+        "unavailable",
+        "Paystack did not confirm the destination change. Operations must reconcile it before retrying.",
+      );
+    }
     const auditId = stableDocumentId("audit", [
       merchantId,
       adminUid,
@@ -284,33 +863,70 @@ export const reviewMerchantSettlementProfileV2 = functions.https.onCall(
       expectedFingerprint,
       String(Date.now()),
     ]);
+    let resultStatus = approved ? "approved" : "rejected";
     await db.runTransaction(async (tx) => {
       const profile = await tx.get(profileRef);
       const current = profile.data() ?? {};
-      if (
-        !profile.exists ||
-        current.bankVerificationStatus !== "pending_review"
-      ) {
+      const pending = (current.pendingSettlement ?? {}) as Record<
+        string,
+        unknown
+      >;
+      if (!profile.exists || current.status !== "pending_review") {
         throw new functions.https.HttpsError(
           "failed-precondition",
           "This settlement profile is not awaiting review.",
         );
       }
-      if (current.accountFingerprint !== expectedFingerprint) {
+      if (pending.accountFingerprint !== expectedFingerprint) {
         throw new functions.https.HttpsError(
           "aborted",
           "The banking destination changed during review.",
         );
       }
+      if (current.bankReviewClaimId !== reviewClaimId) {
+        throw new functions.https.HttpsError(
+          "aborted",
+          "The settlement review was superseded.",
+        );
+      }
       const now = FieldValue.serverTimestamp();
-      tx.update(profileRef, {
-        bankVerificationStatus: approved ? "approved" : "rejected",
-        status: "pending_review",
-        bankReviewedBy: adminUid,
-        bankReviewedAt: now,
-        bankReviewReason: reason,
-        updatedAt: now,
-      });
+      const hasPreviousActive = activeSubaccount(current);
+      if (approved) {
+        const capabilities = {
+          ...((current.capabilities as Record<string, boolean> | undefined) ??
+            {}),
+          ...Object.fromEntries(
+            SETTLEMENT_CAPABILITIES.map((purpose) => [purpose, true]),
+          ),
+        };
+        tx.update(profileRef, {
+          ...pending,
+          status: "enabled",
+          capabilities,
+          bankVerificationStatus: "approved",
+          bankAutoApproved: false,
+          bankReviewedBy: adminUid,
+          bankReviewedAt: now,
+          bankReviewReason: reason,
+          bankReviewState: "completed",
+          bankReviewLeaseUntilMs: 0,
+          pendingSettlement: FieldValue.delete(),
+          updatedAt: now,
+        });
+      } else {
+        resultStatus = hasPreviousActive ? "approved" : "rejected";
+        tx.update(profileRef, {
+          status: hasPreviousActive ? "enabled" : "not_started",
+          bankVerificationStatus: resultStatus,
+          bankReviewedBy: adminUid,
+          bankReviewedAt: now,
+          bankReviewReason: reason,
+          bankReviewState: "completed",
+          bankReviewLeaseUntilMs: 0,
+          pendingSettlement: FieldValue.delete(),
+          updatedAt: now,
+        });
+      }
       tx.create(profileRef.collection("audit").doc(auditId), {
         auditId,
         merchantId,
@@ -319,13 +935,13 @@ export const reviewMerchantSettlementProfileV2 = functions.https.onCall(
           ? "settlement_profile_approved"
           : "settlement_profile_rejected",
         accountFingerprint: expectedFingerprint,
+        restoredPreviousDestination: !approved && hasPreviousActive,
         reason,
         createdAt: now,
       });
     });
     return {
       merchantId,
-      bankVerificationStatus: approved ? "approved" : "rejected",
+      bankVerificationStatus: resultStatus,
     };
-  },
-);
+  });

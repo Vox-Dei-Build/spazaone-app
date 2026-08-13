@@ -77,6 +77,7 @@ export type CjLandedQuote = {
   variant: CjVariant;
   originCountryCode: string;
   stock: number;
+  quantity: number;
   logisticName: string;
   logisticAging: string;
   productCostUsdMinor: number;
@@ -117,6 +118,16 @@ export type CjCreatedOrder = {
   orderStatus: string;
   sandbox: boolean;
   requestId: string;
+};
+
+export type CjOrderDetail = {
+  orderId: string;
+  orderNumber: string;
+  status: string;
+  paid: boolean | null;
+  actualPaymentUsdMinor: number | null;
+  trackingNumber: string;
+  trackingUrl: string;
 };
 
 let tokenCache: TokenCache | null = null;
@@ -421,6 +432,13 @@ async function cjRequest<T = unknown>(
       if (code === "1600200" || message.includes("too many requests")) {
         throw new Error("CJ_RATE_LIMITED");
       }
+      if (
+        code === "1600300" ||
+        message.includes("order not found") ||
+        message.includes("order does not exist")
+      ) {
+        throw new Error("CJ_ORDER_NOT_FOUND");
+      }
       if (["1600001", "1600003"].includes(code)) {
         throw new Error("CJ_AUTH_FAILED");
       }
@@ -724,6 +742,7 @@ async function freightOptions(
   origins: Array<{ countryCode: string; stock: number }>,
   variantId: string,
   postalCode: string,
+  quantity = 1,
 ): Promise<FreightOption[]> {
   const results = await Promise.allSettled(
     origins.map(async (origin) => {
@@ -734,7 +753,7 @@ async function freightOptions(
           startCountryCode: origin.countryCode,
           endCountryCode: "ZA",
           ...(postalCode ? { zip: postalCode } : {}),
-          products: [{ quantity: 1, vid: variantId }],
+          products: [{ quantity, vid: variantId }],
         },
       });
       return list(data)
@@ -773,6 +792,7 @@ async function quoteCjVariantWithProduct(input: {
   product: CjProductDetails;
   variantId: string;
   postalCode?: string;
+  quantity?: number;
 }): Promise<CjLandedQuote> {
   const product = input.product;
   const variantValue = await cjRequest({
@@ -797,17 +817,24 @@ async function quoteCjVariantWithProduct(input: {
     });
     origins = inventoryOrigins(inventory);
   }
+  const quantity = Number(input.quantity ?? 1);
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
+    throw new Error("CJ_QUANTITY_INVALID");
+  }
+  origins = origins.filter((origin) => origin.stock >= quantity);
   if (!origins.length) throw new Error("CJ_OUT_OF_STOCK");
   const options = await freightOptions(
     origins,
     input.variantId,
     text(input.postalCode, 12),
+    quantity,
   );
   options.sort((a, b) => a.shippingCostUsdMinor - b.shippingCostUsdMinor);
   const selected = options[0];
   if (!selected) throw new Error("CJ_NO_SHIPPING_TO_ZA");
+  const productCostUsdMinor = variant.productCostUsdMinor * quantity;
   const productCostMinor = convertUsdMinorToZarMinor(
-    variant.productCostUsdMinor,
+    productCostUsdMinor,
     product.fx.rate,
     product.fx.bufferBps,
   );
@@ -821,9 +848,10 @@ async function quoteCjVariantWithProduct(input: {
     variant,
     originCountryCode: selected.originCountryCode,
     stock: selected.stock,
+    quantity,
     logisticName: selected.logisticName,
     logisticAging: selected.logisticAging,
-    productCostUsdMinor: variant.productCostUsdMinor,
+    productCostUsdMinor,
     shippingCostUsdMinor: selected.shippingCostUsdMinor,
     productCostMinor,
     shippingCostMinor,
@@ -838,12 +866,14 @@ export async function quoteCjVariant(input: {
   productId: string;
   variantId: string;
   postalCode?: string;
+  quantity?: number;
 }): Promise<CjLandedQuote> {
   const product = await getCjProductDetails(input.productId);
   return quoteCjVariantWithProduct({
     product,
     variantId: input.variantId,
     postalCode: input.postalCode,
+    quantity: input.quantity,
   });
 }
 
@@ -951,6 +981,93 @@ export async function payCjOrderFromBalance(
     url: "/shopping/pay/payBalance",
     data: { orderId },
   });
+}
+
+/** Reads authoritative CJ order/payment state before any retry or refund. */
+export async function getCjOrderDetail(
+  orderIdValue: unknown,
+): Promise<CjOrderDetail> {
+  const orderId = text(orderIdValue, 200);
+  if (!orderId) throw new Error("CJ_ORDER_ID_INVALID");
+  const data = object(
+    await cjRequest({
+      method: "GET",
+      url: "/shopping/order/getOrderDetail",
+      params: { orderId },
+    }),
+  );
+  const status = text(
+    data.orderStatus ?? data.status ?? data.orderStatusDesc,
+    60,
+  ).toUpperCase();
+  const paymentStatus = text(
+    data.paymentStatus ?? data.payStatus ?? data.paymentStatusDesc,
+    60,
+  ).toUpperCase();
+  const paid =
+    data.paid === true ||
+    ["PAID", "UNSHIPPED", "SHIPPED", "DELIVERED", "PROCESSING"].includes(
+      paymentStatus,
+    ) ||
+    ["UNSHIPPED", "SHIPPED", "DELIVERED"].includes(status)
+      ? true
+      : data.paid === false ||
+          ["UNPAID", "CREATED", "IN_CART"].includes(paymentStatus) ||
+          ["UNPAID", "CREATED", "IN_CART"].includes(status)
+        ? false
+        : null;
+  let actualPaymentUsdMinor: number | null = null;
+  try {
+    actualPaymentUsdMinor = usdMinor(
+      data.actualPayment ?? data.orderAmount ?? data.payAmount,
+    );
+  } catch (_) {
+    actualPaymentUsdMinor = null;
+  }
+  const trackingNumber = text(
+    data.trackingNumber ?? data.trackNumber ?? data.logisticTrackNumber,
+    200,
+  );
+  const trackingUrlValue = text(
+    data.trackingUrl ?? data.trackUrl ?? data.logisticTrackingUrl,
+    500,
+  );
+  let trackingUrl = "";
+  try {
+    const parsed = new URL(trackingUrlValue);
+    if (["http:", "https:"].includes(parsed.protocol))
+      trackingUrl = parsed.toString();
+  } catch (_) {
+    trackingUrl = "";
+  }
+  return {
+    orderId: text(data.orderId ?? data.id, 200) || orderId,
+    orderNumber: text(data.orderNumber ?? data.orderNum, 200),
+    status,
+    paid,
+    actualPaymentUsdMinor,
+    trackingNumber,
+    trackingUrl,
+  };
+}
+
+/** Deletes only provider-confirmed pre-payment states allowed by CJ. */
+export async function deleteCjOrderIfUnpaid(
+  orderIdValue: unknown,
+): Promise<boolean> {
+  const detail = await getCjOrderDetail(orderIdValue);
+  if (
+    detail.paid !== false ||
+    !["CREATED", "IN_CART"].includes(detail.status)
+  ) {
+    return false;
+  }
+  const result = await cjRequest({
+    method: "DELETE",
+    url: "/shopping/order/deleteOrder",
+    params: { orderId: detail.orderId },
+  });
+  return result === true || object(result).success === true;
 }
 
 /**

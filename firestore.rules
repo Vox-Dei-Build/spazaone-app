@@ -188,6 +188,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /supplierFundingReservations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierFundingState/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /operationsAlerts/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierCancellationRequests/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentOperations/{document=**} {
+      allow read, write: if false;
+    }
+
     match /financialReconciliationRuns/{document=**} {
       allow read, write: if false;
     }

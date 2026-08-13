@@ -101,6 +101,7 @@ function quoteSnapshot(quote: CjLandedQuote): CjQuoteSnapshot {
     variant: quote.variant,
     originCountryCode: quote.originCountryCode,
     stock: quote.stock,
+    quantity: quote.quantity,
     logisticName: quote.logisticName,
     logisticAging: quote.logisticAging,
     productCostUsdMinor: quote.productCostUsdMinor,

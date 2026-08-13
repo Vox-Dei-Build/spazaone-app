@@ -139,6 +139,7 @@ async function run(options) {
   const accountBody = {
     merchantId: MERCHANT_ID,
     customerId: ACCOUNT_CUSTOMER_ID,
+    customerPhone: "0820000000",
     amountMinor: 100,
     email: "payments-test@spazaone.com",
     channel: "eft",

@@ -40,6 +40,136 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
     setState(() => isLoading = false);
   }
 
+  Future<void> _verifyForOnlineSettlements() async {
+    final documentNumber = TextEditingController();
+    var accountType = 'personal';
+    var documentType = 'identityNumber';
+    final details = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Verify settlement account'),
+          content: PrivateRegion(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: accountType,
+                  decoration: const InputDecoration(labelText: 'Account owner'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'personal',
+                      child: Text('Personal'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'business',
+                      child: Text('Business'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setDialogState(() {
+                      accountType = value;
+                      documentType = value == 'business'
+                          ? 'businessRegistrationNumber'
+                          : 'identityNumber';
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (accountType == 'personal')
+                  DropdownButtonFormField<String>(
+                    value: documentType,
+                    decoration:
+                        const InputDecoration(labelText: 'Identity document'),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'identityNumber',
+                        child: Text('South African ID'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'passportNumber',
+                        child: Text('Passport'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => documentType = value);
+                      }
+                    },
+                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: documentNumber,
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    labelText: accountType == 'business'
+                        ? 'Business registration number'
+                        : documentType == 'passportNumber'
+                            ? 'Passport number'
+                            : 'Identity number',
+                    helperText:
+                        'Sent once to Paystack for validation. SpazaOne stores only a protected fingerprint.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final number = documentNumber.text.trim();
+                if (number.length < 5) return;
+                Navigator.pop(dialogContext, {
+                  'accountType': accountType,
+                  'documentType': documentType,
+                  'documentNumber': number,
+                });
+              },
+              child: const Text('Validate'),
+            ),
+          ],
+        ),
+      ),
+    );
+    documentNumber.clear();
+    documentNumber.dispose();
+    if (details == null || !mounted) return;
+    setState(() => isVerifying = true);
+    try {
+      final result = await PaymentSetupService.prepareSettlementProfile(
+        merchantId: StoreSession.instance.storeId,
+        bankingDetailsId: walletViewModel.editingDocumentId!,
+        accountType: details['accountType']!,
+        documentType: details['documentType']!,
+        documentNumber: details['documentNumber']!,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['status'] == 'enabled'
+                ? 'Settlement account verified. Online collections will use this destination when payments are enabled.'
+                : 'Account validated. SpazaOne review is required before online collections.',
+          ),
+        ),
+      );
+    } on PaymentSetupException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => isVerifying = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -95,39 +225,7 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
               const SizedBox(height: 12),
               FilledButton.icon(
                 key: const ValueKey('verify-paystack-settlement-account'),
-                onPressed: isVerifying
-                    ? null
-                    : () async {
-                        setState(() => isVerifying = true);
-                        try {
-                          final result = await PaymentSetupService
-                              .prepareSettlementProfile(
-                            merchantId: StoreSession.instance.storeId,
-                            bankingDetailsId:
-                                walletViewModel.editingDocumentId!,
-                          );
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                result['status'] == 'pending_review'
-                                    ? 'Account resolved. Spaza One approval is still required before online collections.'
-                                    : 'Settlement account is already under review.',
-                              ),
-                            ),
-                          );
-                        } on PaymentSetupException catch (error) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(error.message),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        } finally {
-                          if (mounted) setState(() => isVerifying = false);
-                        }
-                      },
+                onPressed: isVerifying ? null : _verifyForOnlineSettlements,
                 icon: isVerifying
                     ? const SizedBox.square(
                         dimension: 18,
@@ -138,7 +236,7 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
               ),
               const SizedBox(height: 8),
               Text(
-                'The resolved account name and masked account are reviewed before any customer payment can settle here.',
+                'New or changed bank accounts are validated before customer payments can settle here. Bank changes may require SpazaOne review.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),

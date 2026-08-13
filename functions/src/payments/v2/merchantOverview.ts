@@ -27,6 +27,13 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
       paymentReadiness({ merchantId, purpose: "merchant_order" }),
     ]);
     const profileData = profile.data() ?? {};
+    const pendingSettlement = (profileData.pendingSettlement ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const displayedSettlement = pendingSettlement.accountFingerprint
+      ? pendingSettlement
+      : profileData;
     const recentSettlements = settlements.docs
       .map((doc) => {
         const value = doc.data();
@@ -49,12 +56,16 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
       profile: {
         status: String(profileData.status ?? "not_started"),
         bankVerificationStatus: String(
-          profileData.bankVerificationStatus ?? "not_started",
+          pendingSettlement.accountFingerprint
+            ? "pending_review"
+            : (profileData.bankVerificationStatus ?? "not_started"),
         ),
-        bankName: String(profileData.bankName ?? ""),
-        resolvedAccountName: String(profileData.resolvedAccountName ?? ""),
-        maskedAccount: profileData.accountLast4
-          ? `•••• ${String(profileData.accountLast4)}`
+        bankName: String(displayedSettlement.bankName ?? ""),
+        resolvedAccountName: String(
+          displayedSettlement.resolvedAccountName ?? "",
+        ),
+        maskedAccount: displayedSettlement.accountLast4
+          ? `•••• ${String(displayedSettlement.accountLast4)}`
           : "",
       },
       settlements: recentSettlements,

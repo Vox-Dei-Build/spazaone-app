@@ -6,6 +6,11 @@ import { verifyBotRequest } from "../security/requestAuth";
 import { CjLandedQuote, quoteCjVariant } from "./cjClient";
 import { priceCommerceOrder, requireMinorUnits } from "./domain";
 import { merchantManualPaymentOptions } from "./manualPaymentInstructions";
+import {
+  profitableSupplierChannels,
+  supplierPaymentEconomics,
+} from "../payments/v2/supplierOrders";
+import { paymentReadiness } from "../payments/v2/readiness";
 
 const PREPARATION_TTL_MS = 15 * 60 * 1000;
 
@@ -30,6 +35,8 @@ export type CheckoutQuoteReservation = {
   variantId: string;
   variantSku: string;
   postalCode: string;
+  quantity: number;
+  liveStock: number;
   productCostMinor: number;
   shippingCostMinor: number;
   landedCostMinor: number;
@@ -100,6 +107,8 @@ export function reserveCheckoutQuote(
     variantId: safeId(quote.variant.variantId, "VARIANT"),
     variantSku: text(quote.variant.sku, 200),
     postalCode: text(postalCode, 12),
+    quantity: Math.max(1, Math.trunc(Number(quote.quantity ?? 1))),
+    liveStock: Math.max(1, Math.trunc(quote.stock)),
     productCostMinor: requireMinorUnits(quote.productCostMinor, "productCost"),
     shippingCostMinor: requireMinorUnits(
       quote.shippingCostMinor,
@@ -492,10 +501,14 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
   };
 }
 
-async function quoteListing(listing: FirebaseFirestore.DocumentData): Promise<{
+async function quoteListing(
+  listing: FirebaseFirestore.DocumentData,
+  quantity: number,
+): Promise<{
   amountDueMinor: number;
   quote: CjLandedQuote | null;
   deliveryEstimate: { minDays: number; maxDays: number };
+  paymentOptions: string[];
 }> {
   let quote: CjLandedQuote | null = null;
   if (String(listing.supplierId ?? "") === "cj_dropshipping") {
@@ -503,28 +516,137 @@ async function quoteListing(listing: FirebaseFirestore.DocumentData): Promise<{
       productId: safeId(listing.supplierProductId, "PRODUCT"),
       variantId: safeId(listing.supplierVariantId, "VARIANT"),
       postalCode: text(listing.preparedPostalCode, 12),
+      quantity,
     });
   }
   const baseCostMinor = quote
     ? quote.landedCostMinor
     : requireMinorUnits(listing.baseCostMinor, "baseCost");
   const sellPriceMinor = quote
-    ? quote.landedCostMinor + requireMinorUnits(listing.markupMinor, "markup")
+    ? quote.landedCostMinor +
+      requireMinorUnits(listing.markupMinor, "markup") * quantity
     : requireMinorUnits(listing.sellPriceMinor, "sellPrice");
-  const priced = priceCommerceOrder({
-    baseCostMinor,
-    sellPriceMinor,
-    quantity: 1,
-    paymentFeeMinor: 0,
-  });
+  const paymentOptions = quote
+    ? profitableSupplierChannels({
+        landedCostMinor: quote.landedCostMinor,
+        markupMinor: requireMinorUnits(listing.markupMinor, "markup"),
+        quantity,
+      })
+    : [];
+  if (quote && paymentOptions.length === 0) {
+    throw new Error("SUPPLIER_MARGIN_BELOW_SAFETY");
+  }
+  let amountDueMinor: number;
+  if (quote) {
+    amountDueMinor = supplierPaymentEconomics({
+      landedCostMinor: quote.landedCostMinor,
+      markupMinor: requireMinorUnits(listing.markupMinor, "markup"),
+      quantity,
+      channel: paymentOptions[0] as "card" | "eft" | "capitec_pay" | "qr",
+    }).customerTotalMinor;
+  } else {
+    amountDueMinor = priceCommerceOrder({
+      baseCostMinor,
+      sellPriceMinor,
+      quantity,
+      paymentFeeMinor: 0,
+    }).amountDueMinor;
+  }
   return {
-    amountDueMinor: priced.amountDueMinor,
+    amountDueMinor,
     quote,
     deliveryEstimate: deliveryEstimateFromAging(
       quote?.logisticAging ?? listing.logisticAging,
     ),
+    paymentOptions,
   };
 }
+
+/** Public, buyer-safe quote used by the hosted supplier checkout page. */
+export const preparePublicCommerceCheckout = functions
+  .runWith({ secrets: ["CJ_API_KEY"], timeoutSeconds: 120, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Methods", "POST,OPTIONS");
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+    if (req.method !== "POST") {
+      res.status(405).json({ status: "unavailable", reason: "method" });
+      return;
+    }
+    try {
+      const input = (req.body ?? {}) as Record<string, unknown>;
+      const listingId = safeId(input.listingId, "LISTING");
+      const quantity = Number(input.quantity ?? 1);
+      const deliveryAddress =
+        input.deliveryAddress && typeof input.deliveryAddress === "object"
+          ? (input.deliveryAddress as Record<string, unknown>)
+          : {};
+      const postalCode = text(deliveryAddress.postalCode, 12);
+      if (
+        !Number.isSafeInteger(quantity) ||
+        quantity < 1 ||
+        quantity > 20 ||
+        !/^\d{4}$/.test(postalCode)
+      ) {
+        res
+          .status(400)
+          .json({ status: "unavailable", reason: "quote_input_invalid" });
+        return;
+      }
+      const listing = await db.doc(`commerceListings/${listingId}`).get();
+      const source = listing.data() ?? {};
+      if (
+        !listing.exists ||
+        source.active !== true ||
+        String(source.supplierId ?? "") !== "cj_dropshipping"
+      ) {
+        res
+          .status(404)
+          .json({ status: "unavailable", reason: "product_unavailable" });
+        return;
+      }
+      const readiness = await paymentReadiness({
+        merchantId: safeId(source.sellerId, "MERCHANT"),
+        purpose: "supplier_order",
+      });
+      if (!readiness.enabled) {
+        res.status(409).json({
+          status: "unavailable",
+          reason: "online_payment_not_ready",
+        });
+        return;
+      }
+      const quoted = await quoteListing(
+        { ...source, preparedPostalCode: postalCode },
+        quantity,
+      );
+      res.status(200).json({
+        status: "ready",
+        amountDueMinor: quoted.amountDueMinor,
+        quantity,
+        maxQuantity: quoted.quote ? Math.min(20, quoted.quote.stock) : 1,
+        deliveryEstimate: quoted.deliveryEstimate,
+        paymentOptions: quoted.paymentOptions,
+        quoteVerifiedAt: quoted.quote?.verifiedAt ?? null,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "CJ_UNAVAILABLE";
+      const reason =
+        code === "SUPPLIER_MARGIN_BELOW_SAFETY"
+          ? "payment_unavailable"
+          : code === "CJ_OUT_OF_STOCK" || code === "CJ_QUANTITY_INVALID"
+            ? "quantity_unavailable"
+            : "delivery_check_failed";
+      console.warn("preparePublicCommerceCheckout failed", {
+        code: code.slice(0, 120),
+      });
+      res.status(409).json({ status: "unavailable", reason });
+    }
+  });
 
 /** Bot-authenticated delivery resolution and exact review-price preparation. */
 export const prepareCommerceCheckout = functions
@@ -549,6 +671,13 @@ export const prepareCommerceCheckout = functions
       const merchantId = safeId(input.merchantId, "MERCHANT");
       const customerId = safeId(input.customerId, "CUSTOMER");
       const listingId = safeId(input.listingId, "LISTING");
+      const quantity = Number(input.quantity ?? 1);
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
+        res
+          .status(200)
+          .json({ status: "unavailable", reason: "quantity_invalid" });
+        return;
+      }
       const [customer, listing, payment] = await Promise.all([
         db.doc(`users/${merchantId}/customers/${customerId}`).get(),
         db.doc(`commerceListings/${listingId}`).get(),
@@ -565,7 +694,19 @@ export const prepareCommerceCheckout = functions
           .json({ status: "unavailable", reason: "product_unavailable" });
         return;
       }
-      if (payment.paymentOptions.length === 0) {
+      const isSupplier =
+        String(listing.data()?.supplierId ?? "") === "cj_dropshipping";
+      const onlineReadiness = isSupplier
+        ? await paymentReadiness({ merchantId, purpose: "supplier_order" })
+        : null;
+      if (isSupplier && onlineReadiness?.enabled !== true) {
+        res.status(200).json({
+          status: "unavailable",
+          reason: "online_payment_not_ready",
+        });
+        return;
+      }
+      if (!isSupplier && payment.paymentOptions.length === 0) {
         res.status(200).json({
           status: "unavailable",
           reason: "payment_setup_required",
@@ -599,7 +740,10 @@ export const prepareCommerceCheckout = functions
         ...(listing.data() ?? {}),
         preparedPostalCode: resolved.address.postalCode,
       };
-      const quoted = await quoteListing(source);
+      const quoted = await quoteListing(source, quantity);
+      const paymentOptions = isSupplier
+        ? quoted.paymentOptions
+        : payment.paymentOptions;
       const preparationRef = db
         .collection("commerceCheckoutPreparations")
         .doc(randomBytes(18).toString("hex"));
@@ -619,8 +763,10 @@ export const prepareCommerceCheckout = functions
         deliveryLabel: resolved.deliveryLabel ?? "",
         plusCode: resolved.plusCode ?? null,
         amountDueMinor: quoted.amountDueMinor,
+        quantity,
+        maxQuantity: quoted.quote ? Math.min(20, quoted.quote.stock) : 1,
         deliveryEstimate: quoted.deliveryEstimate,
-        paymentOptions: payment.paymentOptions,
+        paymentOptions,
         quoteVerifiedAt: quoted.quote?.verifiedAt ?? null,
         quoteReservation,
         status: "ready",
@@ -635,8 +781,10 @@ export const prepareCommerceCheckout = functions
         deliveryLabel: resolved.deliveryLabel ?? "",
         ...(resolved.plusCode ? { plusCode: resolved.plusCode } : {}),
         amountDueMinor: quoted.amountDueMinor,
+        quantity,
+        maxQuantity: quoted.quote ? Math.min(20, quoted.quote.stock) : 1,
         deliveryEstimate: quoted.deliveryEstimate,
-        paymentOptions: payment.paymentOptions,
+        paymentOptions,
       });
     } catch (error) {
       console.error("prepareCommerceCheckout failed", {

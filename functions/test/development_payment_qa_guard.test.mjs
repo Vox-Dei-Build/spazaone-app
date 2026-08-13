@@ -50,17 +50,18 @@ test("development payment QA mutations require one mode and a run id", () => {
   assert.equal(options.runId, "qa-1");
 });
 
-test("development payment QA accepts only the bounded release capabilities", () => {
+test("development payment QA accepts only the bounded commerce-release capabilities", () => {
   const options = validateDevelopmentPaymentQaOptions([
     "--project",
     "spazaone-dev",
     "--capabilities",
-    "campaign_credit,merchant_order,account_settlement",
+    "campaign_credit,merchant_order,account_settlement,supplier_order",
   ]);
   assert.deepEqual(options.capabilities, [
     "campaign_credit",
     "merchant_order",
     "account_settlement",
+    "supplier_order",
   ]);
   assert.throws(
     () =>
@@ -68,7 +69,7 @@ test("development payment QA accepts only the bounded release capabilities", () 
         "--project",
         "spazaone-dev",
         "--capabilities",
-        "supplier_order",
+        "repayment_installment",
       ]),
     /CAPABILITIES_INVALID/,
   );
@@ -111,4 +112,33 @@ test("settlement capabilities require an explicit Paystack Test subaccount for m
   ]);
   assert.equal(options.settlementCapabilitySelected, true);
   assert.equal(options.testSubaccountCode, "ACCT_test123");
+});
+
+test("supplier payment QA is permitted only with a verified Test subaccount", () => {
+  assert.throws(
+    () =>
+      validateDevelopmentPaymentQaOptions([
+        "--project",
+        "spazaone-dev",
+        "--run-id",
+        "supplier-qa",
+        "--execute",
+        "--capabilities",
+        "supplier_order",
+      ]),
+    /TEST_SUBACCOUNT_REQUIRED/,
+  );
+  const options = validateDevelopmentPaymentQaOptions([
+    "--project",
+    "spazaone-dev",
+    "--run-id",
+    "supplier-qa",
+    "--execute",
+    "--capabilities",
+    "supplier_order",
+    "--test-subaccount-code",
+    "ACCT_test123",
+  ]);
+  assert.deepEqual(options.capabilities, ["supplier_order"]);
+  assert.equal(options.settlementCapabilitySelected, true);
 });

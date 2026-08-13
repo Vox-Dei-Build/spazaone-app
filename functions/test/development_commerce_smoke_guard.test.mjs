@@ -16,13 +16,20 @@ test("commerce smoke refuses production and implicit projects", () => {
 });
 
 test("commerce smoke accepts only release flows and Paystack channels", () => {
+  const supplier = validateDevelopmentCommerceSmokeOptions([
+    "--project",
+    "spazaone-dev",
+    "--flow",
+    "supplier_order",
+  ]);
+  assert.equal(supplier.flow, "supplier_order");
   assert.throws(
     () =>
       validateDevelopmentCommerceSmokeOptions([
         "--project",
         "spazaone-dev",
         "--flow",
-        "supplier_order",
+        "repayment_installment",
       ]),
     /FLOW_INVALID/,
   );

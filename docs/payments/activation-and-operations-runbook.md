@@ -14,13 +14,17 @@ Every transaction requires all four controls to agree:
 2. `paymentConfiguration/global.emergencySuspended != true`.
 3. The payment purpose is enabled in
    `paymentConfiguration/global.capabilities`.
-4. The merchant is `enabled` and has that same purpose in
-   `merchantPaymentProfiles/{merchantId}.capabilities`.
+4. For settlement purposes, the merchant is `enabled` and has that same
+   purpose in `merchantPaymentProfiles/{merchantId}.capabilities`. Campaign
+   Credits do not require a settlement destination; a suspended merchant or
+   an explicit merchant-level Campaign Credit disable still blocks them.
 
 All controls default to disabled. `setGlobalPaymentConfigurationV2` and
 `setMerchantPaymentState` require the `spazaAdmin` claim, an audit reason and
 write immutable audit records. Collection capabilities cannot be enabled for
 a merchant until their resolved Paystack subaccount has been approved.
+`campaign_credit` is the intentional exception because its proceeds do not
+settle to the merchant.
 
 The emergency response is to set `emergencySuspended=true`, preserve the
 affected records, run reconciliation, and identify every charged intent that
@@ -31,20 +35,29 @@ still needs fulfilment or a refund. Do not delete or rewrite provider events.
 Keep all capabilities dark while the backwards-compatible production backend
 and exact `4.8.0+88` signed artifacts are verified. After the full development,
 emulator, TestFlight/Play Internal Testing and approved low-value live evidence
-pack passes, globally activate these three capabilities together:
+pack passes, globally activate these four capabilities together:
 
 1. `campaign_credit`
 2. `merchant_order`
 3. `account_settlement`
+4. `supplier_order`
 
 There is no controlled customer pilot and no seven-day waiting period. Review
 reconciliation and support evidence continuously after activation, and use the
 global kill switch immediately if any stop condition appears.
 
-`supplier_order` remains separately dark until CJ fulfilment and automatic
-refund evidence passes and split-refund recovery is proved in writing or by
-controlled full and partial live tests that reconcile both Delta and merchant
-shares.
+Supplier ordering is a blocker for that combined activation, not a later
+pilot. It remains dark with the other three capabilities until CJ fulfilment,
+funding, tracking and refund evidence passes and split-refund recovery is
+proved in writing or by controlled full and partial live tests that reconcile
+both Delta and merchant shares.
+
+The 13 August development rehearsal reached the supplier-funding gate and
+stopped safely before Paystack because the CJ sandbox balance could not cover
+the USD 5.76 quote. This is an operations/provider-funding blocker, not a
+reason to bypass the gate: fund sandbox, repeat the successful create/pay and
+tracking path, then exercise deterministic failure/refund and ambiguous-result
+recovery before the combined activation can proceed.
 
 `repayment_installment` remains independently disabled until full and partial
 account settlement has passed its live checkpoint. Premium, subscriptions,
@@ -59,11 +72,30 @@ programme.
 | Charge confirmed and inventory committed | `paid` | Merchant | Prepare and fulfil the owned-stock order. |
 | Charge confirmed but reservation unavailable | `refund_pending` | Operations | The durable refund worker submits/reconciles the provider refund. Stock is not guessed. |
 | Supplier charge confirmed | fulfilment `queued` | Operations automation | Re-quote CJ, verify route/price/balance, create and pay the CJ order. |
-| CJ create/pay validation fails | `refund_pending` | Operations | Paystack refund is automatically requested and remains visible until provider confirmation. |
+| CJ is authoritatively absent after a deterministic pre-create failure | `refund_pending` | Operations automation | Request the Paystack refund and keep it pending until provider confirmation. |
+| CJ create/pay result is ambiguous or an order may exist | `operations_review` | Operations | Do not retry payment or promise a refund. Query CJ, delete only a confirmed unpaid `CREATED`/`IN_CART` order where allowed, then choose one accountable recovery. |
+| CJ is confirmed unpaid after a payment-call failure | fulfilment `retry` | Operations automation | Retry only payment for the same CJ order; never create or pay a second order blindly. |
 | Refund is pending/processing | `refund_pending` | Operations/support | Explain that the provider is processing it; never say refunded. |
 | Refund needs attention/fails | `provider_failed` or provider status | Operations | Resolve with Paystack and re-run reconciliation. Do not locally complete it. |
 | Reconciliation mismatch | run `mismatch` | Engineering + finance | Globally suspend payments and account for every cent before resuming. |
-| Settlement destination changes | merchant `pending_review` | Admin + finance | Resolve the account again and approve the new fingerprint before re-enabling collections. |
+| Settlement destination changes | merchant `pending_review` | Admin + finance | New online initialization is suspended. Reconcile pending settlements, approve the exact new fingerprint, activate it and retire the old subaccount only when safe. Existing intents retain their immutable destination snapshot. |
+
+## Merchant Payment Setup
+
+- Existing merchants explicitly choose Payment Setup and provide the one-time
+  personal identity/passport or business-registration evidence Paystack
+  requires. Legacy bank records are never silently migrated.
+- New merchants can continue with cash and Pay Later, but online selling stays
+  disabled until setup is complete.
+- South African banks come from Paystack's verification-enabled bank list and
+  accounts are validated through Paystack's bank-validation endpoint.
+- Full identity, passport and business-registration numbers are transient and
+  never stored. The server retains a keyed fingerprint, account/document type,
+  verification flags, masked account holder and account last four only.
+- Validation is deduplicated and limited to three attempts per merchant per
+  hour. Fully verified, open, credit-accepting, holder-matched, older first
+  destinations may auto-approve. Exceptions and every bank change require
+  audited manual review.
 
 ## Reconciliation evidence
 
@@ -71,6 +103,12 @@ The daily job checks the immutable intent and fee snapshot against provider
 amount/reference, applied provider events, settlement amounts, refund totals,
 the business projection, inventory reservation, and supplier fulfilment. A
 run with any mismatch is not a successful checkpoint.
+
+The admin-only `reconcilePaymentsV2OnDemand` callable uses the same runner as
+the daily job. It requires a unique `operationId` and audit reason and writes a
+server-only `paymentOperations` receipt. Supplier status/tracking uses the
+same pattern through `reconcileSupplierTrackingV2OnDemand`. Neither command
+permits a Firestore-console financial edit.
 
 Finance must separately reconcile Paystack's settlement export and bank
 receipt because a local `settlements` document is an expectation, not proof
@@ -94,17 +132,22 @@ that the bank received funds.
 ## Evidence still required before production activation
 
 - Written Paystack confirmation that South African split refunds recover both
-  shares correctly before settlement.
+  shares correctly before settlement, or controlled full and partial live
+  split-refund receipts with zero unexplained variance.
 - Finance approval of the processor tariffs, VAT, 1.5%/R0.50 collection fee,
   supplier margin safety and real unit economics.
 - Privacy/data-safety approval for payment and transient transcription data.
 - Independent payment/security architecture review.
 - Paystack test-mode evidence and explicitly approved low-value live
   transactions through Delta's Paystack account on Android and iOS.
+- An explicitly approved low-value live CJ purchase proving create, actual
+  charge verification, balance payment, tracking and delivery reconciliation.
 - Exact signed-artifact evidence for campaign credits, owned-stock orders and
   full/partial account payments, including every applicable disaster, refund,
   settlement and rollback scenario.
 - Support, dispute and provider-outage rehearsal with named on-call owners.
+- Named Product, Finance, Engineering/Security, Privacy, Operations/Support
+  and QA sign-off against the exact signed artifacts and 100% reconciliation.
 
 Any unexplained cent, duplicate movement, unverified destination, unsupported
 refund claim, P0/P1 trust defect or failed kill switch stops progression.

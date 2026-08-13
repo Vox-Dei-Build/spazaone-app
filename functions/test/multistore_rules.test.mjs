@@ -120,6 +120,21 @@ beforeEach(async () => {
       setDoc(doc(db, "supplierFulfilments/fulfilmentA"), {
         merchantId: "storeA",
       }),
+      setDoc(doc(db, "supplierFundingReservations/reservationA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "supplierFundingState/cj"), {
+        provider: "cj",
+      }),
+      setDoc(doc(db, "operationsAlerts/alertA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "supplierCancellationRequests/requestA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "paymentOperations/operationA"), {
+        merchantId: "storeA",
+      }),
       setDoc(doc(db, "financialReconciliationRuns/runA"), {
         status: "balanced",
       }),
@@ -232,6 +247,11 @@ test("Payments V2 truth is server-only for owners, operators and admins", async 
     "refundCases/refundA",
     "inventoryReservations/reservationA",
     "supplierFulfilments/fulfilmentA",
+    "supplierFundingReservations/reservationA",
+    "supplierFundingState/cj",
+    "operationsAlerts/alertA",
+    "supplierCancellationRequests/requestA",
+    "paymentOperations/operationA",
     "financialReconciliationRuns/runA",
     "financialMigrationRuns/runA",
     "schemaMetadata/paymentsV2",

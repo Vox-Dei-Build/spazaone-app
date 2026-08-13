@@ -12,11 +12,11 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 const execFileAsync = promisify(execFile);
 const DEVELOPMENT_PROJECTS = new Set(["spazaone-dev", "spazaone-dev-za"]);
-const FLOWS = new Set(["owned_order", "account_settlement"]);
+const FLOWS = new Set(["owned_order", "account_settlement", "supplier_order"]);
 const CHANNELS = new Set(["card", "eft", "capitec_pay", "qr"]);
 const MERCHANT_ID = "dev-seed-merchant";
 const ACCOUNT_CUSTOMER_ID = "dev-seed-customer";
-const PRODUCT_ID = "dev-seed-owned-product";
+const TEMPLATE_PRODUCT_ID = "dev-seed-owned-product";
 const BUYER_EMAIL = "payments-test@spazaone.com";
 
 function argsMap(argv) {
@@ -166,6 +166,7 @@ async function existingHandoff(db, options, runSnapshot) {
     merchantId: MERCHANT_ID,
     customerId: String(runSnapshot.get("customerId") ?? ""),
     orderId: String(runSnapshot.get("orderId") ?? ""),
+    productId: String(runSnapshot.get("productId") ?? ""),
     reservationId: String(runSnapshot.get("reservationId") ?? ""),
     intentId,
     reference: String(intent.get("providerReference") ?? ""),
@@ -181,18 +182,49 @@ async function existingHandoff(db, options, runSnapshot) {
 
 async function runOwnedOrder(options, context) {
   const digest = runDigest(options.runId);
+  const productId = `dev-owned-${digest}`;
   const customerId = `smoke-customer-${digest}`;
   const customerRef = context.db.doc(
     `users/${MERCHANT_ID}/customers/${customerId}`,
   );
   const cartRef = context.db.doc(`users/${MERCHANT_ID}/carts/${customerId}`);
-  const itemRef = cartRef.collection("items").doc(PRODUCT_ID);
+  const itemRef = cartRef.collection("items").doc(productId);
   const productRef = context.db.doc(
-    `users/${MERCHANT_ID}/products/${PRODUCT_ID}`,
+    `users/${MERCHANT_ID}/products/${productId}`,
   );
-  const product = await productRef.get();
-  if (!product.exists || product.get("synthetic") !== true) {
+  const templateProduct = await context.db
+    .doc(`users/${MERCHANT_ID}/products/${TEMPLATE_PRODUCT_ID}`)
+    .get();
+  if (!templateProduct.exists || templateProduct.get("synthetic") !== true) {
     throw new Error("DEVELOPMENT_OWNED_PRODUCT_MISSING");
+  }
+  await productRef
+    .create({
+      name: "Development loaf",
+      description: "Synthetic isolated owned-stock product for payment QA.",
+      cost: 12,
+      sellingPrice: 16,
+      quantity: 3,
+      whatsappListed: false,
+      isDropshipListing: false,
+      synthetic: true,
+      developmentCommerceSmokeRunId: options.runId,
+      schemaVersion: 2,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+    .catch(async (error) => {
+      if (Number(error?.code) !== 6 && error?.code !== "already-exists") {
+        throw error;
+      }
+    });
+  const product = await productRef.get();
+  if (
+    !product.exists ||
+    product.get("synthetic") !== true ||
+    product.get("developmentCommerceSmokeRunId") !== options.runId
+  ) {
+    throw new Error("DEVELOPMENT_OWNED_PRODUCT_BINDING_INVALID");
   }
   const productQuantityBefore = Number(product.get("quantity"));
   if (
@@ -227,7 +259,7 @@ async function runOwnedOrder(options, context) {
       { merge: true },
     ),
     itemRef.set({
-      productId: PRODUCT_ID,
+      productId,
       quantity: 1,
       synthetic: true,
       developmentCommerceSmokeRunId: options.runId,
@@ -255,8 +287,35 @@ async function runOwnedOrder(options, context) {
   if (!/^[A-Za-z0-9_-]{1,200}$/.test(orderId)) {
     throw new Error("DEVELOPMENT_OWNED_ORDER_INVALID");
   }
+  const sale = await context.db
+    .doc(`users/${MERCHANT_ID}/sales/${orderId}`)
+    .get();
+  const reservationId = String(sale.get("inventoryReservationId") ?? "");
+  const [reservation, productAfterReservation] = await Promise.all([
+    context.db.doc(`inventoryReservations/${reservationId}`).get(),
+    productRef.get(),
+  ]);
+  const reservedItem = (reservation.get("items") ?? []).find(
+    (item) => String(item?.productId ?? "") === productId,
+  );
+  const reservedQuantity = Number(reservedItem?.quantity);
+  const availableBefore = Number(reservedItem?.availableBefore);
+  const availableAfter = Number(reservedItem?.availableAfter);
+  if (
+    !reservation.exists ||
+    reservation.get("inventorySnapshotVersion") !== 1 ||
+    !Number.isSafeInteger(reservedQuantity) ||
+    reservedQuantity !== 1 ||
+    !Number.isSafeInteger(availableBefore) ||
+    !Number.isSafeInteger(availableAfter) ||
+    availableAfter !== availableBefore - reservedQuantity ||
+    Number(productAfterReservation.get("quantity")) !== availableAfter
+  ) {
+    throw new Error("DEVELOPMENT_OWNED_RESERVATION_SNAPSHOT_INVALID");
+  }
   const paymentBody = {
     merchantId: MERCHANT_ID,
+    customerId,
     orderId,
     email: BUYER_EMAIL,
     channel: options.channel,
@@ -285,14 +344,12 @@ async function runOwnedOrder(options, context) {
   ) {
     throw new Error("DEVELOPMENT_OWNED_INITIALIZATION_NOT_IDEMPOTENT");
   }
-  const sale = await context.db
-    .doc(`users/${MERCHANT_ID}/sales/${orderId}`)
-    .get();
   return {
     customerId,
+    productId,
     orderId,
-    reservationId: String(sale.get("inventoryReservationId") ?? ""),
-    productQuantityBefore,
+    reservationId,
+    productQuantityBefore: availableBefore,
     balanceBefore: 0,
     ...first,
   };
@@ -322,6 +379,7 @@ async function runAccountSettlement(options, context) {
   const paymentBody = {
     merchantId: MERCHANT_ID,
     customerId: ACCOUNT_CUSTOMER_ID,
+    customerPhone: String(customer.get("number") ?? ""),
     amountMinor: options.amountMinor,
     email: BUYER_EMAIL,
     channel: options.channel,
@@ -361,6 +419,182 @@ async function runAccountSettlement(options, context) {
   };
 }
 
+async function runSupplierOrder(options, context) {
+  const digest = runDigest(options.runId);
+  const catalog = await context.db
+    .collection("supplierCatalogProducts")
+    .where("active", "==", true)
+    .limit(20)
+    .get();
+  const source = catalog.docs
+    .map((document) => ({ document, value: document.data() }))
+    .filter(({ value }) => {
+      const quote = value.recommendedQuote ?? {};
+      return (
+        String(quote.variant?.productId ?? "") &&
+        String(quote.variant?.variantId ?? "") &&
+        Number.isSafeInteger(Number(quote.landedCostMinor)) &&
+        Number(quote.landedCostMinor) > 0 &&
+        Number(quote.stock ?? 0) > 0
+      );
+    })
+    .sort(
+      (left, right) =>
+        Number(left.value.recommendedQuote.landedCostMinor) -
+        Number(right.value.recommendedQuote.landedCostMinor),
+    )[0];
+  if (!source) throw new Error("DEVELOPMENT_SUPPLIER_CATALOG_MISSING");
+
+  const quote = source.value.recommendedQuote;
+  const details = source.value.details ?? {};
+  const supplierProductId = String(quote.variant.productId);
+  const supplierVariantId = String(quote.variant.variantId);
+  const listingId = `development-supplier-${digest}`;
+  const sellerProductId = `development-supplier-product-${digest}`;
+  const customerId = `supplier-customer-${digest}`;
+  const phone = "0820000001";
+  const markupMinor = Math.max(
+    20_000,
+    Math.ceil(Number(quote.landedCostMinor) * 0.35),
+  );
+  const title = String(
+    details.title ?? source.value.title ?? "Development delivery product",
+  ).slice(0, 160);
+  const description = String(
+    details.description ?? "Synthetic supplier checkout evidence.",
+  );
+  const images = Array.isArray(details.images)
+    ? details.images.map(String).filter(Boolean).slice(0, 8)
+    : [String(quote.variant.image ?? "")].filter(Boolean);
+  const now = FieldValue.serverTimestamp();
+  const common = {
+    sellerId: MERCHANT_ID,
+    supplierId: "cj_dropshipping",
+    supplierProductId,
+    supplierVariantId,
+    supplierSku: String(quote.variant.sku ?? ""),
+    title,
+    description,
+    images,
+    baseCostMinor: Number(quote.landedCostMinor),
+    supplierProductCostMinor: Number(quote.productCostMinor),
+    supplierShippingCostMinor: Number(quote.shippingCostMinor),
+    supplierProductCostUsdMinor: Number(quote.productCostUsdMinor),
+    supplierShippingCostUsdMinor: Number(quote.shippingCostUsdMinor),
+    markupMinor,
+    sellPriceMinor: Number(quote.landedCostMinor) + markupMinor,
+    currency: "ZAR",
+    supplierCurrency: "USD",
+    fxRateMicros: Number(quote.fx?.rateMicros),
+    fxRateDate: String(quote.fx?.date ?? ""),
+    fxBufferBps: Number(quote.fx?.bufferBps),
+    sourceCountryCode: String(quote.originCountryCode ?? "CN"),
+    logisticName: String(quote.logisticName ?? ""),
+    logisticAging: String(quote.logisticAging ?? ""),
+    availability: "available",
+    fulfilmentMode: "seller_manual_cj_order",
+    shippingNotes: "Synthetic development supplier checkout.",
+    active: true,
+    supplierPricingVerifiedAt: String(quote.verifiedAt ?? ""),
+    synthetic: true,
+    developmentCommerceSmokeRunId: options.runId,
+    updatedAt: now,
+    schemaVersion: 2,
+  };
+  await Promise.all([
+    context.db.doc(`commerceListings/${listingId}`).set({
+      ...common,
+      sellerProductId,
+      createdAt: now,
+    }),
+    context.db.doc(`users/${MERCHANT_ID}/products/${sellerProductId}`).set({
+      name: title,
+      description,
+      image: images[0] ?? null,
+      images,
+      cost: Number(quote.landedCostMinor) / 100,
+      sellingPrice: (Number(quote.landedCostMinor) + markupMinor) / 100,
+      whatsappListed: true,
+      isDropshipListing: true,
+      commerceListingId: listingId,
+      sourceProductId: supplierProductId,
+      sourceVariantId: supplierVariantId,
+      ...common,
+      createdAt: now,
+    }),
+    context.db.doc(`users/${MERCHANT_ID}/customers/${customerId}`).set({
+      name: "Synthetic Supplier Customer",
+      number: phone,
+      email: BUYER_EMAIL,
+      balance: 0,
+      synthetic: true,
+      developmentCommerceSmokeRunId: options.runId,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  ]);
+
+  const body = {
+    merchantId: MERCHANT_ID,
+    customerId,
+    listingId,
+    quantity: 1,
+    paymentChannel: options.channel,
+    orderChannel: "whatsapp",
+    checkoutAttemptId: `development-supplier-${digest}`,
+    buyer: {
+      name: "Synthetic Supplier Customer",
+      email: BUYER_EMAIL,
+      phone,
+    },
+    deliveryAddress: {
+      line1: "1 Commissioner Street",
+      suburb: "Marshalltown",
+      city: "Johannesburg",
+      province: "Gauteng",
+      postalCode: "2001",
+      country: "ZA",
+    },
+  };
+  const first = await responseJson(
+    await fetch(`${context.origin}/createCommerceOrder`, {
+      method: "POST",
+      headers: context.headers,
+      body: JSON.stringify(body),
+    }),
+    "DEVELOPMENT_SUPPLIER_PAYMENT_INITIALIZATION_FAILED",
+  );
+  const replay = await responseJson(
+    await fetch(`${context.origin}/createCommerceOrder`, {
+      method: "POST",
+      headers: context.headers,
+      body: JSON.stringify(body),
+    }),
+    "DEVELOPMENT_SUPPLIER_PAYMENT_REPLAY_FAILED",
+  );
+  if (
+    replay.orderId !== first.orderId ||
+    replay.authorizationUrl !== first.authorizationUrl ||
+    replay.reused !== true
+  ) {
+    throw new Error("DEVELOPMENT_SUPPLIER_INITIALIZATION_NOT_IDEMPOTENT");
+  }
+  const order = await context.db.doc(`commerceOrders/${first.orderId}`).get();
+  const intentId = String(order.get("paymentIntentId") ?? "");
+  const intent = await context.db.doc(`paymentIntents/${intentId}`).get();
+  return {
+    customerId,
+    orderId: String(first.orderId ?? ""),
+    reservationId: String(order.get("supplierFundingReservationId") ?? ""),
+    productQuantityBefore: 0,
+    balanceBefore: 0,
+    intentId,
+    reference: String(intent.get("providerReference") ?? ""),
+    authorizationUrl: String(first.authorizationUrl ?? ""),
+    amountMinor: Number(first.amountDueMinor),
+  };
+}
+
 async function run(options) {
   if (!options.execute) {
     console.log(
@@ -371,7 +605,11 @@ async function run(options) {
         flow: options.flow,
         channel: options.channel,
         amountMinor:
-          options.flow === "account_settlement" ? options.amountMinor : 1_600,
+          options.flow === "account_settlement"
+            ? options.amountMinor
+            : options.flow === "owned_order"
+              ? 1_600
+              : null,
         synthetic: true,
         externalTransactionPlanned: true,
       }),
@@ -416,7 +654,9 @@ async function run(options) {
   const initialized =
     options.flow === "owned_order"
       ? await runOwnedOrder(options, context)
-      : await runAccountSettlement(options, context);
+      : options.flow === "account_settlement"
+        ? await runAccountSettlement(options, context)
+        : await runSupplierOrder(options, context);
   const authorizationUrl = new URL(String(initialized.authorizationUrl ?? ""));
   const intentId = String(initialized.intentId ?? "");
   const reference = String(initialized.reference ?? "");
@@ -435,6 +675,7 @@ async function run(options) {
     merchantId: MERCHANT_ID,
     customerId: initialized.customerId,
     orderId: initialized.orderId,
+    productId: initialized.productId ?? null,
     reservationId: initialized.reservationId,
     intentId,
     reference,

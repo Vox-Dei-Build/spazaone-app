@@ -4,9 +4,11 @@ import {
   canManuallyConfirmCommerceRefund,
   paymentStatusAfterAction,
   priceCommerceOrder,
+  supplierFundingPublicFailure,
   targetStatusForAction,
 } from "../lib/commerce/domain.js";
 import { commercePaymentsEnabled } from "../lib/commerce/readiness.js";
+import { checkoutPage } from "../lib/commerce/checkoutPage.js";
 
 test("digital payment activation fails closed", () => {
   const original = process.env.COMMERCE_PAYMENTS_ENABLED;
@@ -24,6 +26,38 @@ test("digital payment activation fails closed", () => {
       process.env.COMMERCE_PAYMENTS_ENABLED = original;
     }
   }
+});
+
+test("supplier funding failures are buyer-safe and confirm no charge", () => {
+  const unavailable = supplierFundingPublicFailure("CJ_BALANCE_INSUFFICIENT");
+  assert.deepEqual(unavailable, {
+    code: "SUPPLIER_CHECKOUT_UNAVAILABLE",
+    message:
+      "Supplier delivery payment is temporarily unavailable. You have not been charged. Please try again later.",
+  });
+  assert.equal(
+    supplierFundingPublicFailure("SUPPLIER_FUNDING_STATE_INVALID")?.code,
+    "SUPPLIER_CHECKOUT_UNAVAILABLE",
+  );
+  assert.equal(supplierFundingPublicFailure("CJ_OUT_OF_STOCK"), null);
+});
+
+test("hosted supplier checkout quotes quantity and profitable channels before payment", () => {
+  const html = checkoutPage({
+    listingId: "listing-1",
+    title: "Solar Lamp",
+    description: "A lamp",
+    image: "",
+    sellPriceMinor: 10_000,
+    shippingNotes: "",
+    digitalPaymentsEnabled: true,
+  });
+  assert.match(html, /id="quantity"/);
+  assert.match(html, /preparePublicCommerceCheckout/);
+  assert.match(html, /paymentOptions/);
+  assert.match(html, /name='paymentChannel'/);
+  assert.match(html, /Capitec Pay/);
+  assert.match(html, /Scan to Pay/);
 });
 
 test("server pricing ignores a tampered client total", () => {
@@ -53,12 +87,20 @@ test("manual order pricing snapshots zero provider fee", () => {
 });
 
 test("pricing rejects unsupported quantities and loss-making listings", () => {
+  assert.equal(
+    priceCommerceOrder({
+      baseCostMinor: 10_000,
+      sellPriceMinor: 14_000,
+      quantity: 2,
+    }).quantity,
+    2,
+  );
   assert.throws(
     () =>
       priceCommerceOrder({
         baseCostMinor: 10_000,
         sellPriceMinor: 14_000,
-        quantity: 2,
+        quantity: 21,
       }),
     /QUANTITY_INVALID/,
   );

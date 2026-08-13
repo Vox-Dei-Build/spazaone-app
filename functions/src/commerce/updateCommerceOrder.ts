@@ -126,6 +126,83 @@ export const updateCommerceOrder = functions.https.onCall(
       );
     }
 
+    const cjAccepted =
+      action === "cancel" &&
+      String(beforeData.supplierId ?? "") === "cj_dropshipping" &&
+      Boolean(
+        String(beforeData.supplierOrder?.orderId ?? "").trim() ||
+          [
+            "submitted_for_fulfilment",
+            "preparing",
+            "shipped",
+            "on_the_way",
+            "delivered",
+          ].includes(String(beforeData.status ?? "")),
+      );
+    if (cjAccepted) {
+      const requestRef = db.doc(`supplierCancellationRequests/${orderId}`);
+      const alertRef = db.doc(`operationsAlerts/supplier-cancel-${orderId}`);
+      const now = FieldValue.serverTimestamp();
+      const batch = db.batch();
+      batch.set(
+        requestRef,
+        {
+          requestId: requestRef.id,
+          orderId,
+          intentId: String(beforeData.paymentIntentId ?? ""),
+          cjOrderId: String(beforeData.supplierOrder?.orderId ?? ""),
+          requestedByUid: context.auth.uid,
+          requestedByRole: actorRole,
+          reason,
+          status: "operations_review",
+          owner: "operations",
+          customerPromise: "review_only",
+          createdAt: now,
+          updatedAt: now,
+          schemaVersion: 2,
+        },
+        { merge: true },
+      );
+      batch.set(
+        orderRef,
+        {
+          cancellationRequest: {
+            status: "operations_review",
+            owner: "operations",
+            requestId: requestRef.id,
+            requestedByUid: context.auth.uid,
+            reason,
+            requestedAt: now,
+          },
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+      batch.set(
+        alertRef,
+        {
+          alertId: alertRef.id,
+          type: "supplier_cancellation_request",
+          orderId,
+          cjOrderId: String(beforeData.supplierOrder?.orderId ?? ""),
+          owner: "operations",
+          status: "open",
+          createdAt: now,
+          updatedAt: now,
+          schemaVersion: 2,
+        },
+        { merge: true },
+      );
+      await batch.commit();
+      return {
+        orderId,
+        status: String(beforeData.status ?? "submitted_for_fulfilment"),
+        cancellationRequestStatus: "operations_review",
+        message:
+          "Cancellation was sent to operations for review. No refund is promised until supplier and provider outcomes are confirmed.",
+      };
+    }
+
     let refundCaseId = "";
     let refundIntentId = "";
     let refundAmountMinor = 0;

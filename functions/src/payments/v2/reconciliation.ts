@@ -5,6 +5,7 @@ import {
   isPaymentStatus,
   MoneySnapshot,
   PaymentStatus,
+  stableDocumentId,
 } from "./domain";
 
 export type ReconciliationIssue = {
@@ -206,54 +207,182 @@ export async function reconcileIntentRelations(
   return issues;
 }
 
+export type ReconciliationRunResult = {
+  runId: string;
+  checkedCount: number;
+  mismatchCount: number;
+  status: "balanced" | "mismatch";
+  truncated: boolean;
+};
+
+export function reconciliationOutcome(input: {
+  mismatchCount: number;
+  windowTruncated: boolean;
+}): { mismatchCount: number; status: "balanced" | "mismatch" } {
+  const mismatchCount = Number(input.mismatchCount);
+  if (!Number.isSafeInteger(mismatchCount) || mismatchCount < 0) {
+    throw new Error("RECONCILIATION_COUNT_INVALID");
+  }
+  return {
+    mismatchCount: mismatchCount + (input.windowTruncated ? 1 : 0),
+    status:
+      mismatchCount > 0 || input.windowTruncated ? "mismatch" : "balanced",
+  };
+}
+
+/** Shared runner used by both the scheduler and audited operations command. */
+export async function runPaymentsV2Reconciliation(input: {
+  windowDays?: number;
+  source: "scheduled" | "on_demand";
+  actorUid?: string;
+  operationId?: string;
+  reason?: string;
+}): Promise<ReconciliationRunResult> {
+  const windowDays = Number(input.windowDays ?? 7);
+  if (!Number.isSafeInteger(windowDays) || windowDays < 1 || windowDays > 30) {
+    throw new Error("RECONCILIATION_WINDOW_INVALID");
+  }
+  const deterministicId = input.operationId
+    ? stableDocumentId("recon", [input.operationId])
+    : "";
+  const runRef = deterministicId
+    ? db.doc(`financialReconciliationRuns/${deterministicId}`)
+    : db.collection("financialReconciliationRuns").doc();
+  const prior = await runRef.get();
+  if (prior.exists) {
+    const value = prior.data() ?? {};
+    return {
+      runId: runRef.id,
+      checkedCount: Number(value.checkedCount ?? 0),
+      mismatchCount: Number(value.mismatchCount ?? 0),
+      status: value.status === "balanced" ? "balanced" : "mismatch",
+      truncated: value.truncated === true,
+    };
+  }
+  const cutoff = Timestamp.fromMillis(
+    Date.now() - windowDays * 24 * 60 * 60 * 1000,
+  );
+  const intents = await db
+    .collection("paymentIntents")
+    .where("updatedAt", ">=", cutoff)
+    .orderBy("updatedAt", "asc")
+    .limit(501)
+    .get();
+  const windowTruncated = intents.size > 500;
+  const results = [];
+  for (const doc of intents.docs.slice(0, 500)) {
+    const value = doc.data();
+    const issues = [
+      ...reconcileIntentData(value),
+      ...(await reconcileIntentRelations(doc.id, value)),
+    ];
+    results.push({ intentId: doc.id, issues });
+  }
+  const mismatches = results.filter((result) => result.issues.length > 0);
+  const outcome = reconciliationOutcome({
+    mismatchCount: mismatches.length,
+    windowTruncated,
+  });
+  const mismatchSamples = [
+    ...mismatches,
+    ...(windowTruncated
+      ? [
+          {
+            intentId: "__reconciliation_window__",
+            issues: [{ code: "RECONCILIATION_WINDOW_TRUNCATED" }],
+          },
+        ]
+      : []),
+  ];
+  const truncated = windowTruncated || mismatchSamples.length > 100;
+  await runRef.set({
+    runId: runRef.id,
+    windowStart: cutoff,
+    checkedCount: results.length,
+    mismatchCount: outcome.mismatchCount,
+    status: outcome.status,
+    mismatchSamples: mismatchSamples.slice(0, 100),
+    reconciliationContract: {
+      providerEvent: true,
+      providerCharge: true,
+      immutableFeeSnapshot: true,
+      settlement: true,
+      refundTotals: true,
+      businessProjection: true,
+      completeWindow: !windowTruncated,
+    },
+    truncated,
+    source: input.source,
+    actorUid: input.actorUid ?? null,
+    operationId: input.operationId ?? null,
+    reason: input.reason ?? null,
+    schemaVersion: 2,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  if (outcome.status === "mismatch") {
+    console.error("[payments-v2] reconciliation mismatch", {
+      runId: runRef.id,
+      checkedCount: results.length,
+      mismatchCount: outcome.mismatchCount,
+      windowTruncated,
+    });
+  }
+  return {
+    runId: runRef.id,
+    checkedCount: results.length,
+    mismatchCount: outcome.mismatchCount,
+    status: outcome.status,
+    truncated,
+  };
+}
+
+export const reconcilePaymentsV2OnDemand = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Sign in is required.",
+      );
+    }
+    if (context.auth.token.spazaAdmin !== true) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Spaza One payment administration access is required.",
+      );
+    }
+    const operationId = String(data?.operationId ?? "").trim();
+    const reason = String(data?.reason ?? "")
+      .trim()
+      .slice(0, 500);
+    if (!/^[A-Za-z0-9:_-]{1,120}$/.test(operationId) || !reason) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "A valid operationId and audit reason are required.",
+      );
+    }
+    try {
+      return await runPaymentsV2Reconciliation({
+        windowDays: data?.windowDays,
+        source: "on_demand",
+        actorUid: context.auth.uid,
+        operationId,
+        reason,
+      });
+    } catch (error) {
+      if (error instanceof functions.https.HttpsError) throw error;
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        error instanceof Error ? error.message : "Reconciliation failed.",
+      );
+    }
+  });
+
 export const reconcilePaymentsV2Daily = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
   .pubsub.schedule("30 2 * * *")
   .timeZone("Africa/Johannesburg")
   .onRun(async () => {
-    const runRef = db.collection("financialReconciliationRuns").doc();
-    const cutoff = Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const intents = await db
-      .collection("paymentIntents")
-      .where("updatedAt", ">=", cutoff)
-      .orderBy("updatedAt", "asc")
-      .limit(500)
-      .get();
-    const results = [];
-    for (const doc of intents.docs) {
-      const value = doc.data();
-      const issues = [
-        ...reconcileIntentData(value),
-        ...(await reconcileIntentRelations(doc.id, value)),
-      ];
-      results.push({ intentId: doc.id, issues });
-    }
-    const mismatches = results.filter((result) => result.issues.length > 0);
-    await runRef.set({
-      runId: runRef.id,
-      windowStart: cutoff,
-      checkedCount: intents.size,
-      mismatchCount: mismatches.length,
-      status: mismatches.length ? "mismatch" : "balanced",
-      mismatchSamples: mismatches.slice(0, 100),
-      reconciliationContract: {
-        providerEvent: true,
-        providerCharge: true,
-        immutableFeeSnapshot: true,
-        settlement: true,
-        refundTotals: true,
-        businessProjection: true,
-      },
-      truncated: mismatches.length > 100,
-      schemaVersion: 2,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    if (mismatches.length) {
-      console.error("[payments-v2] reconciliation mismatch", {
-        runId: runRef.id,
-        checkedCount: intents.size,
-        mismatchCount: mismatches.length,
-      });
-    }
+    await runPaymentsV2Reconciliation({ source: "scheduled", windowDays: 7 });
     return null;
   });

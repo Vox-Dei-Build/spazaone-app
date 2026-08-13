@@ -28,6 +28,33 @@ export type CommercePriceSnapshot = {
   amountDueMinor: number;
 };
 
+export type CommerceCheckoutPublicFailure = {
+  code: "SUPPLIER_CHECKOUT_UNAVAILABLE";
+  message: string;
+};
+
+/**
+ * Translates server-only supplier funding failures into a buyer-safe response.
+ * These failures happen before Paystack initialization, so it is accurate and
+ * important to state that no charge was made without exposing CJ internals.
+ */
+export function supplierFundingPublicFailure(
+  errorCode: unknown,
+): CommerceCheckoutPublicFailure | null {
+  const code = String(errorCode ?? "");
+  if (
+    code !== "CJ_BALANCE_INSUFFICIENT" &&
+    code !== "SUPPLIER_FUNDING_STATE_INVALID"
+  ) {
+    return null;
+  }
+  return {
+    code: "SUPPLIER_CHECKOUT_UNAVAILABLE",
+    message:
+      "Supplier delivery payment is temporarily unavailable. You have not been charged. Please try again later.",
+  };
+}
+
 const ACTION_TARGETS: Record<
   CommerceOrderAction,
   readonly CommerceOrderStatus[]
@@ -60,7 +87,7 @@ export function priceCommerceOrder(input: {
     "sell_price",
   );
   const quantity = Number(input.quantity ?? 1);
-  if (!Number.isSafeInteger(quantity) || quantity !== 1) {
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
     throw new Error("QUANTITY_INVALID");
   }
   if (unitSellPriceMinor <= baseCostMinor) {

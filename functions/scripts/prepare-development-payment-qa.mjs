@@ -15,6 +15,7 @@ const QA_CAPABILITIES = new Set([
   "campaign_credit",
   "merchant_order",
   "account_settlement",
+  "supplier_order",
 ]);
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +69,9 @@ export function validateDevelopmentPaymentQaOptions(argv) {
     throw new Error("DEVELOPMENT_PAYMENT_QA_CAPABILITIES_INVALID");
   }
   const settlementCapabilitySelected = capabilities.some((capability) =>
-    ["merchant_order", "account_settlement"].includes(capability),
+    ["merchant_order", "account_settlement", "supplier_order"].includes(
+      capability,
+    ),
   );
   if (
     (execute || verify) &&

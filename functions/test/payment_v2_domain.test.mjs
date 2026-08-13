@@ -15,12 +15,25 @@ import {
 } from "../lib/payments/v2/financialCore.js";
 import { resolvePaymentReadiness } from "../lib/payments/v2/readiness.js";
 import { requireAdminAdjustmentMinor } from "../lib/payments/v2/admin.js";
+import {
+  maskedAccountHolderName,
+  protectedIdentityFingerprint,
+  settlementDestinationRetirementDecision,
+  settlementProfileAction,
+  settlementVerificationDecision,
+  settlementVerificationIdentity,
+} from "../lib/payments/v2/merchantProfiles.js";
+import { availableSupplierFunding } from "../lib/payments/v2/supplierFunding.js";
+import { commerceStatusForCj } from "../lib/payments/v2/supplierOrders.js";
 
 test("admin Campaign Credit adjustments require signed integer cents", () => {
   assert.equal(requireAdminAdjustmentMinor(5_000), 5_000);
   assert.equal(requireAdminAdjustmentMinor(-500), -500);
   assert.throws(() => requireAdminAdjustmentMinor(0), /valid Campaign Credit/);
-  assert.throws(() => requireAdminAdjustmentMinor(10.5), /valid Campaign Credit/);
+  assert.throws(
+    () => requireAdminAdjustmentMinor(10.5),
+    /valid Campaign Credit/,
+  );
 });
 
 test("calculates the launch collection fee in cents", () => {
@@ -182,4 +195,224 @@ test("readiness requires every independent gate", () => {
     resolvePaymentReadiness({ ...base, merchantStatus: "suspended" }).reason,
     "merchant_not_enabled",
   );
+});
+
+test("campaign credits do not require a settlement subaccount", () => {
+  const base = {
+    masterEnabled: true,
+    globalCapabilities: { campaign_credit: true },
+    merchantStatus: "not_started",
+    merchantCapabilities: {},
+    purpose: "campaign_credit",
+  };
+  assert.deepEqual(resolvePaymentReadiness(base), {
+    enabled: true,
+    reason: "ready",
+  });
+  assert.equal(
+    resolvePaymentReadiness({ ...base, merchantStatus: "suspended" }).reason,
+    "merchant_not_enabled",
+  );
+  assert.equal(
+    resolvePaymentReadiness({
+      ...base,
+      merchantCapabilities: { campaign_credit: false },
+    }).reason,
+    "merchant_capability_disabled",
+  );
+});
+
+test("South African settlement auto-approval requires every low-risk flag", () => {
+  const clean = {
+    verified: true,
+    accountOpen: true,
+    accountAcceptsCredits: true,
+    accountHolderMatch: true,
+    accountOpenForMoreThanThreeMonths: true,
+  };
+  assert.deepEqual(settlementVerificationDecision(clean), {
+    eligible: true,
+    autoApprove: true,
+  });
+  assert.deepEqual(
+    settlementVerificationDecision({
+      ...clean,
+      accountOpenForMoreThanThreeMonths: false,
+    }),
+    { eligible: true, autoApprove: false },
+  );
+  assert.deepEqual(
+    settlementVerificationDecision({ ...clean, accountHolderMatch: false }),
+    { eligible: false, autoApprove: false },
+  );
+});
+
+test("settlement identity evidence is keyed and customer-safe", () => {
+  const identity = {
+    documentType: "identityNumber",
+    documentNumber: "900101-5009-087",
+  };
+  const first = protectedIdentityFingerprint("test-secret-a", identity);
+  assert.equal(first.length, 64);
+  assert.equal(first, protectedIdentityFingerprint("test-secret-a", identity));
+  assert.notEqual(
+    first,
+    protectedIdentityFingerprint("test-secret-b", identity),
+  );
+  assert.equal(first.includes("900101"), false);
+  assert.equal(maskedAccountHolderName("Nomsa Dlamini"), "N•••• D••••••");
+});
+
+test("settlement setup accepts only matching personal and business evidence", () => {
+  assert.deepEqual(
+    settlementVerificationIdentity({
+      accountType: "personal",
+      documentType: "identityNumber",
+      documentNumber: "900101 5009 087",
+    }),
+    {
+      accountType: "personal",
+      documentType: "identityNumber",
+      documentNumber: "900101 5009 087",
+    },
+  );
+  assert.deepEqual(
+    settlementVerificationIdentity({
+      accountType: "personal",
+      documentType: "passportNumber",
+      documentNumber: "A12345678",
+    }),
+    {
+      accountType: "personal",
+      documentType: "passportNumber",
+      documentNumber: "A12345678",
+    },
+  );
+  assert.deepEqual(
+    settlementVerificationIdentity({
+      accountType: "business",
+      documentType: "businessRegistrationNumber",
+      documentNumber: "2024/123456/07",
+    }),
+    {
+      accountType: "business",
+      documentType: "businessRegistrationNumber",
+      documentNumber: "2024/123456/07",
+    },
+  );
+  assert.throws(
+    () =>
+      settlementVerificationIdentity({
+        accountType: "business",
+        documentType: "identityNumber",
+        documentNumber: "9001015009087",
+      }),
+    /BANK_DOCUMENT_TYPE_INVALID/,
+  );
+});
+
+test("settlement setup dedupes destinations and reviews every replacement", () => {
+  assert.equal(
+    settlementProfileAction({
+      sameActiveDestination: true,
+      samePendingDestination: false,
+      hadActiveAccount: true,
+      validationAutoApprove: true,
+    }),
+    "dedupe_active",
+  );
+  assert.equal(
+    settlementProfileAction({
+      sameActiveDestination: false,
+      samePendingDestination: true,
+      hadActiveAccount: true,
+      validationAutoApprove: true,
+    }),
+    "dedupe_pending",
+  );
+  assert.equal(
+    settlementProfileAction({
+      sameActiveDestination: false,
+      samePendingDestination: false,
+      hadActiveAccount: true,
+      validationAutoApprove: true,
+    }),
+    "pending_review",
+  );
+  assert.equal(
+    settlementProfileAction({
+      sameActiveDestination: false,
+      samePendingDestination: false,
+      hadActiveAccount: false,
+      validationAutoApprove: true,
+    }),
+    "auto_approve",
+  );
+});
+
+test("an old settlement destination retires only after every movement is final", () => {
+  const base = {
+    settlementStatuses: ["completed"],
+    paymentIntentStatuses: ["cancelled", "expired", "refunded"],
+    settlementWindowComplete: true,
+    paymentIntentWindowComplete: true,
+  };
+  assert.deepEqual(settlementDestinationRetirementDecision(base), {
+    safe: true,
+    reason: "clear",
+  });
+  assert.deepEqual(
+    settlementDestinationRetirementDecision({
+      ...base,
+      paymentIntentStatuses: ["initialized"],
+    }),
+    { safe: false, reason: "in_flight_payment" },
+  );
+  assert.deepEqual(
+    settlementDestinationRetirementDecision({
+      ...base,
+      settlementStatuses: ["processing"],
+    }),
+    { safe: false, reason: "pending_settlement" },
+  );
+  assert.deepEqual(
+    settlementDestinationRetirementDecision({
+      ...base,
+      paymentIntentWindowComplete: false,
+    }),
+    { safe: false, reason: "history_truncated" },
+  );
+});
+
+test("supplier funding subtracts concurrent reservations without double counting its own", () => {
+  assert.equal(
+    availableSupplierFunding({
+      providerBalanceUsdMinor: 10_000,
+      outstandingUsdMinor: 4_000,
+    }),
+    6_000,
+  );
+  assert.equal(
+    availableSupplierFunding({
+      providerBalanceUsdMinor: 10_000,
+      outstandingUsdMinor: 4_000,
+      currentReservationUsdMinor: 1_500,
+    }),
+    7_500,
+  );
+  assert.equal(
+    availableSupplierFunding({
+      providerBalanceUsdMinor: 0,
+      outstandingUsdMinor: 0,
+    }),
+    0,
+  );
+});
+
+test("supplier tracking maps CJ statuses into the canonical order lifecycle", () => {
+  assert.equal(commerceStatusForCj("PROCESSING"), "preparing");
+  assert.equal(commerceStatusForCj("UNSHIPPED"), "preparing");
+  assert.equal(commerceStatusForCj("SHIPPED"), "shipped");
+  assert.equal(commerceStatusForCj("DELIVERED"), "delivered");
+  assert.equal(commerceStatusForCj("CANCELLED"), null);
 });

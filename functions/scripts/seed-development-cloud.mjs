@@ -159,7 +159,7 @@ async function runSeed(options) {
     tx.set(db.doc(`users/${MERCHANT_ID}/customers/${CUSTOMER_ID}`), {
       ...common,
       name: "Synthetic Customer",
-      number: "0000000000",
+      number: "0820000000",
       category: "Customer",
       balance: -125.0,
       isNPA: false,

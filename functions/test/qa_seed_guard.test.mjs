@@ -82,6 +82,7 @@ test("QA catalogue fixtures are fresh schema-v2 ZA snapshots", () => {
         document.recommendedQuote.shippingCostMinor,
     );
     assert.ok(document.recommendedQuote.stock > 0);
+    assert.equal(document.recommendedQuote.quantity, 1);
     assert.ok(document.activeSearchTokens.length > 0);
   }
 });

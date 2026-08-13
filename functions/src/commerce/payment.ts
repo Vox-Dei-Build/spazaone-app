@@ -6,16 +6,16 @@ import * as path from "path";
 import { db, functions } from "../config/main";
 import { commerceCheckoutUrl } from "./checkoutUrl";
 import { notifyCommerceOrder } from "./notifications";
-import { priceCommerceOrder, requireMinorUnits } from "./domain";
+import {
+  priceCommerceOrder,
+  requireMinorUnits,
+  supplierFundingPublicFailure,
+} from "./domain";
 import { quoteCjVariant } from "./cjClient";
 import { verifyPaystackSignature } from "../payments/paystack/paystackSecurity";
 import { formatPhoneNumber, normalizePhoneNumber } from "../utils/phoneUtils";
 import { commercePaymentsEnabled } from "./readiness";
 import { verifyBotRequest } from "../security/requestAuth";
-import {
-  ManualPaymentOption,
-  merchantManualPaymentOptions,
-} from "./manualPaymentInstructions";
 import {
   deliverOrderCreatedOutbox,
   orderCreatedOutboxRef,
@@ -30,6 +30,10 @@ import {
   supplierPaymentEconomics,
 } from "../payments/v2/supplierOrders";
 import { paymentReadiness } from "../payments/v2/readiness";
+import {
+  isOwnedOrderChannel,
+  OwnedOrderChannel,
+} from "../payments/v2/ownedOrders";
 
 type VerifiedPaystackTransaction = {
   reference?: unknown;
@@ -172,12 +176,12 @@ function parseAddress(value: unknown): AddressInput {
   };
 }
 
-function requireSingleItemQuantity(value: unknown): void {
-  if (value === undefined || value === null || value === "") return;
-  const quantity = Number(value);
-  if (!Number.isInteger(quantity) || quantity !== 1) {
+function requireSupplierQuantity(value: unknown): number {
+  const quantity = Number(value ?? 1);
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
     throw new Error("QUANTITY_INVALID");
   }
+  return quantity;
 }
 
 async function requireBoundBotCustomer(args: {
@@ -212,6 +216,8 @@ function paystackSecret(): string {
 
 function publicMessage(error: unknown): string {
   const code = error instanceof Error ? error.message : "";
+  const supplierFundingFailure = supplierFundingPublicFailure(code);
+  if (supplierFundingFailure) return supplierFundingFailure.message;
   const responseStatus = Number(
     (error as { response?: { status?: unknown } } | null)?.response?.status,
   );
@@ -268,6 +274,8 @@ function publicStatus(error: unknown): number {
 
 function publicCode(error: unknown): string {
   const code = error instanceof Error ? error.message : "";
+  const supplierFundingFailure = supplierFundingPublicFailure(code);
+  if (supplierFundingFailure) return supplierFundingFailure.code;
   return [
     "CHECKOUT_PREPARATION_CHANGED",
     "CHECKOUT_PREPARATION_EXPIRED",
@@ -320,6 +328,7 @@ function validatedCheckoutQuote(
     productId: string;
     variantId: string;
     postalCode: string;
+    quantity: number;
     nowMs: number;
   },
 ): CheckoutQuoteReservation {
@@ -330,6 +339,8 @@ function validatedCheckoutQuote(
   const productId = String(quote.productId ?? "");
   const variantId = String(quote.variantId ?? "");
   const postalCode = String(quote.postalCode ?? "");
+  const quantity = Number(quote.quantity ?? 1);
+  const liveStock = Number(quote.liveStock ?? 0);
   const reservedAtMs = Number(quote.reservedAtMs);
   const expiresAtMs = Number(quote.expiresAtMs);
   const productCostMinor = requireMinorUnits(
@@ -360,6 +371,11 @@ function validatedCheckoutQuote(
     productId !== expected.productId ||
     variantId !== expected.variantId ||
     postalCode !== expected.postalCode ||
+    quantity !== expected.quantity ||
+    !Number.isSafeInteger(liveStock) ||
+    liveStock < quantity ||
+    quantity < 1 ||
+    quantity > 20 ||
     landedCostMinor !== productCostMinor + shippingCostMinor ||
     !Number.isSafeInteger(reservedAtMs) ||
     !Number.isSafeInteger(expiresAtMs) ||
@@ -378,6 +394,8 @@ function validatedCheckoutQuote(
     variantId,
     variantSku: String(quote.variantSku ?? "").slice(0, 200),
     postalCode,
+    quantity,
+    liveStock,
     productCostMinor,
     shippingCostMinor,
     landedCostMinor,
@@ -397,31 +415,6 @@ function validatedCheckoutQuote(
   };
 }
 
-function selectedManualPaymentOption(
-  value: unknown,
-  available: readonly ManualPaymentOption[],
-): ManualPaymentOption {
-  const requested = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  if (!requested) {
-    if (available.length === 1) return available[0];
-    throw new Error("PAYMENT_OPTION_REQUIRED");
-  }
-  let option: ManualPaymentOption;
-  if (requested === "cash" || requested === "pay_at_shop") {
-    option = "pay_at_shop";
-  } else if (requested === "transfer" || requested === "eft") {
-    option = "eft";
-  } else {
-    throw new Error("PAYMENT_OPTION_UNAVAILABLE");
-  }
-  if (!available.includes(option)) {
-    throw new Error("PAYMENT_OPTION_UNAVAILABLE");
-  }
-  return option;
-}
-
 function assertReusableOrderIdentity(
   value: FirebaseFirestore.DocumentData | undefined,
   expected: {
@@ -431,6 +424,8 @@ function assertReusableOrderIdentity(
     whatsappBotOrder: boolean;
     sellerId: string;
     customerId: string;
+    quantity: number;
+    paymentChannel: string;
   },
 ): void {
   if (!value) throw new Error("CHECKOUT_ATTEMPT_IDENTITY_INVALID");
@@ -443,6 +438,9 @@ function assertReusableOrderIdentity(
     String(value.listingId ?? "") !== expected.listingId ||
     String(value.paymentMethod ?? "") !== expected.paymentMethod ||
     String(value.orderChannel ?? "") !== expectedChannel ||
+    Number(value.quantity ?? value.totals?.quantity ?? 1) !==
+      expected.quantity ||
+    String(value.requestedPaymentChannel ?? "") !== expected.paymentChannel ||
     !storedPhone ||
     storedPhone !== expectedPhone
   ) {
@@ -508,13 +506,15 @@ export const createCommerceOrder = functions
     try {
       const whatsappBotOrder =
         req.body?.orderChannel === "whatsapp" && verifyBotRequest(req);
-      // Public supplier checkout is governed by Payments V2 readiness below.
-      // WhatsApp keeps the existing seller-arranged manual payment path.
-      const digitalPaymentsEnabled = !whatsappBotOrder;
-      const paymentMethod: "paystack" | "manual" = digitalPaymentsEnabled
-        ? "paystack"
-        : "manual";
-      requireSingleItemQuantity(req.body?.quantity);
+      // Supplier orders are online-only on every channel, including direct
+      // WhatsApp. App manual Transfer/Add Payment remains a separate workflow.
+      const digitalPaymentsEnabled = true;
+      const paymentMethod: "paystack" | "manual" = "paystack";
+      const quantity = requireSupplierQuantity(req.body?.quantity);
+      const paymentChannel = String(req.body?.paymentChannel ?? "").trim();
+      if (!isOwnedOrderChannel(paymentChannel)) {
+        throw new Error("PAYMENT_OPTION_REQUIRED");
+      }
       const listingId = clean(req.body?.listingId, "LISTING", 128);
       const buyer = parseBuyer(req.body?.buyer, digitalPaymentsEnabled);
       const expectedSellerId = whatsappBotOrder
@@ -554,9 +554,6 @@ export const createCommerceOrder = functions
       const deliveryAddress = parseAddress(
         preparationData?.deliveryAddress ?? req.body?.deliveryAddress,
       );
-      const manualPayment = whatsappBotOrder
-        ? await merchantManualPaymentOptions(expectedSellerId)
-        : null;
       const attemptRef = db.doc(
         `commerceCheckoutAttempts/${checkoutAttemptId(
           listingId,
@@ -571,6 +568,8 @@ export const createCommerceOrder = functions
         whatsappBotOrder,
         sellerId: expectedSellerId,
         customerId: botCustomerId,
+        quantity,
+        paymentChannel,
       };
 
       const existingAttempt = await attemptRef.get();
@@ -623,35 +622,32 @@ export const createCommerceOrder = functions
               existingOrderId,
               existingToken,
             ),
+            channel: paymentChannel,
           });
           res.status(200).json({
+            orderId: existingOrderId,
+            paymentMethod: "paystack",
+            amountDueMinor: Number(existingOrder.data()?.amountDueMinor ?? 0),
+            reference: existingOrderId.slice(0, 8).toUpperCase(),
             authorizationUrl: initialized.authorizationUrl,
             reused: true,
           });
           return;
         }
-        res.status(200).json({ authorizationUrl, reused: true });
+        res.status(200).json({
+          orderId: existingOrderId,
+          paymentMethod: "paystack",
+          amountDueMinor: Number(existingOrder.data()?.amountDueMinor ?? 0),
+          reference: existingOrderId.slice(0, 8).toUpperCase(),
+          authorizationUrl,
+          reused: true,
+        });
         return;
       }
 
-      const manualPaymentOption: ManualPaymentOption = manualPayment
-        ? selectedManualPaymentOption(
-            req.body?.paymentPreference,
-            manualPayment.paymentOptions,
-          )
-        : "eft";
       const candidateOrderRef = db.collection("commerceOrders").doc();
       const checkoutToken = randomBytes(32).toString("hex");
-      const orderReference = candidateOrderRef.id.slice(0, 8).toUpperCase();
-      const paymentInstructions = manualPayment
-        ? {
-            method: manualPaymentOption,
-            reference: orderReference,
-            ...(manualPaymentOption === "eft" && manualPayment.banking
-              ? { banking: manualPayment.banking }
-              : {}),
-          }
-        : null;
+      const paymentInstructions = null;
 
       if (preparationRef) {
         const expiresAt = preparationData?.expiresAt as
@@ -708,6 +704,7 @@ export const createCommerceOrder = functions
               productId,
               variantId,
               postalCode: deliveryAddress.postalCode,
+              quantity,
               nowMs: Date.now(),
             },
           );
@@ -716,6 +713,7 @@ export const createCommerceOrder = functions
             productId,
             variantId,
             postalCode: deliveryAddress.postalCode,
+            quantity,
           });
           externalQuoteReservation = reserveCheckoutQuote(
             liveQuote,
@@ -772,7 +770,7 @@ export const createCommerceOrder = functions
           preparationExpiresAtMs = expiresAt.toMillis();
           if (
             !Array.isArray(preparedData.paymentOptions) ||
-            !preparedData.paymentOptions.includes(manualPaymentOption)
+            !preparedData.paymentOptions.includes(paymentChannel)
           ) {
             throw new Error("PAYMENT_OPTION_UNAVAILABLE");
           }
@@ -795,6 +793,7 @@ export const createCommerceOrder = functions
                 productId: String(source.supplierProductId ?? ""),
                 variantId: String(source.supplierVariantId ?? ""),
                 postalCode: finalDeliveryAddress.postalCode,
+                quantity,
                 nowMs: transactionNowMs,
               },
             )
@@ -811,19 +810,21 @@ export const createCommerceOrder = functions
           : source.baseCostMinor;
         const sellPriceMinor = cjQuote
           ? cjQuote.landedCostMinor +
-            requireMinorUnits(source.markupMinor, "markup")
+            requireMinorUnits(source.markupMinor, "markup") * quantity
           : source.sellPriceMinor;
         const supplierEconomics =
           digitalPaymentsEnabled && cjQuote
             ? supplierPaymentEconomics({
                 landedCostMinor: cjQuote.landedCostMinor,
                 markupMinor: requireMinorUnits(source.markupMinor, "markup"),
+                quantity,
+                channel: paymentChannel as OwnedOrderChannel,
               })
             : null;
         const pricing = supplierEconomics
           ? {
               currency: "ZAR" as const,
-              quantity: 1,
+              quantity,
               baseCostMinor: supplierEconomics.landedCostMinor,
               sellPriceMinor:
                 supplierEconomics.landedCostMinor +
@@ -835,7 +836,7 @@ export const createCommerceOrder = functions
           : priceCommerceOrder({
               baseCostMinor,
               sellPriceMinor,
-              quantity: 1,
+              quantity,
               paymentFeeMinor: 0,
             });
         if (pricing.amountDueMinor > 10_000_000) {
@@ -891,7 +892,7 @@ export const createCommerceOrder = functions
               ...supplierSnapshot,
               title,
               image,
-              quantity: 1,
+              quantity,
               baseCostMinor: pricing.baseCostMinor,
               sellPriceMinor: pricing.sellPriceMinor,
               feeMinor: pricing.feeMinor,
@@ -901,6 +902,7 @@ export const createCommerceOrder = functions
           totals: pricing,
           currency: "ZAR",
           amountDueMinor: pricing.amountDueMinor,
+          quantity,
           baseCostMinor: pricing.baseCostMinor,
           sellPriceMinor: pricing.sellPriceMinor,
           feeMinor: pricing.feeMinor,
@@ -916,9 +918,10 @@ export const createCommerceOrder = functions
             source.fulfilmentMode ?? "manual_supplier_order",
           ),
           paymentMethod,
+          requestedPaymentChannel: paymentChannel,
           orderChannel: whatsappBotOrder ? "whatsapp" : "web",
           customerId: whatsappBotOrder ? botCustomerId : null,
-          buyerPaymentPreference: whatsappBotOrder ? manualPaymentOption : null,
+          buyerPaymentPreference: whatsappBotOrder ? paymentChannel : null,
           shippingNotes: String(source.shippingNotes ?? ""),
           status: "pending_payment",
           paymentStatus: digitalPaymentsEnabled
@@ -1019,14 +1022,26 @@ export const createCommerceOrder = functions
               orderRef.id,
               reserved.checkoutToken,
             ),
+            channel: paymentChannel,
           });
           res.status(200).json({
+            orderId: orderRef.id,
+            paymentMethod: "paystack",
+            amountDueMinor: Number(existing.data()?.amountDueMinor ?? 0),
+            reference: orderRef.id.slice(0, 8).toUpperCase(),
             authorizationUrl: initialized.authorizationUrl,
             reused: true,
           });
           return;
         }
-        res.status(200).json({ authorizationUrl, reused: true });
+        res.status(200).json({
+          orderId: orderRef.id,
+          paymentMethod: "paystack",
+          amountDueMinor: Number(existing.data()?.amountDueMinor ?? 0),
+          reference: orderRef.id.slice(0, 8).toUpperCase(),
+          authorizationUrl,
+          reused: true,
+        });
         return;
       }
 
@@ -1055,8 +1070,15 @@ export const createCommerceOrder = functions
         orderId: orderRef.id,
         email: buyer.email,
         callbackUrl: returnUrl,
+        channel: paymentChannel,
       });
-      res.status(200).json({ authorizationUrl: initialized.authorizationUrl });
+      res.status(200).json({
+        orderId: orderRef.id,
+        paymentMethod: "paystack",
+        amountDueMinor: Number(orderData.amountDueMinor ?? 0),
+        reference: orderRef.id.slice(0, 8).toUpperCase(),
+        authorizationUrl: initialized.authorizationUrl,
+      });
     } catch (error) {
       logCommerceError("createCommerceOrder failed", error);
       res.status(publicStatus(error)).json({
@@ -1279,5 +1301,6 @@ export const getCommerceOrderStatus = functions.https.onRequest(
 
 export const commerceApiUrls = {
   createOrder: commerceFunctionUrl("createCommerceOrder"),
+  preparePublicCheckout: commerceFunctionUrl("preparePublicCommerceCheckout"),
   orderStatus: commerceFunctionUrl("getCommerceOrderStatus"),
 };

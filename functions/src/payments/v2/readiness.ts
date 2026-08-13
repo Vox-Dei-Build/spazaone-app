@@ -42,6 +42,20 @@ export function resolvePaymentReadiness(input: {
   if (input.globalCapabilities[input.purpose] !== true) {
     return { enabled: false, reason: "capability_disabled" };
   }
+  // Campaign Credits are purchased from Spaza One and never settle to a
+  // merchant bank account. Requiring a Paystack subaccount here would couple
+  // optional messaging credit to an unrelated settlement destination. A
+  // suspended merchant is still blocked, while a missing per-merchant flag is
+  // treated as the default-on state once the global capability is enabled.
+  if (input.purpose === "campaign_credit") {
+    if (input.merchantStatus === "suspended") {
+      return { enabled: false, reason: "merchant_not_enabled" };
+    }
+    if (input.merchantCapabilities.campaign_credit === false) {
+      return { enabled: false, reason: "merchant_capability_disabled" };
+    }
+    return { enabled: true, reason: "ready" };
+  }
   if (input.merchantStatus !== "enabled") {
     return { enabled: false, reason: "merchant_not_enabled" };
   }

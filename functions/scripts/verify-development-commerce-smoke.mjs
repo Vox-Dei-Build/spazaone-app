@@ -152,6 +152,12 @@ export function validateCommerceSmokeEvidence(input) {
   expect(Number(notification.attempts ?? 0) >= 1, "NOTIFICATION_NOT_ATTEMPTED");
 
   if (flow === "owned_order") {
+    const reservedItem = Array.isArray(reservation.items)
+      ? reservation.items.find((item) => item?.productId === handoff.productId)
+      : null;
+    const reservedQuantity = Number(reservedItem?.quantity);
+    const availableBefore = Number(reservedItem?.availableBefore);
+    const availableAfter = Number(reservedItem?.availableAfter);
     expect(
       intent.businessBinding?.type === "owned_order",
       "ORDER_BINDING_TYPE_MISMATCH",
@@ -169,7 +175,19 @@ export function validateCommerceSmokeEvidence(input) {
       "RESERVATION_ID_MISMATCH",
     );
     expect(
-      Number(product.quantity) === Number(handoff.productQuantityBefore) - 1,
+      Number.isSafeInteger(reservedQuantity) && reservedQuantity === 1,
+      "RESERVATION_ITEM_QUANTITY_MISMATCH",
+    );
+    expect(
+      availableBefore === Number(handoff.productQuantityBefore),
+      "RESERVATION_STOCK_BEFORE_MISMATCH",
+    );
+    expect(
+      availableAfter === availableBefore - reservedQuantity,
+      "RESERVATION_STOCK_AFTER_MISMATCH",
+    );
+    expect(
+      Number(product.quantity) === availableAfter,
       "OWNED_STOCK_QUANTITY_MISMATCH",
     );
   } else if (flow === "account_settlement") {
@@ -253,9 +271,7 @@ async function readEvidence(db, handoff) {
     const [sale, reservation, product] = await Promise.all([
       db.doc(`users/${handoff.merchantId}/sales/${handoff.orderId}`).get(),
       db.doc(`inventoryReservations/${handoff.reservationId}`).get(),
-      db
-        .doc(`users/${handoff.merchantId}/products/dev-seed-owned-product`)
-        .get(),
+      db.doc(`users/${handoff.merchantId}/products/${handoff.productId}`).get(),
     ]);
     evidence.sale = sale.data() ?? {};
     evidence.reservation = reservation.data() ?? {};
@@ -295,6 +311,12 @@ async function run(options) {
     !/^pi_[a-f0-9]{64}$/.test(String(handoff.intentId ?? ""))
   ) {
     throw new Error("COMMERCE_SMOKE_HANDOFF_INVALID");
+  }
+  if (
+    handoff.flow === "owned_order" &&
+    !/^dev-owned-[a-f0-9]{20}$/.test(String(handoff.productId ?? ""))
+  ) {
+    throw new Error("COMMERCE_SMOKE_HANDOFF_PRODUCT_INVALID");
   }
   const app = initializeApp({
     projectId: options.projectId,

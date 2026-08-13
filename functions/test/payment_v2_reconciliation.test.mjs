@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reconcileIntentData } from "../lib/payments/v2/reconciliation.js";
+import {
+  reconcileIntentData,
+  reconciliationOutcome,
+} from "../lib/payments/v2/reconciliation.js";
 
 const balanced = {
   status: "paid",
@@ -53,5 +56,16 @@ test("never treats a locally marked refund as provider-confirmed", () => {
   assert.deepEqual(
     issues.map((issue) => issue.code),
     ["REFUND_NOT_PROVIDER_CONFIRMED"],
+  );
+});
+
+test("a truncated reconciliation window can never report balanced", () => {
+  assert.deepEqual(
+    reconciliationOutcome({ mismatchCount: 0, windowTruncated: true }),
+    { mismatchCount: 1, status: "mismatch" },
+  );
+  assert.deepEqual(
+    reconciliationOutcome({ mismatchCount: 0, windowTruncated: false }),
+    { mismatchCount: 0, status: "balanced" },
   );
 });

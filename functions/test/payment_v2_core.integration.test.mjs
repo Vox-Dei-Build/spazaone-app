@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { after, before, test } from "node:test";
 import admin from "firebase-admin";
 import { buildMoneySnapshot } from "../lib/payments/v2/domain.js";
@@ -30,6 +31,10 @@ import {
   applyVerifiedSupplierPaymentV2,
   supplierPaymentEconomics,
 } from "../lib/payments/v2/supplierOrders.js";
+import {
+  consumeSupplierFunding,
+  reserveSupplierFunding,
+} from "../lib/payments/v2/supplierFunding.js";
 
 const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "");
 const emulatorProject = String(
@@ -42,6 +47,8 @@ if (!emulatorHost || !emulatorProject.startsWith("demo-")) {
 }
 
 const db = admin.firestore();
+const requireModule = createRequire(import.meta.url);
+const axios = requireModule("axios");
 
 async function clear() {
   for (const name of [
@@ -57,6 +64,10 @@ async function clear() {
     "commerceNotificationOutbox",
     "repaymentPlans",
     "supplierFulfilments",
+    "supplierFundingReservations",
+    "supplierFundingState",
+    "supplierIntegrationState",
+    "operationsAlerts",
     "users",
   ]) {
     await db.recursiveDelete(db.collection(name));
@@ -382,9 +393,9 @@ test("a verified mismatched charge is quarantined and refunded at its actual amo
   assert.equal(quarantinedIntent.providerAmountMinor, 10_100);
   assert.equal(quarantinedIntent.requestedRefundMinor, 10_100);
   assert.equal(
-    (
-      await db.doc(`refundCases/${quarantined.refundCaseId}`).get()
-    ).get("refundAmountMinor"),
+    (await db.doc(`refundCases/${quarantined.refundCaseId}`).get()).get(
+      "refundAmountMinor",
+    ),
     10_100,
   );
 
@@ -508,6 +519,10 @@ test("campaign top-up credits exactly once and refund reverses the purchase", as
 test("owned stock is reserved before payment and never decremented twice", async () => {
   const merchantId = "merchant-owned";
   const orderId = "owned-order-1";
+  await db.doc(`users/${merchantId}`).set({
+    name: "Owned Stock Merchant",
+    unreadCount: 0,
+  });
   await db.doc(`users/${merchantId}/products/product-1`).set({
     name: "Reserved product",
     sellingPrice: 50,
@@ -541,6 +556,26 @@ test("owned stock is reserved before payment and never decremented twice", async
       "quantity",
     ),
     3,
+  );
+  assert.equal(
+    (await db.doc(`inventoryReservations/${reserved.reservationId}`).get()).get(
+      "inventorySnapshotVersion",
+    ),
+    1,
+  );
+  assert.deepEqual(
+    (await db.doc(`inventoryReservations/${reserved.reservationId}`).get()).get(
+      "items",
+    ),
+    [
+      {
+        productId: "product-1",
+        quantity: 2,
+        unitAmountMinor: 5_000,
+        availableBefore: 5,
+        availableAfter: 3,
+      },
+    ],
   );
   assert.deepEqual(
     await reserveOwnedInventoryForSale({ merchantId, orderId }),
@@ -774,7 +809,13 @@ test("supplier payment creates exactly one queued CJ fulfilment", async () => {
     safetyMarginMinor: 100,
     status: "pending_payment",
     paymentStatus: "pending",
-    payment: { provider: "paystack", reference: "p2-supplier-order" },
+    requestedPaymentChannel: "eft",
+    quantity: 1,
+    payment: {
+      provider: "paystack",
+      reference: "p2-supplier-order",
+      channel: "eft",
+    },
     deliveryAddress: {
       postalCode: "2000",
       province: "Gauteng",
@@ -841,4 +882,84 @@ test("supplier payment creates exactly one queued CJ fulfilment", async () => {
     (await db.doc(`commerceOrders/${orderId}`).get()).get("paymentStatus"),
     "paid",
   );
+});
+
+test("concurrent supplier funding reservations cannot overcommit CJ balance", async () => {
+  const originalAdapter = axios.defaults.adapter;
+  process.env.CJ_API_KEY = "emulator-cj-api-key";
+  axios.defaults.adapter = async (config) => {
+    const url = String(config.url ?? "");
+    if (url.includes("/authentication/getAccessToken")) {
+      return {
+        data: {
+          result: true,
+          data: {
+            accessToken: "emulator-cj-access-token",
+            accessTokenExpiryDate: "2099-01-01T00:00:00.000Z",
+          },
+        },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      };
+    }
+    if (url === "/shopping/pay/getBalance") {
+      return {
+        data: { result: true, data: { amount: "10.00" } },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      };
+    }
+    throw new Error(`Unexpected CJ test request: ${url}`);
+  };
+  try {
+    const attempts = await Promise.allSettled([
+      reserveSupplierFunding({
+        orderId: "funding-order-a",
+        intentId: "funding-intent-a",
+        requiredUsdMinor: 600,
+      }),
+      reserveSupplierFunding({
+        orderId: "funding-order-b",
+        intentId: "funding-intent-b",
+        requiredUsdMinor: 600,
+      }),
+    ]);
+    const fulfilled = attempts.filter(
+      (result) => result.status === "fulfilled",
+    );
+    const rejected = attempts.filter((result) => result.status === "rejected");
+    assert.equal(fulfilled.length, 1);
+    assert.equal(rejected.length, 1);
+    assert.match(String(rejected[0].reason), /CJ_BALANCE_INSUFFICIENT/);
+    assert.equal(
+      (await db.doc("supplierFundingState/cj").get()).get(
+        "outstandingUsdMinor",
+      ),
+      600,
+    );
+    const alerts = await db
+      .collection("operationsAlerts")
+      .where("type", "==", "supplier_funding_insufficient")
+      .get();
+    assert.equal(alerts.size, 1);
+    assert.equal(alerts.docs[0].get("owner"), "operations");
+    assert.equal(alerts.docs[0].get("requiredUsdMinor"), 600);
+    assert.equal(alerts.docs[0].get("availableUsdMinor"), 400);
+    const reservationId = fulfilled[0].value.reservationId;
+    assert.equal(await consumeSupplierFunding(reservationId), true);
+    assert.equal(await consumeSupplierFunding(reservationId), true);
+    assert.equal(
+      (await db.doc("supplierFundingState/cj").get()).get(
+        "outstandingUsdMinor",
+      ),
+      0,
+    );
+  } finally {
+    axios.defaults.adapter = originalAdapter;
+    delete process.env.CJ_API_KEY;
+  }
 });

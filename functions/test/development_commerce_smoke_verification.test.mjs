@@ -22,6 +22,7 @@ test("owned-order evidence requires exactly one event and a committed reservatio
     flow: "owned_order",
     merchantId: "dev-seed-merchant",
     orderId: "order-1",
+    productId: "dev-owned-0123456789abcdef0123",
     reservationId: "reservation-1",
     intentId: "intent-1",
     reference: "reference-1",
@@ -75,7 +76,18 @@ test("owned-order evidence requires exactly one event and a committed reservatio
       paymentStatus: "paid",
       paymentIntentId: "intent-1",
     },
-    reservation: { status: "committed", reservationId: "reservation-1" },
+    reservation: {
+      status: "committed",
+      reservationId: "reservation-1",
+      items: [
+        {
+          productId: "dev-owned-0123456789abcdef0123",
+          quantity: 1,
+          availableBefore: 20,
+          availableAfter: 19,
+        },
+      ],
+    },
     product: { quantity: 19 },
     ledger: {},
     paystackLedgerCount: 0,

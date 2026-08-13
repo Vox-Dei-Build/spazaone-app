@@ -35,7 +35,9 @@ export const OWNED_ORDER_CHANNELS = [
 ] as const;
 export type OwnedOrderChannel = (typeof OWNED_ORDER_CHANNELS)[number];
 
-function isOwnedOrderChannel(value: unknown): value is OwnedOrderChannel {
+export function isOwnedOrderChannel(
+  value: unknown,
+): value is OwnedOrderChannel {
   return OWNED_ORDER_CHANNELS.includes(value as OwnedOrderChannel);
 }
 
@@ -149,6 +151,16 @@ export const createOwnedOrderPaymentV2 = functions
         return;
       }
       const saleData = sale.data() ?? {};
+      if (
+        verifyBotRequest(req) &&
+        String(saleData.customerId ?? "") !==
+          String(req.body?.customerId ?? "").trim()
+      ) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "This WhatsApp customer does not own that order.",
+        );
+      }
       if (
         String(saleData.paymentRail ?? "") !== "paystack_v2" ||
         String(saleData.status ?? "") !== "pending_payment" ||

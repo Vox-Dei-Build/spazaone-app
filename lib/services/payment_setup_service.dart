@@ -65,12 +65,18 @@ class PaymentSetupService {
   static Future<Map<String, dynamic>> prepareSettlementProfile({
     required String merchantId,
     required String bankingDetailsId,
+    required String accountType,
+    required String documentType,
+    required String documentNumber,
   }) async {
     final response = await SecureFunctionClient().post(
       FunctionEndpoints.https('prepareMerchantSettlementProfileV2'),
       {
         'merchantId': merchantId,
         'bankingDetailsId': bankingDetailsId,
+        'accountType': accountType,
+        'documentType': documentType,
+        'documentNumber': documentNumber,
       },
     );
     Map<String, dynamic> body = const {};

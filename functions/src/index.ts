@@ -40,7 +40,12 @@ export {
   reviewMerchantSettlementProfileV2,
 } from "./payments/v2/merchantProfiles";
 export { getMerchantPaymentOverviewV2 } from "./payments/v2/merchantOverview";
-export { retrySupplierFulfilmentsV2 } from "./payments/v2/supplierOrders";
+export {
+  reconcileSupplierTrackingV2,
+  reconcileSupplierTrackingV2OnDemand,
+  retrySupplierFulfilmentsV2,
+} from "./payments/v2/supplierOrders";
+export { expireSupplierFundingReservations } from "./payments/v2/supplierFunding";
 export { retryPaystackRefundsV2 } from "./payments/v2/refunds";
 export {
   createAccountSettlementLinkV2,
@@ -130,7 +135,10 @@ export {
   verifyCommercePaystackTransaction,
   getCommerceOrderStatus,
 } from "./commerce/payment";
-export { prepareCommerceCheckout } from "./commerce/prepareCommerceCheckout";
+export {
+  prepareCommerceCheckout,
+  preparePublicCommerceCheckout,
+} from "./commerce/prepareCommerceCheckout";
 // Keep the Paystack endpoint deployed for forward compatibility, but every
 // commerce payment transition remains fail-closed behind
 // COMMERCE_PAYMENTS_ENABLED and the stored provider/reference binding.

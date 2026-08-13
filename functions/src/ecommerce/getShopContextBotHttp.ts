@@ -6,6 +6,33 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
 import { requireBotRequest } from "../security/requestAuth";
+import { paymentReadiness } from "../payments/v2/readiness";
+
+const BUYER_PAYMENT_CHANNELS = ["card", "eft", "capitec_pay", "qr"] as const;
+
+async function buyerSafePaymentsV2(merchantId: string) {
+  const [campaignCredits, ownedOrders, accountPayments, supplierOrders] =
+    await Promise.all([
+      paymentReadiness({ merchantId, purpose: "campaign_credit" }),
+      paymentReadiness({ merchantId, purpose: "merchant_order" }),
+      paymentReadiness({ merchantId, purpose: "account_settlement" }),
+      paymentReadiness({ merchantId, purpose: "supplier_order" }),
+    ]);
+  const safe = (value: Awaited<ReturnType<typeof paymentReadiness>>) => ({
+    ready: value.enabled,
+    reason: value.reason,
+    channels: value.enabled ? [...BUYER_PAYMENT_CHANNELS] : [],
+  });
+  return {
+    schemaVersion: 2,
+    campaignCredits: safe(campaignCredits),
+    ownedOrders: safe(ownedOrders),
+    accountPayments: safe(accountPayments),
+    supplierOrders: safe(supplierOrders),
+    manualTransferForOwnedOrders: !ownedOrders.enabled,
+    supplierOrdersRequireOnlinePayment: true,
+  };
+}
 
 function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   const pa = a.split(".").map(Number);
@@ -249,6 +276,7 @@ export const getShopContextBotHttp = functions
         });
       }
 
+      const paymentsV2 = await buyerSafePaymentsV2(mSnap.id);
       const merchant = {
         id: mSnap.id,
         name: m.name,
@@ -258,7 +286,11 @@ export const getShopContextBotHttp = functions
         whatsappEligibleOverride: !!m.whatsappEligibleOverride,
         forceEnableUntil: m.forceEnableUntil || null, // Firestore Timestamp or null
         minRequiredVersion: minVersion,
-        banking,
+        // Direct WhatsApp must stop advertising manual EFT as soon as the
+        // owned-order online capability is ready. The app's separate manual
+        // Add Payment/Transfer workflows are unaffected by this bot surface.
+        banking: paymentsV2.manualTransferForOwnedOrders ? banking : null,
+        paymentsV2,
       };
       console.log("Merchant loaded", {
         mid: merchant.id,

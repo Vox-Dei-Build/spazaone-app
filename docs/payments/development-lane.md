@@ -52,7 +52,7 @@ SPAZAONE_ENVIRONMENT=development
 SPAZAONE_FIREBASE_PROJECT_ID=spazaone-dev
 PAYSTACK_PROVIDER_MODE=test
 PAYMENTS_V2_MASTER_ENABLED=true
-COMMERCE_PAYMENTS_ENABLED=false
+COMMERCE_PAYMENTS_ENABLED=true
 CJ_SANDBOX_MODE=true
 CJ_LIVE_FULFILMENT_ENABLED=false
 BOTPRESS_PROVIDER_MODE=test
@@ -66,11 +66,11 @@ provider's secure configuration. Do not place them in source control or pass
 them in shell arguments. Development rejects a live Paystack key; production
 rejects a test key.
 
-The development Payments V2 process-level master is on so sandbox transactions
-can be exercised. This does not make a payment public: the global capability
-map remains empty by default and each synthetic merchant must be enabled
-independently for the exact purpose under test. Production activation remains
-separate and dark.
+The development Payments V2 and supplier-commerce process-level gates are on
+so sandbox transactions can be exercised. This does not make a payment public:
+the global capability map remains empty by default and each synthetic merchant
+must be enabled independently for the exact purpose under test. CJ remains in
+sandbox mode and production activation remains separate and dark.
 
 ## Local verification
 
@@ -142,6 +142,38 @@ npm --prefix functions run development:campaign-smoke:verify -- \
   recorded exactly one immutable event and passed the durable verifier.
 - No live key, live charge or production Firebase resource was used.
 
+### Commerce candidate evidence — 13 August 2026
+
+- Cloud seed `commerce-20260813-b`, additive migration
+  `payments-v2-20260813-a`, 50-product bot catalogue
+  `bot-catalog-20260813-a`, and payment-capability setup
+  `commerce-payments-20260813-b` all applied and verified in `spazaone-dev`.
+- The cloud failure rehearsal `commerce-failures-20260813-b` proved invalid
+  bot authority, the kill switch, an unverified settlement destination,
+  overpayment, an invalid channel and unavailable inventory all stop before a
+  provider charge.
+- Account-payment run `account-settlement-20260813-b` charged R40.00 in
+  Paystack Test Mode and reconciled one intent, one signed event, one customer
+  ledger movement, one settlement, one required notification and zero refunds.
+- Owned-stock run `owned-order-20260813-d` charged R16.00 in Paystack Test Mode
+  and reconciled one intent, one signed event, one settlement, one required
+  notification, one committed reservation, exactly one stock decrement and
+  zero refunds. Reservations now record immutable `availableBefore` and
+  `availableAfter` quantities, and every cloud smoke run uses an isolated
+  synthetic product so interrupted runs cannot contaminate later evidence.
+- The supplier rehearsal stopped before Paystack initialization because the
+  CJ sandbox account could not cover the USD 5.76 supplier commitment. It
+  created one immutable internal intent in `created` state but no funding
+  reservation, provider reference or charge. The buyer-safe response now
+  states that supplier checkout is temporarily unavailable and that no charge
+  occurred, without exposing provider funding details.
+- Flutter tests passed 291/291; Functions quality gates passed 149/149;
+  Firestore rules passed 14/14; Payments V2 emulator integration passed 10/10;
+  Botpress tests passed 332/332; both production and development ADK builds
+  passed. Android development APK and unsigned iOS development app builds also
+  completed. `flutter analyze` has no warnings or errors and retains 273
+  pre-existing informational lints.
+
 Guarded development deployments use the separately registered target:
 
 ```sh
@@ -173,8 +205,9 @@ supplied Firebase project or account override.
 - [x] Storage initialized in private-by-default mode and repository Storage
   rules deployed.
 - [x] Speech-to-Text enabled for Botpress voice QA.
-- [x] Complete dark backend deployed: 114 Functions with Payments V2,
-  commerce, reconciliation, notification and voice surfaces.
+- [x] Complete dark backend deployed with Payments V2, commerce,
+  reconciliation, notification and voice surfaces. Re-count from the exact
+  candidate at deploy time rather than relying on a stale fixed total.
 - [x] Paystack business `1158209` visibly verified as Approved and the Test
   Webhook routed to
   `https://us-central1-spazaone-dev.cloudfunctions.net/verifyPaystackTransaction`.
@@ -201,7 +234,15 @@ supplied Firebase project or account override.
   release dependency.
 - [x] Synthetic seed and migration rehearsal completed in the cloud project,
   including verified idempotent replay.
-- [ ] Android and iOS device checkout/webhook/refund and WhatsApp text/voice
-  journeys verified.
+- [x] Android development APK and unsigned iOS device app produced from
+  `4.8.0+88`; app tests and environment fail-closed checks pass.
+- [x] Paystack Test hosted checkout/webhook/reconciliation verified for
+  Campaign Credits, owned stock and account settlement.
+- [ ] Android and iOS exact signed-candidate checkout/refund journeys verified.
+- [ ] WhatsApp text/voice journeys verified against the exact candidate and
+  the isolated SpazaOne Development bot.
+- [ ] Fund the CJ sandbox account and complete supplier create/pay/tracking,
+  deterministic failure/refund and ambiguous-provider recovery evidence.
 
-Public payment capabilities remain disabled until every item is complete.
+Production payment capabilities remain disabled until every item is complete.
+Only the named synthetic development merchant has development capabilities.
