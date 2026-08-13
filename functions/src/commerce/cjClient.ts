@@ -877,8 +877,35 @@ export async function quoteCjVariant(input: {
   });
 }
 
-function cjSandboxMode(): boolean {
+export function cjSandboxMode(): boolean {
   return String(process.env.CJ_SANDBOX_MODE ?? "true").toLowerCase() === "true";
+}
+
+/**
+ * CJ sandbox orders use provider-supported simulated payment and never deduct
+ * the account's real balance. Keep a finite, server-only capacity so the same
+ * reservation/locking code is still exercised without representing the real
+ * provider balance as sandbox funding.
+ */
+export function cjSandboxFundingCapacityUsdMinor(): number | null {
+  if (!cjSandboxMode()) return null;
+  const environment = String(
+    process.env.SPAZAONE_ENVIRONMENT ?? "",
+  ).toLowerCase();
+  if (!new Set(["development", "local"]).has(environment)) {
+    throw new Error("CJ_SANDBOX_ENVIRONMENT_INVALID");
+  }
+  const capacity = Number(
+    process.env.CJ_SANDBOX_FUNDING_CAPACITY_USD_MINOR ?? 1_000_000,
+  );
+  if (
+    !Number.isSafeInteger(capacity) ||
+    capacity < 1 ||
+    capacity > 100_000_000
+  ) {
+    throw new Error("CJ_SANDBOX_FUNDING_CAPACITY_INVALID");
+  }
+  return capacity;
 }
 
 function requireCjPurchaseAuthority(): boolean {
@@ -893,8 +920,10 @@ function requireCjPurchaseAuthority(): boolean {
   return sandbox;
 }
 
-/** Returns the pre-funded CJ USD balance in integer cents. */
+/** Returns live balance or the explicitly labelled sandbox capacity in cents. */
 export async function getCjBalanceUsdMinor(): Promise<number> {
+  const sandboxCapacity = cjSandboxFundingCapacityUsdMinor();
+  if (sandboxCapacity != null) return sandboxCapacity;
   const data = object(
     await cjRequest({
       method: "GET",

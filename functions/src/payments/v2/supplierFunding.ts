@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { getCjBalanceUsdMinor } from "../../commerce/cjClient";
+import { cjSandboxMode, getCjBalanceUsdMinor } from "../../commerce/cjClient";
 import {
   requireMinorUnits,
   requirePositiveMinorUnits,
@@ -60,6 +60,9 @@ async function upsertReservation(input: {
   // The provider call happens immediately before the serialized state update;
   // stale cached balances are never trusted for a new or enlarged commitment.
   const providerBalanceUsdMinor = await getCjBalanceUsdMinor();
+  const providerBalanceMode = cjSandboxMode()
+    ? "sandbox_simulated"
+    : "provider_live";
   const observedAtMs = Date.now();
   const reservationId = supplierFundingReservationId(input.orderId);
   const reservationRef = db.doc(`supplierFundingReservations/${reservationId}`);
@@ -99,6 +102,7 @@ async function upsertReservation(input: {
         stateRef,
         {
           provider: "cj_dropshipping",
+          providerBalanceMode,
           providerBalanceUsdMinor,
           providerBalanceObservedAtMs: observedAtMs,
           outstandingUsdMinor: outstanding,
@@ -141,6 +145,7 @@ async function upsertReservation(input: {
       stateRef,
       {
         provider: "cj_dropshipping",
+        providerBalanceMode,
         providerBalanceUsdMinor,
         providerBalanceObservedAtMs: observedAtMs,
         outstandingUsdMinor: nextOutstanding,
@@ -158,6 +163,7 @@ async function upsertReservation(input: {
         orderId: input.orderId,
         intentId: input.intentId ?? existingData.intentId ?? null,
         provider: "cj_dropshipping",
+        providerBalanceMode,
         requiredUsdMinor: required,
         status: "active",
         mode: input.mode,

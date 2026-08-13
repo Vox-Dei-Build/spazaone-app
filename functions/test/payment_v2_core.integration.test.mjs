@@ -889,7 +889,10 @@ test("supplier payment creates exactly one queued CJ fulfilment", async () => {
 
 test("concurrent supplier funding reservations cannot overcommit CJ balance", async () => {
   const originalAdapter = axios.defaults.adapter;
+  process.env.SPAZAONE_ENVIRONMENT = "local";
   process.env.CJ_API_KEY = "emulator-cj-api-key";
+  process.env.CJ_SANDBOX_MODE = "true";
+  process.env.CJ_SANDBOX_FUNDING_CAPACITY_USD_MINOR = "1000";
   axios.defaults.adapter = async (config) => {
     const url = String(config.url ?? "");
     if (url.includes("/authentication/getAccessToken")) {
@@ -901,15 +904,6 @@ test("concurrent supplier funding reservations cannot overcommit CJ balance", as
             accessTokenExpiryDate: "2099-01-01T00:00:00.000Z",
           },
         },
-        status: 200,
-        statusText: "OK",
-        headers: {},
-        config,
-      };
-    }
-    if (url === "/shopping/pay/getBalance") {
-      return {
-        data: { result: true, data: { amount: "10.00" } },
         status: 200,
         statusText: "OK",
         headers: {},
@@ -963,7 +957,10 @@ test("concurrent supplier funding reservations cannot overcommit CJ balance", as
     );
   } finally {
     axios.defaults.adapter = originalAdapter;
+    delete process.env.SPAZAONE_ENVIRONMENT;
     delete process.env.CJ_API_KEY;
+    delete process.env.CJ_SANDBOX_MODE;
+    delete process.env.CJ_SANDBOX_FUNDING_CAPACITY_USD_MINOR;
   }
 });
 

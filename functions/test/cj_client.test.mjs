@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   calculateCjRequestSlot,
   catalogProductWithZaDelivery,
+  cjSandboxFundingCapacityUsdMinor,
   convertUsdMinorToZarMinor,
   createRequestScheduler,
   normalizeCjAccessToken,
@@ -97,6 +98,38 @@ test("CJ USD conversion uses integer minor units and the configured reserve", ()
     () => convertUsdMinorToZarMinor(100, Number.NaN, 300),
     /CJ_CONVERSION_INVALID/,
   );
+});
+
+test("CJ sandbox funding uses finite simulated capacity only outside production", () => {
+  const previous = {
+    environment: process.env.SPAZAONE_ENVIRONMENT,
+    sandbox: process.env.CJ_SANDBOX_MODE,
+    capacity: process.env.CJ_SANDBOX_FUNDING_CAPACITY_USD_MINOR,
+  };
+  try {
+    process.env.SPAZAONE_ENVIRONMENT = "development";
+    process.env.CJ_SANDBOX_MODE = "true";
+    process.env.CJ_SANDBOX_FUNDING_CAPACITY_USD_MINOR = "576";
+    assert.equal(cjSandboxFundingCapacityUsdMinor(), 576);
+
+    process.env.SPAZAONE_ENVIRONMENT = "production";
+    assert.throws(
+      () => cjSandboxFundingCapacityUsdMinor(),
+      /CJ_SANDBOX_ENVIRONMENT_INVALID/,
+    );
+
+    process.env.CJ_SANDBOX_MODE = "false";
+    assert.equal(cjSandboxFundingCapacityUsdMinor(), null);
+  } finally {
+    for (const [key, value] of Object.entries({
+      SPAZAONE_ENVIRONMENT: previous.environment,
+      CJ_SANDBOX_MODE: previous.sandbox,
+      CJ_SANDBOX_FUNDING_CAPACITY_USD_MINOR: previous.capacity,
+    })) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("CJ catalog normalization keeps only server-recognized product fields", () => {
