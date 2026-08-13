@@ -58,8 +58,17 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isStoreMember(storeId);
 
-      match /{document=**} {
-        allow read, write: if isStoreMember(storeId);
+      // Settlement destinations are more sensitive than ordinary store data.
+      // Operators may see the masked app projection but cannot alter the raw
+      // legacy record that an owner/admin later submits for verification.
+      match /bankingDetails/{bankingDetailsId} {
+        allow read: if isStoreMember(storeId);
+        allow create, update, delete: if isStoreManager(storeId);
+      }
+
+      match /{collection}/{document=**} {
+        allow read, write: if collection != 'bankingDetails' &&
+          isStoreMember(storeId);
       }
     }
 
@@ -225,6 +234,10 @@ service cloud.firestore {
     }
 
     match /paymentConfiguration/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentSecurityBudgets/{document=**} {
       allow read, write: if false;
     }
 

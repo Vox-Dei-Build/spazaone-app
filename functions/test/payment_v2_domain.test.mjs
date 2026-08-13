@@ -16,8 +16,10 @@ import {
 import { resolvePaymentReadiness } from "../lib/payments/v2/readiness.js";
 import { requireAdminAdjustmentMinor } from "../lib/payments/v2/admin.js";
 import {
+  assertBankAccountOnlyVerificationPayload,
   maskedAccountHolderName,
   protectedIdentityFingerprint,
+  settlementVerificationBudgetDecision,
   settlementDestinationRetirementDecision,
   settlementProfileAction,
   settlementVerificationDecision,
@@ -308,6 +310,85 @@ test("settlement setup accepts only matching personal and business evidence", ()
         documentNumber: "9001015009087",
       }),
     /BANK_DOCUMENT_TYPE_INVALID/,
+  );
+});
+
+test("settlement verification rejects every card-shaped request surface", () => {
+  assert.doesNotThrow(() =>
+    assertBankAccountOnlyVerificationPayload({
+      merchantId: "merchant-1",
+      bankingDetailsId: "bank-1",
+      verificationType: "bank_account",
+    }),
+  );
+  for (const payload of [
+    { cardNumber: "4084084084084081" },
+    { pan: "4084084084084081" },
+    { cvv: "408" },
+    { instrumentType: "credit_card" },
+    { verificationType: "card" },
+  ]) {
+    assert.throws(
+      () => assertBankAccountOnlyVerificationPayload(payload),
+      /BANK_CARD_INPUT_REJECTED/,
+    );
+  }
+});
+
+test("settlement verification has merchant, lifetime and platform budgets", () => {
+  assert.deepEqual(
+    settlementVerificationBudgetDecision({
+      merchantDayAttempts: 0,
+      merchantLifetimeAttempts: 0,
+      platformDayAttempts: 0,
+      suspended: false,
+    }),
+    { allowed: true, reason: "allowed", suspendAfterAttempt: false },
+  );
+  assert.equal(
+    settlementVerificationBudgetDecision({
+      merchantDayAttempts: 2,
+      merchantLifetimeAttempts: 2,
+      platformDayAttempts: 2,
+      suspended: false,
+    }).reason,
+    "BANK_VALIDATION_DAILY_LIMIT",
+  );
+  assert.equal(
+    settlementVerificationBudgetDecision({
+      merchantDayAttempts: 0,
+      merchantLifetimeAttempts: 6,
+      platformDayAttempts: 2,
+      suspended: false,
+    }).reason,
+    "BANK_VALIDATION_LIFETIME_LIMIT",
+  );
+  assert.deepEqual(
+    settlementVerificationBudgetDecision({
+      merchantDayAttempts: 0,
+      merchantLifetimeAttempts: 1,
+      platformDayAttempts: 9,
+      suspended: false,
+    }),
+    { allowed: true, reason: "allowed", suspendAfterAttempt: true },
+  );
+  assert.equal(
+    settlementVerificationBudgetDecision({
+      merchantDayAttempts: 0,
+      merchantLifetimeAttempts: 1,
+      platformDayAttempts: 10,
+      suspended: false,
+    }).reason,
+    "BANK_VALIDATION_PLATFORM_LIMIT",
+  );
+  assert.equal(
+    settlementVerificationBudgetDecision({
+      merchantDayAttempts: 0,
+      merchantLifetimeAttempts: 1,
+      platformDayAttempts: 0,
+      suspended: true,
+    }).reason,
+    "BANK_VALIDATION_SUSPENDED",
   );
 });
 

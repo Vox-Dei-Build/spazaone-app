@@ -94,3 +94,23 @@ test("bot-callable payment entrypoints bind the bot secret", () => {
     assert.match(binding, /runWith\(\{ secrets: \[[^\]]*"PASELLA_BOT_TOKEN"/);
   }
 });
+
+test("billable settlement verification is app-attested and bank-only", () => {
+  const source = readFileSync(
+    join(sourceRoot, "payments/v2/merchantProfiles.ts"),
+    "utf8",
+  );
+  const start = source.indexOf(
+    "export const prepareMerchantSettlementProfileV2",
+  );
+  assert.notEqual(start, -1);
+  const endpoint = source.slice(start, start + 4_000);
+  assert.match(endpoint, /requireAppCheck:\s*true/);
+  assert.match(
+    endpoint,
+    /assertStoreAccess\(uid, merchantId, \["owner", "admin"\]\)/,
+  );
+  assert.match(endpoint, /assertBankAccountOnlyVerificationPayload/);
+  assert.match(source, /https:\/\/api\.paystack\.co\/bank\/validate/);
+  assert.doesNotMatch(source, /decision\/bin|authorization\/verify|\/card\//);
+});

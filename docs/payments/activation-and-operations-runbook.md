@@ -92,10 +92,39 @@ programme.
 - Full identity, passport and business-registration numbers are transient and
   never stored. The server retains a keyed fingerprint, account/document type,
   verification flags, masked account holder and account last four only.
-- Validation is deduplicated and limited to three attempts per merchant per
-  hour. Fully verified, open, credit-accepting, holder-matched, older first
+- Validation is deduplicated and protected by the billable-verification limits
+  below. Fully verified, open, credit-accepting, holder-matched, older first
   destinations may auto-approve. Exceptions and every bank change require
   audited manual review.
+
+### Billable-verification fraud controls
+
+Paystack charges R3 for each successful South African Account Validation API
+call. Treat this as a billable fraud surface, even though it verifies bank
+accounts rather than charging or validating cards.
+
+- The endpoint accepts only a server-loaded saved bank account and explicitly
+  rejects card/PAN/BIN/CVV/expiry/authorization fields or a card instrument
+  type. No card BIN, card authorization or card verification API is called.
+- A valid Firebase ID token and valid App Check attestation are both required.
+  Only the merchant owner or an active store admin may initiate validation;
+  ordinary operators cannot.
+- Exact active or pending destinations deduplicate before another validation.
+- Limits are two provider attempts per merchant per UTC day, six per merchant
+  lifetime before support review and ten for the entire platform per UTC day.
+  At the current published tariff this bounds the worst-case daily successful
+  validation exposure to R30.
+- The seventh platform attempt opens an operations warning. The tenth opens a
+  critical alert and automatically sets
+  `settlementVerificationSuspended=true`; further attempts fail before Paystack.
+- Attempts, maximum exposure and provider-accepted estimated cost are stored in
+  server-only `paymentSecurityBudgets`; no client can alter the counters.
+- Only the request that acquired the serialized verification claim may release
+  or fail it, preventing concurrent replay from clearing another attempt’s
+  lease.
+- Resumption requires an authenticated `spazaAdmin` configuration action with
+  an audit reason. Never lift the circuit breaker without reviewing merchant,
+  device/App Check and provider-billing evidence.
 
 ## Reconciliation evidence
 

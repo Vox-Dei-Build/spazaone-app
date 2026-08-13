@@ -256,7 +256,12 @@ export const setGlobalPaymentConfigurationV2 = functions.https.onCall(
       requestedCapabilities.map((purpose: PaymentPurpose) => [purpose, true]),
     );
     const emergencySuspended = data?.emergencySuspended === true;
+    const requestedSettlementVerificationSuspended =
+      typeof data?.settlementVerificationSuspended === "boolean"
+        ? data.settlementVerificationSuspended
+        : undefined;
     const configRef = db.doc("paymentConfiguration/global");
+    let resultingSettlementVerificationSuspended = false;
     const auditId = stableDocumentId("audit", [
       "global",
       adminUid,
@@ -268,11 +273,23 @@ export const setGlobalPaymentConfigurationV2 = functions.https.onCall(
       const current = await tx.get(configRef);
       const previous = current.data() ?? {};
       const now = FieldValue.serverTimestamp();
+      const settlementVerificationSuspended =
+        requestedSettlementVerificationSuspended ??
+        previous.settlementVerificationSuspended === true;
+      resultingSettlementVerificationSuspended =
+        settlementVerificationSuspended;
       tx.set(
         configRef,
         {
           capabilities,
           emergencySuspended,
+          settlementVerificationSuspended,
+          ...(requestedSettlementVerificationSuspended === false
+            ? {
+                settlementVerificationSuspendedReason: FieldValue.delete(),
+                settlementVerificationSuspendedAt: FieldValue.delete(),
+              }
+            : {}),
           schemaVersion: 2,
           updatedAt: now,
           updatedBy: adminUid,
@@ -289,10 +306,17 @@ export const setGlobalPaymentConfigurationV2 = functions.https.onCall(
         nextCapabilities: capabilities,
         previousEmergencySuspended: previous.emergencySuspended === true,
         nextEmergencySuspended: emergencySuspended,
+        previousSettlementVerificationSuspended:
+          previous.settlementVerificationSuspended === true,
+        nextSettlementVerificationSuspended: settlementVerificationSuspended,
         reason,
         createdAt: now,
       });
     });
-    return { capabilities, emergencySuspended };
+    return {
+      capabilities,
+      emergencySuspended,
+      settlementVerificationSuspended: resultingSettlementVerificationSuspended,
+    };
   },
 );

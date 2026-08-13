@@ -13,7 +13,26 @@ const SETTLEMENT_CAPABILITIES: PaymentPurpose[] = [
   "account_settlement",
 ];
 const VALIDATION_LEASE_MS = 45_000;
-const MAX_VALIDATIONS_PER_WINDOW = 3;
+const MAX_VALIDATIONS_PER_MERCHANT_DAY = 2;
+const MAX_VALIDATIONS_PER_MERCHANT_LIFETIME = 6;
+const MAX_VALIDATIONS_PER_PLATFORM_DAY = 10;
+const VALIDATION_PROVIDER_COST_MINOR = 300;
+const VALIDATION_BUDGET_WARNING_ATTEMPTS = 7;
+
+const FORBIDDEN_CARD_FIELDS = [
+  "card",
+  "cardNumber",
+  "card_number",
+  "pan",
+  "bin",
+  "cvv",
+  "cvc",
+  "expiry",
+  "expiryMonth",
+  "expiryYear",
+  "authorizationCode",
+  "authorization_code",
+] as const;
 
 type AccountType = "personal" | "business";
 type DocumentType =
@@ -28,6 +47,82 @@ type VerificationFlags = {
   accountHolderMatch: boolean;
   accountOpenForMoreThanThreeMonths: boolean;
 };
+
+export function assertBankAccountOnlyVerificationPayload(
+  payload: unknown,
+): void {
+  const value =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : {};
+  const includesCardField = FORBIDDEN_CARD_FIELDS.some((field) => {
+    const candidate = value[field];
+    return candidate !== undefined && candidate !== null && candidate !== "";
+  });
+  const instrument = String(
+    value.instrumentType ??
+      value.paymentInstrument ??
+      value.verificationType ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  if (includesCardField || instrument.includes("card")) {
+    throw new Error("BANK_CARD_INPUT_REJECTED");
+  }
+}
+
+export function settlementVerificationBudgetDecision(input: {
+  merchantDayAttempts: number;
+  merchantLifetimeAttempts: number;
+  platformDayAttempts: number;
+  suspended: boolean;
+}): { allowed: boolean; reason: string; suspendAfterAttempt: boolean } {
+  const counters = [
+    input.merchantDayAttempts,
+    input.merchantLifetimeAttempts,
+    input.platformDayAttempts,
+  ];
+  if (
+    counters.some((counter) => !Number.isSafeInteger(counter) || counter < 0)
+  ) {
+    throw new Error("BANK_VALIDATION_BUDGET_INVALID");
+  }
+  if (input.suspended) {
+    return {
+      allowed: false,
+      reason: "BANK_VALIDATION_SUSPENDED",
+      suspendAfterAttempt: false,
+    };
+  }
+  if (input.merchantDayAttempts >= MAX_VALIDATIONS_PER_MERCHANT_DAY) {
+    return {
+      allowed: false,
+      reason: "BANK_VALIDATION_DAILY_LIMIT",
+      suspendAfterAttempt: false,
+    };
+  }
+  if (input.merchantLifetimeAttempts >= MAX_VALIDATIONS_PER_MERCHANT_LIFETIME) {
+    return {
+      allowed: false,
+      reason: "BANK_VALIDATION_LIFETIME_LIMIT",
+      suspendAfterAttempt: false,
+    };
+  }
+  if (input.platformDayAttempts >= MAX_VALIDATIONS_PER_PLATFORM_DAY) {
+    return {
+      allowed: false,
+      reason: "BANK_VALIDATION_PLATFORM_LIMIT",
+      suspendAfterAttempt: false,
+    };
+  }
+  return {
+    allowed: true,
+    reason: "allowed",
+    suspendAfterAttempt:
+      input.platformDayAttempts + 1 >= MAX_VALIDATIONS_PER_PLATFORM_DAY,
+  };
+}
 
 export function settlementVerificationDecision(flags: VerificationFlags): {
   eligible: boolean;
@@ -221,6 +316,26 @@ function publicError(error: unknown): { status: number; message: string } {
       429,
       "Too many verification attempts. Try again later or contact support.",
     ],
+    BANK_VALIDATION_DAILY_LIMIT: [
+      429,
+      "The daily bank-verification limit was reached. Contact support if the details must be corrected today.",
+    ],
+    BANK_VALIDATION_LIFETIME_LIMIT: [
+      429,
+      "Bank verification needs a support review before another attempt.",
+    ],
+    BANK_VALIDATION_PLATFORM_LIMIT: [
+      503,
+      "Bank verification is temporarily paused for a security review.",
+    ],
+    BANK_VALIDATION_SUSPENDED: [
+      503,
+      "Bank verification is temporarily paused for a security review.",
+    ],
+    BANK_CARD_INPUT_REJECTED: [
+      400,
+      "Use bank account details for settlements. Card details are not accepted here.",
+    ],
     BANK_VALIDATION_ALREADY_PROCESSING: [
       409,
       "This account verification is already processing.",
@@ -316,12 +431,16 @@ export const prepareMerchantSettlementProfileV2 = functions
     }
     let profileRef: FirebaseFirestore.DocumentReference | undefined;
     let claimId = "";
+    let claimAcquired = false;
     let providerStage: "none" | "validating" | "creating_subaccount" = "none";
     try {
-      const uid = await authenticateFirebaseRequest(req, res);
+      const uid = await authenticateFirebaseRequest(req, res, {
+        requireAppCheck: true,
+      });
       if (!uid) return;
+      assertBankAccountOnlyVerificationPayload(req.body);
       const merchantId = requireStoreId(req.body?.merchantId);
-      await assertStoreAccess(uid, merchantId);
+      await assertStoreAccess(uid, merchantId, ["owner", "admin"]);
       const bankingDetailsId = String(req.body?.bankingDetailsId ?? "").trim();
       if (!/^[A-Za-z0-9_-]{1,200}$/.test(bankingDetailsId)) {
         res.status(400).json({ error: "Choose saved banking details." });
@@ -444,10 +563,20 @@ export const prepareMerchantSettlementProfileV2 = functions
 
       claimId = randomUUID();
       const nowMs = Date.now();
-      const windowKey = new Date(nowMs).toISOString().slice(0, 13);
+      const windowKey = new Date(nowMs).toISOString().slice(0, 10);
+      const budgetRef = db.doc(
+        `paymentSecurityBudgets/settlement_bank_validation_${windowKey}`,
+      );
+      const globalConfigRef = db.doc("paymentConfiguration/global");
       await db.runTransaction(async (tx) => {
-        const current = await tx.get(profileRef!);
+        const [current, budget, globalConfig] = await Promise.all([
+          tx.get(profileRef!),
+          tx.get(budgetRef),
+          tx.get(globalConfigRef),
+        ]);
         const value = current.data() ?? {};
+        const budgetData = budget.data() ?? {};
+        const globalData = globalConfig.data() ?? {};
         if (
           value.validationAttemptFingerprint === attemptFingerprint &&
           value.validationAttemptState === "provider_outcome_unknown"
@@ -460,13 +589,23 @@ export const prepareMerchantSettlementProfileV2 = functions
         ) {
           throw new Error("BANK_VALIDATION_ALREADY_PROCESSING");
         }
-        const attemptCount =
+        const merchantDayAttempts =
           value.validationAttemptWindow === windowKey
             ? Number(value.validationAttemptCount ?? 0) + 1
             : 1;
-        if (attemptCount > MAX_VALIDATIONS_PER_WINDOW) {
-          throw new Error("BANK_VALIDATION_RATE_LIMITED");
+        const merchantLifetimeAttempts =
+          Number(value.validationLifetimeAttemptCount ?? 0) + 1;
+        const platformDayAttempts = Number(budgetData.attemptCount ?? 0) + 1;
+        const budgetDecision = settlementVerificationBudgetDecision({
+          merchantDayAttempts: merchantDayAttempts - 1,
+          merchantLifetimeAttempts: merchantLifetimeAttempts - 1,
+          platformDayAttempts: platformDayAttempts - 1,
+          suspended: globalData.settlementVerificationSuspended === true,
+        });
+        if (!budgetDecision.allowed) {
+          throw new Error(budgetDecision.reason);
         }
+        const now = FieldValue.serverTimestamp();
         tx.set(
           profileRef!,
           {
@@ -476,12 +615,68 @@ export const prepareMerchantSettlementProfileV2 = functions
             validationAttemptState: "processing",
             validationAttemptLeaseUntilMs: nowMs + VALIDATION_LEASE_MS,
             validationAttemptWindow: windowKey,
-            validationAttemptCount: attemptCount,
-            updatedAt: FieldValue.serverTimestamp(),
+            validationAttemptCount: merchantDayAttempts,
+            validationLifetimeAttemptCount: merchantLifetimeAttempts,
+            updatedAt: now,
           },
           { merge: true },
         );
+        tx.set(
+          budgetRef,
+          {
+            budgetId: `settlement_bank_validation_${windowKey}`,
+            provider: "paystack",
+            operation: "za_bank_account_validation",
+            day: windowKey,
+            attemptCount: platformDayAttempts,
+            maximumExposureMinor:
+              platformDayAttempts * VALIDATION_PROVIDER_COST_MINOR,
+            currency: "ZAR",
+            updatedAt: now,
+            schemaVersion: 2,
+            ...(budget.exists ? {} : { createdAt: now }),
+          },
+          { merge: true },
+        );
+        if (platformDayAttempts >= VALIDATION_BUDGET_WARNING_ATTEMPTS) {
+          tx.set(
+            db.doc(
+              `operationsAlerts/settlement_verification_budget_${windowKey}`,
+            ),
+            {
+              alertId: `settlement_verification_budget_${windowKey}`,
+              type: "settlement_verification_budget",
+              severity: budgetDecision.suspendAfterAttempt
+                ? "critical"
+                : "warning",
+              owner: "security_operations",
+              status: "open",
+              attemptCount: platformDayAttempts,
+              maximumExposureMinor:
+                platformDayAttempts * VALIDATION_PROVIDER_COST_MINOR,
+              currency: "ZAR",
+              updatedAt: now,
+              ...(budget.exists ? {} : { createdAt: now }),
+              schemaVersion: 2,
+            },
+            { merge: true },
+          );
+        }
+        if (budgetDecision.suspendAfterAttempt) {
+          tx.set(
+            globalConfigRef,
+            {
+              settlementVerificationSuspended: true,
+              settlementVerificationSuspendedReason:
+                "daily_security_budget_exhausted",
+              settlementVerificationSuspendedAt: now,
+              updatedAt: now,
+            },
+            { merge: true },
+          );
+        }
       });
+      claimAcquired = true;
 
       providerStage = "validating";
       const validateResponse = await axios.post(
@@ -501,6 +696,18 @@ export const prepareMerchantSettlementProfileV2 = functions
         },
       );
       const validated = validateResponse.data?.data ?? {};
+      if (validateResponse.data?.status === true) {
+        await budgetRef.set(
+          {
+            providerAcceptedCount: FieldValue.increment(1),
+            estimatedProviderCostMinor: FieldValue.increment(
+              VALIDATION_PROVIDER_COST_MINOR,
+            ),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
       const flags: VerificationFlags = {
         verified: validated.verified === true,
         accountOpen: validated.accountOpen === true,
@@ -653,7 +860,7 @@ export const prepareMerchantSettlementProfileV2 = functions
     } catch (error) {
       const code = error instanceof Error ? error.message : "unknown";
       let responseError = error;
-      if (profileRef && claimId) {
+      if (profileRef && claimId && claimAcquired) {
         const providerOutcomeUnknown = providerStage === "creating_subaccount";
         await profileRef
           .set(

@@ -54,6 +54,10 @@ beforeEach(async () => {
         virtualBalance: 50,
         salesVirtualBalance: 900,
       }),
+      setDoc(doc(db, "users/storeA/bankingDetails/default"), {
+        bankName: "Test Bank",
+        accountNumber: "1234567890",
+      }),
       setDoc(doc(db, "users/storeA/customers/customerA"), { balance: -10 }),
       setDoc(
         doc(db, "users/storeA/customers/customerA/transactions/transactionA"),
@@ -68,6 +72,10 @@ beforeEach(async () => {
       setDoc(doc(db, "stores/storeA"), { name: "Alpha", ownerUid: "ownerA" }),
       setDoc(doc(db, "stores/storeA/operators/operator1"), {
         role: "operator",
+        status: "active",
+      }),
+      setDoc(doc(db, "stores/storeA/operators/admin1"), {
+        role: "admin",
         status: "active",
       }),
       setDoc(doc(db, "stores/storeB/operators/operator1"), {
@@ -139,6 +147,10 @@ beforeEach(async () => {
         status: "balanced",
       }),
       setDoc(doc(db, "paymentConfiguration/global"), { enabled: false }),
+      setDoc(
+        doc(db, "paymentSecurityBudgets/settlement_bank_validation_2026-08-13"),
+        { attemptCount: 1 },
+      ),
       setDoc(doc(db, "campaignCreditPurchases/purchaseA"), {
         merchantId: "storeA",
       }),
@@ -212,6 +224,23 @@ test("active operator can use assigned store and disabled membership cannot", as
   await assertFails(getDoc(doc(db, "users/storeB/customers/customerB")));
 });
 
+test("only owners and admins can alter settlement banking details", async () => {
+  const operator = env.authenticatedContext("operator1").firestore();
+  const adminDb = env.authenticatedContext("admin1").firestore();
+  const legacyOwner = env.authenticatedContext("storeA").firestore();
+  const bankingPath = "users/storeA/bankingDetails/default";
+  await assertSucceeds(getDoc(doc(operator, bankingPath)));
+  await assertFails(
+    updateDoc(doc(operator, bankingPath), { accountNumber: "9999999999" }),
+  );
+  await assertSucceeds(
+    updateDoc(doc(adminDb, bankingPath), { reference: "Admin approved" }),
+  );
+  await assertSucceeds(
+    updateDoc(doc(legacyOwner, bankingPath), { reference: "Owner approved" }),
+  );
+});
+
 test("operator cannot grant itself membership or inspect phone invites", async () => {
   const db = env.authenticatedContext("operator1").firestore();
   await assertFails(
@@ -257,6 +286,7 @@ test("Payments V2 truth is server-only for owners, operators and admins", async 
     "schemaMetadata/paymentsV2",
     "developmentSeedRuns/runA",
     "paymentConfiguration/global",
+    "paymentSecurityBudgets/settlement_bank_validation_2026-08-13",
     "paymentAdministrationAudit/auditA",
     "campaignCreditPurchases/purchaseA",
     "campaignCreditRecoveryCases/recoveryA",

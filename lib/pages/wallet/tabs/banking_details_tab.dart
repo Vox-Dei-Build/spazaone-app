@@ -203,25 +203,27 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
                 reference: walletViewModel.reference.text,
               ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
-            CustomButton(
-              title: 'Add / Edit Bank Account',
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AddBankingDetailsPage(
-                      walletViewModel: walletViewModel,
+            if (StoreSession.instance.canManageOperators)
+              CustomButton(
+                title: 'Add / Edit Bank Account',
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddBankingDetailsPage(
+                        walletViewModel: walletViewModel,
+                      ),
                     ),
-                  ),
-                );
-                await _loadBankingDetails();
-              },
-              color: Colors.green,
-              icon: Icons.add,
-              fontSize: SizeConfig.textMultiplier * 2,
-              width: SizeConfig.imageSizeMultiplier * 65,
-            ),
-            if (walletViewModel.editingDocumentId != null) ...[
+                  );
+                  await _loadBankingDetails();
+                },
+                color: Colors.green,
+                icon: Icons.add,
+                fontSize: SizeConfig.textMultiplier * 2,
+                width: SizeConfig.imageSizeMultiplier * 65,
+              ),
+            if (walletViewModel.editingDocumentId != null &&
+                StoreSession.instance.canManageOperators) ...[
               const SizedBox(height: 12),
               FilledButton.icon(
                 key: const ValueKey('verify-paystack-settlement-account'),
@@ -239,6 +241,12 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
                 'New or changed bank accounts are validated before customer payments can settle here. Bank changes may require SpazaOne review.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ] else if (walletViewModel.editingDocumentId != null) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Only the store owner or an administrator can verify a settlement account.',
+                textAlign: TextAlign.center,
               ),
             ],
           ],
