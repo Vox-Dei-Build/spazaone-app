@@ -85,7 +85,7 @@ void main() {
     expect(
       tester
           .widgetList<ChoiceChip>(find.byType(ChoiceChip))
-          .every((chip) => chip.side == BorderSide.none),
+          .every((chip) => chip.side != BorderSide.none),
       isTrue,
     );
     expect(

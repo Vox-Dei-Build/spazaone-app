@@ -412,7 +412,14 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                   avatar: const Icon(Icons.favorite_outline, size: 17),
                   label: Text(
                       'Saved${_savedIds.isEmpty ? '' : ' (${_savedIds.length})'}'),
-                  side: BorderSide.none,
+                  side: BorderSide(
+                    color: _showSaved
+                        ? Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: .45)
+                        : Theme.of(context).colorScheme.outlineVariant,
+                  ),
                   backgroundColor: Theme.of(context)
                       .colorScheme
                       .surfaceContainerHighest
@@ -433,7 +440,16 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                 label: Text(category.label),
                 visualDensity: VisualDensity.compact,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 5),
-                side: BorderSide.none,
+                side: BorderSide(
+                  color: !_showSaved &&
+                          index == _categoryIndex &&
+                          _search.text.isEmpty
+                      ? Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: .45)
+                      : Theme.of(context).colorScheme.outlineVariant,
+                ),
                 backgroundColor: Theme.of(context)
                     .colorScheme
                     .surfaceContainerHighest
