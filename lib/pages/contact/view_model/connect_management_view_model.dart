@@ -11,6 +11,72 @@ import 'package:pasella/services/secure_function_client.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/models/conversation/conversation_presentation.dart';
 
+/// Deduplicates provider mirrors without comparing every message with every
+/// previously accepted message. Exact IDs are indexed directly; rendered
+/// candidates are limited to the small time window in which cross-provider
+/// mirrors can legitimately drift.
+@visibleForTesting
+List<T> dedupeByIdAndTimeBucket<T>(
+  Iterable<T> values, {
+  required String? Function(T value) idOf,
+  required String? Function(T value) renderedSignatureOf,
+  required DateTime? Function(T value) dateOf,
+  required bool Function(T existing, T next) isRenderedDuplicate,
+  required T Function(T existing, T next) merge,
+  int windowMinutes = 2,
+}) {
+  final deduped = <T>[];
+  final indexById = <String, int>{};
+  final indexesByRenderedMinute = <String, List<int>>{};
+
+  for (final value in values) {
+    final valueId = idOf(value)?.trim();
+    int? duplicateIndex =
+        valueId == null || valueId.isEmpty ? null : indexById[valueId];
+    final signature = renderedSignatureOf(value);
+    final date = dateOf(value);
+    final minute = date == null ? null : date.millisecondsSinceEpoch ~/ 60000;
+
+    if (duplicateIndex == null && signature != null && minute != null) {
+      final candidates = <int>{};
+      for (var offset = -windowMinutes; offset <= windowMinutes; offset++) {
+        candidates.addAll(
+          indexesByRenderedMinute['$signature:${minute + offset}'] ??
+              const <int>[],
+        );
+      }
+      final orderedCandidates = candidates.toList()..sort();
+      for (final index in orderedCandidates) {
+        if (isRenderedDuplicate(deduped[index], value)) {
+          duplicateIndex = index;
+          break;
+        }
+      }
+    }
+
+    if (duplicateIndex == null) {
+      final index = deduped.length;
+      deduped.add(value);
+      if (valueId != null && valueId.isNotEmpty) {
+        indexById[valueId] = index;
+      }
+      if (signature != null && minute != null) {
+        indexesByRenderedMinute
+            .putIfAbsent('$signature:$minute', () => <int>[])
+            .add(index);
+      }
+      continue;
+    }
+
+    deduped[duplicateIndex] = merge(deduped[duplicateIndex], value);
+    if (valueId != null && valueId.isNotEmpty) {
+      indexById[valueId] = duplicateIndex;
+    }
+  }
+
+  return deduped;
+}
+
 class ConnectManagementViewModel {
   final String customerId;
   final String currentUserId = StoreSession.instance.storeId;
@@ -225,29 +291,23 @@ class ConnectManagementViewModel {
 
   List<Map<String, dynamic>> _dedupeMergedMessages(
       Iterable<Map<String, dynamic>> messages) {
-    final deduped = <Map<String, dynamic>>[];
-
-    for (final message in messages) {
-      final duplicateIndex = deduped.indexWhere((existing) =>
-          _isSameMessageId(existing, message) ||
-          _isRenderedDuplicate(existing, message));
-
-      if (duplicateIndex == -1) {
-        deduped.add(message);
-        continue;
-      }
-
-      deduped[duplicateIndex] =
-          _mergeDuplicateMessage(deduped[duplicateIndex], message);
-    }
-
-    return deduped;
+    return dedupeByIdAndTimeBucket<Map<String, dynamic>>(
+      messages,
+      idOf: (message) => message['id']?.toString(),
+      renderedSignatureOf: _renderedDuplicateSignature,
+      dateOf: (message) => _asDate(message['dateSent']),
+      isRenderedDuplicate: _isRenderedDuplicate,
+      merge: _mergeDuplicateMessage,
+    );
   }
 
-  bool _isSameMessageId(Map<String, dynamic> a, Map<String, dynamic> b) {
-    final aId = a['id']?.toString();
-    final bId = b['id']?.toString();
-    return aId != null && aId.isNotEmpty && aId == bId;
+  String? _renderedDuplicateSignature(Map<String, dynamic> message) {
+    final channel = _messageChannel(message);
+    if (channel.isEmpty) return null;
+    final body = _renderedMessageKey(message['message']);
+    final media = _renderedMessageKey(message['mediaUrl']);
+    if (body.isEmpty && media.isEmpty) return null;
+    return '${_renderedDirection(message)}|$channel|$body|$media';
   }
 
   bool _isRenderedDuplicate(Map<String, dynamic> a, Map<String, dynamic> b) {

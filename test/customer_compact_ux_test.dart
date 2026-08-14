@@ -41,6 +41,7 @@ void main() {
     expect(find.byKey(const ValueKey('add-customer-action')), findsOneWidget);
     expect(find.text('Search customers'), findsOneWidget);
     expect(find.text('Add customer'), findsNothing);
+    expect(find.byType(FloatingActionButton), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('add-customer-action')));
     expect(addTaps, 1);

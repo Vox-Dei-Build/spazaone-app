@@ -38,8 +38,9 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
     return Card(
       key: const ValueKey('sales-summary'),
       margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-      color: colors.surfaceContainerHighest.withValues(alpha: .5),
-      elevation: 0,
+      color: colors.surface,
+      elevation: 2,
+      shadowColor: colors.shadow.withValues(alpha: .12),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
@@ -48,53 +49,76 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
         onTap: () =>
             _showFullStats(context, sales, cost, profit, count, marginPct),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF30345F).withValues(alpha: .09),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: const Icon(
+                      Icons.receipt_long_outlined,
+                      color: Color(0xFF30345F),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Total sales',
+                          'Recorded sales',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          _buildPeriodText(
+                            widget.selectedDay,
+                            widget.startDate,
+                            widget.endDate,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style:
                               Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: colors.onSurfaceVariant,
                                   ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          CurrencyUtil.format(sales),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(
-                                color: const Color(0xFF30345F),
-                                fontWeight: FontWeight.w900,
-                              ),
-                        ),
                       ],
                     ),
-                  ),
-                  Text(
-                    'View details',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
-                        ),
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
                     color: colors.onSurfaceVariant,
-                    size: 20,
+                    size: 22,
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Total sales',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                CurrencyUtil.format(sales),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: const Color(0xFF30345F),
+                      fontWeight: FontWeight.w900,
+                    ),
               ),
               const SizedBox(height: 14),
               Row(
@@ -267,7 +291,7 @@ class _OpenMetric extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withValues(alpha: .7),
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(

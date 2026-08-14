@@ -3,7 +3,6 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/ledger/view_model/ledger_view_model.dart';
-import 'package:pasella/pages/ledger/widgets/ledger_floating_action_button.dart';
 import 'package:pasella/pages/ledger/widgets/ledger_main_content.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
@@ -46,30 +45,6 @@ class _LedgerPageState extends State<LedgerPage> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        floatingActionButton: ValueListenableBuilder<int>(
-          valueListenable: _tabIndexNotifier,
-          builder: (context, tabIndex, child) {
-            if (tabIndex != 0) return const SizedBox.shrink();
-            return ValueListenableBuilder<bool>(
-              valueListenable: ledgerViewModel.hasCustomersNotifier,
-              builder: (context, hasCustomers, child) {
-                // The empty state already contains the primary Add Customer
-                // action. Avoid presenting two competing CTAs there.
-                if (!hasCustomers) return const SizedBox.shrink();
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: SizeConfig.heightMultiplier * 1,
-                    right: SizeConfig.imageSizeMultiplier * 1,
-                  ),
-                  child: LedgerFloatingActionButton(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, AddContactPage.id),
-                  ),
-                );
-              },
-            );
-          },
-        ),
         body: SafeArea(
           child: Padding(
             padding: LayoutConstants.padding10Horizontal,
@@ -83,8 +58,7 @@ class _LedgerPageState extends State<LedgerPage> {
               tabIndexNotifier: _tabIndexNotifier,
               // PAS-UX-09: shared "add customer" handler so the empty
               // Customers tab can offer an inline CTA. The same
-              // handler is used by the floating "+" FAB above, so
-              // both entry points route through one place.
+              // handler remains in the page header at every list state.
               onAddCustomer: () =>
                   Navigator.pushNamed(context, AddContactPage.id),
             ),

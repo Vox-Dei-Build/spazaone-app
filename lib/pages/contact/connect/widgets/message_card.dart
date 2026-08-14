@@ -6,6 +6,11 @@ import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/conversation/conversation_presentation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+final DateFormat _messageTimeFormat = DateFormat('HH:mm');
+final RegExp _whatsAppTokenPattern = RegExp(
+  r'(```[\s\S]+?```|\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|https?://[^\s]+)',
+);
+
 class ImageViewerPage extends StatelessWidget {
   const ImageViewerPage({super.key, required this.imageUrl});
 
@@ -114,7 +119,7 @@ class MessageCard extends StatelessWidget {
                       ),
                     ),
                   Text(
-                    DateFormat('HH:mm').format(dateSent.toLocal()),
+                    _messageTimeFormat.format(dateSent.toLocal()),
                     style: TextStyle(
                       fontSize: SizeConfig.textMultiplier * 1.35,
                       color: WaBrandColour.time,
@@ -228,11 +233,8 @@ class WhatsAppFormattedText extends StatelessWidget {
 @visibleForTesting
 List<InlineSpan> whatsappTextSpans(String input, TextStyle? base) {
   final spans = <InlineSpan>[];
-  final pattern = RegExp(
-    r'(```[\s\S]+?```|\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|https?://[^\s]+)',
-  );
   var cursor = 0;
-  for (final match in pattern.allMatches(input)) {
+  for (final match in _whatsAppTokenPattern.allMatches(input)) {
     if (match.start > cursor) {
       spans.add(TextSpan(text: input.substring(cursor, match.start)));
     }
