@@ -74,7 +74,8 @@ void main() {
           final boundary = tester.widget<Divider>(
             find.byKey(const ValueKey('workspace-section-boundary')),
           );
-          expect(boundary.thickness, .75);
+          expect(boundary.thickness, .5);
+          expect(boundary.color?.a, lessThan(.3));
 
           final selected = tester.widget<Container>(
             find

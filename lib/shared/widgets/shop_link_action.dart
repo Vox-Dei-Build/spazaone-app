@@ -12,11 +12,13 @@ class ShopLinkAction extends StatelessWidget {
     required this.onPressed,
     this.storeName,
     this.fillWidth = false,
+    this.compact = false,
   });
 
   final VoidCallback onPressed;
   final String? storeName;
   final bool fillWidth;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -30,8 +32,8 @@ class ShopLinkAction extends StatelessWidget {
       size: 18,
       color: primary,
     );
-    const label = Text(
-      'Shop link',
+    final label = Text(
+      compact ? 'Shop' : 'Shop link',
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.visible,
@@ -50,8 +52,9 @@ class ShopLinkAction extends StatelessWidget {
           style: TextButton.styleFrom(
             foregroundColor: primary,
             backgroundColor: primary.withValues(alpha: 0.09),
-            minimumSize: const Size(104, 48),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            minimumSize: Size(compact ? 96 : 104, 48),
+            fixedSize: compact && !fillWidth ? const Size(104, 48) : null,
+            padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
             tapTargetSize: MaterialTapTargetSize.padded,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
@@ -66,8 +69,8 @@ class ShopLinkAction extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               icon,
-              const SizedBox(width: 8),
-              label,
+              SizedBox(width: compact ? 6 : 8),
+              Flexible(child: label),
             ],
           ),
         ),

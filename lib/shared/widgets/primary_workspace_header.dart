@@ -152,8 +152,12 @@ class WorkspaceHeaderBar extends StatelessWidget {
         suppliedStoreName.isEmpty ? 'Your store' : suppliedStoreName;
     final canOpenStores = onStorePressed != null;
     final showProgress = setupProgressLabel != null;
+    final compactLandscape = usesCompactLandscapeLayout(context);
     final stackProgress =
         showProgress && MediaQuery.textScalerOf(context).scale(11) >= 18;
+    final visibleProgressLabel = compactLandscape && !stackProgress
+        ? setupProgressLabel?.replaceFirst(' setup', '')
+        : setupProgressLabel;
 
     if (!showStoreContext) {
       return Align(
@@ -168,15 +172,15 @@ class WorkspaceHeaderBar extends StatelessWidget {
     final storeContents = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: EdgeInsets.symmetric(horizontal: compactLandscape ? 8 : 12),
         child: Row(
           children: [
             Icon(
               Icons.storefront_outlined,
               color: colors.onSurfaceVariant,
-              size: 20,
+              size: compactLandscape ? 18 : 20,
             ),
-            const SizedBox(width: LayoutConstants.spaceSm),
+            SizedBox(width: compactLandscape ? 6 : LayoutConstants.spaceSm),
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -212,7 +216,7 @@ class WorkspaceHeaderBar extends StatelessWidget {
                 Container(
                   key: const ValueKey('workspace-setup-progress'),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
+                    horizontal: 5,
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
@@ -220,10 +224,10 @@ class WorkspaceHeaderBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    setupProgressLabel!,
+                    visibleProgressLabel!,
                     style: const TextStyle(
                       color: kTertiaryColor,
-                      fontSize: 11,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -233,7 +237,7 @@ class WorkspaceHeaderBar extends StatelessWidget {
               Icon(
                 Icons.chevron_right_rounded,
                 color: colors.onSurfaceVariant,
-                size: 20,
+                size: compactLandscape ? 18 : 20,
               ),
             ],
           ],
@@ -267,8 +271,8 @@ class WorkspaceHeaderBar extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final needsTwoRows = MediaQuery.textScalerOf(context).scale(13) >= 19 ||
-            constraints.maxWidth < 300;
+        final needsTwoRows = MediaQuery.textScalerOf(context).scale(13) >= 23 ||
+            !compactLandscape && constraints.maxWidth < 300;
         if (needsTwoRows) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -279,6 +283,7 @@ class WorkspaceHeaderBar extends StatelessWidget {
                 key: const ValueKey('workspace-shop-action'),
                 storeName: resolvedStoreName,
                 fillWidth: true,
+                compact: compactLandscape,
                 onPressed: onShopPressed,
               ),
             ],
@@ -292,6 +297,7 @@ class WorkspaceHeaderBar extends StatelessWidget {
             ShopLinkAction(
               key: const ValueKey('workspace-shop-action'),
               storeName: resolvedStoreName,
+              compact: compactLandscape,
               onPressed: onShopPressed,
             ),
           ],

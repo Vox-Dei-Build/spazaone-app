@@ -128,8 +128,12 @@ void main() {
           expect(shop, findsOneWidget);
           expect(tester.getSize(store).height, greaterThanOrEqualTo(48));
           expect(tester.getSize(shop).height, greaterThanOrEqualTo(48));
-          expect(tester.getSize(shop).width, greaterThanOrEqualTo(104));
-          expect(find.text('Shop link'), findsOneWidget);
+          if (textScale >= 2) {
+            expect(tester.getSize(shop).width, greaterThanOrEqualTo(104));
+          } else {
+            expect(tester.getSize(shop).width, 104);
+          }
+          expect(find.text('Shop'), findsOneWidget);
           if (textScale >= 2) {
             expect(
               tester.getTopLeft(shop).dy,
@@ -315,8 +319,46 @@ void main() {
       find.byKey(const ValueKey('landscape-workspace-header')),
       findsOneWidget,
     );
-    expect(find.text('Shop link'), findsOneWidget);
+    expect(find.text('Shop'), findsOneWidget);
     expect(find.text('2/6 setup'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ordinary landscape keeps store and shop link on one row', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(size: Size(800, 360)),
+          child: Scaffold(
+            body: SizedBox(
+              width: 280,
+              child: WorkspaceHeaderBar(
+                storeName: 'My Store',
+                setupProgressLabel: '5/6 setup',
+                onStorePressed: () {},
+                onShopPressed: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final store = find.byKey(const ValueKey('workspace-store-action'));
+    final shop = find.byKey(const ValueKey('workspace-shop-action'));
+    expect(find.text('5/6'), findsOneWidget);
+    expect(
+      tester.getTopLeft(shop).dy,
+      tester.getTopLeft(store).dy,
+    );
+    expect(tester.getSize(shop).width, 104);
     expect(tester.takeException(), isNull);
   });
 }

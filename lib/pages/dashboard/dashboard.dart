@@ -65,7 +65,7 @@ class ResponsiveDashboardShell extends StatelessWidget {
     SizeConfig().init(context);
     if (usesCompactLandscapeLayout(context)) {
       final largeText = MediaQuery.textScalerOf(context).scale(12) >= 20;
-      final railWidth = largeText ? 144.0 : 88.0;
+      final railWidth = largeText ? 120.0 : 68.0;
       return Scaffold(
         body: Row(
           children: [
@@ -82,7 +82,7 @@ class ResponsiveDashboardShell extends StatelessWidget {
                         key: const ValueKey('landscape-primary-navigation'),
                         selectedIndex: selectedIndex,
                         onDestinationSelected: onDestinationSelected,
-                        labelType: NavigationRailLabelType.all,
+                        labelType: NavigationRailLabelType.selected,
                         minWidth: railWidth,
                         groupAlignment: 0,
                         useIndicator: true,
@@ -92,22 +92,31 @@ class ResponsiveDashboardShell extends StatelessWidget {
                         selectedLabelTextStyle: const TextStyle(
                           color: kTertiaryColor,
                           fontWeight: FontWeight.w800,
+                          fontSize: 10.5,
                         ),
-                        backgroundColor:
-                            Theme.of(context).colorScheme.surfaceContainerLow,
+                        backgroundColor: Theme.of(context).colorScheme.surface,
                         destinations: const [
                           NavigationRailDestination(
-                            icon: Icon(Icons.contacts_outlined),
+                            icon: Tooltip(
+                              message: 'Customers',
+                              child: Icon(Icons.contacts_outlined),
+                            ),
                             selectedIcon: Icon(Icons.contacts_outlined),
                             label: Text('Customers'),
                           ),
                           NavigationRailDestination(
-                            icon: Icon(Icons.inventory_outlined),
+                            icon: Tooltip(
+                              message: 'Products',
+                              child: Icon(Icons.inventory_outlined),
+                            ),
                             selectedIcon: Icon(Icons.inventory_outlined),
                             label: Text('Products'),
                           ),
                           NavigationRailDestination(
-                            icon: Icon(Icons.point_of_sale),
+                            icon: Tooltip(
+                              message: 'Sales',
+                              child: Icon(Icons.point_of_sale),
+                            ),
                             selectedIcon: Icon(Icons.point_of_sale),
                             label: Text('Sales'),
                           ),

@@ -113,9 +113,9 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
         ),
         Divider(
           key: const ValueKey('workspace-section-boundary'),
-          height: compactLandscape ? 6 : 9,
-          thickness: .75,
-          color: colors.outlineVariant.withValues(alpha: .5),
+          height: compactLandscape ? 4 : 7,
+          thickness: .5,
+          color: colors.outlineVariant.withValues(alpha: .24),
         ),
       ],
     );

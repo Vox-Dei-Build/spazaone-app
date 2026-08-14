@@ -51,9 +51,21 @@ void main() {
     );
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey('landscape-primary-navigation')),
+          )
+          .width,
+      68,
+    );
+    expect(
+      tester.widget<NavigationRail>(find.byType(NavigationRail)).labelType,
+      NavigationRailLabelType.selected,
+    );
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('Products'));
+    await tester.tap(find.byIcon(Icons.inventory_outlined));
     expect(selected, 1);
   });
 
