@@ -71,7 +71,7 @@ void main() {
     expect(find.text('Add your first customer'), findsOneWidget);
   });
 
-  testWidgets('customer row shows channel capability without a text pill', (
+  testWidgets('customer row shows channel and phone without a status pill', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(360, 720));
@@ -108,7 +108,9 @@ void main() {
       find.bySemanticsLabel(RegExp('WhatsApp available')),
       findsOneWidget,
     );
-    expect(find.text('WhatsApp'), findsNothing);
+    expect(find.text('WhatsApp · 0648370009'), findsOneWidget);
+    expect(find.text('R120,00'), findsOneWidget);
+    expect(find.text('Owes you'), findsOneWidget);
     expect(
       find.byTooltip('Reachable on WhatsApp — reminders will use WhatsApp.'),
       findsOneWidget,
@@ -225,7 +227,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Customer balance summary'), findsNothing);
-    expect(find.text('Outstanding balance'), findsOneWidget);
+    expect(find.text('Customers owe you'), findsOneWidget);
+    expect(find.text('Active customers'), findsOneWidget);
+    expect(find.text('Paid up'), findsOneWidget);
     expect(find.text('Customers to follow up'), findsOneWidget);
     expect(find.text('A Customer With A Very Long Name'), findsOneWidget);
     expect(find.text('+27648370009'), findsOneWidget);

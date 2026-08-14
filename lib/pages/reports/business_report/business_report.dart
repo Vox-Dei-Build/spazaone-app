@@ -2,6 +2,7 @@ import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
 import 'package:pasella/pages/reports/business_report/view_model/business_report_view_model.dart';
 import 'package:pasella/pages/reports/business_report/widgets/date_range_ledger_drilldown.dart';
@@ -10,6 +11,7 @@ import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/report_date_filter_bar.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
@@ -154,6 +156,14 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    WorkspaceContextHeader(
+                      title: widget.view == ReportView.activity
+                          ? 'Customer activity'
+                          : 'Customer summary',
+                      subtitle: widget.view == ReportView.activity
+                          ? 'Sales and payments in one timeline'
+                          : 'A simple view of what customers owe',
+                    ),
                     if (widget.view == ReportView.activity) ...[
                       ReportDateFilterBar(
                         selectedDay: _selectedDay,
@@ -289,9 +299,9 @@ class CustomerBalanceSummary extends StatelessWidget {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
     final owingCount = report.customersWithNPAs.length;
-    final ratio = totalCustomers == null || totalCustomers == 0
+    final paidUpCount = totalCustomers == null
         ? null
-        : ((owingCount / totalCustomers!) * 100).clamp(0.0, 100.0);
+        : (totalCustomers! - owingCount).clamp(0, totalCustomers!);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
@@ -299,97 +309,70 @@ class CustomerBalanceSummary extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: kHighLightColor,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE8ECE8)),
+              border: Border.all(
+                color: kPrimaryColor.withValues(alpha: .18),
+              ),
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: primary.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        Icons.account_balance_wallet_outlined,
-                        color: primary,
-                        size: 23,
-                      ),
-                    ),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Outstanding balance',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              CurrencyUtil.format(
-                                report.cashflowImpact.abs(),
-                              ),
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                color: primary,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.6,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Customers owe you',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: kPrimaryColor,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  child: Divider(height: 1, color: Color(0xFFEDEFEA)),
+                const SizedBox(height: 10),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    CurrencyUtil.format(report.cashflowImpact.abs()),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: kTertiaryColor,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.8,
+                    ),
+                  ),
                 ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InlineSummaryMetric(
-                        label: 'Owing',
-                        value: '$owingCount',
-                        color: Colors.orange.shade800,
-                      ),
-                    ),
-                    const _SummaryDivider(),
-                    Expanded(
-                      child: _InlineSummaryMetric(
-                        label: 'Customers',
-                        value: totalCustomers?.toString() ?? '—',
-                        color: Colors.blueGrey.shade700,
-                      ),
-                    ),
-                    const _SummaryDivider(),
-                    Expanded(
-                      child: _InlineSummaryMetric(
-                        label: 'Owing rate',
-                        value: ratio == null
-                            ? '—'
-                            : '${ratio.toStringAsFixed(0)}%',
-                        color: primary,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 6),
+                Text(
+                  'Across $owingCount customer ${owingCount == 1 ? 'account' : 'accounts'}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: kSecondaryAccent,
+                  ),
                 ),
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _InlineSummaryMetric(
+                    label: 'Active customers',
+                    value: totalCustomers?.toString() ?? '—',
+                    color: kTertiaryColor,
+                  ),
+                ),
+                const _SummaryDivider(),
+                Expanded(
+                  child: _InlineSummaryMetric(
+                    label: 'Paid up',
+                    value: paidUpCount?.toString() ?? '—',
+                    color: kPrimaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
           const SizedBox(height: 24),
           Row(
             children: [

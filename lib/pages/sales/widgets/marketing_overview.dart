@@ -24,43 +24,35 @@ class MarketingOverview extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: LayoutConstants.spaceMd),
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0xFFE0E5E1)),
-          ),
+        Material(
+          color: kHighLightColor,
+          borderRadius: BorderRadius.circular(18),
           child: Padding(
-            padding: const EdgeInsets.all(LayoutConstants.spaceMd),
+            padding: const EdgeInsets.all(LayoutConstants.spaceLg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.campaign_outlined,
-                        color: kPrimaryColor,
-                      ),
-                    ),
-                    const SizedBox(width: LayoutConstants.spaceMd),
-                    Expanded(
-                      child: Text(
-                        'Promote a product',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
+                const Icon(
+                  Icons.auto_awesome_outlined,
+                  color: kPrimaryColor,
                 ),
-                const SizedBox(height: LayoutConstants.spaceMd),
+                const SizedBox(height: LayoutConstants.spaceSm),
+                Text(
+                  'Send an offer on WhatsApp',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: kTertiaryColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: LayoutConstants.spaceSm),
+                Text(
+                  'Choose customers, add products and see the price before sending.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: kSecondaryAccent,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: LayoutConstants.spaceLg),
                 FilledButton.icon(
                   key: const Key('marketing-choose-product'),
                   onPressed: onChooseProduct,
@@ -74,8 +66,8 @@ class MarketingOverview extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  icon: const Icon(Icons.inventory_2_outlined, size: 20),
-                  label: const Text('Choose a product'),
+                  icon: const Icon(Icons.add, size: 20),
+                  label: const Text('Create promotion'),
                 ),
               ],
             ),
@@ -83,7 +75,7 @@ class MarketingOverview extends StatelessWidget {
         ),
         const SizedBox(height: LayoutConstants.spaceLg),
         Text(
-          'Campaigns',
+          'Recent promotions',
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
           ),

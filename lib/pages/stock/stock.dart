@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
-import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
-import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
+import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
@@ -61,21 +60,6 @@ class _StockPageState extends State<StockPage>
           return DefaultTabController(
             length: 3,
             child: Scaffold(
-              floatingActionButton: ValueListenableBuilder<int>(
-                valueListenable: _tabIndexNotifier,
-                builder: (context, tabIndex, child) {
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: SizeConfig.heightMultiplier * 1,
-                      right: SizeConfig.imageSizeMultiplier * 1,
-                    ),
-                    child: SizedBox(
-                      height: SizeConfig.heightMultiplier * 7,
-                      child: _buildFloatingActionButton(tabIndex, viewModel),
-                    ),
-                  );
-                },
-              ),
               body: SafeArea(
                 child: Padding(
                   padding: LayoutConstants.padding10Horizontal,
@@ -86,55 +70,88 @@ class _StockPageState extends State<StockPage>
                         shareSource: 'products_header',
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      ContextualTabBar(
+                      WorkspaceSectionTabs(
                         controller: _tabController,
-                        labelPadding: EdgeInsets.zero,
-                        labelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.45,
-                          fontWeight: FontWeight.normal,
-                        ),
-                        unselectedLabelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.45,
-                          fontWeight: FontWeight.normal,
-                        ),
-                        tabs: const [
-                          Tab(text: 'PRODUCTS'),
-                          Tab(text: 'CATALOGUE'),
-                          Tab(text: 'REPORT'),
-                        ],
-                        action: ValueListenableBuilder<int>(
-                          valueListenable: _tabIndexNotifier,
-                          builder: (context, tabIndex, _) => StockTabActions(
-                            showProductSearch: tabIndex == 0,
-                            onSearch: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const GlobalSearchPage(),
-                                ),
-                              );
-                            },
-                            onHelp: _openTutorial,
+                        tabs: const <WorkspaceSectionTab>[
+                          WorkspaceSectionTab(
+                            label: 'Your products',
+                            semanticLabel: 'Your products',
                           ),
-                        ),
+                          WorkspaceSectionTab(
+                            label: 'Supplier catalogue',
+                            semanticLabel: 'Supplier catalogue',
+                          ),
+                          WorkspaceSectionTab(
+                            label: 'Stock report',
+                            semanticLabel: 'Stock report',
+                          ),
+                        ],
                       ),
                       Expanded(
                         child: TabBarView(
                           controller: _tabController,
                           children: [
-                            ProductList(
-                              viewModel: viewModel,
-                              groupName:
-                                  null, // Set groupname to null so that all products show up
-                              // Keep one direct action in the empty state.
-                              // Help remains available from the header menu.
-                              onAddProduct: () => _openNewProduct(),
+                            Column(
+                              children: [
+                                WorkspaceContextHeader(
+                                  title: 'Your products',
+                                  subtitle: 'Products you stock and sell',
+                                  action: FilledButton.icon(
+                                    key: const ValueKey('add-product-action'),
+                                    onPressed: _openNewProduct,
+                                    icon: const Icon(Icons.add, size: 18),
+                                    label: const Text('Add'),
+                                  ),
+                                ),
+                                _ProductSearchLauncher(
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const GlobalSearchPage(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 6),
+                                Expanded(
+                                  child: ProductList(
+                                    viewModel: viewModel,
+                                    groupName: null,
+                                    onAddProduct: _openNewProduct,
+                                    showEmptyAction: false,
+                                  ),
+                                ),
+                              ],
                             ),
-                            SupplierCatalogPage(
-                              onListingCreated: () {
-                                _tabController.animateTo(0);
-                              },
+                            Column(
+                              children: [
+                                const WorkspaceContextHeader(
+                                  title: 'Supplier catalogue',
+                                  subtitle:
+                                      'Products delivered by the supplier',
+                                ),
+                                Expanded(
+                                  child: SupplierCatalogPage(
+                                    onListingCreated: () {
+                                      _tabController.animateTo(0);
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
-                            ProductReportsTab(viewModel: viewModel),
+                            Column(
+                              children: [
+                                const WorkspaceContextHeader(
+                                  title: 'Stock report',
+                                  subtitle: 'What your current stock is worth',
+                                ),
+                                Expanded(
+                                  child:
+                                      ProductReportsTab(viewModel: viewModel),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -149,27 +166,6 @@ class _StockPageState extends State<StockPage>
     );
   }
 
-  Widget _buildFloatingActionButton(int tabIndex, StockViewModel viewModel) {
-    return tabIndex == 0 && viewModel.products.isNotEmpty
-        ? FloatingActionButton.extended(
-            elevation: 3.0,
-            onPressed: _openNewProduct,
-            icon: Icon(
-              Icons.add_outlined,
-              color: Colors.white,
-              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
-            ),
-            label: Text(
-              'Add Product',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
-              ),
-            ),
-          )
-        : Container();
-  }
-
   /// Shared launcher used by the FAB and product empty state.
   void _openNewProduct() {
     Navigator.of(context)
@@ -179,19 +175,37 @@ class _StockPageState extends State<StockPage>
       _tabController.animateTo(0);
     });
   }
+}
 
-  /// Launcher for the capture-stock walkthrough in the header menu.
-  void _openTutorial() {
-    final url = TutorialConfig.getTutorialUrl(
-      TutorialConfig.TUTORIAL_CAPTURE_STOCK,
-    );
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            LoomVideoPage(loomUrl: url, title: 'How to Capture Stock'),
-      ),
-    );
-  }
+class _ProductSearchLauncher extends StatelessWidget {
+  const _ProductSearchLauncher({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+        child: Material(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            key: const ValueKey('search-products-launcher'),
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: const SizedBox(
+              height: 48,
+              child: Row(
+                children: [
+                  SizedBox(width: 14),
+                  Icon(Icons.search_rounded),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('Search products')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {

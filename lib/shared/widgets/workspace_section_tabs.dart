@@ -129,9 +129,7 @@ class _WorkspaceSectionDestination extends StatelessWidget {
       label: tab.semanticLabel,
       excludeSemantics: true,
       child: Material(
-        color: selected
-            ? colors.primaryContainer.withValues(alpha: .28)
-            : Colors.transparent,
+        color: Colors.transparent,
         child: InkWell(
           key: ValueKey('workspace-section-${tab.label}'),
           onTap: onTap,

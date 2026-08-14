@@ -30,9 +30,9 @@ void main() {
       ),
     );
 
-    expect(find.text('Promote a product'), findsOneWidget);
-    expect(find.text('Choose a product'), findsOneWidget);
-    expect(find.text('Campaigns'), findsOneWidget);
+    expect(find.text('Send an offer on WhatsApp'), findsOneWidget);
+    expect(find.text('Create promotion'), findsOneWidget);
+    expect(find.text('Recent promotions'), findsOneWidget);
     expect(find.text('Previous campaigns appear here'), findsOneWidget);
     expect(find.text('QUICK CAMPAIGN'), findsNothing);
     expect(find.textContaining('automatically sends'), findsNothing);

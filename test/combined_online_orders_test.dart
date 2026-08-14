@@ -127,16 +127,23 @@ void main() {
     expect(find.text('2 items'), findsOneWidget);
   });
 
-  testWidgets('all filters live in one bottom sheet', (tester) async {
+  testWidgets('status is visible while source and date use one sheet',
+      (tester) async {
     await tester.pumpWidget(_subject());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Filter'));
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Awaiting payment'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('online-order-status-filters')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Source and date'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Filter online orders'), findsOneWidget);
+    expect(find.text('More order filters'), findsOneWidget);
     expect(find.text('Order source'), findsOneWidget);
-    expect(find.text('Status'), findsOneWidget);
     expect(find.text('Date'), findsOneWidget);
     expect(find.text('Supplier products'), findsOneWidget);
     expect(find.text('Show orders'), findsOneWidget);

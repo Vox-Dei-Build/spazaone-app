@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
@@ -9,8 +9,6 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return Consumer<BalanceSummaryProvider>(
       builder: (context, provider, child) {
         if (provider.isLedgerLoading) {
@@ -18,58 +16,78 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
         }
 
         final summary = provider.balanceSummary;
-        final movementColor =
-            summary.netBalance < 0 ? Colors.red : Colors.green;
-
+        final movementColor = summary.netBalance < 0
+            ? Theme.of(context).colorScheme.error
+            : kPrimaryColor;
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Card(
-              elevation: 4.0,
-              surfaceTintColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  SizeConfig.heightMultiplier * 1,
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: kHighLightColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: kPrimaryColor.withValues(alpha: .16),
                 ),
               ),
               child: Padding(
-                padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1.2),
+                padding: const EdgeInsets.all(18),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _MovementTotal(
-                      amount: summary.netBalance,
-                      amountColor: movementColor,
-                    ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1),
                     Text(
-                      'Shows payments minus transactions inside the selected date range.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: SizeConfig.textMultiplier * 1.3,
+                      'Net movement',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: kSecondaryAccent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        CurrencyUtil.format(summary.netBalance),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: movementColor,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -.5,
+                                ),
                       ),
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 1),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _MovementStat(
-                          icon: Icons.credit_card,
-                          iconColor: Colors.red,
-                          label: '${summary.creditCount} Transactions',
-                          amount: summary.creditAmount,
-                          amountColor: Colors.red,
-                        ),
-                        _MovementStat(
-                          icon: Icons.payments,
-                          iconColor: Colors.green,
-                          label: '${summary.paymentCount} Payments',
-                          amount: summary.paymentAmount,
-                          amountColor: Colors.green,
-                        ),
-                      ],
+                    const SizedBox(height: 5),
+                    Text(
+                      'Payments received minus sales added for these dates.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: kSecondaryAccent,
+                            height: 1.35,
+                          ),
                     ),
                   ],
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _MovementMetric(
+                      label: '${summary.creditCount} sales',
+                      amount: summary.creditAmount,
+                      color: kTertiaryColor,
+                    ),
+                  ),
+                  Container(width: 1, height: 42, color: Colors.grey.shade200),
+                  Expanded(
+                    child: _MovementMetric(
+                      label: '${summary.paymentCount} payments',
+                      amount: summary.paymentAmount,
+                      color: kPrimaryColor,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -79,102 +97,38 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
   }
 }
 
-class _MovementTotal extends StatelessWidget {
-  final double amount;
-  final Color amountColor;
-
-  const _MovementTotal({required this.amount, required this.amountColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: SizeConfig.imageSizeMultiplier * 7,
-                  child: Icon(
-                    Icons.account_balance_wallet,
-                    color: amountColor,
-                    size: SizeConfig.imageSizeMultiplier * 6,
-                  ),
-                ),
-                SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
-                Text(
-                  'Net Movement',
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
-            Text(
-              CurrencyUtil.format(amount),
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2,
-                fontWeight: FontWeight.bold,
-                color: amountColor,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _MovementStat extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String label;
-  final double amount;
-  final Color amountColor;
-
-  const _MovementStat({
-    required this.icon,
-    required this.iconColor,
+class _MovementMetric extends StatelessWidget {
+  const _MovementMetric({
     required this.label,
     required this.amount,
-    required this.amountColor,
+    required this.color,
   });
+
+  final String label;
+  final double amount;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          children: [
-            Icon(
-              icon,
-              color: iconColor,
-              size: SizeConfig.imageSizeMultiplier * 4,
-            ),
-            SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-                fontSize: SizeConfig.textMultiplier * 2,
-              ),
-            ),
-          ],
-        ),
         Text(
           CurrencyUtil.format(amount),
-          style: TextStyle(
-            color: amountColor,
-            fontWeight: FontWeight.bold,
-            fontSize: SizeConfig.textMultiplier * 2,
-          ),
+          maxLines: 1,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w900,
+              ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: kSecondaryAccent,
+              ),
         ),
       ],
     );

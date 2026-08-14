@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/ledger/widgets/customer_search_box.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
 
 class CustomerTab extends StatefulWidget {
   final ValueNotifier<String?> searchTextNotifier;
@@ -107,34 +107,49 @@ class _CustomerTabState extends State<CustomerTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SizedBox(height: SizeConfig.heightMultiplier * 1),
         ValueListenableBuilder<bool>(
           valueListenable: widget.hasCustomersNotifier,
           builder: (context, hasCustomers, child) {
-            if (!hasCustomers) return const SizedBox.shrink();
-            // PAS-UX: sticky-on-scroll. The bar collapses to zero
-            // height (with a fade) when scrolling down and reappears
-            // on scroll-up. AnimatedSize handles the layout shrink so
-            // the list below smoothly takes the reclaimed space.
-            return ValueListenableBuilder<bool>(
-              valueListenable: _searchVisible,
-              builder: (context, visible, _) {
-                return AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  alignment: Alignment.topCenter,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    opacity: visible ? 1.0 : 0.0,
-                    child: visible
-                        ? CustomerSearchBox(
-                            searchTextNotifier: widget.searchTextNotifier,
-                            focusNode: _searchFocusNode,
-                          )
-                        : const SizedBox(width: double.infinity, height: 0),
+            return Column(
+              children: [
+                WorkspaceContextHeader(
+                  title: 'Your customers',
+                  subtitle: 'People who buy from your shop',
+                  action: hasCustomers && widget.onAddCustomer != null
+                      ? FilledButton.icon(
+                          onPressed: widget.onAddCustomer,
+                          icon: const Icon(Icons.add_rounded, size: 19),
+                          label: const Text('Add'),
+                        )
+                      : null,
+                ),
+                if (hasCustomers)
+                  // The search field remains sticky while browsing a long
+                  // customer list, but the page purpose stays visible above.
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _searchVisible,
+                    builder: (context, visible, _) {
+                      return AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
+                        alignment: Alignment.topCenter,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: visible ? 1.0 : 0.0,
+                          child: visible
+                              ? CustomerSearchBox(
+                                  searchTextNotifier: widget.searchTextNotifier,
+                                  focusNode: _searchFocusNode,
+                                )
+                              : const SizedBox(
+                                  width: double.infinity,
+                                  height: 0,
+                                ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+              ],
             );
           },
         ),
@@ -144,11 +159,9 @@ class _CustomerTabState extends State<CustomerTab> {
             scrollController: _scrollController,
             category: "Customer",
             emptyAsset: 'assets/images/customer.webp',
-            emptyText:
-                'No customers yet',
+            emptyText: 'No customers yet',
             hasCustomersNotifier: widget.hasCustomersNotifier,
-            emptyCtaLabel:
-                widget.onAddCustomer == null ? null : 'Add customer',
+            emptyCtaLabel: widget.onAddCustomer == null ? null : 'Add customer',
             onEmptyCtaTap: widget.onAddCustomer,
           ),
         ),

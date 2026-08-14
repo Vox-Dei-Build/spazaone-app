@@ -6,6 +6,7 @@ import 'package:pasella/pages/sales/widgets/online_sale_detail_page.dart';
 import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:pasella/pages/stock/dropship/commerce_orders_page.dart';
 import 'package:pasella/services/commerce_service.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 enum OnlineOrderSourceFilter { all, owned, supplier }
@@ -163,10 +164,9 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
     }).toList(growable: false);
   }
 
-  int get _filterCount {
+  int get _secondaryFilterCount {
     var count = 0;
     if (_source != OnlineOrderSourceFilter.all) count++;
-    if (_progress != OnlineOrderProgressFilter.all) count++;
     if (widget.selectedDay != null || widget.startDate != null) count++;
     return count;
   }
@@ -182,7 +182,6 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
 
   Future<void> _showFilters() async {
     var source = _source;
-    var progress = _progress;
     var dateMode = widget.selectedDay != null
         ? _DateMode.today
         : widget.startDate != null
@@ -203,7 +202,7 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Filter online orders',
+                  'More order filters',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 20),
@@ -222,29 +221,6 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                         ),
                       )
                       .toList(growable: false),
-                ),
-                const SizedBox(height: 20),
-                const Text('Status',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<OnlineOrderProgressFilter>(
-                  value: progress,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
-                  items: OnlineOrderProgressFilter.values
-                      .map(
-                        (value) => DropdownMenuItem(
-                          value: value,
-                          child: Text(_progressLabel(value)),
-                        ),
-                      )
-                      .toList(growable: false),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setSheetState(() => progress = value);
-                    }
-                  },
                 ),
                 const SizedBox(height: 20),
                 const Text('Date',
@@ -293,7 +269,6 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                   onPressed: () {
                     setState(() {
                       _source = source;
-                      _progress = progress;
                     });
                     switch (dateMode) {
                       case _DateMode.all:
@@ -349,7 +324,9 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                 padding: const EdgeInsets.fromLTRB(0, 8, 0, 96),
                 children: [
                   _OrdersHeader(
-                    filterCount: _filterCount,
+                    progress: _progress,
+                    onProgress: (value) => setState(() => _progress = value),
+                    filterCount: _secondaryFilterCount,
                     onFilter: _showFilters,
                   ),
                   if (widget.setupRequired && orders.isNotEmpty)
@@ -361,17 +338,15 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                         widget.onRetryReadiness?.call();
                       },
                     ),
-                  if (_filterCount > 0)
+                  if (_secondaryFilterCount > 0)
                     _ActiveFilters(
                       source: _source,
-                      progress: _progress,
                       dateLabel: _dateLabel,
                       hasDate: widget.selectedDay != null ||
                           widget.startDate != null,
                       onClear: () {
                         setState(() {
                           _source = OnlineOrderSourceFilter.all;
-                          _progress = OnlineOrderProgressFilter.all;
                         });
                         widget.onClearDates();
                       },
@@ -493,33 +468,57 @@ class _OnlineOrderSummary {
 }
 
 class _OrdersHeader extends StatelessWidget {
-  const _OrdersHeader({required this.filterCount, required this.onFilter});
+  const _OrdersHeader({
+    required this.progress,
+    required this.onProgress,
+    required this.filterCount,
+    required this.onFilter,
+  });
 
+  final OnlineOrderProgressFilter progress;
+  final ValueChanged<OnlineOrderProgressFilter> onProgress;
   final int filterCount;
   final VoidCallback onFilter;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Online orders',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const WorkspaceContextHeader(
+            title: 'Online orders',
+            subtitle: 'Orders placed through your shop link',
+          ),
+          SingleChildScrollView(
+            key: const ValueKey('online-order-status-filters'),
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                for (final value in OnlineOrderProgressFilter.values) ...[
+                  ChoiceChip(
+                    label: Text(_shortProgressLabel(value)),
+                    selected: progress == value,
+                    onSelected: (_) => onProgress(value),
+                    showCheckmark: false,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ],
             ),
-            OutlinedButton.icon(
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
               onPressed: onFilter,
               icon: const Icon(Icons.tune_rounded, size: 18),
-              label:
-                  Text(filterCount == 0 ? 'Filter' : 'Filter · $filterCount'),
+              label: Text(
+                filterCount == 0
+                    ? 'Source and date'
+                    : 'Source and date · $filterCount',
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
 }
 
@@ -564,14 +563,12 @@ class _PartialErrorNotice extends StatelessWidget {
 class _ActiveFilters extends StatelessWidget {
   const _ActiveFilters({
     required this.source,
-    required this.progress,
     required this.dateLabel,
     required this.hasDate,
     required this.onClear,
   });
 
   final OnlineOrderSourceFilter source;
-  final OnlineOrderProgressFilter progress;
   final String dateLabel;
   final bool hasDate;
   final VoidCallback onClear;
@@ -586,8 +583,6 @@ class _ActiveFilters extends StatelessWidget {
           children: [
             if (source != OnlineOrderSourceFilter.all)
               Chip(label: Text(_sourceLabel(source))),
-            if (progress != OnlineOrderProgressFilter.all)
-              Chip(label: Text(_progressLabel(progress))),
             if (hasDate) Chip(label: Text(dateLabel)),
             TextButton(onPressed: onClear, child: const Text('Clear')),
           ],
@@ -606,13 +601,18 @@ class _OrderRow extends StatelessWidget {
     final date = order.createdAt == null
         ? ''
         : DateFormat('dd MMM yyyy · HH:mm').format(order.createdAt!);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+      ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -729,8 +729,8 @@ String _sourceLabel(OnlineOrderSourceFilter value) => switch (value) {
       OnlineOrderSourceFilter.supplier => 'Supplier products',
     };
 
-String _progressLabel(OnlineOrderProgressFilter value) => switch (value) {
-      OnlineOrderProgressFilter.all => 'All statuses',
+String _shortProgressLabel(OnlineOrderProgressFilter value) => switch (value) {
+      OnlineOrderProgressFilter.all => 'All',
       OnlineOrderProgressFilter.awaitingPayment => 'Awaiting payment',
       OnlineOrderProgressFilter.inProgress => 'In progress',
       OnlineOrderProgressFilter.completed => 'Completed',

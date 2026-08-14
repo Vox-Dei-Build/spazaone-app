@@ -9,6 +9,7 @@ import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/online_commerce_hub.dart';
 import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
@@ -176,7 +177,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       animation: salesVM,
       builder: (context, _) {
         return Scaffold(
-          floatingActionButton: _buildFAB(salesVM),
           body: SafeArea(
             child: Padding(
               padding: LayoutConstants.padding10Horizontal,
@@ -185,30 +185,20 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   const SalesPageHeader(),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: WorkspaceSectionTabs(
-                          controller: _mainController,
-                          tabs: const [
-                            WorkspaceSectionTab(
-                              label: 'Recorded sales',
-                              semanticLabel: 'Recorded sales',
-                            ),
-                            WorkspaceSectionTab(
-                              label: 'Online orders',
-                              semanticLabel: 'Online orders',
-                            ),
-                            WorkspaceSectionTab(
-                              label: 'Marketing',
-                              semanticLabel: 'Marketing',
-                            ),
-                          ],
-                        ),
+                  WorkspaceSectionTabs(
+                    controller: _mainController,
+                    tabs: const [
+                      WorkspaceSectionTab(
+                        label: 'Recorded sales',
+                        semanticLabel: 'Recorded sales',
                       ),
-                      SalesHelpAction(
-                        showMarketingHelp: _mainController.index == 2,
+                      WorkspaceSectionTab(
+                        label: 'Online orders',
+                        semanticLabel: 'Online orders',
+                      ),
+                      WorkspaceSectionTab(
+                        label: 'Marketing',
+                        semanticLabel: 'Marketing',
                       ),
                     ],
                   ),
@@ -217,56 +207,50 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                       controller: _mainController,
                       children: [
                         // --- SALES ---
-                        Column(
-                          children: [
-                            SizedBox(height: SizeConfig.heightMultiplier * 1),
-                            DateFilterBar(
-                              selectedDay: _selectedDay,
-                              startDate: _startDate,
-                              endDate: _endDate,
-                              onDaySelect: (day) {
-                                _onDateSelected(day);
-                                salesVM.updateSelectedDate(day);
-                              },
-                              onRangeSelect: (start, end) {
-                                _onDateRangeSelected(start, end);
-                                salesVM.updateSelectedDateRange(start, end);
-                              },
-                              onClear: _clearDateFilter,
-                            ),
-                            SalesStatsCard(
-                              viewModel: salesVM,
-                              selectedDay: _selectedDay,
-                              startDate: _startDate,
-                              endDate: _endDate,
-                            ),
-                            SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-                            Expanded(
-                              child: SafeArea(
-                                top: false,
-                                left: false,
-                                right: false,
-                                bottom: true,
-                                child: SalesList(
-                                  viewModel: salesVM,
-                                  onAddSale: () {
-                                    TelemetryService.instance.capture(
-                                      const SaleStarted(
-                                        entryPoint: 'empty_state',
-                                      ),
-                                    );
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => AddSale(
-                                          salesViewModel: salesVM,
-                                        ),
-                                      ),
-                                    );
-                                  },
+                        SafeArea(
+                          top: false,
+                          left: false,
+                          right: false,
+                          bottom: true,
+                          child: SalesList(
+                            viewModel: salesVM,
+                            header: [
+                              WorkspaceContextHeader(
+                                title: 'Recorded sales',
+                                subtitle: 'Cash sales recorded in SpazaOne',
+                                action: FilledButton.icon(
+                                  key: const ValueKey('record-sale-action'),
+                                  onPressed: () =>
+                                      _openAddSale(salesVM, 'workspace_header'),
+                                  icon: const Icon(Icons.add, size: 18),
+                                  label: const Text('Record'),
                                 ),
                               ),
-                            ),
-                          ],
+                              DateFilterBar(
+                                selectedDay: _selectedDay,
+                                startDate: _startDate,
+                                endDate: _endDate,
+                                onDaySelect: (day) {
+                                  _onDateSelected(day);
+                                  salesVM.updateSelectedDate(day);
+                                },
+                                onRangeSelect: (start, end) {
+                                  _onDateRangeSelected(start, end);
+                                  salesVM.updateSelectedDateRange(start, end);
+                                },
+                                onClear: _clearDateFilter,
+                              ),
+                              SalesStatsCard(
+                                viewModel: salesVM,
+                                selectedDay: _selectedDay,
+                                startDate: _startDate,
+                                endDate: _endDate,
+                              ),
+                              SizedBox(
+                                height: SizeConfig.heightMultiplier * 1.0,
+                              ),
+                            ],
+                          ),
                         ),
 
                         // --- ONLINE ORDERS ---
@@ -304,33 +288,13 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget? _buildFAB(SalesViewModel salesVM) {
-    if (_mainController.index == 0) {
-      if (salesVM.cachedSales.isEmpty) {
-        return null;
-      }
-      return FloatingActionButton.extended(
-        heroTag: 'sales-cash-fab',
-        onPressed: () {
-          TelemetryService.instance.capture(
-            const SaleStarted(entryPoint: 'fab'),
-          );
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => AddSale(salesViewModel: salesVM),
-            ),
-          );
-        },
-        icon: const Icon(Icons.add_outlined, color: Colors.white),
-        label: const Text(
-          'Record Sale',
-          style: TextStyle(color: Colors.white),
-        ),
-      );
-    }
-    // Marketing owns a prominent inline product CTA. Keeping a second FAB
-    // would create two competing starts for the same simple journey.
-    return null;
+  void _openAddSale(SalesViewModel salesVM, String entryPoint) {
+    TelemetryService.instance.capture(SaleStarted(entryPoint: entryPoint));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddSale(salesViewModel: salesVM),
+      ),
+    );
   }
 }
 

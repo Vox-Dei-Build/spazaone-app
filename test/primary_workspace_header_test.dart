@@ -127,10 +127,19 @@ void main() {
           expect(shop, findsOneWidget);
           expect(tester.getSize(store).height, greaterThanOrEqualTo(48));
           expect(tester.getSize(shop).height, greaterThanOrEqualTo(48));
-          expect(
-            tester.getTopLeft(store).dx,
-            lessThan(tester.getTopLeft(shop).dx),
-          );
+          expect(tester.getSize(shop).width, greaterThanOrEqualTo(104));
+          expect(find.text('Shop link'), findsOneWidget);
+          if (textScale >= 2) {
+            expect(
+              tester.getTopLeft(shop).dy,
+              greaterThanOrEqualTo(tester.getBottomLeft(store).dy),
+            );
+          } else {
+            expect(
+              tester.getTopLeft(store).dx,
+              lessThan(tester.getTopLeft(shop).dx),
+            );
+          }
         },
       );
     }

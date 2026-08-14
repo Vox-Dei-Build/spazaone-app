@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
-import 'package:pasella/pages/stock/product_card/product_card.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
+import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
+import 'package:pasella/utils/currency_util.dart';
+import 'package:pasella/utils/string_utils.dart';
 
 class ProductList extends StatelessWidget {
   final StockViewModel viewModel;
@@ -12,12 +16,14 @@ class ProductList extends StatelessWidget {
   /// product form as the page action. Optional so group drilldowns retain a
   /// simple placeholder.
   final VoidCallback? onAddProduct;
+  final bool showEmptyAction;
 
   const ProductList({
     Key? key,
     required this.viewModel,
     this.groupName,
     this.onAddProduct,
+    this.showEmptyAction = true,
   }) : super(key: key);
 
   @override
@@ -49,37 +55,120 @@ class ProductList extends StatelessWidget {
           final showOnboarding = groupName == null && onAddProduct != null;
           return ProductListEmptyState(
             showOnboarding: showOnboarding,
-            onAddProduct: onAddProduct,
+            onAddProduct: showEmptyAction ? onAddProduct : null,
           );
         }
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.7,
-                  mainAxisSpacing: SizeConfig.heightMultiplier * 1.5,
-                  crossAxisSpacing: SizeConfig.imageSizeMultiplier * 2,
-                ),
-                delegate: SliverChildBuilderDelegate((
-                  BuildContext context,
-                  int index,
-                ) {
-                  return ProductCard(
-                    key: ValueKey<String>(products[index].id!),
-                    product: products[index],
-                    docID: products[index].id!,
-                  );
-                }, childCount: products.length),
-              ),
-            ),
-          ],
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 88),
+          itemCount: products.length,
+          separatorBuilder: (_, __) => Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+          itemBuilder: (context, index) => _ProductRow(
+            key: ValueKey<String>(products[index].id!),
+            product: products[index],
+            docID: products[index].id!,
+          ),
         );
       },
     );
   }
+}
+
+class _ProductRow extends StatelessWidget {
+  const _ProductRow({
+    super.key,
+    required this.product,
+    required this.docID,
+  });
+
+  final Product product;
+  final String docID;
+
+  @override
+  Widget build(BuildContext context) {
+    final quantity = product.quantity ?? 0;
+    final status = product.isDropshipListing
+        ? 'Supplier product'
+        : product.whatsappListed
+            ? 'Online'
+            : quantity <= 5
+                ? quantity == 0
+                    ? 'Out of stock'
+                    : 'Low stock'
+                : 'In store';
+    return ListTile(
+      minVerticalPadding: 12,
+      contentPadding: EdgeInsets.zero,
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: product.image?.isNotEmpty == true
+              ? CachedNetworkImage(
+                  imageUrl: product.image!,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => const _ProductPlaceholder(),
+                )
+              : const _ProductPlaceholder(),
+        ),
+      ),
+      title: Text(
+        formatStringToCamelCase(product.name ?? 'Product'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        product.isDropshipListing
+            ? 'Delivered by supplier'
+            : '$quantity in stock',
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                CurrencyUtil.format(product.sellingPrice ?? 0),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                status,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right_rounded),
+        ],
+      ),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => product.isDropshipListing
+              ? DropshipListingPage(product: product, docID: docID)
+              : ProductDetailsPage(docID: docID, product: product),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductPlaceholder extends StatelessWidget {
+  const _ProductPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        child: const Icon(Icons.inventory_2_outlined, size: 22),
+      );
 }
 
 /// Empty-state for the top-level Products catalogue.

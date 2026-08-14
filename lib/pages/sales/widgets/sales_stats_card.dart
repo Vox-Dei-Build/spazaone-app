@@ -33,60 +33,90 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
     final count = widget.viewModel.totalNumberOfSales;
     final marginPct = (sales > 0) ? (profit / sales * 100.0) : double.nan;
 
-    final hPad = SizeConfig.imageSizeMultiplier * 3; // ~12–14px
-    final vPad = SizeConfig.heightMultiplier * 1.2; // ~8–10px
-    final pillGap = SizeConfig.imageSizeMultiplier * 2; // ~8px
+    final colors = Theme.of(context).colorScheme;
 
     return Card(
-      margin: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 0.8,
-        horizontal: SizeConfig.imageSizeMultiplier * 2,
-      ),
-      elevation: 2,
+      key: const ValueKey('sales-summary'),
+      margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      color: colors.primaryContainer.withValues(alpha: .32),
+      elevation: 0,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(SizeConfig.imageSizeMultiplier * 3),
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: colors.primary.withValues(alpha: .14)),
       ),
       child: InkWell(
-        onTap:
-            () =>
-                _showFullStats(context, sales, cost, profit, count, marginPct),
+        onTap: () =>
+            _showFullStats(context, sales, cost, profit, count, marginPct),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(hPad, vPad, hPad, vPad),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Wrap(
-                  spacing: pillGap / 2,
-                  runSpacing: pillGap / 2,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total sales',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          CurrencyUtil.format(sales),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                color: colors.primary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'View details',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: colors.primary,
+                    size: 20,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              IntrinsicHeight(
+                child: Row(
                   children: [
-                    _MiniStatPill(
-                      label: 'Revenue',
-                      value: CurrencyUtil.format(sales),
-                      fg: const Color(0xFF0B5FFF),
-                      bg: const Color(0x140B5FFF),
-                      icon: Icons.point_of_sale,
+                    Expanded(
+                      child: _OpenMetric(
+                        label: 'Profit',
+                        value: CurrencyUtil.format(profit),
+                      ),
                     ),
-                    _MiniStatPill(
-                      label: 'Profit',
-                      value: CurrencyUtil.format(profit),
-                      fg: const Color(0xFF2E7D32),
-                      bg: const Color(0x142E7D32),
-                      icon: Icons.trending_up_rounded,
-                    ),
-                    _MiniStatPill(
-                      label: 'Entries',
-                      value: count.toString(),
-                      fg: const Color(0xFF6A1B9A),
-                      bg: const Color(0x146A1B9A),
-                      icon: Icons.receipt_long_outlined,
+                    VerticalDivider(color: colors.outlineVariant),
+                    Expanded(
+                      child: _OpenMetric(
+                        label: 'Recorded sales',
+                        value: count.toString(),
+                      ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(width: pillGap / 2),
-              const Icon(Icons.chevron_right_rounded, size: 20),
             ],
           ),
         ),
@@ -221,8 +251,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
     }
     if (selectedDay != null) {
       final now = DateTime.now();
-      final same =
-          now.year == selectedDay.year &&
+      final same = now.year == selectedDay.year &&
           now.month == selectedDay.month &&
           now.day == selectedDay.day;
       return same ? "Today's Sales" : 'Sales: ${fmt(selectedDay)}';
@@ -231,57 +260,33 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
   }
 }
 
-class _MiniStatPill extends StatelessWidget {
+class _OpenMetric extends StatelessWidget {
+  const _OpenMetric({required this.label, required this.value});
+
   final String label;
   final String value;
-  final IconData icon;
-  final Color fg;
-  final Color bg;
-
-  const _MiniStatPill({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.fg,
-    required this.bg,
-  });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.imageSizeMultiplier * 2.2, // ~9px
-        vertical: SizeConfig.heightMultiplier * 0.7, // ~5px
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 14, color: fg),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 1.6),
           Text(
             label,
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 1.3, // ~10–11px
-              color: Colors.black.withOpacity(0.6),
-            ),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 1.6),
+          const SizedBox(height: 3),
           Text(
             value,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: fg,
-              fontSize: SizeConfig.textMultiplier * 1.4, // ~11–12px
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
           ),
         ],
-      ),
-    );
-  }
+      );
 }
 
 class _StatChip extends StatelessWidget {
@@ -320,7 +325,7 @@ class _StatChip extends StatelessWidget {
             SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
             Expanded(
               child: DefaultTextStyle(
-                style: TextStyle(color: Colors.black.withOpacity(0.86)),
+                style: TextStyle(color: Colors.black.withValues(alpha: 0.86)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -330,7 +335,7 @@ class _StatChip extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: SizeConfig.textMultiplier * 1.3, // ~10–11px
-                        color: Colors.black.withOpacity(0.55),
+                        color: Colors.black.withValues(alpha: 0.55),
                         fontWeight: FontWeight.w600,
                       ),
                     ),

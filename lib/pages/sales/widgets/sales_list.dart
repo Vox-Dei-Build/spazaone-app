@@ -10,6 +10,7 @@ import 'package:shimmer/shimmer.dart';
 class SalesList extends StatefulWidget {
   final SalesViewModel viewModel;
   final double bottomPadding;
+  final List<Widget> header;
   // PAS-AUTH-03: opt-in onboarding affordance. When non-null and the
   // list is empty the placeholder upgrades from a dead-end label into
   // the Stock-style CTA + walkthrough pattern. The Add Sale FAB still
@@ -22,6 +23,7 @@ class SalesList extends StatefulWidget {
     required this.viewModel,
     this.bottomPadding = 0,
     this.onAddSale,
+    this.header = const [],
   });
 
   @override
@@ -67,54 +69,55 @@ class _SalesListState extends State<SalesList> {
 
         return ListView.builder(
           padding: EdgeInsets.only(bottom: widget.bottomPadding), // <- KEY
-          itemCount: data.length,
+          itemCount: widget.header.length + data.length,
           itemBuilder: (context, index) {
-            final sale = data[index];
-            return Card(
-              margin: EdgeInsets.symmetric(
-                vertical: SizeConfig.heightMultiplier * 0.5,
-                horizontal: SizeConfig.imageSizeMultiplier * 2,
+            if (index < widget.header.length) return widget.header[index];
+            final sale = data[index - widget.header.length];
+            return ListTile(
+              minVerticalPadding: 12,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              leading: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withValues(alpha: .45),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.receipt_long_outlined, size: 20),
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  SizeConfig.imageSizeMultiplier * 2,
-                ),
+              title: Text(
+                DateFormat('dd MMM yyyy').format(sale.dateAdded),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              elevation: 3.0,
-              child: ListTile(
-                contentPadding: EdgeInsets.symmetric(
-                  vertical: SizeConfig.heightMultiplier * 0.5,
-                  horizontal: SizeConfig.imageSizeMultiplier * 2,
-                ),
-                title: Text(
-                  "Date: ${DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded)}",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: SizeConfig.textMultiplier * 2,
+              subtitle: Text(DateFormat('HH:mm').format(sale.dateAdded)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    CurrencyUtil.format(sale.amount),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
-                ),
-                subtitle: Text(
-                  "Amount: ${CurrencyUtil.format(sale.amount)}",
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontSize: SizeConfig.textMultiplier * 1.5,
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right_rounded),
+                ],
+              ),
+              onTap: () async {
+                final changed = await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => SaleDetailPage(sale: sale),
                   ),
+                );
+                if (changed == true) {
+                  viewModel.updateSelectedDate(DateTime.now());
+                }
+              },
+              shape: Border(
+                bottom: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
                 ),
-                trailing: Icon(
-                  Icons.arrow_forward_ios,
-                  size: SizeConfig.imageSizeMultiplier * 4,
-                  color: Colors.grey,
-                ),
-                onTap: () async {
-                  final changed = await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => SaleDetailPage(sale: sale),
-                    ),
-                  );
-                  if (changed == true) {
-                    viewModel.updateSelectedDate(DateTime.now());
-                  }
-                },
               ),
             );
           },
@@ -127,6 +130,7 @@ class _SalesListState extends State<SalesList> {
     return ListView(
       padding: EdgeInsets.only(bottom: widget.bottomPadding),
       children: [
+        ...widget.header,
         SizedBox(height: SizeConfig.heightMultiplier * 2),
         Center(child: child),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
@@ -139,30 +143,33 @@ class _SalesListState extends State<SalesList> {
       padding: EdgeInsets.only(bottom: widget.bottomPadding), // <- add padding
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
-        children: List<Widget>.filled(
-          5,
-          Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: SizeConfig.heightMultiplier * 0.5,
-              horizontal: SizeConfig.imageSizeMultiplier * 2,
-            ),
-            child: Shimmer.fromColors(
-              baseColor: Colors.black12,
-              highlightColor: Colors.black26,
-              child: Container(
-                width: SizeConfig.screenWidth,
-                height: SizeConfig.heightMultiplier * 2,
-                decoration: BoxDecoration(
-                  color: Colors.grey,
-                  borderRadius: BorderRadius.all(
-                    Radius.circular(SizeConfig.imageSizeMultiplier * 2),
+        children: [
+          ...widget.header,
+          ...List<Widget>.filled(
+            5,
+            Padding(
+              padding: EdgeInsets.symmetric(
+                vertical: SizeConfig.heightMultiplier * 0.5,
+                horizontal: SizeConfig.imageSizeMultiplier * 2,
+              ),
+              child: Shimmer.fromColors(
+                baseColor: Colors.black12,
+                highlightColor: Colors.black26,
+                child: Container(
+                  width: SizeConfig.screenWidth,
+                  height: SizeConfig.heightMultiplier * 2,
+                  decoration: BoxDecoration(
+                    color: Colors.grey,
+                    borderRadius: BorderRadius.all(
+                      Radius.circular(SizeConfig.imageSizeMultiplier * 2),
+                    ),
                   ),
                 ),
               ),
             ),
+            growable: false,
           ),
-          growable: false,
-        ),
+        ],
       ),
     );
   }
@@ -197,7 +204,7 @@ class SalesListEmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            'No cash sales yet',
+            'No recorded sales yet',
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,

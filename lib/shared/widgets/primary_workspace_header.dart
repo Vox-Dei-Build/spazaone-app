@@ -238,30 +238,51 @@ class WorkspaceHeaderBar extends StatelessWidget {
           : storeContents,
     );
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Semantics(
-            key: const ValueKey('workspace-store-action'),
-            button: canOpenStores,
-            label: canOpenStores
-                ? 'Current store, $resolvedStoreName. Open your shop${setupProgressLabel == null ? '' : '. $setupProgressLabel complete'}'
-                : 'Current store, $resolvedStoreName',
-            onTap: onStorePressed,
-            excludeSemantics: true,
-            child: canOpenStores
-                ? Tooltip(message: 'Your shop', child: storeSurface)
-                : storeSurface,
-          ),
-        ),
-        const SizedBox(width: LayoutConstants.spaceSm),
-        ShopLinkAction(
-          key: const ValueKey('workspace-shop-action'),
-          storeName: resolvedStoreName,
-          onPressed: onShopPressed,
-        ),
-      ],
+    final storeAction = Semantics(
+      key: const ValueKey('workspace-store-action'),
+      button: canOpenStores,
+      label: canOpenStores
+          ? 'Current store, $resolvedStoreName. Open your shop${setupProgressLabel == null ? '' : '. $setupProgressLabel complete'}'
+          : 'Current store, $resolvedStoreName',
+      onTap: onStorePressed,
+      excludeSemantics: true,
+      child: canOpenStores
+          ? Tooltip(message: 'Your shop', child: storeSurface)
+          : storeSurface,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final needsTwoRows = MediaQuery.textScalerOf(context).scale(13) >= 19 ||
+            constraints.maxWidth < 300;
+        if (needsTwoRows) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              storeAction,
+              const SizedBox(height: LayoutConstants.spaceSm),
+              ShopLinkAction(
+                key: const ValueKey('workspace-shop-action'),
+                storeName: resolvedStoreName,
+                fillWidth: true,
+                onPressed: onShopPressed,
+              ),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: storeAction),
+            const SizedBox(width: LayoutConstants.spaceSm),
+            ShopLinkAction(
+              key: const ValueKey('workspace-shop-action'),
+              storeName: resolvedStoreName,
+              onPressed: onShopPressed,
+            ),
+          ],
+        );
+      },
     );
   }
 }
