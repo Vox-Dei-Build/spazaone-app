@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/shared/widgets/workspace_search_field.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
@@ -94,6 +95,7 @@ List<CjCatalogProduct> mergeCjCatalogPages(
 
 class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   final _search = TextEditingController();
+  final _filterScroll = ScrollController();
   late final CjCatalogSearch _searchCatalog;
   late final SavedCatalogLoader _loadSavedProducts;
   late final SavedCatalogToggle _setSavedProduct;
@@ -159,6 +161,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   @override
   void dispose() {
     _search.dispose();
+    _filterScroll.dispose();
     super.dispose();
   }
 
@@ -354,6 +357,48 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     });
   }
 
+  Future<void> _showAllFilters() {
+    return showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Browse supplier products',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Choose a category. You can change it at any time.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: kSecondaryAccent,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _catalogFilterChips(
+                  sheetContext,
+                  closeAfterSelection: true,
+                  keyPrefix: 'catalog-sheet',
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final compactLandscape = usesCompactLandscapeLayout(context);
@@ -404,11 +449,32 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                       ),
                       const SizedBox(height: 2),
                       Expanded(
-                        child: SingleChildScrollView(
-                          child: Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: _catalogFilterChips(context),
+                        child: Scrollbar(
+                          controller: _filterScroll,
+                          thumbVisibility: true,
+                          child: ListView(
+                            key: const Key('catalog-landscape-filters'),
+                            controller: _filterScroll,
+                            padding:
+                                const EdgeInsets.only(right: 10, bottom: 12),
+                            children: [
+                              Text(
+                                'Categories',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelLarge
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 4),
+                              for (final chip in _catalogFilterChips(context))
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: chip,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
@@ -447,23 +513,34 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           ),
         ),
         SizedBox(
-          height: 36,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            scrollDirection: Axis.horizontal,
-            itemCount: _catalogCategories.length + 2,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return Center(
-                  child: Text(
-                    _productCountLabel,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                );
-              }
-              return _catalogFilterChips(context)[index - 1];
-            },
+          height: 40,
+          child: Row(
+            children: [
+              const SizedBox(width: 6),
+              Text(
+                _productCountLabel,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ListView.separated(
+                  key: const Key('catalog-category-strip'),
+                  padding: const EdgeInsets.only(right: 8),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _catalogCategories.length + 1,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) =>
+                      _catalogFilterChips(context)[index],
+                ),
+              ),
+              IconButton(
+                key: const Key('catalog-all-filters'),
+                tooltip: 'Show all categories',
+                onPressed: _showAllFilters,
+                icon: const Icon(Icons.tune_rounded, size: 21),
+              ),
+              const SizedBox(width: 2),
+            ],
           ),
         ),
         const SizedBox(height: 2),
@@ -511,7 +588,11 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     );
   }
 
-  List<Widget> _catalogFilterChips(BuildContext context) {
+  List<Widget> _catalogFilterChips(
+    BuildContext context, {
+    bool closeAfterSelection = false,
+    String keyPrefix = 'catalog',
+  }) {
     final colors = Theme.of(context).colorScheme;
     return [
       ChoiceChip(
@@ -530,10 +611,16 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         ),
         backgroundColor: colors.surfaceContainerHighest.withValues(alpha: .58),
         selectedColor: colors.primaryContainer.withValues(alpha: .78),
-        onSelected: (_) => _showSavedProducts(),
+        onSelected: (_) {
+          if (closeAfterSelection) Navigator.pop(context);
+          _showSavedProducts();
+        },
       ),
       for (var index = 0; index < _catalogCategories.length; index++)
         ChoiceChip(
+          key: Key(
+            '$keyPrefix-category-${_catalogCategories[index].label.toLowerCase()}',
+          ),
           selected:
               !_showSaved && index == _categoryIndex && _search.text.isEmpty,
           label: Text(_catalogCategories[index].label),
@@ -548,7 +635,10 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           backgroundColor:
               colors.surfaceContainerHighest.withValues(alpha: .58),
           selectedColor: colors.primaryContainer.withValues(alpha: .78),
-          onSelected: (_) => _selectCategory(index),
+          onSelected: (_) {
+            if (closeAfterSelection) Navigator.pop(context);
+            _selectCategory(index);
+          },
         ),
     ];
   }
@@ -640,7 +730,11 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             sliver: SliverGrid(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: compactLandscape ? 2.12 : .67,
+                childAspectRatio: compactLandscape
+                    ? 2.12
+                    : MediaQuery.sizeOf(context).width < 340
+                        ? .62
+                        : .67,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
@@ -832,74 +926,81 @@ class _SupplierProductCard extends StatelessWidget {
   }
 
   Widget _details(BuildContext context, {bool compact = false}) {
-    return Padding(
-      padding: compact
-          ? const EdgeInsets.fromLTRB(9, 8, 8, 8)
-          : const EdgeInsets.fromLTRB(11, 10, 11, 11),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            product.title,
-            maxLines: compact ? 2 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: compact ? 12 : 14,
-              fontWeight: FontWeight.w700,
-              height: 1.15,
-            ),
-          ),
-          const Spacer(),
-          if (!product.isAvailable) ...[
-            Text(
-              product.availability == 'checking'
-                  ? 'Checking availability'
-                  : 'Currently unavailable',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: product.availability == 'checking'
-                    ? Colors.orange.shade800
-                    : Colors.red.shade700,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 3),
-          ],
-          Text(
-            '${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)} landed',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: compact ? 12 : null,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          SizedBox(height: compact ? 3 : 5),
-          Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tightPortrait = !compact && constraints.maxHeight < 94;
+        return Padding(
+          padding: compact
+              ? const EdgeInsets.fromLTRB(9, 8, 8, 8)
+              : tightPortrait
+                  ? const EdgeInsets.fromLTRB(8, 6, 8, 7)
+                  : const EdgeInsets.fromLTRB(11, 10, 11, 11),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.local_shipping_outlined,
-                size: 15,
-                color: Color(0xFF258541),
+              Text(
+                product.title,
+                maxLines: tightPortrait ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 12 : 14,
+                  fontWeight: FontWeight.w700,
+                  height: 1.15,
+                ),
               ),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  _deliveryEstimate(product.logisticAging),
+              const Spacer(),
+              if (!product.isAvailable) ...[
+                Text(
+                  product.availability == 'checking'
+                      ? 'Checking availability'
+                      : 'Currently unavailable',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF258541),
-                    fontSize: 11,
+                  style: TextStyle(
+                    color: product.availability == 'checking'
+                        ? Colors.orange.shade800
+                        : Colors.red.shade700,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
+                const SizedBox(height: 3),
+              ],
+              Text(
+                '${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)} landed',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 12 : null,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: compact || tightPortrait ? 3 : 5),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.local_shipping_outlined,
+                    size: 15,
+                    color: Color(0xFF258541),
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      _deliveryEstimate(product.logisticAging),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF258541),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

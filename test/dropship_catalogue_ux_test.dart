@@ -95,6 +95,56 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('catalogue makes every category reachable without guessing',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final queries = <String>[];
+
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async {
+      queries.add(query);
+      return CjCatalogPage(
+        products: [supplierProduct(0)],
+        page: 1,
+        totalPages: 1,
+        totalProducts: 1,
+        hasMore: false,
+        nextCursor: '',
+        catalogueRefreshing: false,
+        digitalPaymentsEnabled: false,
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    expect(find.byKey(const Key('catalog-all-filters')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('catalog-all-filters')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Browse supplier products'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const Key('catalog-sheet-category-accessories')),
+    );
+    await tester.tap(
+      find.byKey(const Key('catalog-sheet-category-accessories')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(queries.last, 'accessories');
+    expect(find.text('Browse supplier products'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('catalogue moves controls beside products in phone landscape',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(720, 320));
@@ -127,8 +177,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('catalog-landscape-layout')), findsOneWidget);
+    expect(
+      find.byKey(const Key('catalog-landscape-filters')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('catalog-sort')), findsOneWidget);
     expect(find.text('Explore'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const Key('catalog-landscape-filters')),
+      const Offset(0, -240),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('catalog-category-accessories')).hitTestable(),
+      findsOneWidget,
+    );
     expect(
       tester.getTopLeft(find.byKey(const Key('supplier-product-product-0'))).dy,
       lessThan(20),

@@ -12,12 +12,14 @@ class ProductCard extends StatelessWidget {
   final Product product;
   final String docID;
   final LinkedProductPromotionLauncher promotionLauncher;
+  final bool compactHorizontal;
 
   const ProductCard({
     Key? key,
     required this.product,
     required this.docID,
     this.promotionLauncher = launchLinkedProductPromotion,
+    this.compactHorizontal = false,
   }) : super(key: key);
 
   Future<void> _promote(BuildContext context) {
@@ -27,24 +29,109 @@ class ProductCard extends StatelessWidget {
     );
   }
 
+  void _openDetails(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => product.isDropshipListing
+            ? DropshipListingPage(
+                product: product,
+                docID: docID,
+                promotionLauncher: promotionLauncher,
+              )
+            : ProductDetailsPage(docID: docID, product: product),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context); // Initialize SizeConfig
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => product.isDropshipListing
-                ? DropshipListingPage(
-                    product: product,
-                    docID: docID,
-                    promotionLauncher: promotionLauncher,
-                  )
-                : ProductDetailsPage(docID: docID, product: product),
+    if (compactHorizontal) {
+      return GestureDetector(
+        onTap: () => _openDetails(context),
+        child: Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
-        );
-      },
+          elevation: 1,
+          shadowColor: Colors.black.withValues(alpha: .12),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox.square(
+                    dimension: 82,
+                    child: product.image == null
+                        ? ColoredBox(
+                            color: Colors.grey.withValues(alpha: .10),
+                            child: const Icon(
+                              Icons.image_outlined,
+                              color: Colors.grey,
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            fit: BoxFit.cover,
+                            imageUrl: product.image!,
+                            errorWidget: (_, __, ___) => const ColoredBox(
+                              color: Color(0xFFF2F2F2),
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        formatStringToCamelCase(product.name ?? ''),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${product.isDropshipListing ? 'From' : 'Price'}: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        product.isDropshipListing
+                            ? 'Supplier fulfilled'
+                            : '${product.quantity ?? ''} in stock',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: const Color(0xFF2B325F),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, size: 21),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => _openDetails(context),
       child: Card(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 4,
