@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 
 Widget _subject({required double textScale}) {
   return MaterialApp(
     home: MediaQuery(
       data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-      child: DefaultTabController(
+      child: const DefaultTabController(
         length: 3,
         child: Scaffold(
           body: Column(
-            children: const [
+            children: [
               WorkspaceSectionTabs(
                 tabs: [
                   WorkspaceSectionTab(
@@ -66,6 +67,17 @@ void main() {
           expect(decoration.border, isNull);
           expect(decoration.borderRadius, isNotNull);
           expect(decoration.color, isNotNull);
+
+          final selected = tester.widget<Container>(
+            find
+                .ancestor(
+                  of: find.text('Recorded sales'),
+                  matching: find.byType(Container),
+                )
+                .first,
+          );
+          final selectedDecoration = selected.decoration! as BoxDecoration;
+          expect(selectedDecoration.color, kTertiaryColor);
 
           await tester.tap(find.text('Online orders'));
           await tester.pumpAndSettle();

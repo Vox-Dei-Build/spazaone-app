@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/constants/constants.dart';
 
 @immutable
 class WorkspaceSectionTab {
@@ -140,9 +141,11 @@ class _WorkspaceSectionDestination extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: selected
-                  ? colors.primaryContainer.withValues(alpha: .78)
-                  : Colors.transparent,
+              // Section tabs are navigation, not calls to action. Keep the
+              // brand green available for actions such as Add, Record sale,
+              // and Add money; navy gives selected destinations a clear but
+              // quieter hierarchy.
+              color: selected ? kTertiaryColor : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -152,9 +155,7 @@ class _WorkspaceSectionDestination extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: selected
-                        ? colors.onPrimaryContainer
-                        : colors.onSurfaceVariant,
+                    color: selected ? Colors.white : colors.onSurfaceVariant,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     height: 1.1,
                   ),

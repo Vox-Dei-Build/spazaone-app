@@ -1,7 +1,6 @@
 import { randomBytes } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
-import { formatPhoneNumber } from "../utils/phoneUtils";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -60,7 +59,7 @@ export async function ensureMerchantOrderingLink(
     | StoredOrderingLink
     | undefined;
   if (isActiveLink(existing)) {
-    return resultFromStoredLink(existing);
+    return ensureCurrentOrderingDestination(merchantId, existing);
   }
 
   return createMerchantOrderingLink(merchantId, false);
@@ -105,7 +104,7 @@ export const getMerchantOrderingLink = functions.https.onCall(
       | StoredOrderingLink
       | undefined;
     if (action === "get" && isActiveLink(existing)) {
-      return resultFromStoredLink(existing);
+      return ensureCurrentOrderingDestination(merchantId, existing);
     }
 
     return createMerchantOrderingLink(merchantId, action === "regenerate");
@@ -149,7 +148,13 @@ async function createMerchantOrderingLink(
           | StoredOrderingLink
           | undefined;
         if (!regenerate && isActiveLink(current)) {
-          return { kind: "existing", link: current };
+          const refreshed = storedLinkUsesNumber(current, whatsappNumber)
+            ? current
+            : refreshedStoredLink(current, whatsappNumber);
+          if (refreshed !== current) {
+            writeOrderingDestination(tx, merchantRef, refreshed);
+          }
+          return { kind: "existing", link: refreshed };
         }
         if (referralSnap.exists) return { kind: "collision" };
 
@@ -205,6 +210,96 @@ async function createMerchantOrderingLink(
   );
 }
 
+/**
+ * Keeps already-shared codes stable when the direct Botpress WhatsApp number
+ * changes. Only the safe destination projection is refreshed; no extra
+ * referral is allocated and the active code remains valid.
+ */
+async function ensureCurrentOrderingDestination(
+  merchantId: string,
+  existing: StoredOrderingLink & { code: string },
+): Promise<OrderingLinkResult> {
+  const whatsappNumber = requireConfiguredOrderingWhatsappNumber();
+  if (storedLinkUsesNumber(existing, whatsappNumber)) {
+    return resultFromStoredLink(existing);
+  }
+
+  const merchantRef = db.collection("users").doc(merchantId);
+  return db.runTransaction(async (tx) => {
+    const merchantSnap = await tx.get(merchantRef);
+    if (!merchantSnap.exists) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Merchant profile was not found.",
+      );
+    }
+    const current = merchantSnap.get("whatsappOrdering") as
+      | StoredOrderingLink
+      | undefined;
+    if (!isActiveLink(current)) {
+      throw new functions.https.HttpsError(
+        "aborted",
+        "The ordering link changed while it was being refreshed. Please try again.",
+      );
+    }
+    const refreshed = refreshedStoredLink(current, whatsappNumber);
+    writeOrderingDestination(tx, merchantRef, refreshed);
+    return resultFromStoredLink(refreshed);
+  });
+}
+
+function storedLinkUsesNumber(
+  link: StoredOrderingLink,
+  whatsappNumber: string,
+): boolean {
+  const storedNumber = formatOrderingWhatsappNumber(
+    link.pasellaWhatsappNumber ?? "",
+  );
+  const expectedNumber = formatOrderingWhatsappNumber(whatsappNumber);
+  if (!storedNumber || storedNumber !== expectedNumber) return false;
+  const expected = buildResultForNumber(link.code ?? "", expectedNumber, {
+    created: false,
+    regenerated: false,
+  });
+  return (
+    link.orderingUrl?.trim() === expected.orderingUrl &&
+    link.fallbackText?.trim() === expected.fallbackText
+  );
+}
+
+function refreshedStoredLink(
+  link: StoredOrderingLink & { code: string },
+  whatsappNumber: string,
+): StoredOrderingLink & { code: string } {
+  const result = buildResultForNumber(link.code, whatsappNumber, {
+    created: false,
+    regenerated: false,
+  });
+  return {
+    ...link,
+    pasellaWhatsappNumber: result.pasellaWhatsappNumber,
+    orderingUrl: result.orderingUrl,
+    fallbackText: result.fallbackText,
+  };
+}
+
+function writeOrderingDestination(
+  tx: FirebaseFirestore.Transaction,
+  merchantRef: FirebaseFirestore.DocumentReference,
+  link: StoredOrderingLink & { code: string },
+): void {
+  tx.set(
+    merchantRef,
+    {
+      whatsappOrdering: {
+        ...link,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+    },
+    { merge: true },
+  );
+}
+
 async function revokeMerchantOrderingLink(merchantId: string): Promise<void> {
   const merchantRef = db.collection("users").doc(merchantId);
   await db.runTransaction(async (tx) => {
@@ -254,7 +349,9 @@ function isActiveLink(
 function resultFromStoredLink(
   link: StoredOrderingLink & { code: string },
 ): OrderingLinkResult {
-  const storedNumber = formatPhoneNumber(link.pasellaWhatsappNumber ?? "");
+  const storedNumber = formatOrderingWhatsappNumber(
+    link.pasellaWhatsappNumber ?? "",
+  );
   if (storedNumber && link.orderingUrl?.trim() && link.fallbackText?.trim()) {
     return {
       code: link.code,
@@ -302,7 +399,7 @@ function buildResultForNumber(
 
 function requireConfiguredOrderingWhatsappNumber(): string {
   const configured = configuredPasellaWhatsappNumber();
-  const formatted = formatPhoneNumber(configured);
+  const formatted = formatOrderingWhatsappNumber(configured);
   if (!formatted) {
     throw new functions.https.HttpsError(
       "failed-precondition",
@@ -310,6 +407,17 @@ function requireConfiguredOrderingWhatsappNumber(): string {
     );
   }
   return formatted;
+}
+
+/**
+ * Provider-owned WhatsApp destinations are not restricted to South African
+ * customer-number ranges (the development Botpress sandbox currently uses a
+ * +1 number). Require a strict international E.164 value without weakening
+ * the separate SA-only validation used for merchant customer data.
+ */
+function formatOrderingWhatsappNumber(value: string): string {
+  const trimmed = value.trim();
+  return /^\+[1-9]\d{7,14}$/.test(trimmed) ? trimmed : "";
 }
 
 /**

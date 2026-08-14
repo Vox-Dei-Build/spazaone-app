@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/settings/setup/merchant_setup_page.dart';
 import 'package:pasella/pages/settings/setup/your_shop_page.dart';
@@ -199,8 +200,8 @@ class WorkspaceHeaderBar extends StatelessWidget {
                       setupProgressLabel!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.primary,
+                      style: const TextStyle(
+                        color: kTertiaryColor,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -218,13 +219,13 @@ class WorkspaceHeaderBar extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: colors.primaryContainer,
+                    color: kTertiaryColor.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
                     setupProgressLabel!,
-                    style: TextStyle(
-                      color: colors.onPrimaryContainer,
+                    style: const TextStyle(
+                      color: kTertiaryColor,
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),

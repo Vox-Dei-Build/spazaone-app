@@ -95,6 +95,31 @@ test("zero-product shop creates one stable direct-WhatsApp link", async () => {
   assert.equal(referrals.size, 1);
 });
 
+test("configured number change refreshes the destination without changing the code", async () => {
+  const callable = fft.wrap(getMerchantOrderingLink);
+  const before = (await db.doc("users/ordering-owner").get()).get(
+    "whatsappOrdering.code",
+  );
+  process.env.ORDERING_WHATSAPP_NUMBER = "+15817019840";
+
+  const refreshed = await callable(
+    { action: "get", storeId: "ordering-owner" },
+    ownerContext,
+  );
+
+  assert.equal(refreshed.code, before);
+  assert.equal(refreshed.created, false);
+  assert.equal(refreshed.regenerated, false);
+  assert.equal(refreshed.pasellaWhatsappNumber, "+15817019840");
+  assert.match(refreshed.orderingUrl, /^https:\/\/wa\.me\/15817019840/);
+  const referrals = await db
+    .collection("merchant_referrals")
+    .where("merchantId", "==", "ordering-owner")
+    .where("status", "==", "active")
+    .get();
+  assert.equal(referrals.size, 1);
+});
+
 test("failed regeneration preserves the active link", async () => {
   const callable = fft.wrap(getMerchantOrderingLink);
   const before = (await db.doc("users/ordering-owner").get()).get(

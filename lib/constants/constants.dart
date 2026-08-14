@@ -67,10 +67,9 @@ final kCustomThemeData = ThemeData(
     height: 70.0,
     iconTheme: MaterialStateProperty.resolveWith((states) {
       return IconThemeData(
-        color:
-            states.contains(MaterialState.selected)
-                ? kSecondaryColor
-                : kTertiaryColor,
+        color: states.contains(MaterialState.selected)
+            ? kSecondaryColor
+            : kTertiaryColor,
       );
     }),
     indicatorColor: kTertiaryColor,
@@ -90,8 +89,10 @@ final kCustomThemeData = ThemeData(
     }),
   ),
   tabBarTheme: const TabBarTheme(
-    labelColor: kPrimaryColor,
-    indicatorColor: kPrimaryColor,
+    // Tabs communicate location. Reserve green for primary actions and
+    // confirmed success so it keeps its meaning throughout the app.
+    labelColor: kTertiaryColor,
+    indicatorColor: kTertiaryColor,
     dividerColor: kHighLightColor,
     labelStyle: TextStyle(fontWeight: FontWeight.bold),
   ),
