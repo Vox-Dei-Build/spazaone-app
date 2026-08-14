@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/tabs/sales_balance_tab.dart';
+import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/campaign_topup_verification_screen.dart';
 import 'package:pasella/pages/wallet/widgets/paystack_form.dart';
@@ -20,7 +21,7 @@ import 'package:pasella/utils/wallet_utils.dart';
 import 'package:provider/provider.dart';
 
 /// Legacy enum values are retained for deep-link compatibility. In 4.8,
-/// `withdraw` scrolls to online sales payouts and `topUp` opens Add money.
+/// `withdraw` opens Online payments and `topUp` opens Add money.
 enum WalletInitialTab { withdraw, topUp, account }
 
 enum WalletInitialDestination { payouts, addMoney, money }
@@ -294,6 +295,210 @@ class _BalanceLabel extends StatelessWidget {
   }
 }
 
+class WalletHubMenu extends StatelessWidget {
+  const WalletHubMenu({
+    super.key,
+    required this.campaignBalance,
+    required this.sharedCampaignCredits,
+    required this.hasPendingPayment,
+    required this.overview,
+    required this.overviewLoading,
+    required this.overviewHasError,
+    required this.showBalance,
+    required this.showOnlinePayments,
+    required this.showCosts,
+    required this.onBalance,
+    required this.onOnlinePayments,
+    required this.onCosts,
+  });
+
+  final double campaignBalance;
+  final bool sharedCampaignCredits;
+  final bool hasPendingPayment;
+  final MerchantPaymentOverview? overview;
+  final bool overviewLoading;
+  final bool overviewHasError;
+  final bool showBalance;
+  final bool showOnlinePayments;
+  final bool showCosts;
+  final VoidCallback onBalance;
+  final VoidCallback onOnlinePayments;
+  final VoidCallback onCosts;
+
+  String get _onlinePaymentStatus {
+    if (overviewLoading) return 'Checking setup…';
+    if (overviewHasError || overview == null) {
+      return 'Setup status unavailable';
+    }
+    if (overview!.enabled) return 'Ready to accept online payments';
+    if (overview!.profile.bankVerificationStatus == 'pending_review') {
+      return 'Bank details are being checked';
+    }
+    return 'Set up your bank account for online sales';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final destinations = <_WalletHubDestination>[
+      if (showBalance)
+        _WalletHubDestination(
+          key: const ValueKey('wallet-hub-balance'),
+          icon: Icons.account_balance_wallet_outlined,
+          title: 'SpazaOne balance',
+          value: CurrencyUtil.format(campaignBalance),
+          subtitle: hasPendingPayment
+              ? 'Payment confirmation in progress'
+              : sharedCampaignCredits
+                  ? 'Shared across your shops'
+                  : 'Customer messages and promotions',
+          color: Colors.green.shade700,
+          onTap: onBalance,
+        ),
+      if (showOnlinePayments)
+        _WalletHubDestination(
+          key: const ValueKey('wallet-hub-online-payments'),
+          icon: Icons.account_balance_outlined,
+          title: 'Online payments',
+          subtitle: _onlinePaymentStatus,
+          color: Colors.blue.shade700,
+          onTap: onOnlinePayments,
+        ),
+      if (showCosts)
+        _WalletHubDestination(
+          key: const ValueKey('wallet-hub-costs'),
+          icon: Icons.info_outline_rounded,
+          title: 'Costs and limits',
+          subtitle: 'Message prices, payment fees and account limits',
+          color: Colors.orange.shade800,
+          onTap: onCosts,
+        ),
+    ];
+
+    return Column(
+      key: const ValueKey('wallet-payments-hub'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Choose what you want to manage',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Your balance and online sales are kept separate so each is easier to manage.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
+        ),
+        const SizedBox(height: 18),
+        for (var index = 0; index < destinations.length; index++) ...[
+          if (index > 0) const SizedBox(height: 12),
+          _WalletHubTile(destination: destinations[index]),
+        ],
+      ],
+    );
+  }
+}
+
+class _WalletHubDestination {
+  const _WalletHubDestination({
+    required this.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+    this.value,
+  });
+
+  final Key key;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? value;
+  final Color color;
+  final VoidCallback onTap;
+}
+
+class _WalletHubTile extends StatelessWidget {
+  const _WalletHubTile({required this.destination});
+
+  final _WalletHubDestination destination;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: destination.key,
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: destination.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: destination.color.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(destination.icon, color: destination.color),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            destination.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        if (destination.value case final value?) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            value,
+                            style: TextStyle(
+                              color: destination.color,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      destination.subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            height: 1.3,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class WalletPage extends StatefulWidget {
   const WalletPage({
     super.key,
@@ -312,8 +517,6 @@ class WalletPage extends StatefulWidget {
 
 class _WalletPageState extends State<WalletPage> {
   final WalletViewModel walletVM = WalletViewModel();
-  final ScrollController _scrollController = ScrollController();
-  final GlobalKey _payoutsKey = GlobalKey();
   late Future<MerchantPaymentOverview> _overviewFuture;
   bool _handledInitialDestination = false;
   String? _pendingIntentId;
@@ -340,31 +543,38 @@ class _WalletPageState extends State<WalletPage> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
     walletVM.dispose();
     super.dispose();
   }
 
   Future<void> _resumePendingThenOpenInitial() async {
     final pendingStatus = await _checkPendingPayment();
-    if (!context.mounted || pendingStatus != null) {
+    if (!context.mounted) {
+      return;
+    }
+    if (pendingStatus != null) {
+      _openBalance();
       return;
     }
     if (widget.initialAccountView case final view?) {
-      _openInfo(view);
+      switch (view) {
+        case InfoView.history:
+          _openBalance();
+        case InfoView.banking:
+          _openOnlinePayments();
+        case InfoView.info:
+          _openInfo(InfoView.info);
+      }
       return;
     }
     switch (walletInitialDestination(widget.initialTab)) {
       case WalletInitialDestination.addMoney:
-        if (FeatureFlags.enableTopUp) _openAddMoney();
-      case WalletInitialDestination.payouts:
-        final target = _payoutsKey.currentContext;
-        if (target != null) {
-          await Scrollable.ensureVisible(
-            target,
-            duration: const Duration(milliseconds: 350),
-          );
+        if (FeatureFlags.enableTopUp) {
+          await _openAddMoney();
+          if (mounted) _openBalance();
         }
+      case WalletInitialDestination.payouts:
+        _openOnlinePayments();
       case WalletInitialDestination.money:
         break;
     }
@@ -402,6 +612,27 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 
+  void _openBalance() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WalletBalanceDestinationPage(
+          hasPendingIntent: () => _pendingIntentId != null,
+          onAddMoney: _openAddMoney,
+          onCheckPending: _checkPendingPayment,
+          repaymentCardBuilder: _repaymentCard,
+        ),
+      ),
+    );
+  }
+
+  void _openOnlinePayments() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const WalletOnlinePaymentsPage(),
+      ),
+    );
+  }
+
   Future<void> _openAddMoney({List<String>? channels}) async {
     await Navigator.of(context).push<CampaignTopupStatus>(
       MaterialPageRoute(
@@ -425,75 +656,27 @@ class _WalletPageState extends State<WalletPage> {
   Widget build(BuildContext context) {
     final campaignWallet = context.watch<WalletBalanceProvider>();
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Money'),
+      appBar: const CustomAppBar(title: 'Wallet & payments'),
       body: SafeArea(
         child: SingleChildScrollView(
-          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              StreamBuilder<WalletState>(
-                stream: walletVM.walletStateStream,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final walletState = snapshot.data!;
-
-                  return Column(
-                    children: [
-                      BillingBalancePanel(
-                        campaignBalance: campaignWallet.virtualBalance,
-                        salesBalance: walletState.salesVirtualBalance,
-                        storeName: campaignWallet.activeStoreName,
-                        sharedCampaignCredits:
-                            campaignWallet.sharedCampaignCredits,
-                        onCampaignTap:
-                            FeatureFlags.enableTopUp ? _openAddMoney : null,
-                        cashAdvanceBalance: FeatureFlags.enableCashAdvance
-                            ? walletState.cashAdvanceBalance
-                            : null,
-                      ),
-                      if (FeatureFlags.enableCashAdvance &&
-                          walletState.cashAdvanceWithdrawn > 0)
-                        _repaymentCard(walletState),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-              if (_pendingIntentId != null) ...[
-                _PendingPaymentActivity(
-                  onCheckAgain: () => unawaited(_checkPendingPayment()),
-                ),
-                const SizedBox(height: 8),
-              ],
-              BillingAccountMenu(
-                showHistory: FeatureFlags.enableTransactionHistory,
-                showBanking: FeatureFlags.enableBankingDetails,
-                showFees: FeatureFlags.enablePricingInfo,
-                onHistory: () => _openInfo(InfoView.history),
-                onBanking: () => _openInfo(InfoView.banking),
-                onFees: () => _openInfo(InfoView.info),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                key: _payoutsKey,
-                child: FutureBuilder<MerchantPaymentOverview>(
-                  future: _overviewFuture,
-                  builder: (context, snapshot) => MoneyPayoutsSection(
-                    overview: snapshot.data,
-                    loading: snapshot.connectionState != ConnectionState.done,
-                    hasError: snapshot.hasError,
-                    onSetup: FeatureFlags.enableBankingDetails
-                        ? () => _openInfo(InfoView.banking)
-                        : null,
-                  ),
-                ),
-              ),
-            ],
+          child: FutureBuilder<MerchantPaymentOverview>(
+            future: _overviewFuture,
+            builder: (context, snapshot) => WalletHubMenu(
+              campaignBalance: campaignWallet.virtualBalance,
+              sharedCampaignCredits: campaignWallet.sharedCampaignCredits,
+              hasPendingPayment: _pendingIntentId != null,
+              overview: snapshot.data,
+              overviewLoading: snapshot.connectionState != ConnectionState.done,
+              overviewHasError: snapshot.hasError,
+              showBalance: FeatureFlags.enableTransactionHistory ||
+                  FeatureFlags.enableTopUp,
+              showOnlinePayments: FeatureFlags.enableBankingDetails,
+              showCosts: FeatureFlags.enablePricingInfo,
+              onBalance: _openBalance,
+              onOnlinePayments: _openOnlinePayments,
+              onCosts: () => _openInfo(InfoView.info),
+            ),
           ),
         ),
       ),
@@ -630,6 +813,197 @@ class _WalletPageState extends State<WalletPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class WalletBalanceDestinationPage extends StatefulWidget {
+  const WalletBalanceDestinationPage({
+    super.key,
+    required this.hasPendingIntent,
+    required this.onAddMoney,
+    required this.onCheckPending,
+    required this.repaymentCardBuilder,
+  });
+
+  final bool Function() hasPendingIntent;
+  final Future<void> Function() onAddMoney;
+  final Future<CampaignTopupStatus?> Function() onCheckPending;
+  final Widget Function(WalletState) repaymentCardBuilder;
+
+  @override
+  State<WalletBalanceDestinationPage> createState() =>
+      _WalletBalanceDestinationPageState();
+}
+
+class _WalletBalanceDestinationPageState
+    extends State<WalletBalanceDestinationPage> {
+  final WalletViewModel _walletVM = WalletViewModel();
+  late bool _hasPendingIntent;
+  int _historyVersion = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasPendingIntent = widget.hasPendingIntent();
+  }
+
+  @override
+  void dispose() {
+    _walletVM.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addMoney() async {
+    await widget.onAddMoney();
+    if (!mounted) return;
+    setState(() {
+      _hasPendingIntent = widget.hasPendingIntent();
+      _historyVersion++;
+    });
+  }
+
+  Future<void> _checkPending() async {
+    await widget.onCheckPending();
+    if (!mounted) return;
+    setState(() {
+      _hasPendingIntent = widget.hasPendingIntent();
+      _historyVersion++;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final campaignWallet = context.watch<WalletBalanceProvider>();
+    return Scaffold(
+      appBar: const CustomAppBar(title: 'SpazaOne balance'),
+      body: SafeArea(
+        child: ListView(
+          key: const ValueKey('spazaone-balance-page'),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
+            StreamBuilder<WalletState>(
+              stream: _walletVM.walletStateStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final walletState = snapshot.data!;
+                return Column(
+                  children: [
+                    BillingBalancePanel(
+                      campaignBalance: campaignWallet.virtualBalance,
+                      salesBalance: walletState.salesVirtualBalance,
+                      storeName: campaignWallet.activeStoreName,
+                      sharedCampaignCredits:
+                          campaignWallet.sharedCampaignCredits,
+                      onCampaignTap:
+                          FeatureFlags.enableTopUp ? _addMoney : null,
+                      cashAdvanceBalance: FeatureFlags.enableCashAdvance
+                          ? walletState.cashAdvanceBalance
+                          : null,
+                    ),
+                    if (FeatureFlags.enableCashAdvance &&
+                        walletState.cashAdvanceWithdrawn > 0)
+                      widget.repaymentCardBuilder(walletState),
+                  ],
+                );
+              },
+            ),
+            if (_hasPendingIntent) ...[
+              _PendingPaymentActivity(
+                onCheckAgain: () => unawaited(_checkPending()),
+              ),
+              const SizedBox(height: 18),
+            ],
+            if (FeatureFlags.enableTransactionHistory) ...[
+              Text(
+                'Balance activity',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              UnifiedHistoryTab(
+                key: ValueKey('balance-history-$_historyVersion'),
+                viewModel: _walletVM,
+                embedded: true,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class WalletOnlinePaymentsPage extends StatefulWidget {
+  const WalletOnlinePaymentsPage({super.key});
+
+  @override
+  State<WalletOnlinePaymentsPage> createState() =>
+      _WalletOnlinePaymentsPageState();
+}
+
+class _WalletOnlinePaymentsPageState extends State<WalletOnlinePaymentsPage> {
+  late Future<MerchantPaymentOverview> _overview;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    _overview = PaymentSetupService.overview(StoreSession.instance.storeId);
+  }
+
+  Future<void> _openSetup() async {
+    final setupWalletVM = WalletViewModel();
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BillingAccountDestinationPage(
+            view: InfoView.banking,
+            walletVM: setupWalletVM,
+          ),
+        ),
+      );
+    } finally {
+      setupWalletVM.dispose();
+    }
+    if (!mounted) return;
+    setState(_refresh);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const CustomAppBar(title: 'Online payments'),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            setState(_refresh);
+            await _overview;
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
+            child: FutureBuilder<MerchantPaymentOverview>(
+              future: _overview,
+              builder: (context, snapshot) => MoneyPayoutsSection(
+                overview: snapshot.data,
+                loading: snapshot.connectionState != ConnectionState.done,
+                hasError: snapshot.hasError,
+                onSetup: FeatureFlags.enableBankingDetails ? _openSetup : null,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

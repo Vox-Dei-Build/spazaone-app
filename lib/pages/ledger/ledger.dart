@@ -44,7 +44,7 @@ class _LedgerPageState extends State<LedgerPage> {
     var ledgerViewModel = Provider.of<LedgerViewModel>(context, listen: false);
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         floatingActionButton: ValueListenableBuilder<int>(
           valueListenable: _tabIndexNotifier,

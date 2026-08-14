@@ -6,10 +6,19 @@ import { assertCallableStoreAccess } from "../stores/storeAccess";
 
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const CODE_LENGTH = 6;
+const MAX_CODE_ATTEMPTS = 20;
 
 interface OrderingLinkData {
   action?: "get" | "regenerate" | "revoke";
   storeId?: string;
+}
+
+interface StoredOrderingLink {
+  code?: string;
+  status?: string;
+  pasellaWhatsappNumber?: string;
+  orderingUrl?: string;
+  fallbackText?: string;
 }
 
 export interface OrderingLinkResult {
@@ -20,6 +29,14 @@ export interface OrderingLinkResult {
   created: boolean;
   regenerated: boolean;
 }
+
+type LinkTransactionResult =
+  | { kind: "collision" }
+  | {
+      kind: "existing";
+      link: StoredOrderingLink & { code: string };
+    }
+  | { kind: "created" };
 
 /**
  * Returns the merchant's active ordering link, creating one when necessary.
@@ -40,35 +57,13 @@ export async function ensureMerchantOrderingLink(
   }
 
   const existing = merchantSnap.get("whatsappOrdering") as
-    | { code?: string; status?: string }
+    | StoredOrderingLink
     | undefined;
-  if (existing?.code && existing.status === "active") {
-    return buildResult(existing.code, {
-      created: false,
-      regenerated: false,
-    });
+  if (isActiveLink(existing)) {
+    return resultFromStoredLink(existing);
   }
 
-  const code = await createUniqueCode(merchantId);
-  const result = buildResult(code, {
-    created: true,
-    regenerated: false,
-  });
-  await merchantRef.set(
-    {
-      whatsappOrdering: {
-        code,
-        status: "active",
-        pasellaWhatsappNumber: result.pasellaWhatsappNumber,
-        orderingUrl: result.orderingUrl,
-        fallbackText: result.fallbackText,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-    },
-    { merge: true },
-  );
-  return result;
+  return createMerchantOrderingLink(merchantId, false);
 }
 
 export const getMerchantOrderingLink = functions.https.onCall(
@@ -86,6 +81,18 @@ export const getMerchantOrderingLink = functions.https.onCall(
     await assertCallableStoreAccess(context, merchantId);
 
     const action = data?.action ?? "get";
+    if (!(["get", "regenerate", "revoke"] as const).includes(action)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Choose a supported ordering-link action.",
+      );
+    }
+
+    if (action === "revoke") {
+      await revokeMerchantOrderingLink(merchantId);
+      return { revoked: true };
+    }
+
     const merchantRef = db.collection("users").doc(merchantId);
     const merchantSnap = await merchantRef.get();
     if (!merchantSnap.exists) {
@@ -94,102 +101,174 @@ export const getMerchantOrderingLink = functions.https.onCall(
         "Merchant profile was not found.",
       );
     }
-
     const existing = merchantSnap.get("whatsappOrdering") as
-      | { code?: string; status?: string }
+      | StoredOrderingLink
       | undefined;
-
-    if (action === "revoke") {
-      if (existing?.code) {
-        await revokeCode(existing.code, merchantId);
-      }
-      await merchantRef.set(
-        {
-          whatsappOrdering: {
-            ...(existing ?? {}),
-            status: "revoked",
-            revokedAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-        },
-        { merge: true },
-      );
-      return { revoked: true };
+    if (action === "get" && isActiveLink(existing)) {
+      return resultFromStoredLink(existing);
     }
 
-    if (
-      action !== "regenerate" &&
-      existing?.code &&
-      existing.status === "active"
-    ) {
-      return buildResult(existing.code, {
-        created: false,
-        regenerated: false,
-      });
-    }
-
-    if (action === "regenerate" && existing?.code) {
-      await revokeCode(existing.code, merchantId);
-    }
-
-    const code = await createUniqueCode(merchantId);
-    const result = buildResult(code, {
-      created: true,
-      regenerated: action === "regenerate",
-    });
-    await merchantRef.set(
-      {
-        whatsappOrdering: {
-          code,
-          status: "active",
-          pasellaWhatsappNumber: result.pasellaWhatsappNumber,
-          orderingUrl: result.orderingUrl,
-          fallbackText: result.fallbackText,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-      },
-      { merge: true },
-    );
-
-    return result;
+    return createMerchantOrderingLink(merchantId, action === "regenerate");
   },
 );
 
-async function createUniqueCode(merchantId: string): Promise<string> {
-  for (let attempt = 0; attempt < 20; attempt++) {
+/**
+ * Allocates and persists a link in one transaction. The direct WhatsApp
+ * destination is validated before a code is generated, so a missing release
+ * configuration cannot leave an active orphan in `merchant_referrals`.
+ */
+async function createMerchantOrderingLink(
+  merchantId: string,
+  regenerate: boolean,
+): Promise<OrderingLinkResult> {
+  const whatsappNumber = requireConfiguredOrderingWhatsappNumber();
+  const merchantRef = db.collection("users").doc(merchantId);
+
+  for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
     const code = randomCode();
-    const ref = db.collection("merchant_referrals").doc(code);
-    const created = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (snap.exists) return false;
-      tx.create(ref, {
-        merchantId,
-        status: "active",
-        type: "whatsapp_ordering",
-        useCount: 0,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      return true;
+    const referralRef = db.collection("merchant_referrals").doc(code);
+    const result = buildResultForNumber(code, whatsappNumber, {
+      created: true,
+      regenerated: regenerate,
     });
-    if (created) return code;
+
+    const outcome = await db.runTransaction<LinkTransactionResult>(
+      async (tx) => {
+        const [merchantSnap, referralSnap] = await Promise.all([
+          tx.get(merchantRef),
+          tx.get(referralRef),
+        ]);
+        if (!merchantSnap.exists) {
+          throw new functions.https.HttpsError(
+            "not-found",
+            "Merchant profile was not found.",
+          );
+        }
+
+        const current = merchantSnap.get("whatsappOrdering") as
+          | StoredOrderingLink
+          | undefined;
+        if (!regenerate && isActiveLink(current)) {
+          return { kind: "existing", link: current };
+        }
+        if (referralSnap.exists) return { kind: "collision" };
+
+        tx.create(referralRef, {
+          merchantId,
+          status: "active",
+          type: "whatsapp_ordering",
+          useCount: 0,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        if (regenerate && current?.code && current.code !== code) {
+          tx.set(
+            db.collection("merchant_referrals").doc(current.code),
+            {
+              merchantId,
+              status: "revoked",
+              revokedAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+        tx.set(
+          merchantRef,
+          {
+            whatsappOrdering: {
+              code,
+              status: "active",
+              pasellaWhatsappNumber: result.pasellaWhatsappNumber,
+              orderingUrl: result.orderingUrl,
+              fallbackText: result.fallbackText,
+              createdAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+          },
+          { merge: true },
+        );
+        return { kind: "created" };
+      },
+    );
+
+    if (outcome.kind === "collision") continue;
+    if (outcome.kind === "existing") {
+      return resultFromStoredLink(outcome.link);
+    }
+    return result;
   }
+
   throw new functions.https.HttpsError(
     "resource-exhausted",
     "Could not allocate an ordering code. Please try again.",
   );
 }
 
-async function revokeCode(code: string, merchantId: string): Promise<void> {
-  await db.collection("merchant_referrals").doc(code).set(
-    {
-      merchantId,
-      status: "revoked",
-      revokedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
+async function revokeMerchantOrderingLink(merchantId: string): Promise<void> {
+  const merchantRef = db.collection("users").doc(merchantId);
+  await db.runTransaction(async (tx) => {
+    const merchantSnap = await tx.get(merchantRef);
+    if (!merchantSnap.exists) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Merchant profile was not found.",
+      );
+    }
+    const existing = merchantSnap.get("whatsappOrdering") as
+      | StoredOrderingLink
+      | undefined;
+    if (existing?.code) {
+      tx.set(
+        db.collection("merchant_referrals").doc(existing.code),
+        {
+          merchantId,
+          status: "revoked",
+          revokedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+    tx.set(
+      merchantRef,
+      {
+        whatsappOrdering: {
+          ...(existing ?? {}),
+          status: "revoked",
+          revokedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+      },
+      { merge: true },
+    );
+  });
+}
+
+function isActiveLink(
+  link: StoredOrderingLink | undefined,
+): link is StoredOrderingLink & { code: string } {
+  return Boolean(link?.code && link.status === "active");
+}
+
+function resultFromStoredLink(
+  link: StoredOrderingLink & { code: string },
+): OrderingLinkResult {
+  const storedNumber = formatPhoneNumber(link.pasellaWhatsappNumber ?? "");
+  if (storedNumber && link.orderingUrl?.trim() && link.fallbackText?.trim()) {
+    return {
+      code: link.code,
+      pasellaWhatsappNumber: storedNumber,
+      orderingUrl: link.orderingUrl.trim(),
+      fallbackText: link.fallbackText.trim(),
+      created: false,
+      regenerated: false,
+    };
+  }
+  return buildResultForNumber(
+    link.code,
+    requireConfiguredOrderingWhatsappNumber(),
+    { created: false, regenerated: false },
   );
 }
 
@@ -202,39 +281,44 @@ function randomCode(): string {
   return code;
 }
 
-function buildResult(
+function buildResultForNumber(
   code: string,
+  pasellaWhatsappNumber: string,
   flags: { created: boolean; regenerated: boolean },
 ): OrderingLinkResult {
-  const pasellaWhatsappNumber = configuredPasellaWhatsappNumber();
-  const e164 = formatPhoneNumber(pasellaWhatsappNumber);
-  if (!e164) {
-    throw new functions.https.HttpsError(
-      "failed-precondition",
-      "Spaza One ordering WhatsApp number is not configured.",
-    );
-  }
   const text = `shop ${code}`;
-  const orderingUrl = `https://wa.me/${e164.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+  const orderingUrl =
+    `https://wa.me/${pasellaWhatsappNumber.replace(/\D/g, "")}` +
+    `?text=${encodeURIComponent(text)}`;
   return {
     code,
-    pasellaWhatsappNumber: e164,
+    pasellaWhatsappNumber,
     orderingUrl,
-    fallbackText: `Send ${text.toUpperCase()} to ${e164} on WhatsApp.`,
+    fallbackText: `Send ${text.toUpperCase()} to ${pasellaWhatsappNumber} on WhatsApp.`,
     created: flags.created,
     regenerated: flags.regenerated,
   };
 }
 
+function requireConfiguredOrderingWhatsappNumber(): string {
+  const configured = configuredPasellaWhatsappNumber();
+  const formatted = formatPhoneNumber(configured);
+  if (!formatted) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "The Spaza One ordering WhatsApp channel is not configured.",
+    );
+  }
+  return formatted;
+}
+
+/**
+ * The direct Botpress WhatsApp lane is the supported release transport.
+ * Legacy Twilio variables intentionally do not participate in link creation.
+ */
 export function configuredPasellaWhatsappNumber(): string {
   const cfg = functions.config();
   return (
-    process.env.ORDERING_WHATSAPP_NUMBER ||
-    process.env.TWILIO_CUSTOMER_WHATSAPP_NUMBER ||
-    process.env.TWILIO_NUMBER ||
-    cfg.ordering?.whatsapp_number ||
-    cfg.twilio?.customer_whatsapp_number ||
-    cfg.twilio?.number ||
-    ""
+    process.env.ORDERING_WHATSAPP_NUMBER || cfg.ordering?.whatsapp_number || ""
   );
 }

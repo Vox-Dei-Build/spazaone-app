@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/pages/ledger/ledger.dart';
-import 'package:pasella/pages/ledger/widgets/tab.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/stock/stock.dart';
@@ -23,7 +22,7 @@ class AppModel with ChangeNotifier {
   /// public helper to go to billing without worrying about the index.
   ///
   /// Legacy destinations remain accepted: `topUp` opens Add money and
-  /// `withdraw` scrolls to Online sales payouts on the single Money page.
+  /// `withdraw` opens Online payments at the payouts section.
   void goToBilling(BuildContext ctx, {WalletInitialTab? initialTab}) {
     if (initialTab == null) {
       Navigator.pushNamed(ctx, WalletPage.id);
@@ -43,13 +42,6 @@ class AppModel with ChangeNotifier {
     _currentIndex = index;
     notifyListeners();
   }
-
-  final List<Widget> _tabs = [
-    const CustomTab(title: 'CUSTOMERS'),
-    const CustomTab(title: 'REPORT'),
-  ];
-
-  List<Widget> get tabs => _tabs;
 
   String _selectedCustomerCategory = 'Customer';
   String get selectedCustomerCategory => _selectedCustomerCategory;

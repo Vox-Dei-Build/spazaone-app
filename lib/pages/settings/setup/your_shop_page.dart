@@ -185,6 +185,28 @@ class _SetupProgressCard extends StatelessWidget {
                   minHeight: 6,
                   borderRadius: BorderRadius.circular(99),
                 ),
+                if (!state.loading) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Continue setup',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ],
           ),

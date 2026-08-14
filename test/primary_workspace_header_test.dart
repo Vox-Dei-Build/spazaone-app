@@ -176,6 +176,37 @@ void main() {
     expect(shopTaps, 1);
   });
 
+  testWidgets('incomplete setup progress remains visible at large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 260);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: WorkspaceHeaderBar(
+                storeName: storeName,
+                setupProgressLabel: '2/6 setup',
+                onStorePressed: () {},
+                onShopPressed: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('2/6 setup'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('store context becomes read-only when switching is unavailable', (
     tester,
   ) async {

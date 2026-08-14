@@ -10,15 +10,19 @@ import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/report_date_filter_bar.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
-import 'package:pasella/shared/widgets/secondary_view_picker.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
-enum ReportView { summary, payLater }
+enum ReportView { activity, summary }
 
 class BusinessReportPage extends StatefulWidget {
-  const BusinessReportPage({super.key});
+  const BusinessReportPage({
+    super.key,
+    this.view = ReportView.activity,
+  });
   static const id = '/businessReportPage';
+
+  final ReportView view;
 
   @override
   State<BusinessReportPage> createState() => _BusinessReportPageState();
@@ -30,7 +34,6 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
   DateTime? _startDate;
   DateTime? _endDate;
   DateTime? _selectedDay;
-  ReportView _selectedView = ReportView.summary;
   bool _isDateViewRowsLoading = true;
 
   @override
@@ -47,14 +50,20 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
     _selectedDay = _endDate;
 
-    balanceSummaryViewModel.fetchBalanceSummaryWithRange(
-      _startDate!,
-      _endDate!,
-    );
     businessReportViewModel = BusinessReportViewModel(currentUser);
-    businessReportViewModel.reportFutureNotifier.value = businessReportViewModel
-        .fetchReportWithRange(DateTime(2000, 1, 1), _endDate!);
-    businessReportViewModel.fetchAllTimeTotalCustomers();
+    if (widget.view == ReportView.activity) {
+      balanceSummaryViewModel.fetchBalanceSummaryWithRange(
+        _startDate!,
+        _endDate!,
+      );
+    } else {
+      businessReportViewModel.reportFutureNotifier.value =
+          businessReportViewModel.fetchReportWithRange(
+        DateTime(2000, 1, 1),
+        _endDate!,
+      );
+      businessReportViewModel.fetchAllTimeTotalCustomers();
+    }
   }
 
   void _onDateSelected(DateTime selectedDay) {
@@ -145,34 +154,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        vertical: SizeConfig.heightMultiplier * 0.5,
-                      ),
-                      child: SecondaryViewPicker<ReportView>(
-                        key: const ValueKey('customer-report-view-picker'),
-                        semanticLabel: 'Report view',
-                        value: _selectedView,
-                        options: const [
-                          SecondaryViewOption(
-                            value: ReportView.summary,
-                            label: 'Date view',
-                            icon: Icons.receipt_long_outlined,
-                          ),
-                          SecondaryViewOption(
-                            value: ReportView.payLater,
-                            label: 'Summary',
-                            icon: Icons.account_balance_wallet_outlined,
-                          ),
-                        ],
-                        onSelected: (view) {
-                          setState(() {
-                            _selectedView = view;
-                          });
-                        },
-                      ),
-                    ),
-                    if (_selectedView == ReportView.summary) ...[
+                    if (widget.view == ReportView.activity) ...[
                       ReportDateFilterBar(
                         selectedDay: _selectedDay,
                         startDate: _startDate,
@@ -221,7 +203,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                           ],
                         ),
                       ),
-                    ] else if (_selectedView == ReportView.payLater) ...[
+                    ] else ...[
                       ValueListenableBuilder<Future<Report>?>(
                         valueListenable:
                             businessReportViewModel.reportFutureNotifier,

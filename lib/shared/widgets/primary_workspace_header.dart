@@ -98,7 +98,7 @@ class _SetupAwareWorkspaceHeaderState
         final state = snapshot.data ?? const MerchantSetupState.loading();
         final progress = state.loading || state.isComplete
             ? null
-            : '${state.completedSteps}/${state.totalSteps}';
+            : '${state.completedSteps}/${state.totalSteps} setup';
         return WorkspaceHeaderBar(
           storeName: widget.storeName,
           setupProgressLabel: progress,
@@ -137,8 +137,9 @@ class WorkspaceHeaderBar extends StatelessWidget {
     final resolvedStoreName =
         suppliedStoreName.isEmpty ? 'Your store' : suppliedStoreName;
     final canOpenStores = onStorePressed != null;
-    final showProgress = setupProgressLabel != null &&
-        MediaQuery.textScalerOf(context).scale(12) < 19;
+    final showProgress = setupProgressLabel != null;
+    final stackProgress =
+        showProgress && MediaQuery.textScalerOf(context).scale(11) >= 18;
 
     if (!showStoreContext) {
       return Align(
@@ -163,20 +164,37 @@ class WorkspaceHeaderBar extends StatelessWidget {
             ),
             const SizedBox(width: LayoutConstants.spaceSm),
             Expanded(
-              child: Text(
-                resolvedStoreName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    resolvedStoreName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colors.onSurface,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (stackProgress)
+                    Text(
+                      setupProgressLabel!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                ],
               ),
             ),
             if (canOpenStores) ...[
               const SizedBox(width: LayoutConstants.spaceXs),
-              if (showProgress) ...[
+              if (showProgress && !stackProgress) ...[
                 Container(
                   key: const ValueKey('workspace-setup-progress'),
                   padding: const EdgeInsets.symmetric(
@@ -228,7 +246,7 @@ class WorkspaceHeaderBar extends StatelessWidget {
             key: const ValueKey('workspace-store-action'),
             button: canOpenStores,
             label: canOpenStores
-                ? 'Current store, $resolvedStoreName. Open your shop${setupProgressLabel == null ? '' : '. Setup $setupProgressLabel complete'}'
+                ? 'Current store, $resolvedStoreName. Open your shop${setupProgressLabel == null ? '' : '. $setupProgressLabel complete'}'
                 : 'Current store, $resolvedStoreName',
             onTap: onStorePressed,
             excludeSemantics: true,

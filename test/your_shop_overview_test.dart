@@ -49,6 +49,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Finish setting up your shop'), findsOneWidget);
     expect(find.text('2 of 6 done'), findsOneWidget);
+    expect(find.text('Continue setup'), findsOneWidget);
     expect(find.text('Shop link'), findsOneWidget);
     expect(find.text('Store details'), findsOneWidget);
     expect(find.text('Stores & team'), findsOneWidget);
@@ -66,7 +67,7 @@ void main() {
         home: Scaffold(
           body: WorkspaceHeaderBar(
             storeName: 'My Store',
-            setupProgressLabel: '2/6',
+            setupProgressLabel: '2/6 setup',
             onStorePressed: () => storeTaps++,
             onShopPressed: () {},
           ),
@@ -76,12 +77,12 @@ void main() {
 
     expect(
         find.byKey(const ValueKey('workspace-setup-progress')), findsOneWidget);
-    expect(find.text('2/6'), findsOneWidget);
+    expect(find.text('2/6 setup'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('workspace-store-action')));
     expect(storeTaps, 1);
     expect(
       find.bySemanticsLabel(
-        'Current store, My Store. Open your shop. Setup 2/6 complete',
+        'Current store, My Store. Open your shop. 2/6 setup complete',
       ),
       findsOneWidget,
     );

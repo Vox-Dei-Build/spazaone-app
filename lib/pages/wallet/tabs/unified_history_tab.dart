@@ -9,7 +9,12 @@ import 'package:pasella/config/size_config.dart';
 
 class UnifiedHistoryTab extends StatefulWidget {
   final WalletViewModel viewModel;
-  const UnifiedHistoryTab({super.key, required this.viewModel});
+  final bool embedded;
+  const UnifiedHistoryTab({
+    super.key,
+    required this.viewModel,
+    this.embedded = false,
+  });
 
   @override
   State<UnifiedHistoryTab> createState() => _UnifiedHistoryTabState();
@@ -52,6 +57,9 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
           }
 
           return ListView.separated(
+            shrinkWrap: widget.embedded,
+            physics:
+                widget.embedded ? const NeverScrollableScrollPhysics() : null,
             separatorBuilder: (_, __) =>
                 const Divider(color: Colors.grey, thickness: .3),
             itemCount: merged.length,

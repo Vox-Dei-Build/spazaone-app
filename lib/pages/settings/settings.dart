@@ -99,8 +99,8 @@ class SettingsPage extends StatelessWidget {
                             WalletPage.id,
                           ),
                           icon: Icons.wallet,
-                          title: 'Billing',
-                          subTitle: 'Manage your wallet and payments',
+                          title: 'Wallet & payments',
+                          subTitle: 'Balance, online payments and costs',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

@@ -46,7 +46,7 @@ void main() {
     expect(find.textContaining('R 10.00'), findsOneWidget);
   });
 
-  testWidgets('checking lets the merchant return to Money immediately', (
+  testWidgets('checking lets the merchant return to balance immediately', (
     tester,
   ) async {
     CampaignTopupStatus? returned;
@@ -73,8 +73,8 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Back to Money'), findsOneWidget);
-    await tester.tap(find.text('Back to Money'));
+    expect(find.text('Back to balance'), findsOneWidget);
+    await tester.tap(find.text('Back to balance'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(returned, CampaignTopupStatus.checking);

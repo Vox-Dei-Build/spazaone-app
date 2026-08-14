@@ -4,12 +4,14 @@ import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:provider/provider.dart';
 
 class SharePage extends StatefulWidget {
   const SharePage({Key? key, this.source = 'settings'}) : super(key: key);
@@ -32,11 +34,13 @@ class _SharePageState extends State<SharePage> {
   String? _orderingUrl;
   String? _pasellaWhatsappNumber;
   String? _fallbackText;
+  bool? _hasListedProduct;
 
   @override
   void initState() {
     super.initState();
     _loadMerchantProfile();
+    _loadCatalogReadiness();
     _loadOrderingLink();
   }
 
@@ -58,6 +62,25 @@ class _SharePageState extends State<SharePage> {
       setState(() {
         _shopName = 'your shop';
       });
+    }
+  }
+
+  Future<void> _loadCatalogReadiness() async {
+    if (userId.isEmpty) return;
+    try {
+      final products = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('products')
+          .where('whatsappListed', isEqualTo: true)
+          .limit(1)
+          .get();
+      if (!mounted) return;
+      setState(() => _hasListedProduct = products.docs.isNotEmpty);
+    } catch (_) {
+      // Link creation remains independent of catalogue readiness. If this
+      // optional check is unavailable, keep the link actions usable instead
+      // of presenting a false "no products" warning.
     }
   }
 
@@ -99,10 +122,15 @@ class _SharePageState extends State<SharePage> {
           OrderingLinkCreated(source: widget.source, regenerated: regenerated),
         );
       }
-    } catch (e) {
+    } on FirebaseFunctionsException catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load your ordering link. Please try again.';
+        _error = orderingLinkErrorMessage(error.code);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = orderingLinkErrorMessage('unknown');
       });
     } finally {
       if (mounted) {
@@ -112,6 +140,11 @@ class _SharePageState extends State<SharePage> {
         });
       }
     }
+  }
+
+  void _openProducts() {
+    context.read<AppModel>().updateCurrentIndex(1);
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   String _shareMessage() {
@@ -183,13 +216,15 @@ class _SharePageState extends State<SharePage> {
               else if (_error != null)
                 _ErrorPanel(message: _error!, onRetry: _loadOrderingLink)
               else
-                _OrderingLinkPanel(
+                OrderingLinkPanel(
                   shopName: _shopName ?? 'your shop',
                   code: _code ?? '',
                   orderingUrl: _orderingUrl ?? '',
                   pasellaWhatsappNumber: _pasellaWhatsappNumber ?? '',
                   fallbackText: _fallbackText ?? '',
                   regenerating: _regenerating,
+                  hasListedProduct: _hasListedProduct ?? true,
+                  onAddProduct: _openProducts,
                   onCopyCode: () => _copy(_code ?? '', 'Code'),
                   onCopyLink: () => _copy(_orderingUrl ?? '', 'Link'),
                   onShare: _shareNative,
@@ -204,14 +239,32 @@ class _SharePageState extends State<SharePage> {
   }
 }
 
-class _OrderingLinkPanel extends StatelessWidget {
-  const _OrderingLinkPanel({
+@visibleForTesting
+String orderingLinkErrorMessage(String code) => switch (code) {
+      'unauthenticated' => 'Sign in again to open your shop link.',
+      'permission-denied' =>
+        'You do not have permission to manage this shop link.',
+      'not-found' =>
+        'This shop could not be found. Switch shops and try again.',
+      'failed-precondition' =>
+        'Shop link setup is not ready yet. Please try again later.',
+      'unavailable' ||
+      'deadline-exceeded' =>
+        'SpazaOne could not be reached. Check your connection and try again.',
+      _ => 'Could not load your shop link. Please try again.',
+    };
+
+class OrderingLinkPanel extends StatelessWidget {
+  const OrderingLinkPanel({
+    super.key,
     required this.shopName,
     required this.code,
     required this.orderingUrl,
     required this.pasellaWhatsappNumber,
     required this.fallbackText,
     required this.regenerating,
+    required this.hasListedProduct,
+    required this.onAddProduct,
     required this.onCopyCode,
     required this.onCopyLink,
     required this.onShare,
@@ -225,6 +278,8 @@ class _OrderingLinkPanel extends StatelessWidget {
   final String pasellaWhatsappNumber;
   final String fallbackText;
   final bool regenerating;
+  final bool hasListedProduct;
+  final VoidCallback onAddProduct;
   final VoidCallback onCopyCode;
   final VoidCallback onCopyLink;
   final VoidCallback onShare;
@@ -287,11 +342,19 @@ class _OrderingLinkPanel extends StatelessWidget {
                   height: 1.4,
                 ),
               ),
+              if (!hasListedProduct) ...[
+                const SizedBox(height: 16),
+                EmptyOrderingCatalogNotice(onAddProduct: onAddProduct),
+              ],
               const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: orderingUrl.isEmpty ? null : onWhatsApp,
                 icon: const Icon(FontAwesomeIcons.whatsapp),
-                label: const Text('Share on WhatsApp'),
+                label: Text(
+                  hasListedProduct
+                      ? 'Share on WhatsApp'
+                      : 'Share anyway on WhatsApp',
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: green,
                   foregroundColor: Colors.white,
@@ -309,7 +372,11 @@ class _OrderingLinkPanel extends StatelessWidget {
               TextButton.icon(
                 onPressed: orderingUrl.isEmpty ? null : onShare,
                 icon: const Icon(Icons.ios_share_outlined),
-                label: const Text('Share another way'),
+                label: Text(
+                  hasListedProduct
+                      ? 'Share another way'
+                      : 'Share anyway another way',
+                ),
                 style: TextButton.styleFrom(
                   foregroundColor: green,
                   minimumSize: const Size.fromHeight(48),
@@ -387,6 +454,57 @@ class _OrderingLinkPanel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class EmptyOrderingCatalogNotice extends StatelessWidget {
+  const EmptyOrderingCatalogNotice({
+    super.key,
+    required this.onAddProduct,
+  });
+
+  final VoidCallback onAddProduct;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('ordering-link-empty-catalogue'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.tertiaryContainer.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Add a product before sharing',
+            style: TextStyle(
+              color: colors.onTertiaryContainer,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Your shop link is ready, but customers will not see products yet.',
+            style: TextStyle(
+              color: colors.onTertiaryContainer,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: onAddProduct,
+              icon: const Icon(Icons.add_box_outlined),
+              label: const Text('Add product'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

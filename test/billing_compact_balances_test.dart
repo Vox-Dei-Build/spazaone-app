@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 
 void main() {
-  testWidgets('Money separates SpazaOne balance from legacy money', (
+  testWidgets('balance page separates SpazaOne balance from legacy money', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -67,7 +67,7 @@ void main() {
     expect(find.byKey(const ValueKey('billing-balance-legacy')), findsNothing);
   });
 
-  test('legacy Money deep links map to their single-page destinations', () {
+  test('legacy wallet deep links map to focused destinations', () {
     expect(
       walletInitialDestination(WalletInitialTab.topUp),
       WalletInitialDestination.addMoney,
@@ -82,7 +82,7 @@ void main() {
     );
   });
 
-  testWidgets('Money balance hero fits narrow screens with large text', (
+  testWidgets('balance hero fits narrow screens with large text', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));

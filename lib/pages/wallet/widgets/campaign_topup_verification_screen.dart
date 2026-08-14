@@ -192,13 +192,13 @@ class _CampaignTopupVerificationScreenState
                       OutlinedButton(
                         onPressed: () => Navigator.of(context)
                             .pop(CampaignTopupStatus.checking),
-                        child: const Text('Back to Money'),
+                        child: const Text('Back to balance'),
                       ),
                     ] else ...[
                       const SizedBox(height: 28),
                       FilledButton(
                         onPressed: () => Navigator.of(context).pop(_status),
-                        child: const Text('Back to Money'),
+                        child: const Text('Back to balance'),
                       ),
                     ],
                   ],
