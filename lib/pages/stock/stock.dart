@@ -54,7 +54,7 @@ class _StockPageState extends State<StockPage>
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => StockViewModel()..loadProducts(),
+      create: (_) => StockViewModel()..watchProducts(),
       child: Consumer<StockViewModel>(
         builder: (context, viewModel, child) {
           return DefaultTabController(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +10,10 @@ import 'package:pasella/pages/stock/product_group_page/product_group_page.dart';
 import 'package:pasella/utils/string_utils.dart';
 
 class StockViewModel with ChangeNotifier {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore? _firestoreOverride;
+  final Stream<List<Product>>? _productsStreamOverride;
+  FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
   final String userId;
   final TextEditingController newProductGroupController =
       TextEditingController();
@@ -16,8 +21,36 @@ class StockViewModel with ChangeNotifier {
   bool _disposed = false;
   String? errorMessage;
   List<Product> products = [];
+  StreamSubscription<List<Product>>? _productsSubscription;
 
-  StockViewModel() : userId = StoreSession.instance.storeId;
+  StockViewModel({
+    FirebaseFirestore? firestore,
+    String? userId,
+    Stream<List<Product>>? productsStream,
+  })  : _firestoreOverride = firestore,
+        _productsStreamOverride = productsStream,
+        userId = userId ?? StoreSession.instance.storeId;
+
+  /// Keeps the report totals and low-stock section on the same live product
+  /// truth surface as the catalogue list. Previously [products] came from a
+  /// one-time read, so a newly saved product appeared in Products via its
+  /// StreamBuilder while the Stock tab retained stale totals until the whole
+  /// page was reconstructed.
+  void watchProducts() {
+    _productsSubscription?.cancel();
+    _productsSubscription = streamProducts().listen(
+      (latest) {
+        if (_disposed) return;
+        products = List<Product>.unmodifiable(latest);
+        errorMessage = null;
+        notifyListeners();
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (_disposed) return;
+        setErrorMessage('An error occurred while loading products');
+      },
+    );
+  }
 
   Future<void> loadProducts() async {
     try {
@@ -241,6 +274,8 @@ class StockViewModel with ChangeNotifier {
   }
 
   Stream<List<Product>> streamProducts() {
+    final override = _productsStreamOverride;
+    if (override != null) return override;
     return _firestore
         .collection('users')
         .doc(userId)
@@ -299,6 +334,7 @@ class StockViewModel with ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _productsSubscription?.cancel();
     newProductGroupController.dispose();
     super.dispose();
   }

@@ -50,7 +50,8 @@ class OrdersManagementPage extends StatefulWidget {
   State<OrdersManagementPage> createState() => _OrdersManagementPageState();
 }
 
-class _OrdersManagementPageState extends State<OrdersManagementPage> {
+class _OrdersManagementPageState extends State<OrdersManagementPage>
+    with AutomaticKeepAliveClientMixin<OrdersManagementPage> {
   late final OrdersController _controller;
   StreamSubscription<CommerceOrdersSnapshot>? _commerceOrdersSub;
   final _searchCtl = TextEditingController();
@@ -129,6 +130,7 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     SizeConfig().init(context);
 
     return ChangeNotifierProvider<OrdersController>.value(
@@ -234,6 +236,9 @@ class _OrdersManagementPageState extends State<OrdersManagementPage> {
       ),
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 
   Widget _buildBody(BuildContext context, OrdersController ctrl) {
     if (ctrl.truthSurface == OrdersTruthSurface.loading) {

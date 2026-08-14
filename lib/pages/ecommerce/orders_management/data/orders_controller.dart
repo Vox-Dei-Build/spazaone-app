@@ -51,10 +51,6 @@ class CommerceOrdersCacheUnverified implements Exception {
 }
 
 @visibleForTesting
-Object? commerceOrdersSnapshotError({required bool isFromCache}) =>
-    isFromCache ? const CommerceOrdersCacheUnverified() : null;
-
-@visibleForTesting
 OrdersTruthSurface resolveOrdersTruthSurface({
   required bool legacyLoading,
   required bool commerceLoading,
@@ -72,17 +68,17 @@ OrdersTruthSurface resolveOrdersTruthSurface({
 
 @visibleForTesting
 OrderModel commerceOrderListModel(CommerceOrder order) => OrderModel(
-  id: order.id,
-  status: order.canonicalStatus.value,
-  total: order.amountDueMinor / 100,
-  itemsCount: 1,
-  createdAt: order.createdAt,
-  type: 'Dropship',
-  paymentMethod: order.paymentMethod,
-  paymentStatus: order.paymentStatus,
-  collected: order.status == 'delivered',
-  source: 'commerce',
-);
+      id: order.id,
+      status: order.canonicalStatus.value,
+      total: order.amountDueMinor / 100,
+      itemsCount: 1,
+      createdAt: order.createdAt,
+      type: 'Dropship',
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      collected: order.status == 'delivered',
+      source: 'commerce',
+    );
 
 class LinkedHashMapEntries {
   final List<MapEntry<DateTime, List<OrderModel>>> entries;
@@ -96,13 +92,16 @@ class OrdersController extends ChangeNotifier {
     required OrdersRepository repository,
     required String customerId,
     Duration searchDebounce = const Duration(milliseconds: 350),
-  }) : _repo = repository,
-       _customerId = customerId,
-       _searchDebounceDuration = searchDebounce;
+    Duration commerceVerificationTimeout = const Duration(seconds: 10),
+  })  : _repo = repository,
+        _customerId = customerId,
+        _searchDebounceDuration = searchDebounce,
+        _commerceVerificationTimeout = commerceVerificationTimeout;
 
   final OrdersRepository _repo;
   final String _customerId;
   final Duration _searchDebounceDuration;
+  final Duration _commerceVerificationTimeout;
 
   // ---- inputs --------------------------------------------------------
 
@@ -132,12 +131,12 @@ class OrdersController extends ChangeNotifier {
   bool get hasAnyError => _error != null || _commerceError != null;
 
   OrdersTruthSurface get truthSurface => resolveOrdersTruthSurface(
-    legacyLoading: _loading,
-    commerceLoading: _commerceLoading,
-    legacyError: _error,
-    commerceError: _commerceError,
-    hasOrders: allOrders.isNotEmpty,
-  );
+        legacyLoading: _loading,
+        commerceLoading: _commerceLoading,
+        legacyError: _error,
+        commerceError: _commerceError,
+        hasOrders: allOrders.isNotEmpty,
+      );
 
   /// Unfiltered server result. We hold onto it so client-side filter
   /// changes don't require another round-trip.
@@ -155,12 +154,20 @@ class OrdersController extends ChangeNotifier {
     bool isFromCache = false,
   }) {
     if (_disposed) return;
-    _commerceLoading = false;
-    _commerceError = commerceOrdersSnapshotError(isFromCache: isFromCache);
     _commerceOrdersById = {for (final order in orders) order.id: order};
-    _commerceOrderModels = orders
-        .map(commerceOrderListModel)
-        .toList(growable: false);
+    _commerceOrderModels =
+        orders.map(commerceOrderListModel).toList(growable: false);
+
+    // Firestore commonly emits a cache snapshot before its first server
+    // snapshot. Treat that result as useful-but-provisional: cached orders can
+    // render immediately, while an empty cache keeps the initial skeleton
+    // stable. Turning an empty cache hit into an error caused the Orders tab to
+    // flash "Couldn't load orders" between two normal loading frames.
+    if (!isFromCache) {
+      _commerceLoading = false;
+      _commerceError = null;
+      _commerceVerificationTimer?.cancel();
+    }
     notifyListeners();
   }
 
@@ -168,12 +175,20 @@ class OrdersController extends ChangeNotifier {
     if (_disposed) return;
     _commerceLoading = true;
     _commerceError = null;
+    _commerceVerificationTimer?.cancel();
+    _commerceVerificationTimer = Timer(_commerceVerificationTimeout, () {
+      if (_disposed || !_commerceLoading) return;
+      _commerceLoading = false;
+      _commerceError = const CommerceOrdersCacheUnverified();
+      notifyListeners();
+    });
     notifyListeners();
   }
 
   void completeCommerceLoad() {
     if (_disposed || !_commerceLoading) return;
     _commerceLoading = false;
+    _commerceVerificationTimer?.cancel();
     notifyListeners();
   }
 
@@ -181,11 +196,13 @@ class OrdersController extends ChangeNotifier {
     if (_disposed) return;
     _commerceLoading = false;
     _commerceError = error;
+    _commerceVerificationTimer?.cancel();
     notifyListeners();
   }
 
   bool _disposed = false;
   Timer? _searchDebounce;
+  Timer? _commerceVerificationTimer;
 
   // ---- derived (memoised on demand) ----------------------------------
 
@@ -220,10 +237,9 @@ class OrdersController extends ChangeNotifier {
       final raw = o.createdAt;
       // Orders with no date land in a synthetic "Unknown" bucket at
       // the epoch — they sort last and the header renders as "Unknown".
-      final key =
-          raw == null
-              ? DateTime.fromMillisecondsSinceEpoch(0)
-              : DateTime(raw.year, raw.month, raw.day);
+      final key = raw == null
+          ? DateTime.fromMillisecondsSinceEpoch(0)
+          : DateTime(raw.year, raw.month, raw.day);
       final existing = buckets[key];
       if (existing == null) {
         buckets[key] = [o];
@@ -350,6 +366,7 @@ class OrdersController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _searchDebounce?.cancel();
+    _commerceVerificationTimer?.cancel();
     super.dispose();
   }
 }
