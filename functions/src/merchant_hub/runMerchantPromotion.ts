@@ -13,7 +13,10 @@ import {
 } from "../wallet/campaignCredits";
 import twilio from "twilio";
 import { FieldValue } from "firebase-admin/firestore";
-import { DynamicPricingService } from "../services/dynamic_pricing_service";
+import {
+  DynamicPricingService,
+  MessagingPricingUnavailableError,
+} from "../services/dynamic_pricing_service";
 import {
   formatPhoneNumber,
   isValidSAPhoneNumber,
@@ -500,7 +503,18 @@ export const runMerchantPromotion = functions
       }
 
       // Pricing via Remote Config
-      const pricing = await DynamicPricingService.initialize();
+      let pricing: DynamicPricingService;
+      try {
+        pricing = await DynamicPricingService.initialize();
+      } catch (error) {
+        if (error instanceof MessagingPricingUnavailableError) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Campaign pricing is unavailable. Try again later.",
+          );
+        }
+        throw error;
+      }
       const unitWA = promo.sendWhatsApp ? pricing.whatsappPromotionPrice : 0;
       const unitSMS = promo.sendSMS ? pricing.smsReminderTemplatePrice : 0;
       let totalCost = 0;

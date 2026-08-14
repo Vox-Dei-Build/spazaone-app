@@ -76,6 +76,64 @@ class LedgerSale {
 
 enum OnlineStatusFilter { all, paid, collected, pending, failed, refunded }
 
+Future<List<LedgerSale>> fetchOnlineLedgerSales({
+  DateTime? selectedDay,
+  DateTime? startDate,
+  DateTime? endDate,
+}) async {
+  final uid = StoreSession.instance.storeId;
+  if (uid.isEmpty) throw Exception('Not signed in');
+
+  final url = FunctionEndpoints.https('getOnlineSalesFromLedger');
+  String? appCheck;
+  try {
+    appCheck = await FirebaseAppCheck.instance.getToken();
+  } catch (_) {}
+  String? idToken;
+  try {
+    idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+  } catch (_) {}
+
+  String? startIso;
+  String? endIso;
+  if (startDate != null && endDate != null) {
+    startIso = DateTime(startDate.year, startDate.month, startDate.day)
+        .toIso8601String();
+    endIso =
+        DateTime(endDate.year, endDate.month, endDate.day).toIso8601String();
+  } else if (selectedDay != null) {
+    startIso = DateTime(selectedDay.year, selectedDay.month, selectedDay.day)
+        .toIso8601String();
+    endIso = startIso;
+  }
+
+  final response = await http.post(
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+      if (appCheck != null) 'X-Firebase-AppCheck': appCheck,
+      if (idToken != null) 'Authorization': 'Bearer $idToken',
+    },
+    body: jsonEncode({
+      'merchantId': uid,
+      'limit': 200,
+      if (startIso != null) 'startDate': startIso,
+      if (endIso != null) 'endDate': endIso,
+    }),
+  );
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Could not load online orders');
+  }
+  final decoded = jsonDecode(response.body);
+  final list = decoded is Map && decoded['sales'] is List
+      ? decoded['sales'] as List
+      : const <dynamic>[];
+  return list
+      .whereType<Map>()
+      .map((item) => LedgerSale.fromMap(Map<String, dynamic>.from(item)))
+      .toList(growable: false);
+}
+
 class OnlineSalesList extends StatefulWidget {
   final DateTime? selectedDay;
   final DateTime? startDate;
@@ -139,63 +197,11 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
   }
 
   Future<List<LedgerSale>> _fetch() async {
-    final uid = StoreSession.instance.storeId;
-    if (uid.isEmpty) throw Exception('Not signed in');
-
-    final url = FunctionEndpoints.https('getOnlineSalesFromLedger');
-
-    String? appCheck;
-    try {
-      appCheck = await FirebaseAppCheck.instance.getToken();
-    } catch (_) {}
-    String? idToken;
-    try {
-      idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-    } catch (_) {}
-
-    String? startIso;
-    String? endIso;
-    if (widget.startDate != null && widget.endDate != null) {
-      startIso = DateTime(widget.startDate!.year, widget.startDate!.month,
-              widget.startDate!.day)
-          .toIso8601String();
-      endIso = DateTime(
-              widget.endDate!.year, widget.endDate!.month, widget.endDate!.day)
-          .toIso8601String();
-    } else if (widget.selectedDay != null) {
-      startIso = DateTime(widget.selectedDay!.year, widget.selectedDay!.month,
-              widget.selectedDay!.day)
-          .toIso8601String();
-      endIso = startIso;
-    }
-
-    final resp = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        if (appCheck != null) 'X-Firebase-AppCheck': appCheck,
-        if (idToken != null) 'Authorization': 'Bearer $idToken',
-      },
-      body: jsonEncode({
-        'merchantId': uid,
-        'limit': 500,
-        if (startIso != null) 'startDate': startIso,
-        if (endIso != null) 'endDate': endIso,
-      }),
+    final items = await fetchOnlineLedgerSales(
+      selectedDay: widget.selectedDay,
+      startDate: widget.startDate,
+      endDate: widget.endDate,
     );
-
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
-    }
-
-    final decoded = jsonDecode(resp.body);
-    final list = (decoded is Map && decoded['sales'] is List)
-        ? (decoded['sales'] as List)
-        : const <dynamic>[];
-    final items = list
-        .map((e) => LedgerSale.fromMap(Map<String, dynamic>.from(e as Map)))
-        .toList();
-
     return _filterByDate(items);
   }
 

@@ -162,7 +162,7 @@ void main() {
     );
 
     final store = find.bySemanticsLabel(
-      'Current store, $storeName. Open stores and team',
+      'Current store, $storeName. Open your shop',
     );
     final shop = find.bySemanticsLabel(
       'Open $storeName WhatsApp ordering link',

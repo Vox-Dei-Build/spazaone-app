@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -38,6 +39,8 @@ class PricingInfoTab extends StatefulWidget {
 
 class _PricingInfoTabState extends State<PricingInfoTab> {
   DynamicPricingService? pricingService;
+  RemoteConfigService? remoteConfigService;
+  Object? pricingError;
   bool isLoading = true;
 
   @override
@@ -47,34 +50,60 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
   }
 
   Future<void> _initialisePricingService() async {
-    final service = await DynamicPricingService.initialize();
-    if (!mounted) return;
-    setState(() {
-      pricingService = service;
-      isLoading = false;
-    });
+    try {
+      final remoteConfig = await RemoteConfigService.getInstance();
+      final service = await DynamicPricingService.initialize();
+      if (!mounted) return;
+      setState(() {
+        remoteConfigService = remoteConfig;
+        pricingService = service;
+        pricingError = null;
+        isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        pricingError = error;
+        isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
 
-    final rc = pricingService?.remoteConfigService;
-    final localPercent = rc?.getDouble('PAYSTACK_LOCAL_PERCENT') ?? 0;
-    final localFlat = rc?.getDouble('PAYSTACK_LOCAL_FLAT') ?? 0;
-    final eftPercent = rc?.getDouble('PAYSTACK_EFT_PERCENT') ?? 0;
-    final intPercent = rc?.getDouble('PAYSTACK_INT_PERCENT') ?? 0;
-    final intFlat = rc?.getDouble('PAYSTACK_INT_FLAT') ?? 0;
-    final transferFee = rc?.getDouble('PAYSTACK_TRANSFER_FEE') ?? 0;
-    final vatPercent = rc?.getDouble('PAYSTACK_VAT_PERCENT') ?? 0;
+    if (isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final rc = remoteConfigService;
+    final localPercent = rc?.getDouble(
+          'PAYSTACK_LOCAL_PERCENT',
+          defaultValue: 2.9,
+        ) ??
+        2.9;
+    final localFlat =
+        rc?.getDouble('PAYSTACK_LOCAL_FLAT', defaultValue: 1) ?? 1;
+    final eftPercent =
+        rc?.getDouble('PAYSTACK_EFT_PERCENT', defaultValue: 2) ?? 2;
+    final intPercent =
+        rc?.getDouble('PAYSTACK_INT_PERCENT', defaultValue: 3.1) ?? 3.1;
+    final intFlat = rc?.getDouble('PAYSTACK_INT_FLAT', defaultValue: 1) ?? 1;
+    final transferFee =
+        rc?.getDouble('PAYSTACK_TRANSFER_FEE', defaultValue: 3) ?? 3;
+    final vatPercent =
+        rc?.getDouble('PAYSTACK_VAT_PERCENT', defaultValue: 15) ?? 15;
 
     // Per-segment SMS rates and per-message WhatsApp rates. See
     // dynamic_pricing_service.dart for the underlying Remote Config
     // keys and markup model.
-    final smsReminderRate = pricingService?.smsReminderTemplatePrice ?? 0;
-    final smsPaymentRate = pricingService?.smsPaymentTemplatePrice ?? 0;
-    final whatsappUtilityRate = pricingService?.whatsappUtilityPrice ?? 0;
-    final whatsappPromotionRate = pricingService?.whatsappPromotionPrice ?? 0;
+    final smsReminderRate = pricingService?.smsReminderTemplatePrice;
+    final smsPaymentRate = pricingService?.smsPaymentTemplatePrice;
+    final whatsappUtilityRate = pricingService?.whatsappUtilityPrice;
+    final whatsappPromotionRate = pricingService?.whatsappPromotionPrice;
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -86,108 +115,27 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // -----------------------------------------------------------
-            // How it works
-            // -----------------------------------------------------------
-            _sectionTitle('How it works'),
-            _buildBulletPoint(
-              'Your wallet balance is always visible at the top of the wallet '
-              'screen.',
-            ),
-            _buildBulletPoint(
-              'Open Transaction history under Account to review every '
-              'payment, money added and message charge.',
-            ),
-            if (FeatureFlags.enableBalancePayout) ...[
-              _buildBulletPoint(
-                'Open Banking details under Account to choose where payouts '
-                'are sent.',
-              ),
-              _buildBulletPoint(
-                'Verified online proceeds settle to your approved bank account.',
-              ),
-            ],
-            _sectionGap(),
-
-            // -----------------------------------------------------------
-            // Payouts
-            // -----------------------------------------------------------
-            if (FeatureFlags.enableBalancePayout) ...[
-              _sectionTitle('Payouts'),
-              _buildBulletPoint(
-                'Requests are processed during business hours.',
-              ),
-              _buildBulletPoint(
-                'You can track payout status in real time on the Withdraw '
-                'tab.',
-              ),
-              _buildBulletPoint(
-                'Funds are transferred to your linked bank account.',
-              ),
-              _sectionGap(),
-            ],
-
-            // -----------------------------------------------------------
             // Messaging
             // -----------------------------------------------------------
             if (FeatureFlags.enablePricingInfo) ...[
-              _sectionTitle('Messaging'),
+              _sectionTitle('Customer messages'),
               _buildBulletPoint(
-                'WhatsApp messages are billed once per recipient regardless '
-                'of length. Utility (transactional) and marketing rates '
-                'differ — see the table below.',
-              ),
-              _buildBulletPoint(
-                'SMS is billed per segment, not per message. A segment is '
-                '160 characters of plain text, or 70 characters when the '
-                'message contains emoji or special characters such as é, ô '
-                'or curly quotes. Long messages may use multiple segments.',
-              ),
-              _buildBulletPoint(
-                'The cost shown before sending is an estimate. The final '
-                'charge is based on the rendered message — substituting '
-                'longer customer or shop names can push the segment count '
-                'up by one.',
+                'You see the full estimated cost before sending.',
               ),
               SizedBox(height: SizeConfig.heightMultiplier * 2),
-
-              // SMS rows. All transactional SMS templates share the
-              // reminder rate at the moment (see
-              // messaging_notification_service.dart line 392/439/468);
-              // only Payment SMS uses the dedicated payment rate at
-              // line 399. Onboarding and transaction confirmations are NOT shown as their
-              // own rows because doing so falsely implies they have
-              // independent rates.
-              _pricingRowWithUnit(
-                title: 'SMS — reminder, transaction, onboarding',
-                rate: smsReminderRate,
-                unit: 'per segment',
-              ),
-              _divider(),
-              _pricingRowWithUnit(
-                title: 'SMS — payment confirmation',
-                rate: smsPaymentRate,
-                unit: 'per segment',
-              ),
-              _divider(),
-              _pricingRowWithUnit(
-                title: 'SMS — promotions',
-                rate: smsReminderRate,
-                unit: 'per segment',
-              ),
-              _divider(),
-
-              // WhatsApp rows.
-              _pricingRowWithUnit(
-                title: 'WhatsApp — transactional',
-                rate: whatsappUtilityRate,
-                unit: 'per message',
-              ),
-              _divider(),
-              _pricingRowWithUnit(
-                title: 'WhatsApp — promotions',
-                rate: whatsappPromotionRate,
-                unit: 'per message',
-              ),
+              if (pricingError != null ||
+                  smsReminderRate == null ||
+                  smsPaymentRate == null ||
+                  whatsappUtilityRate == null ||
+                  whatsappPromotionRate == null)
+                _pricingUnavailable()
+              else
+                _messagePricingCard(
+                  smsCustomerRate: smsReminderRate,
+                  smsPaymentRate: smsPaymentRate,
+                  whatsappUtilityRate: whatsappUtilityRate,
+                  whatsappPromotionRate: whatsappPromotionRate,
+                ),
               _sectionGap(),
             ],
 
@@ -197,14 +145,8 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
             if (FeatureFlags.enablePricingInfo) ...[
               _sectionTitle('Order payments'),
               _buildBulletPoint(
-                'Cash orders settle immediately with no platform fee.',
-              ),
-              _buildBulletPoint(
-                'Online orders carry a platform fee plus the transaction '
-                'fee charged by your payment provider.',
-              ),
-              _buildBulletPoint(
-                'Your SpazaOne balance pays for customer messages and promotions.',
+                'Cash orders have no online payment fee. Online orders include '
+                'the payment fee shown before checkout.',
               ),
               _sectionGap(),
             ],
@@ -339,12 +281,6 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
 
   Widget _sectionGap() => SizedBox(height: SizeConfig.heightMultiplier * 3);
 
-  Widget _divider() => Divider(
-        thickness: 0.6,
-        height: SizeConfig.heightMultiplier * 2,
-        color: Colors.grey.shade300,
-      );
-
   /// Body bullet — no leading glyph; the indentation and line spacing
   /// alone communicate list structure.
   Widget _buildBulletPoint(String text) {
@@ -363,48 +299,59 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
     );
   }
 
-  /// Pricing row that splits the unit ("per segment", "per message")
-  /// onto a faint sub-line, so the price itself stays prominent.
-  Widget _pricingRowWithUnit({
-    required String title,
-    required double rate,
-    required String unit,
+  Widget _messagePricingCard({
+    required double smsCustomerRate,
+    required double smsPaymentRate,
+    required double whatsappUtilityRate,
+    required double whatsappPromotionRate,
   }) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 0.5,
+    return MessagingPricingSummary(
+      smsCustomerRate: smsCustomerRate,
+      smsPaymentRate: smsPaymentRate,
+      whatsappUtilityRate: whatsappUtilityRate,
+      whatsappPromotionRate: whatsappPromotionRate,
+    );
+  }
+
+  Widget _pricingUnavailable() {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('messaging-pricing-unavailable'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.65,
-                color: Colors.black87,
-              ),
+          Text(
+            'Pricing temporarily unavailable',
+            style: TextStyle(
+              color: colors.onErrorContainer,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                CurrencyUtil.format(rate),
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.7,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-              Text(
-                unit,
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.3,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
+          const SizedBox(height: 6),
+          Text(
+            'Paid messages remain unavailable until current pricing is '
+            'confirmed.',
+            style: TextStyle(color: colors.onErrorContainer),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                setState(() {
+                  isLoading = true;
+                  pricingError = null;
+                });
+                _initialisePricingService();
+              },
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Try again'),
+            ),
           ),
         ],
       ),
@@ -444,4 +391,111 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
       ),
     );
   }
+}
+
+class MessagingPricingSummary extends StatelessWidget {
+  const MessagingPricingSummary({
+    super.key,
+    required this.smsCustomerRate,
+    required this.smsPaymentRate,
+    required this.whatsappUtilityRate,
+    required this.whatsappPromotionRate,
+  });
+
+  final double smsCustomerRate;
+  final double smsPaymentRate;
+  final double whatsappUtilityRate;
+  final double whatsappPromotionRate;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: const ValueKey('messaging-pricing-available'),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Column(
+          children: [
+            _MessagingRateRow(
+              title: 'WhatsApp customer updates',
+              rate: whatsappUtilityRate,
+              unit: 'per customer',
+            ),
+            const Divider(),
+            _MessagingRateRow(
+              title: 'WhatsApp promotions',
+              rate: whatsappPromotionRate,
+              unit: 'per customer',
+            ),
+            const Divider(),
+            _MessagingRateRow(
+              title: 'SMS customer messages',
+              rate: smsCustomerRate,
+              unit: 'per SMS part',
+            ),
+            const Divider(),
+            _MessagingRateRow(
+              title: 'SMS payment confirmations',
+              rate: smsPaymentRate,
+              unit: 'per SMS part',
+            ),
+            const Divider(height: 1),
+            const ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.only(bottom: 12),
+              title: Text(
+                'How SMS parts work',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              children: [
+                Text(
+                  'A longer SMS, or one containing emoji and some special '
+                  'characters, can use more than one part. The app calculates '
+                  'the total after customer and shop details are added.',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MessagingRateRow extends StatelessWidget {
+  const _MessagingRateRow({
+    required this.title,
+    required this.rate,
+    required this.unit,
+  });
+
+  final String title;
+  final double rate;
+  final String unit;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Text(title)),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  CurrencyUtil.format(rate),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                Text(unit, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ],
+        ),
+      );
 }

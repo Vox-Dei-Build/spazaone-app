@@ -97,6 +97,37 @@
       "description": "Cash Advance is outside the commerce release."
     }
   },
+  "parameterGroups": {
+    "messaging_pricing": {
+      "description": "Development messaging prices mirrored from the approved production pricing inputs for exact billing QA.",
+      "parameters": {
+        "USD_SMS_REMINDER_PRICE": {
+          "defaultValue": { "value": "0.0757" }
+        },
+        "USD_SMS_PAYMENT_PRICE": {
+          "defaultValue": { "value": "0.0757" }
+        },
+        "USD_WHATSAPP_UTILITY_PRICE": {
+          "defaultValue": { "value": "0.0076" }
+        },
+        "USD_WHATSAPP_PROMOTIONAL_PRICE": {
+          "defaultValue": { "value": "0.0379" }
+        },
+        "MARKUP_SMS_PERCENTAGE": {
+          "defaultValue": { "value": "26" }
+        },
+        "MARKUP_WHATSAPP_PERCENTAGE": {
+          "defaultValue": { "value": "45" }
+        },
+        "MARKUP_PROMOTIONAL_PERCENTAGE": {
+          "defaultValue": { "value": "45" }
+        },
+        "USD_ZAR_EXCHANGE_RATE": {
+          "defaultValue": { "value": "18.25" }
+        }
+      }
+    }
+  },
   "version": {
     "description": "SpazaOne Development fail-closed commerce defaults"
   }
