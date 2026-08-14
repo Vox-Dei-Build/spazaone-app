@@ -171,4 +171,26 @@ void main() {
     expect(productionIosPlist, contains('com.tsepo.pasella'));
     expect(productionIosPlist, isNot(contains('spazaone-dev')));
   });
+
+  test('iOS phone auth callback scheme follows the selected Firebase lane', () {
+    final infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
+    final xcodeProject =
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+
+    expect(infoPlist, contains(r'$(SPAZAONE_FIREBASE_URL_SCHEME)'));
+    expect(
+      xcodeProject,
+      contains(
+        'SPAZAONE_FIREBASE_URL_SCHEME = '
+        '"app-1-317368517217-ios-b3e0537994e1b4a984a020";',
+      ),
+    );
+    expect(
+      xcodeProject,
+      contains(
+        'SPAZAONE_FIREBASE_URL_SCHEME = '
+        '"app-1-716158514645-ios-17eba128d70a92a7e5795c";',
+      ),
+    );
+  });
 }

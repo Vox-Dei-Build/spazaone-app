@@ -38,7 +38,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>app-1-716158514645-ios-17eba128d70a92a7e5795c</string>
+				<string>$(SPAZAONE_FIREBASE_URL_SCHEME)</string>
 			</array>
 		</dict>
 	</array>
