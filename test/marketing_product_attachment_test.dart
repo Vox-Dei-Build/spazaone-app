@@ -30,8 +30,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Send an offer on WhatsApp'), findsOneWidget);
-    expect(find.text('Create promotion'), findsOneWidget);
+    expect(find.text('WhatsApp promotion'), findsOneWidget);
+    expect(find.text('Create'), findsOneWidget);
     expect(find.text('Recent promotions'), findsOneWidget);
     expect(find.text('Previous campaigns appear here'), findsOneWidget);
     expect(find.text('QUICK CAMPAIGN'), findsNothing);
@@ -39,10 +39,40 @@ void main() {
     expect(find.text('Templates'), findsNothing);
     expect(find.text('Create Template'), findsNothing);
 
+    expect(
+      tester.getSize(find.byKey(const Key('marketing-command-card'))).height,
+      lessThan(90),
+    );
+
     await tester.tap(find.byKey(const Key('marketing-choose-product')));
     await tester.pump();
 
     expect(chooseProductTaps, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('marketing preserves campaign space in phone landscape',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(720, 260));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MarketingOverview(
+            onChooseProduct: () {},
+            campaignHistory: const Text('Campaign history'),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const Key('marketing-command-card'))).height,
+      lessThan(72),
+    );
+    expect(find.text('Recent promotions'), findsOneWidget);
+    expect(find.text('Campaign history'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

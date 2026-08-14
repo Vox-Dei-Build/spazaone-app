@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pasella/shared/widgets/workspace_search_field.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -355,18 +356,94 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
 
   @override
   Widget build(BuildContext context) {
+    final compactLandscape = usesCompactLandscapeLayout(context);
+    if (compactLandscape) {
+      return Row(
+        key: const Key('catalog-landscape-layout'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 210,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withValues(alpha: .35),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      WorkspaceSearchField(
+                        controller: _search,
+                        enabled: !_loading,
+                        hintText: 'Search products',
+                        semanticLabel: 'Search supplier products',
+                        searchActionLabel: 'Search',
+                        onChanged: _onSearchChanged,
+                        onSubmitted: (_) => _searchProducts(),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _productCountLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ),
+                          _sortButton(compact: true),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: _catalogFilterChips(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(child: _body(compactLandscape: true)),
+        ],
+      );
+    }
+
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
-          child: WorkspaceSearchField(
-            controller: _search,
-            enabled: !_loading,
-            hintText: 'Search supplier products',
-            semanticLabel: 'Search supplier products',
-            searchActionLabel: 'Search',
-            onChanged: _onSearchChanged,
-            onSubmitted: (_) => _searchProducts(),
+          padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: WorkspaceSearchField(
+                  controller: _search,
+                  enabled: !_loading,
+                  hintText: 'Search supplier products',
+                  semanticLabel: 'Search supplier products',
+                  searchActionLabel: 'Search',
+                  onChanged: _onSearchChanged,
+                  onSubmitted: (_) => _searchProducts(),
+                ),
+              ),
+              const SizedBox(width: 6),
+              _sortButton(),
+            ],
           ),
         ),
         SizedBox(
@@ -374,74 +451,109 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             scrollDirection: Axis.horizontal,
-            itemCount: _catalogCategories.length + 1,
+            itemCount: _catalogCategories.length + 2,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               if (index == 0) {
-                return ChoiceChip(
-                  key: const Key('catalog-saved-filter'),
-                  selected: _showSaved,
-                  avatar: const Icon(Icons.favorite_outline, size: 17),
-                  label: Text(
-                      'Saved${_savedIds.isEmpty ? '' : ' (${_savedIds.length})'}'),
-                  side: BorderSide(
-                    color: _showSaved
-                        ? Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: .45)
-                        : Theme.of(context).colorScheme.outlineVariant,
+                return Center(
+                  child: Text(
+                    _productCountLabel,
+                    style: Theme.of(context).textTheme.labelMedium,
                   ),
-                  backgroundColor: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withValues(alpha: .58),
-                  selectedColor: Theme.of(context)
-                      .colorScheme
-                      .primaryContainer
-                      .withValues(alpha: .78),
-                  onSelected: (_) => _showSavedProducts(),
                 );
               }
-              index -= 1;
-              final category = _catalogCategories[index];
-              return ChoiceChip(
-                selected: !_showSaved &&
-                    index == _categoryIndex &&
-                    _search.text.isEmpty,
-                label: Text(category.label),
-                visualDensity: VisualDensity.compact,
-                labelPadding: const EdgeInsets.symmetric(horizontal: 5),
-                side: BorderSide(
-                  color: !_showSaved &&
-                          index == _categoryIndex &&
-                          _search.text.isEmpty
-                      ? Theme.of(context)
-                          .colorScheme
-                          .primary
-                          .withValues(alpha: .45)
-                      : Theme.of(context).colorScheme.outlineVariant,
-                ),
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: .58),
-                selectedColor: Theme.of(context)
-                    .colorScheme
-                    .primaryContainer
-                    .withValues(alpha: .78),
-                onSelected: (_) => _selectCategory(index),
-              );
+              return _catalogFilterChips(context)[index - 1];
             },
           ),
         ),
-        const SizedBox(height: 4),
-        Expanded(child: _body()),
+        const SizedBox(height: 2),
+        Expanded(child: _body(compactLandscape: false)),
       ],
     );
   }
 
-  Widget _body() {
+  String get _productCountLabel {
+    final products = _visibleProducts;
+    if (!_showSaved &&
+        _totalProductsExact &&
+        _totalProducts > products.length) {
+      return '${products.length} of $_totalProducts products';
+    }
+    return '${products.length} ${products.length == 1 ? 'product' : 'products'}';
+  }
+
+  Widget _sortButton({bool compact = false}) {
+    return PopupMenuButton<_CatalogSort>(
+      key: const Key('catalog-sort'),
+      tooltip: 'Sort products',
+      initialValue: _sort,
+      icon: const Icon(Icons.sort_rounded),
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints.tightFor(
+        width: compact ? 40 : 48,
+        height: compact ? 40 : 48,
+      ),
+      onSelected: (value) => setState(() => _sort = value),
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: _CatalogSort.recommended,
+          child: Text('Recommended'),
+        ),
+        PopupMenuItem(
+          value: _CatalogSort.lowestCost,
+          child: Text('Lowest cost'),
+        ),
+        PopupMenuItem(
+          value: _CatalogSort.fastestDelivery,
+          child: Text('Fastest delivery'),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _catalogFilterChips(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return [
+      ChoiceChip(
+        key: const Key('catalog-saved-filter'),
+        selected: _showSaved,
+        avatar: const Icon(Icons.favorite_outline, size: 17),
+        label: Text(
+          'Saved${_savedIds.isEmpty ? '' : ' (${_savedIds.length})'}',
+        ),
+        visualDensity: VisualDensity.compact,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 5),
+        side: BorderSide(
+          color: _showSaved
+              ? colors.primary.withValues(alpha: .45)
+              : colors.outlineVariant,
+        ),
+        backgroundColor: colors.surfaceContainerHighest.withValues(alpha: .58),
+        selectedColor: colors.primaryContainer.withValues(alpha: .78),
+        onSelected: (_) => _showSavedProducts(),
+      ),
+      for (var index = 0; index < _catalogCategories.length; index++)
+        ChoiceChip(
+          selected:
+              !_showSaved && index == _categoryIndex && _search.text.isEmpty,
+          label: Text(_catalogCategories[index].label),
+          visualDensity: VisualDensity.compact,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 5),
+          side: BorderSide(
+            color:
+                !_showSaved && index == _categoryIndex && _search.text.isEmpty
+                    ? colors.primary.withValues(alpha: .45)
+                    : colors.outlineVariant,
+          ),
+          backgroundColor:
+              colors.surfaceContainerHighest.withValues(alpha: .58),
+          selectedColor: colors.primaryContainer.withValues(alpha: .78),
+          onSelected: (_) => _selectCategory(index),
+        ),
+    ];
+  }
+
+  Widget _body({required bool compactLandscape}) {
     if (_showSaved && _loadingSaved) {
       return const _CatalogueLoading();
     }
@@ -513,100 +625,65 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     }
 
     final products = _visibleProducts;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 8, 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  !_showSaved &&
-                          _totalProductsExact &&
-                          _totalProducts > products.length
-                      ? '${products.length} of $_totalProducts products'
-                      : '${products.length} ${products.length == 1 ? 'product' : 'products'}',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
+    return RefreshIndicator(
+      onRefresh: _showSaved ? _refreshSaved : () => _load(page: 1),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              compactLandscape ? 4 : 12,
+              4,
+              compactLandscape ? 6 : 12,
+              12,
+            ),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: compactLandscape ? 2.12 : .67,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
               ),
-              PopupMenuButton<_CatalogSort>(
-                tooltip: 'Sort products',
-                initialValue: _sort,
-                icon: const Icon(Icons.sort_rounded),
-                onSelected: (value) => setState(() => _sort = value),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: _CatalogSort.recommended,
-                    child: Text('Recommended'),
-                  ),
-                  PopupMenuItem(
-                    value: _CatalogSort.lowestCost,
-                    child: Text('Lowest cost'),
-                  ),
-                  PopupMenuItem(
-                    value: _CatalogSort.fastestDelivery,
-                    child: Text('Fastest delivery'),
-                  ),
-                ],
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _SupplierProductCard(
+                  key: Key('supplier-product-${products[index].id}'),
+                  product: products[index],
+                  digitalPaymentsEnabled: _digitalPaymentsEnabled,
+                  onListingCreated: widget.onListingCreated,
+                  createListing: widget.createListing,
+                  onProductChanged: _replaceCatalogProduct,
+                  onProductUnavailable: _removeUnavailableProduct,
+                  saved: _savedIds.contains(products[index].id),
+                  saving: _savingIds.contains(products[index].id),
+                  onSavedChanged: () => _toggleSaved(products[index]),
+                  compactHorizontal: compactLandscape,
+                ),
+                childCount: products.length,
               ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _showSaved ? _refreshSaved : () => _load(page: 1),
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: .67,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => _SupplierProductCard(
-                        key: Key('supplier-product-${products[index].id}'),
-                        product: products[index],
-                        digitalPaymentsEnabled: _digitalPaymentsEnabled,
-                        onListingCreated: widget.onListingCreated,
-                        createListing: widget.createListing,
-                        onProductChanged: _replaceCatalogProduct,
-                        onProductUnavailable: _removeUnavailableProduct,
-                        saved: _savedIds.contains(products[index].id),
-                        saving: _savingIds.contains(products[index].id),
-                        onSavedChanged: () => _toggleSaved(products[index]),
-                      ),
-                      childCount: products.length,
-                    ),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
-                    child: _LoadMoreProducts(
-                      loadedProducts: products.length,
-                      totalProducts:
-                          _showSaved ? products.length : _totalProducts,
-                      loading: _loadingMore,
-                      error: _loadMoreError,
-                      hasMore: !_showSaved && _hasMore,
-                      onPressed:
-                          !_showSaved && (_page < _totalPages || _hasMore)
-                              ? () => _load(page: _page + 1)
-                              : null,
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
-        ),
-      ],
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                12,
+                0,
+                12,
+                compactLandscape ? 12 : 100,
+              ),
+              child: _LoadMoreProducts(
+                loadedProducts: products.length,
+                totalProducts: _showSaved ? products.length : _totalProducts,
+                loading: _loadingMore,
+                error: _loadMoreError,
+                hasMore: !_showSaved && _hasMore,
+                onPressed: !_showSaved && (_page < _totalPages || _hasMore)
+                    ? () => _load(page: _page + 1)
+                    : null,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -623,6 +700,7 @@ class _SupplierProductCard extends StatelessWidget {
     required this.saved,
     required this.saving,
     required this.onSavedChanged,
+    this.compactHorizontal = false,
   });
 
   final CjCatalogProduct product;
@@ -634,6 +712,7 @@ class _SupplierProductCard extends StatelessWidget {
   final bool saved;
   final bool saving;
   final VoidCallback onSavedChanged;
+  final bool compactHorizontal;
 
   Future<void> _select(BuildContext context) async {
     final result = await showModalBottomSheet<DropshipListingResult>(
@@ -699,108 +778,127 @@ class _SupplierProductCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: product.isAvailable ? () => _select(context) : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 1.15,
-              child: Stack(
-                fit: StackFit.expand,
+        child: compactHorizontal
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _CatalogProductImage(url: product.image),
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: Material(
-                      color: Colors.white.withValues(alpha: .92),
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        key: Key('save-supplier-product-${product.id}'),
-                        tooltip: saved ? 'Remove from saved' : 'Save product',
-                        onPressed: saving ? null : onSavedChanged,
-                        icon: saving
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Icon(
-                                saved ? Icons.favorite : Icons.favorite_border,
-                                color: saved ? Colors.red.shade600 : null,
-                              ),
-                      ),
-                    ),
-                  ),
+                  AspectRatio(aspectRatio: 1, child: _image(context)),
+                  Expanded(child: _details(context, compact: true)),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AspectRatio(aspectRatio: 1.15, child: _image(context)),
+                  Expanded(child: _details(context)),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _image(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _CatalogProductImage(url: product.image),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: Material(
+            color: Colors.white.withValues(alpha: .92),
+            shape: const CircleBorder(),
+            child: IconButton(
+              key: Key('save-supplier-product-${product.id}'),
+              tooltip: saved ? 'Remove from saved' : 'Save product',
+              visualDensity: compactHorizontal
+                  ? VisualDensity.compact
+                  : VisualDensity.standard,
+              onPressed: saving ? null : onSavedChanged,
+              icon: saving
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      saved ? Icons.favorite : Icons.favorite_border,
+                      color: saved ? Colors.red.shade600 : null,
+                    ),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        height: 1.2,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (!product.isAvailable) ...[
-                      Text(
-                        product.availability == 'checking'
-                            ? 'Checking availability'
-                            : 'Currently unavailable',
-                        style: TextStyle(
-                          color: product.availability == 'checking'
-                              ? Colors.orange.shade800
-                              : Colors.red.shade700,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    Text(
-                      '${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)} landed',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.local_shipping_outlined,
-                          size: 15,
-                          color: Color(0xFF258541),
-                        ),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(
-                            _deliveryEstimate(product.logisticAging),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF258541),
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _details(BuildContext context, {bool compact = false}) {
+    return Padding(
+      padding: compact
+          ? const EdgeInsets.fromLTRB(9, 8, 8, 8)
+          : const EdgeInsets.fromLTRB(11, 10, 11, 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            product.title,
+            maxLines: compact ? 2 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 12 : 14,
+              fontWeight: FontWeight.w700,
+              height: 1.15,
+            ),
+          ),
+          const Spacer(),
+          if (!product.isAvailable) ...[
+            Text(
+              product.availability == 'checking'
+                  ? 'Checking availability'
+                  : 'Currently unavailable',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: product.availability == 'checking'
+                    ? Colors.orange.shade800
+                    : Colors.red.shade700,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
               ),
             ),
+            const SizedBox(height: 3),
           ],
-        ),
+          Text(
+            '${CurrencyUtil.format(product.estimatedLandedCostMinor / 100)} landed',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 12 : null,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: compact ? 3 : 5),
+          Row(
+            children: [
+              const Icon(
+                Icons.local_shipping_outlined,
+                size: 15,
+                color: Color(0xFF258541),
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  _deliveryEstimate(product.logisticAging),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF258541),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

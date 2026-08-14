@@ -3,10 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 
-Widget _subject({required double textScale}) {
+Widget _subject({required double textScale, Size? mediaSize}) {
   return MaterialApp(
     home: MediaQuery(
-      data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+      data: MediaQueryData(
+        size: mediaSize ?? const Size(360, 640),
+        textScaler: TextScaler.linear(textScale),
+      ),
       child: const DefaultTabController(
         length: 3,
         child: Scaffold(
@@ -91,4 +94,24 @@ void main() {
       );
     }
   }
+
+  testWidgets('workspace navigation stays compact in phone landscape', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(720, 320));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _subject(textScale: 1, mediaSize: const Size(720, 320)),
+    );
+
+    final tabs = tester.getSize(
+      find.byKey(const ValueKey('workspace-section-tabs')),
+    );
+    expect(tabs.height, lessThan(46));
+    expect(
+      find.byKey(const ValueKey('workspace-section-boundary')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

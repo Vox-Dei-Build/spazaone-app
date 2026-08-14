@@ -95,6 +95,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('catalogue moves controls beside products in phone landscape',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(720, 320));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async =>
+        CjCatalogPage(
+          products: List.generate(4, supplierProduct),
+          page: 1,
+          totalPages: 1,
+          totalProducts: 4,
+          hasMore: false,
+          nextCursor: '',
+          catalogueRefreshing: false,
+          digitalPaymentsEnabled: false,
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(size: Size(720, 320)),
+          child: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('catalog-landscape-layout')), findsOneWidget);
+    expect(find.byKey(const Key('catalog-sort')), findsOneWidget);
+    expect(find.text('Explore'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('supplier-product-product-0'))).dy,
+      lessThan(20),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('catalogue keeps earlier products when loading more',
       (tester) async {
     final requestedPages = <int>[];

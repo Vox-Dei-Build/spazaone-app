@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 
 @immutable
 class WorkspaceSectionTab {
@@ -79,6 +80,7 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
     final resolvedController = _controller!;
     final colors = Theme.of(context).colorScheme;
     final largeText = MediaQuery.textScalerOf(context).scale(14) >= 20;
+    final compactLandscape = usesCompactLandscapeLayout(context) && !largeText;
 
     final selectedIndex = resolvedController.index;
     return Column(
@@ -86,7 +88,7 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
       children: [
         Container(
           key: const ValueKey('workspace-section-tabs'),
-          padding: const EdgeInsets.all(4),
+          padding: EdgeInsets.all(compactLandscape ? 3 : 4),
           decoration: BoxDecoration(
             color: colors.surfaceContainerHighest.withValues(alpha: .7),
             borderRadius: BorderRadius.circular(16),
@@ -99,7 +101,7 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
                   child: _WorkspaceSectionDestination(
                     tab: widget.tabs[index],
                     selected: selectedIndex == index,
-                    height: largeText ? 62 : 44,
+                    height: largeText ? 62 : (compactLandscape ? 38 : 44),
                     onTap: () {
                       if (selectedIndex == index) return;
                       resolvedController.animateTo(index);
@@ -111,7 +113,7 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
         ),
         Divider(
           key: const ValueKey('workspace-section-boundary'),
-          height: 9,
+          height: compactLandscape ? 6 : 9,
           thickness: .75,
           color: colors.outlineVariant.withValues(alpha: .5),
         ),

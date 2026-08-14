@@ -94,17 +94,8 @@ class _StockPageState extends State<StockPage>
                           children: [
                             Column(
                               children: [
-                                WorkspaceContextHeader(
-                                  title: 'Your products',
-                                  subtitle: 'Products you stock and sell',
-                                  action: FilledButton.icon(
-                                    key: const ValueKey('add-product-action'),
-                                    onPressed: _openNewProduct,
-                                    icon: const Icon(Icons.add, size: 18),
-                                    label: const Text('Add'),
-                                  ),
-                                ),
-                                _ProductSearchLauncher(
+                                ProductWorkspaceToolbar(
+                                  onAddProduct: _openNewProduct,
                                   onTap: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
@@ -114,7 +105,6 @@ class _StockPageState extends State<StockPage>
                                     );
                                   },
                                 ),
-                                const SizedBox(height: 6),
                                 Expanded(
                                   child: ProductList(
                                     viewModel: viewModel,
@@ -167,22 +157,56 @@ class _StockPageState extends State<StockPage>
   }
 }
 
-class _ProductSearchLauncher extends StatelessWidget {
-  const _ProductSearchLauncher({required this.onTap});
+/// Content-first controls for the merchant's own catalogue.
+///
+/// The active Products destination already supplies the page context, so a
+/// second title/subtitle block only takes space away from the catalogue. Search
+/// and the primary Add action instead share one predictable toolbar.
+class ProductWorkspaceToolbar extends StatelessWidget {
+  const ProductWorkspaceToolbar({
+    super.key,
+    required this.onTap,
+    required this.onAddProduct,
+  });
 
   final VoidCallback onTap;
+  final VoidCallback onAddProduct;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-        child: WorkspaceSearchField(
-          key: const ValueKey('search-products-launcher'),
-          hintText: 'Search products',
-          semanticLabel: 'Open product search',
-          readOnly: true,
-          onTap: onTap,
-        ),
-      );
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: WorkspaceSearchField(
+              key: const ValueKey('search-products-launcher'),
+              hintText: 'Search products',
+              semanticLabel: 'Open product search',
+              readOnly: true,
+              onTap: onTap,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              key: const ValueKey('add-product-action'),
+              onPressed: onAddProduct,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
