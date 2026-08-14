@@ -185,60 +185,32 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   const SalesPageHeader(),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  WorkspaceSectionTabs(
-                    controller: _mainController,
-                    tabs: const [
-                      WorkspaceSectionTab(
-                        label: 'Recorded sales',
-                        semanticLabel: 'Recorded sales',
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: WorkspaceSectionTabs(
+                          controller: _mainController,
+                          tabs: const [
+                            WorkspaceSectionTab(
+                              label: 'Recorded sales',
+                              semanticLabel: 'Recorded sales',
+                            ),
+                            WorkspaceSectionTab(
+                              label: 'Online orders',
+                              semanticLabel: 'Online orders',
+                            ),
+                            WorkspaceSectionTab(
+                              label: 'Marketing',
+                              semanticLabel: 'Marketing',
+                            ),
+                          ],
+                        ),
                       ),
-                      WorkspaceSectionTab(
-                        label: 'Online orders',
-                        semanticLabel: 'Online orders',
-                      ),
-                      WorkspaceSectionTab(
-                        label: 'Marketing',
-                        semanticLabel: 'Marketing',
+                      SalesHelpAction(
+                        showMarketingHelp: _mainController.index == 2,
                       ),
                     ],
-                  ),
-                  Container(
-                    constraints: const BoxConstraints(minHeight: 56),
-                    padding: const EdgeInsets.only(left: 4),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            switch (_mainController.index) {
-                              0 => 'Sales recorded in SpazaOne',
-                              1 => 'Orders placed through your shop',
-                              _ => 'Promote products to your customers',
-                            },
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                          ),
-                        ),
-                        SalesHelpAction(
-                          showMarketingHelp: _mainController.index == 2,
-                        ),
-                      ],
-                    ),
                   ),
                   Expanded(
                     child: TabBarView(

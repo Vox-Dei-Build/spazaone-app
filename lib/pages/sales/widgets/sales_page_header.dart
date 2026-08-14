@@ -29,7 +29,7 @@ class SalesHelpAction extends StatelessWidget {
       child: IconButton(
         icon: Icon(
           Icons.help_outline,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          color: Colors.black87,
           size: SizeConfig.imageSizeMultiplier * 5,
         ),
         onPressed: () {

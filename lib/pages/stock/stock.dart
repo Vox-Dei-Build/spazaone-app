@@ -4,9 +4,9 @@ import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
+import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
-import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
@@ -86,40 +86,35 @@ class _StockPageState extends State<StockPage>
                         shareSource: 'products_header',
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      WorkspaceSectionTabs(
+                      ContextualTabBar(
                         controller: _tabController,
-                        tabs: const <WorkspaceSectionTab>[
-                          WorkspaceSectionTab(
-                            label: 'Your products',
-                            semanticLabel: 'Your products',
-                          ),
-                          WorkspaceSectionTab(
-                            label: 'Supplier catalogue',
-                            semanticLabel: 'Supplier catalogue',
-                          ),
-                          WorkspaceSectionTab(
-                            label: 'Stock report',
-                            semanticLabel: 'Product stock report',
-                          ),
+                        labelPadding: EdgeInsets.zero,
+                        labelStyle: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 1.45,
+                          fontWeight: FontWeight.normal,
+                        ),
+                        unselectedLabelStyle: TextStyle(
+                          fontSize: SizeConfig.textMultiplier * 1.45,
+                          fontWeight: FontWeight.normal,
+                        ),
+                        tabs: const [
+                          Tab(text: 'PRODUCTS'),
+                          Tab(text: 'CATALOGUE'),
+                          Tab(text: 'REPORT'),
                         ],
-                      ),
-                      ValueListenableBuilder<int>(
-                        valueListenable: _tabIndexNotifier,
-                        builder: (context, tabIndex, _) => StockTabActions(
-                          title: switch (tabIndex) {
-                            0 => 'Manage your products',
-                            1 => 'Find products to sell',
-                            _ => 'Understand your stock',
-                          },
-                          showProductSearch: tabIndex == 0,
-                          onSearch: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const GlobalSearchPage(),
-                              ),
-                            );
-                          },
-                          onHelp: _openTutorial,
+                        action: ValueListenableBuilder<int>(
+                          valueListenable: _tabIndexNotifier,
+                          builder: (context, tabIndex, _) => StockTabActions(
+                            showProductSearch: tabIndex == 0,
+                            onSearch: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const GlobalSearchPage(),
+                                ),
+                              );
+                            },
+                            onHelp: _openTutorial,
+                          ),
                         ),
                       ),
                       Expanded(
@@ -220,65 +215,42 @@ class CustomFloatingActionButtonLocation extends FloatingActionButtonLocation {
 class StockTabActions extends StatelessWidget {
   const StockTabActions({
     super.key,
-    this.title,
     required this.showProductSearch,
     required this.onSearch,
     required this.onHelp,
   });
 
-  final String? title;
   final bool showProductSearch;
   final VoidCallback onSearch;
   final VoidCallback onHelp;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      constraints: const BoxConstraints(minHeight: 56),
-      padding: const EdgeInsets.only(left: 4),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
-      ),
-      child: Row(
-        children: [
-          if (title != null)
-            Expanded(
-              child: Text(
-                title!,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colors.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
-              ),
-            )
-          else
-            const Spacer(),
-          if (showProductSearch)
-            IconButton(
-              key: const ValueKey('search-my-products'),
-              tooltip: 'Search my products',
-              icon: Icon(
-                Icons.search,
-                color: colors.onSurfaceVariant,
-                size: SizeConfig.imageSizeMultiplier * 5,
-              ),
-              onPressed: onSearch,
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showProductSearch)
           IconButton(
-            key: const ValueKey('stock-help'),
-            tooltip: 'How to capture stock',
+            key: const ValueKey('search-my-products'),
+            tooltip: 'Search my products',
             icon: Icon(
-              Icons.help_outline,
-              color: colors.onSurfaceVariant,
+              Icons.search,
+              color: Colors.black87,
               size: SizeConfig.imageSizeMultiplier * 5,
             ),
-            onPressed: onHelp,
+            onPressed: onSearch,
           ),
-        ],
-      ),
+        IconButton(
+          key: const ValueKey('stock-help'),
+          tooltip: 'How to capture stock',
+          icon: Icon(
+            Icons.help_outline,
+            color: Colors.black87,
+            size: SizeConfig.imageSizeMultiplier * 5,
+          ),
+          onPressed: onHelp,
+        ),
+      ],
     );
   }
 }

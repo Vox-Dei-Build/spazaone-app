@@ -301,9 +301,9 @@ class CustomerBalanceSummary extends StatelessWidget {
           Container(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
             decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withValues(alpha: .26),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: primary.withValues(alpha: .15)),
+              border: Border.all(color: const Color(0xFFE8ECE8)),
             ),
             child: Column(
               children: [
@@ -344,7 +344,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                               ),
                               style: theme.textTheme.headlineSmall?.copyWith(
                                 color: primary,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w900,
                                 letterSpacing: -0.6,
                               ),
                             ),
@@ -356,7 +356,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 14),
-                  child: Divider(height: 1),
+                  child: Divider(height: 1, color: Color(0xFFEDEFEA)),
                 ),
                 Row(
                   children: [
@@ -397,7 +397,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                 child: Text(
                   'Customers to follow up',
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -416,7 +416,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                     '$owingCount',
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: primary,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -474,7 +474,7 @@ class _InlineSummaryMetric extends StatelessWidget {
         Text(
           value,
           style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w900,
             color: color,
           ),
         ),

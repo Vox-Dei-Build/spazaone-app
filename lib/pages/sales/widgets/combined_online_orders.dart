@@ -227,19 +227,24 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                 const Text('Status',
                     style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: OnlineOrderProgressFilter.values
+                DropdownButtonFormField<OnlineOrderProgressFilter>(
+                  value: progress,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                  ),
+                  items: OnlineOrderProgressFilter.values
                       .map(
-                        (value) => ChoiceChip(
-                          label: Text(_progressLabel(value)),
-                          selected: progress == value,
-                          onSelected: (_) =>
-                              setSheetState(() => progress = value),
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: Text(_progressLabel(value)),
                         ),
                       )
                       .toList(growable: false),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setSheetState(() => progress = value);
+                    }
+                  },
                 ),
                 const SizedBox(height: 20),
                 const Text('Date',
@@ -601,87 +606,81 @@ class _OrderRow extends StatelessWidget {
     final date = order.createdAt == null
         ? ''
         : DateFormat('dd MMM yyyy · HH:mm').format(order.createdAt!);
-    return Column(
-      children: [
-        InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primaryContainer
-                        .withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    order.isOwned
-                        ? Icons.inventory_2_outlined
-                        : Icons.local_shipping_outlined,
-                    size: 20,
-                  ),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        order.subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      if (date.isNotEmpty) ...[
-                        const SizedBox(height: 5),
-                        Text(date,
-                            style: Theme.of(context).textTheme.bodySmall),
-                      ],
-                    ],
-                  ),
+                child: Icon(
+                  order.isOwned
+                      ? Icons.inventory_2_outlined
+                      : Icons.local_shipping_outlined,
+                  size: 20,
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      CurrencyUtil.format(order.amountMinor / 100),
+                      order.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 3),
                     Text(
-                      order.statusLabel,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      order.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
+                    if (date.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Text(date, style: Theme.of(context).textTheme.bodySmall),
+                    ],
                   ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    CurrencyUtil.format(order.amountMinor / 100),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    order.statusLabel,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        Divider(
-          height: 1,
-          indent: 54,
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
-      ],
+      ),
     );
   }
 }

@@ -33,20 +33,17 @@ class ProductReportsTab extends StatelessWidget {
     double potentialProfit = totalSellingPrice - totalCost;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(4, 18, 4, 96),
+      padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
       children: [
-        ProductValueSummary(
-          costValue: totalCost,
-          salesValue: totalSellingPrice,
-          potentialProfit: potentialProfit,
-        ),
-        const SizedBox(height: 24),
+        SummaryCard(title: 'Product Cost Value', amount: totalCost),
+        SummaryCard(title: 'Product Sales Value', amount: totalSellingPrice),
+        SummaryCard(title: 'Potential Product Profit', amount: potentialProfit),
         ProductSection(
-          title: 'Low-stock products',
+          title: 'Low-stock Products',
           products: lowStockProductsTwo,
         ),
         ProductSection(
-          title: 'Out-of-stock products',
+          title: 'Out-of-stock Products',
           products: noStockProducts,
         ),
       ],

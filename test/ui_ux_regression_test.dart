@@ -131,18 +131,11 @@ void main() {
       ),
     );
 
-    expect(
-      tester
-          .getSize(find.byKey(const ValueKey('workspace-date-filter')))
-          .height,
-      greaterThanOrEqualTo(48),
-    );
-    expect(find.byType(PopupMenuButton), findsNothing);
-    await tester.tap(find.text('Change dates'));
+    expect(tester.getSize(find.byTooltip('Quick ranges')).height,
+        greaterThanOrEqualTo(48));
+    await tester.tap(find.byTooltip('Quick ranges'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Show all time'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Show all time'));
+    await tester.tap(find.text('Clear'));
     await tester.pumpAndSettle();
 
     expect(clearCalls, 1);

@@ -14,27 +14,15 @@ class ProductSection extends StatelessWidget {
   Widget build(BuildContext context) {
     SizeConfig().init(context); // Initialize SizeConfig
 
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(
-          bottom:
-              BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-      ),
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 1),
       child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-        childrenPadding: const EdgeInsets.only(bottom: 8),
         title: Text(
           title,
           style: TextStyle(
             fontSize: SizeConfig.textMultiplier * 2,
             fontWeight: FontWeight.bold,
           ),
-        ),
-        subtitle: Text(
-          products.isEmpty
-              ? 'Nothing needs attention'
-              : '${products.length} ${products.length == 1 ? 'product' : 'products'}',
         ),
         children: products.map((product) {
           return ListTile(
