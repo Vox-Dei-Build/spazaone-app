@@ -275,12 +275,13 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
         icon: failed ? Icons.warning_amber_rounded : Icons.hourglass_top,
         title: failed
             ? 'WhatsApp setup needs another try'
-            : 'Preparing WhatsApp promotions',
+            : 'WhatsApp promotion approval pending',
         body: failed
             ? templateFailureReason(template) ??
                 'Spaza One could not submit the reusable product message.'
-            : 'Spaza One created the product message for you. Meta is reviewing '
-                'it; there is nothing else you need to complete.',
+            : 'Meta is reviewing the reusable product message. This is an '
+                'approval step for every WhatsApp business account, not a '
+                'development-mode limitation. You can check again later.',
         actionLabel: failed ? 'Retry setup' : 'Check again',
         busy: _retrying,
         onAction: () => _prepare(retry: failed),

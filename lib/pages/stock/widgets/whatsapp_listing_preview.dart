@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
@@ -24,6 +26,7 @@ class WhatsappListingPreview extends StatelessWidget {
   final String? company;
   final String? description;
   final String? imageUrl;
+  final File? localImage;
   final String? shopName;
 
   const WhatsappListingPreview({
@@ -33,6 +36,7 @@ class WhatsappListingPreview extends StatelessWidget {
     required this.company,
     required this.description,
     required this.imageUrl,
+    this.localImage,
     this.shopName,
   }) : super(key: key);
 
@@ -77,8 +81,7 @@ class WhatsappListingPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final double imageBoxSide = SizeConfig.heightMultiplier * 22;
     final TimeOfDay now = TimeOfDay.now();
-    final String timeLabel =
-        '${now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod}:'
+    final String timeLabel = '${now.hourOfPeriod == 0 ? 12 : now.hourOfPeriod}:'
         '${now.minute.toString().padLeft(2, '0')} '
         '${now.period == DayPeriod.am ? 'AM' : 'PM'}';
 
@@ -155,42 +158,50 @@ class WhatsappListingPreview extends StatelessWidget {
                       child: SizedBox(
                         height: imageBoxSide,
                         width: double.infinity,
-                        child: (imageUrl == null || imageUrl!.isEmpty)
-                            ? Container(
-                                color: const Color(0xFFEDEDED),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.image_outlined,
-                                      size: SizeConfig.imageSizeMultiplier * 10,
-                                      color: Colors.grey.shade400,
+                        child: localImage != null
+                            ? Image.file(localImage!, fit: BoxFit.cover)
+                            : (imageUrl == null || imageUrl!.isEmpty)
+                                ? Container(
+                                    color: const Color(0xFFEDEDED),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.image_outlined,
+                                          size: SizeConfig.imageSizeMultiplier *
+                                              10,
+                                          color: Colors.grey.shade400,
+                                        ),
+                                        SizedBox(
+                                          height:
+                                              SizeConfig.heightMultiplier * 0.5,
+                                        ),
+                                        Text(
+                                          'Add a photo so this stands out',
+                                          style: TextStyle(
+                                            fontSize:
+                                                SizeConfig.textMultiplier * 1.4,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    SizedBox(
-                                      height: SizeConfig.heightMultiplier * 0.5,
-                                    ),
-                                    Text(
-                                      'Add a photo so this stands out',
-                                      style: TextStyle(
-                                        fontSize: SizeConfig.textMultiplier * 1.4,
-                                        color: Colors.grey.shade600,
+                                  )
+                                : CachedNetworkImage(
+                                    imageUrl: imageUrl!,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (context, url, error) =>
+                                        Container(
+                                      color: const Color(0xFFEDEDED),
+                                      child: Icon(
+                                        Icons.broken_image_outlined,
+                                        color: Colors.grey.shade400,
+                                        size:
+                                            SizeConfig.imageSizeMultiplier * 10,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              )
-                            : CachedNetworkImage(
-                                imageUrl: imageUrl!,
-                                fit: BoxFit.cover,
-                                errorWidget: (context, url, error) => Container(
-                                  color: const Color(0xFFEDEDED),
-                                  child: Icon(
-                                    Icons.broken_image_outlined,
-                                    color: Colors.grey.shade400,
-                                    size: SizeConfig.imageSizeMultiplier * 10,
                                   ),
-                                ),
-                              ),
                       ),
                     ),
                     Padding(
@@ -231,10 +242,10 @@ class WhatsappListingPreview extends StatelessWidget {
                             style: TextStyle(
                               fontSize: SizeConfig.textMultiplier * 1.8,
                               fontWeight: FontWeight.w600,
-                              color: (sellingPrice == null ||
-                                      sellingPrice! <= 0)
-                                  ? Colors.grey
-                                  : _accent,
+                              color:
+                                  (sellingPrice == null || sellingPrice! <= 0)
+                                      ? Colors.grey
+                                      : _accent,
                             ),
                           ),
                           if (_displayDescription != null) ...[

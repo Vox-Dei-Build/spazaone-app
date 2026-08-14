@@ -6,6 +6,7 @@ import 'package:pasella/pages/stock/product_report/product_report.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
 import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
+import 'package:pasella/shared/widgets/workspace_search_field.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
@@ -174,25 +175,12 @@ class _ProductSearchLauncher extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-        child: Material(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            key: const ValueKey('search-products-launcher'),
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(14),
-            child: const SizedBox(
-              height: 48,
-              child: Row(
-                children: [
-                  SizedBox(width: 14),
-                  Icon(Icons.search_rounded),
-                  SizedBox(width: 12),
-                  Expanded(child: Text('Search products')),
-                ],
-              ),
-            ),
-          ),
+        child: WorkspaceSearchField(
+          key: const ValueKey('search-products-launcher'),
+          hintText: 'Search products',
+          semanticLabel: 'Open product search',
+          readOnly: true,
+          onTap: onTap,
         ),
       );
 }

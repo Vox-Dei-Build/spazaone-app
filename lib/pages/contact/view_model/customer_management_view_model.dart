@@ -26,6 +26,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
   int _profileImageRevision = 0;
   bool isLoading = false;
   File? get profileImage => _profileImage; // Getter for profile image
+  bool get hasPendingProfileImage => _profileImage != null;
   String? get profileImageUrl =>
       _profileImageUrl; // Getter for profile image URL
   String? get profileImageDisplayUrl {
@@ -261,7 +262,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
   Future<void> handleImagePick(BuildContext context) async {
     await _photoUploadUtil.handleImagePick(context, (pickedImage) async {
       if (pickedImage != null) {
-        print("📸 New profile image picked: $_profileImage"); // Debug print
         _profileImage = pickedImage;
         notifyListeners(); // 🔥 Ensure UI updates
       }

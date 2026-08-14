@@ -966,15 +966,15 @@ List<_SetupStep> _buildSteps(
       icon: Icons.campaign_outlined,
       rowTitle: s.hasApprovedTemplate
           ? 'WhatsApp promotions ready'
-          : 'Prepare WhatsApp promotions',
+          : 'WhatsApp promotion approval',
       rowBody: s.hasApprovedTemplate
           ? 'Marketing messages are ready when you need them.'
           : s.hasProducts
-              ? 'Spaza One prepares the reusable message and handles Meta approval.'
+              ? 'Meta must approve the reusable product message before it can be sent.'
               : 'Available after a product exists.',
-      actionTitle: 'Prepare WhatsApp promotions',
+      actionTitle: 'WhatsApp promotion approval',
       actionBody:
-          'Spaza One creates and submits the reusable product message for you.',
+          'Spaza One creates the reusable product message and shows its Meta approval status.',
       actionLabel: s.hasProducts ? 'Open Marketing' : null,
       action: s.hasProducts ? a.onCreateTemplate : null,
     ),

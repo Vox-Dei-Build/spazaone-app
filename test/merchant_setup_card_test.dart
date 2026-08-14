@@ -183,7 +183,7 @@ void main() {
       (tester) async {
         await _pumpCardWith(tester, _allButTemplate);
 
-        expect(find.text('Prepare WhatsApp promotions'), findsOneWidget);
+        expect(find.text('WhatsApp promotion approval'), findsOneWidget);
         expect(
           find.widgetWithText(ElevatedButton, 'Open Marketing'),
           findsOneWidget,

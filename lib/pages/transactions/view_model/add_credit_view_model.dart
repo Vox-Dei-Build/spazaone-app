@@ -225,7 +225,7 @@ class AddCreditViewModel extends TransactionViewModel {
           mobileNumber!,
         );
         final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send transaction confirmation?',
+          title: 'Transaction recorded',
           subtitle: 'Message to $customerName',
           whatsappCost: whatsappCost,
           smsCost: smsCost,
@@ -235,7 +235,8 @@ class AddCreditViewModel extends TransactionViewModel {
         outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
-          confirmLabel: 'Send',
+          confirmLabel: 'Send confirmation',
+          skipLabel: 'Done without sending',
         );
       } else {
         // No number on file — the only honest outcome is "record only".

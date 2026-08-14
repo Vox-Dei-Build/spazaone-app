@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pasella/shared/widgets/workspace_search_field.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -358,41 +359,12 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
-          child: TextField(
+          child: WorkspaceSearchField(
             controller: _search,
             enabled: !_loading,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: 'Search supplier products',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                tooltip: 'Search',
-                onPressed: _loading || _loadingMore ? null : _searchProducts,
-                icon: const Icon(Icons.arrow_forward_rounded),
-              ),
-              filled: true,
-              fillColor: Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest
-                  .withValues(alpha: .58),
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                  color: Color(0xFF258541),
-                  width: 1.5,
-                ),
-              ),
-            ),
+            hintText: 'Search supplier products',
+            semanticLabel: 'Search supplier products',
+            searchActionLabel: 'Search',
             onChanged: _onSearchChanged,
             onSubmitted: (_) => _searchProducts(),
           ),

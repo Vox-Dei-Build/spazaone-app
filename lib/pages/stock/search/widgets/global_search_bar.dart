@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/shared/widgets/workspace_search_field.dart';
 
 class GlobalSearchBar extends StatefulWidget {
   final Function(String) onSearch;
@@ -30,51 +30,14 @@ class _GlobalSearchBarState extends State<GlobalSearchBar> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
-
     return Padding(
-      padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 5),
-      child: TextFormField(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: WorkspaceSearchField(
         controller: _controller,
         autofocus: true,
-        onFieldSubmitted: widget.onSearch,
-        textInputAction: TextInputAction.search,
-        key: UniqueKey(),
-        keyboardType: TextInputType.text,
-        style: TextStyle(
-          fontSize: SizeConfig.textMultiplier * 2,
-        ),
-        decoration: InputDecoration(
-          border: OutlineInputBorder(
-            borderRadius:
-                BorderRadius.circular(SizeConfig.imageSizeMultiplier * 2),
-            borderSide: BorderSide(
-              color: Colors.grey.withOpacity(0.6),
-            ),
-          ),
-          hintText: "Product Name (Press Enter)",
-          filled: true,
-          fillColor: Colors.transparent,
-          hintStyle: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2,
-            color: Colors.grey.withOpacity(0.6),
-          ),
-          prefixIcon: Icon(
-            Icons.search,
-            color: Colors.grey,
-            size: SizeConfig.imageSizeMultiplier * 6,
-          ),
-          suffixIcon: IconButton(
-            icon: Icon(
-              Icons.clear,
-              size: SizeConfig.imageSizeMultiplier * 6,
-            ),
-            onPressed: () {
-              _controller.clear();
-            },
-          ),
-        ),
-        cursorColor: Colors.grey,
+        hintText: 'Search products',
+        semanticLabel: 'Search products by name',
+        onSubmitted: widget.onSearch,
       ),
     );
   }

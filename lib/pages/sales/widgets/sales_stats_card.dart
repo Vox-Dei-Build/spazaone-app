@@ -38,7 +38,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
     return Card(
       key: const ValueKey('sales-summary'),
       margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-      color: colors.primaryContainer.withValues(alpha: .32),
+      color: colors.surfaceContainerHighest.withValues(alpha: .5),
       elevation: 0,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
@@ -75,7 +75,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                               .textTheme
                               .headlineSmall
                               ?.copyWith(
-                                color: colors.primary,
+                                color: const Color(0xFF30345F),
                                 fontWeight: FontWeight.w900,
                               ),
                         ),
@@ -85,13 +85,13 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                   Text(
                     'View details',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.primary,
+                          color: colors.onSurfaceVariant,
                           fontWeight: FontWeight.w700,
                         ),
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: colors.primary,
+                    color: colors.onSurfaceVariant,
                     size: 20,
                   ),
                 ],

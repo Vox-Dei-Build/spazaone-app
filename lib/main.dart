@@ -856,12 +856,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed ||
-        FirebaseAuth.instance.currentUser == null ||
-        StoreSession.instance.loading ||
-        StoreSession.instance.lastError == null) {
+        FirebaseAuth.instance.currentUser == null) {
       return;
     }
-    unawaited(StoreSession.instance.bootstrap());
+    if (!StoreSession.instance.loading &&
+        StoreSession.instance.lastError != null) {
+      unawaited(StoreSession.instance.bootstrap());
+    }
+    // FCM token acquisition is best-effort and can fail during the original
+    // login/bootstrap window. Retry on foreground so an already-authorized
+    // merchant does not silently stop receiving customer and order alerts.
+    if (!FirebaseEnvironment.useEmulators &&
+        !StoreSession.instance.loading &&
+        StoreSession.instance.storeId.isNotEmpty) {
+      unawaited(FCMService().handleToken());
+    }
   }
 
   void _handleAuthChange(User? user) {

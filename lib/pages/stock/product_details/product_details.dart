@@ -95,56 +95,45 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
       child: Consumer<ProductViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
-            bottomNavigationBar: widget.product.whatsappListed
-                ? SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                      child: ElevatedButton.icon(
-                        onPressed:
-                            viewModel.isLoading || viewModel.hasUnsavedChanges
-                                ? null
-                                : () => _promote(context, viewModel),
-                        icon: const Icon(Icons.campaign_outlined),
+            bottomNavigationBar: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: viewModel.hasUnsavedChanges
+                    ? FilledButton.icon(
+                        onPressed: viewModel.isLoading
+                            ? null
+                            : () async {
+                                FocusScope.of(context).unfocus();
+                                if (_formKey.currentState?.validate() ??
+                                    false) {
+                                  await viewModel.saveProduct(
+                                    context,
+                                    widget.product,
+                                    widget.docID,
+                                  );
+                                }
+                              },
+                        icon: viewModel.isLoading
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.check_rounded),
                         label: Text(
-                          viewModel.hasUnsavedChanges
-                              ? 'Save before promoting'
-                              : 'Promote on WhatsApp',
-                        ),
-                      ),
-                    ),
-                  )
-                : null,
-            floatingActionButton: Padding(
-              padding: const EdgeInsets.only(bottom: 35, right: 5),
-              child: FloatingActionButton.extended(
-                backgroundColor:
-                    viewModel.hasUnsavedChanges ? Colors.green : Colors.grey,
-                onPressed: viewModel.isLoading || !viewModel.hasUnsavedChanges
-                    ? null
-                    : () async {
-                        if (_formKey.currentState?.validate() ?? false) {
-                          await viewModel.saveProduct(
-                            context,
-                            widget.product,
-                            widget.docID,
-                          );
-                        }
-                      },
-                icon: viewModel.isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
+                          viewModel.isLoading ? 'Saving…' : 'Save changes',
                         ),
                       )
-                    : const Icon(Icons.done, color: Colors.white),
-                label: Text(
-                  viewModel.isLoading ? 'Saving…' : 'Save changes',
-                  style: const TextStyle(color: Colors.white),
-                ),
-                tooltip: 'Save product changes',
+                    : widget.product.whatsappListed
+                        ? FilledButton.tonalIcon(
+                            onPressed: viewModel.isLoading
+                                ? null
+                                : () => _promote(context, viewModel),
+                            icon: const Icon(Icons.campaign_outlined),
+                            label: const Text('Promote on WhatsApp'),
+                          )
+                        : const SizedBox.shrink(),
               ),
             ),
             appBar: CustomAppBar(

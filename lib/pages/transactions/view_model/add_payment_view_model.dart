@@ -120,7 +120,7 @@ class AddPaymentViewModel extends TransactionViewModel {
             await MessagingNotificationService.resolveExpectedChannel(
                 mobileNumber!);
         final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send receipt to customer?',
+          title: 'Payment recorded',
           subtitle: 'Message to $customerName',
           whatsappCost: whatsappCost,
           smsCost: smsCost,
@@ -131,6 +131,7 @@ class AddPaymentViewModel extends TransactionViewModel {
           context,
           breakdown: breakdown,
           confirmLabel: 'Send receipt',
+          skipLabel: 'Done without sending',
         );
       } else {
         // No mobile number on file — there was never a message path,

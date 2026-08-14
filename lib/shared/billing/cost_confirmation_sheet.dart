@@ -61,8 +61,8 @@ class CostConfirmationSheet extends StatelessWidget {
   static Future<CostSheetOutcome> showOutcome(
     BuildContext context, {
     required CostBreakdown breakdown,
-    String confirmLabel = 'Send',
-    String skipLabel = 'Save without sending',
+    String confirmLabel = 'Send message',
+    String skipLabel = 'Done without sending',
     bool showSkip = true,
   }) async {
     final result = await showModalBottomSheet<CostSheetOutcome>(
@@ -114,7 +114,8 @@ class CostConfirmationSheet extends StatelessWidget {
     final after = balance - cost;
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: EdgeInsets.fromLTRB(
           SizeConfig.imageSizeMultiplier * 4,
           SizeConfig.heightMultiplier * 2,
@@ -240,7 +241,7 @@ class CostConfirmationSheet extends StatelessWidget {
               );
             }),
 
-            if (breakdown.lines.isNotEmpty) ...[const Divider(height: 24)],
+            if (breakdown.lines.isNotEmpty) ...[const SizedBox(height: 18)],
 
             // Total
             Row(
@@ -289,9 +290,10 @@ class CostConfirmationSheet extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
               decoration: BoxDecoration(
-                color: canAfford
-                    ? Colors.green.withValues(alpha: 0.08)
-                    : Colors.orange.withValues(alpha: 0.10),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: .55),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -314,7 +316,7 @@ class CostConfirmationSheet extends StatelessWidget {
                         ? CurrencyUtil.format(after)
                         : 'Add money to send',
                     valueColor: canAfford
-                        ? Colors.green.shade800
+                        ? const Color(0xFF30345F)
                         : Colors.orange.shade800,
                     valueBold: true,
                   ),
@@ -344,10 +346,11 @@ class CostConfirmationSheet extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
+                    child: FilledButton.icon(
                       onPressed: () =>
                           Navigator.of(context).pop(CostSheetOutcome.send),
-                      child: Padding(
+                      icon: const Icon(Icons.send_rounded, size: 19),
+                      label: Padding(
                         padding: EdgeInsets.symmetric(
                           vertical: SizeConfig.heightMultiplier * 1.2,
                         ),
@@ -359,7 +362,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(height: SizeConfig.heightMultiplier * 1),
                     SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton(
+                      child: TextButton(
                         onPressed: () => Navigator.of(
                           context,
                         ).pop(CostSheetOutcome.skip),
@@ -398,7 +401,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(height: SizeConfig.heightMultiplier * 1),
                     SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton(
+                      child: TextButton(
                         onPressed: () => Navigator.of(
                           context,
                         ).pop(CostSheetOutcome.skip),
