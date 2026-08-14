@@ -504,6 +504,16 @@ class TransactionViewModel extends ChangeNotifier {
     Navigator.of(context).pop();
   }
 
+  /// Leaves a transaction form without persisting the pending edits.
+  /// Marking the current values pristine first prevents the form-level
+  /// PopScope from showing a second discard prompt after the merchant has
+  /// already made that choice in the confirmation-sheet close flow.
+  void discardFormAndNavigateAway(BuildContext context) {
+    markPristine(force: true);
+    setLoading(false);
+    Navigator.of(context).pop();
+  }
+
   @override
   void dispose() {
     // PAS-CRASH-_dependents: flip the disposed flag *before* tearing

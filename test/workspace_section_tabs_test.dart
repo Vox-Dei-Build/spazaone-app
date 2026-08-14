@@ -68,6 +68,11 @@ void main() {
           expect(decoration.borderRadius, isNotNull);
           expect(decoration.color, isNotNull);
 
+          final boundary = tester.widget<Divider>(
+            find.byKey(const ValueKey('workspace-section-boundary')),
+          );
+          expect(boundary.thickness, .75);
+
           final selected = tester.widget<Container>(
             find
                 .ancestor(

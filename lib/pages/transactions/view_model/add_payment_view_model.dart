@@ -63,14 +63,6 @@ class AddPaymentViewModel extends TransactionViewModel {
       return;
     }
 
-    var connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
-      showSnackbar(
-          context,
-          'You\'re offline. Action queued and will complete when back online.',
-          Colors.orange);
-    }
-
     var transactionData = {
       'type': 'Payment',
       'amount': amountEntered,
@@ -81,23 +73,6 @@ class AddPaymentViewModel extends TransactionViewModel {
     };
 
     try {
-      final transactionRef = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUserId)
-          .collection('customers')
-          .doc(customerId)
-          .collection('transactions')
-          .add(transactionData);
-
-      await PaymentReceiptTracker.instance.capture(
-        PaymentReceived(
-          transactionId: 'ledger_payment:${transactionRef.id}',
-          amountBucket: amountBucketZAR(amountEntered),
-          source: 'ledger_repayment',
-          method: paymentMethod,
-        ),
-      );
-
       final smsCost = SMSPricingUtil.calculateCost(
         text: SMSMessages.paymentConfirmationShort,
         unitCost: pricingService.smsPaymentTemplatePrice,
@@ -110,9 +85,8 @@ class AddPaymentViewModel extends TransactionViewModel {
       //   * send      -> dispatcher is allowed to charge + send
       //   * skip      -> merchant explicitly chose "record only"
       //   * dismissed -> sheet was closed without an explicit choice
-      // skip and dismissed both keep the recorded payment but skip the
-      // SMS. We surface a snackbar in either case so the merchant is
-      // never left guessing whether anything went out.
+      // Only send and skip commit the payment. Closing the drawer asks the
+      // merchant whether to keep editing or discard before any write.
       CostSheetOutcome outcome = CostSheetOutcome.skip;
       double quotedTotal = smsCost;
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
@@ -132,6 +106,7 @@ class AddPaymentViewModel extends TransactionViewModel {
           breakdown: breakdown,
           confirmLabel: 'Send receipt',
           skipLabel: 'Done without sending',
+          confirmDismissal: true,
         );
       } else {
         // No mobile number on file — there was never a message path,
@@ -139,6 +114,41 @@ class AddPaymentViewModel extends TransactionViewModel {
         // no surprise.
         outcome = CostSheetOutcome.skip;
       }
+
+      if (!outcome.shouldCommit) {
+        if (outcome.shouldDiscard && context.mounted) {
+          discardFormAndNavigateAway(context);
+        } else {
+          setLoading(false);
+        }
+        return;
+      }
+
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        showSnackbar(
+          context,
+          'You\'re offline. Action queued and will complete when back online.',
+          Colors.orange,
+        );
+      }
+
+      final transactionRef = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .collection('customers')
+          .doc(customerId)
+          .collection('transactions')
+          .add(transactionData);
+
+      await PaymentReceiptTracker.instance.capture(
+        PaymentReceived(
+          transactionId: 'ledger_payment:${transactionRef.id}',
+          amountBucket: amountBucketZAR(amountEntered),
+          source: 'ledger_repayment',
+          method: paymentMethod,
+        ),
+      );
 
       // Safety net for race conditions (balance changed between sheet
       // and dispatch). Keeps the legacy "Insufficient Balance" dialog

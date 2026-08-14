@@ -16,8 +16,8 @@ class WorkspaceSectionTab {
 ///
 /// These destinations change the purpose of the whole page, so they remain
 /// visible instead of being hidden in a filter or popup menu. The rounded
-/// surface deliberately avoids ruled navigation lines, which become visually
-/// heavy on a small phone.
+/// surface deliberately avoids outlining each destination. A single faint
+/// boundary below the group separates navigation from the page content.
 class WorkspaceSectionTabs extends StatefulWidget {
   const WorkspaceSectionTabs({
     super.key,
@@ -81,30 +81,41 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
     final largeText = MediaQuery.textScalerOf(context).scale(14) >= 20;
 
     final selectedIndex = resolvedController.index;
-    return Container(
-      key: const ValueKey('workspace-section-tabs'),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withValues(alpha: .7),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var index = 0; index < widget.tabs.length; index++)
-            Expanded(
-              child: _WorkspaceSectionDestination(
-                tab: widget.tabs[index],
-                selected: selectedIndex == index,
-                height: largeText ? 62 : 44,
-                onTap: () {
-                  if (selectedIndex == index) return;
-                  resolvedController.animateTo(index);
-                },
-              ),
-            ),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          key: const ValueKey('workspace-section-tabs'),
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest.withValues(alpha: .7),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              for (var index = 0; index < widget.tabs.length; index++)
+                Expanded(
+                  child: _WorkspaceSectionDestination(
+                    tab: widget.tabs[index],
+                    selected: selectedIndex == index,
+                    height: largeText ? 62 : 44,
+                    onTap: () {
+                      if (selectedIndex == index) return;
+                      resolvedController.animateTo(index);
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Divider(
+          key: const ValueKey('workspace-section-boundary'),
+          height: 9,
+          thickness: .75,
+          color: colors.outlineVariant.withValues(alpha: .5),
+        ),
+      ],
     );
   }
 }

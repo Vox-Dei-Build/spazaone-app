@@ -146,68 +146,7 @@ class EditTransactionViewModel extends TransactionViewModel {
       transactionData['status'] = 'PAID';
     }
 
-    var connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        showSnackbar(
-            context,
-            'You\'re offline. Action queued and will complete when back online.',
-            Colors.orange);
-      });
-    }
-
     try {
-      // Fetch the original transaction data
-      final originalTransaction = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUserId)
-          .collection('customers')
-          .doc(customerId)
-          .collection('transactions')
-          .doc(transactionId)
-          .get();
-
-      final originalProducts = originalTransaction.data()?['products'] ?? {};
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUserId)
-          .collection('customers')
-          .doc(customerId)
-          .collection('transactions')
-          .doc(transactionId)
-          .update(transactionData);
-
-      if (transactionType == 'Credit') {
-        // Calculate quantity changes and update stock levels
-        // Combine all product IDs from original and selected products
-        final allProductIds = {
-          ...originalProducts.keys,
-          ...selectedProducts.keys
-        };
-
-        for (var productId in allProductIds) {
-          final originalQuantity = originalProducts[productId] ?? 0;
-          final updatedQuantity = selectedProducts[productId] ?? 0;
-          final quantityChange = updatedQuantity - originalQuantity;
-
-          if (quantityChange != 0) {
-            Product? product = products.firstWhere((p) => p.id == productId,
-                orElse: () => Product());
-            if (product.quantity != null) {
-              await firestore
-                  .collection('users')
-                  .doc(userId)
-                  .collection('products')
-                  .doc(productId)
-                  .update({
-                'quantity': product.quantity! - quantityChange,
-              });
-            }
-          }
-        }
-      }
-
       final smsCost = SMSPricingUtil.calculateCost(
         text: transactionType == "Credit"
             ? SMSMessages.creditConfirmationShort
@@ -242,7 +181,81 @@ class EditTransactionViewModel extends TransactionViewModel {
           context,
           breakdown: breakdown,
           confirmLabel: 'Send',
+          confirmDismissal: true,
         );
+      }
+
+      if (!outcome.shouldCommit) {
+        if (outcome.shouldDiscard && context.mounted) {
+          discardFormAndNavigateAway(context);
+        } else {
+          setLoading(false);
+        }
+        return;
+      }
+
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(
+            context,
+            'You\'re offline. Action queued and will complete when back online.',
+            Colors.orange,
+          );
+        });
+      }
+
+      // Read and write only after the merchant has explicitly chosen to
+      // save, so closing the confirmation sheet cannot update the ledger or
+      // stock behind their back.
+      final originalTransaction = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .collection('customers')
+          .doc(customerId)
+          .collection('transactions')
+          .doc(transactionId)
+          .get();
+
+      final originalProducts = originalTransaction.data()?['products'] ?? {};
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUserId)
+          .collection('customers')
+          .doc(customerId)
+          .collection('transactions')
+          .doc(transactionId)
+          .update(transactionData);
+
+      if (transactionType == 'Credit') {
+        final allProductIds = {
+          ...originalProducts.keys,
+          ...selectedProducts.keys,
+        };
+
+        for (var productId in allProductIds) {
+          final originalQuantity = originalProducts[productId] ?? 0;
+          final updatedQuantity = selectedProducts[productId] ?? 0;
+          final quantityChange = updatedQuantity - originalQuantity;
+
+          if (quantityChange != 0) {
+            Product? product = products.firstWhere(
+              (p) => p.id == productId,
+              orElse: () => Product(),
+            );
+            if (product.quantity != null) {
+              await firestore
+                  .collection('users')
+                  .doc(userId)
+                  .collection('products')
+                  .doc(productId)
+                  .update({
+                'quantity': product.quantity! - quantityChange,
+              });
+            }
+          }
+        }
       }
 
       // Safety net for race conditions. Affordability gate uses the

@@ -5,6 +5,7 @@ import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/utils/currency_util.dart';
 
@@ -12,7 +13,7 @@ import 'package:pasella/utils/currency_util.dart';
 /// the user's current balance, and the resulting balance after deduction —
 /// then asks for explicit consent before any message is dispatched.
 ///
-/// The sheet exposes three outcomes via [CostSheetOutcome]:
+/// The sheet exposes explicit outcomes via [CostSheetOutcome]:
 ///
 ///  * `send`      — primary CTA, the dispatcher is allowed to charge.
 ///  * `skip`      — secondary CTA, the action persists but no message is
@@ -21,11 +22,10 @@ import 'package:pasella/utils/currency_util.dart';
 ///                  merchant is _not_ doing — the previous "Don't send"
 ///                  read close enough to "Cancel" that release testers
 ///                  hesitated on it.
-///  * `dismissed` — sheet closed without an explicit choice (back
-///                  gesture, scrim, OS interruption). Treated the same
-///                  as `skip` for side effects; callers should still
-///                  surface a snackbar so the merchant knows the
-///                  underlying record was kept.
+///  * `keepEditing` / `discard` — when dismissal confirmation is enabled,
+///                  closing the sheet cannot silently persist the action.
+///  * `dismissed` — sheet closed in a flow that does not request a discard
+///                  confirmation. It must never imply permission to save.
 ///
 /// The legacy [show] API is retained as a thin shim that maps `send` ->
 /// `true` and everything else -> `false`, so older call sites that have
@@ -64,6 +64,10 @@ class CostConfirmationSheet extends StatelessWidget {
     String confirmLabel = 'Send message',
     String skipLabel = 'Done without sending',
     bool showSkip = true,
+    bool confirmDismissal = false,
+    String dismissTitle = 'Discard this transaction?',
+    String dismissMessage =
+        'This transaction has not been saved. You can keep editing or discard it.',
   }) async {
     final result = await showModalBottomSheet<CostSheetOutcome>(
       context: context,
@@ -78,7 +82,37 @@ class CostConfirmationSheet extends StatelessWidget {
         showSkip: showSkip,
       ),
     );
-    return result ?? CostSheetOutcome.dismissed;
+    if (result != null) return result;
+    if (!confirmDismissal || !context.mounted) {
+      return CostSheetOutcome.dismissed;
+    }
+
+    return confirmDiscardOrKeep(
+      context,
+      title: dismissTitle,
+      message: dismissMessage,
+    );
+  }
+
+  /// Resolves an attempted close for flows where the sheet sits between an
+  /// editable form and its first persistence boundary.
+  @visibleForTesting
+  static Future<CostSheetOutcome> confirmDiscardOrKeep(
+    BuildContext context, {
+    String title = 'Discard this transaction?',
+    String message =
+        'This transaction has not been saved. You can keep editing or discard it.',
+  }) async {
+    final shouldDiscard = await ConfirmDialog.showDestructive(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+    );
+    return shouldDiscard
+        ? CostSheetOutcome.discard
+        : CostSheetOutcome.keepEditing;
   }
 
   /// Legacy bool variant. Returns `true` only when the user explicitly
@@ -146,9 +180,8 @@ class CostConfirmationSheet extends StatelessWidget {
             // it the merchant would have no visible way out of the sheet
             // other than the back gesture / tapping the scrim, which is
             // not obvious on the bottom-sheet surface. Mapping it to
-            // [CostSheetOutcome.dismissed] keeps it semantically distinct
-            // from "skip" so callers that care can still tell the cases
-            // apart.
+            // A null result lets [showOutcome] decide whether the caller
+            // requires an explicit Discard / Keep editing choice.
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -179,8 +212,7 @@ class CostConfirmationSheet extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.close),
                   tooltip: 'Close',
-                  onPressed: () =>
-                      Navigator.of(context).pop(CostSheetOutcome.dismissed),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
