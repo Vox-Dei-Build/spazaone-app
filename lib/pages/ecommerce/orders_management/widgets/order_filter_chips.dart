@@ -125,12 +125,11 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = selected ? kPrimaryColor : const Color(0xFFF1F3F5);
+    final bg = selected ? kTertiaryColor : const Color(0xFFF1F3F5);
     final fg = selected ? Colors.white : const Color(0xFF1A1F2B);
-    final countBg =
-        selected
-            ? Colors.white.withOpacity(0.22)
-            : Colors.black.withOpacity(0.06);
+    final countBg = selected
+        ? Colors.white.withOpacity(0.22)
+        : Colors.black.withOpacity(0.06);
 
     return Material(
       color: bg,
@@ -204,8 +203,8 @@ class _MoreChip extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder:
-          (ctx) => _MoreStatusesSheet(statuses: statuses, selected: specific),
+      builder: (ctx) =>
+          _MoreStatusesSheet(statuses: statuses, selected: specific),
     );
     if (picked != null) onPick(picked);
   }
@@ -215,7 +214,7 @@ class _MoreChip extends StatelessWidget {
     final hasSpecific = specific != null;
     final label = hasSpecific ? specific!.label : 'More';
     final selected = hasSpecific;
-    final bg = selected ? kPrimaryColor : const Color(0xFFF1F3F5);
+    final bg = selected ? kTertiaryColor : const Color(0xFFF1F3F5);
     final fg = selected ? Colors.white : const Color(0xFF1A1F2B);
 
     return Material(

@@ -288,7 +288,7 @@ class _PricingTabButton extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: selected ? kPrimaryColor : Colors.transparent,
+                color: selected ? kTertiaryColor : Colors.transparent,
                 width: 3,
               ),
             ),
@@ -297,7 +297,7 @@ class _PricingTabButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? kPrimaryColor : kSecondaryAccent,
+              color: selected ? kTertiaryColor : kSecondaryAccent,
               fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             ),
           ),
