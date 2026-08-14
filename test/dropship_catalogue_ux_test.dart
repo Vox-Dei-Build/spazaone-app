@@ -95,7 +95,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('catalogue makes every category reachable without guessing',
+  testWidgets('catalogue keeps category chips directly scrollable',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -127,21 +127,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    expect(find.byKey(const Key('catalog-all-filters')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('catalog-all-filters')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Browse supplier products'), findsOneWidget);
-    await tester.ensureVisible(
-      find.byKey(const Key('catalog-sheet-category-accessories')),
+    expect(find.byKey(const Key('catalog-all-filters')), findsNothing);
+    expect(find.byKey(const Key('catalog-category-strip')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('catalog-category-accessories')),
+      180,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('catalog-category-strip')),
+        matching: find.byType(Scrollable),
+      ),
     );
+    await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const Key('catalog-sheet-category-accessories')),
+      find.byKey(const Key('catalog-category-accessories')).hitTestable(),
     );
     await tester.pumpAndSettle();
 
     expect(queries.last, 'accessories');
-    expect(find.text('Browse supplier products'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

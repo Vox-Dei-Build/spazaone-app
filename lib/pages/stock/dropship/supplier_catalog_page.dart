@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:pasella/constants/constants.dart';
 import 'package:pasella/shared/widgets/workspace_search_field.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
@@ -95,7 +94,6 @@ List<CjCatalogProduct> mergeCjCatalogPages(
 
 class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   final _search = TextEditingController();
-  final _filterScroll = ScrollController();
   late final CjCatalogSearch _searchCatalog;
   late final SavedCatalogLoader _loadSavedProducts;
   late final SavedCatalogToggle _setSavedProduct;
@@ -161,7 +159,6 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   @override
   void dispose() {
     _search.dispose();
-    _filterScroll.dispose();
     super.dispose();
   }
 
@@ -357,48 +354,6 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     });
   }
 
-  Future<void> _showAllFilters() {
-    return showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final theme = Theme.of(sheetContext);
-        return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Browse supplier products',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Choose a category. You can change it at any time.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: kSecondaryAccent,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _catalogFilterChips(
-                  sheetContext,
-                  closeAfterSelection: true,
-                  keyPrefix: 'catalog-sheet',
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final compactLandscape = usesCompactLandscapeLayout(context);
@@ -449,32 +404,12 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                       ),
                       const SizedBox(height: 2),
                       Expanded(
-                        child: Scrollbar(
-                          controller: _filterScroll,
-                          thumbVisibility: true,
-                          child: ListView(
-                            key: const Key('catalog-landscape-filters'),
-                            controller: _filterScroll,
-                            padding:
-                                const EdgeInsets.only(right: 10, bottom: 12),
-                            children: [
-                              Text(
-                                'Categories',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelLarge
-                                    ?.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 4),
-                              for (final chip in _catalogFilterChips(context))
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: chip,
-                                  ),
-                                ),
-                            ],
+                        child: SingleChildScrollView(
+                          key: const Key('catalog-landscape-filters'),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: _catalogFilterChips(context),
                           ),
                         ),
                       ),
@@ -513,34 +448,24 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           ),
         ),
         SizedBox(
-          height: 40,
-          child: Row(
-            children: [
-              const SizedBox(width: 6),
-              Text(
-                _productCountLabel,
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ListView.separated(
-                  key: const Key('catalog-category-strip'),
-                  padding: const EdgeInsets.only(right: 8),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _catalogCategories.length + 1,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) =>
-                      _catalogFilterChips(context)[index],
-                ),
-              ),
-              IconButton(
-                key: const Key('catalog-all-filters'),
-                tooltip: 'Show all categories',
-                onPressed: _showAllFilters,
-                icon: const Icon(Icons.tune_rounded, size: 21),
-              ),
-              const SizedBox(width: 2),
-            ],
+          height: 36,
+          child: ListView.separated(
+            key: const Key('catalog-category-strip'),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            scrollDirection: Axis.horizontal,
+            itemCount: _catalogCategories.length + 2,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Center(
+                  child: Text(
+                    _productCountLabel,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                );
+              }
+              return _catalogFilterChips(context)[index - 1];
+            },
           ),
         ),
         const SizedBox(height: 2),
@@ -588,11 +513,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     );
   }
 
-  List<Widget> _catalogFilterChips(
-    BuildContext context, {
-    bool closeAfterSelection = false,
-    String keyPrefix = 'catalog',
-  }) {
+  List<Widget> _catalogFilterChips(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return [
       ChoiceChip(
@@ -611,15 +532,12 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
         ),
         backgroundColor: colors.surfaceContainerHighest.withValues(alpha: .58),
         selectedColor: colors.primaryContainer.withValues(alpha: .78),
-        onSelected: (_) {
-          if (closeAfterSelection) Navigator.pop(context);
-          _showSavedProducts();
-        },
+        onSelected: (_) => _showSavedProducts(),
       ),
       for (var index = 0; index < _catalogCategories.length; index++)
         ChoiceChip(
           key: Key(
-            '$keyPrefix-category-${_catalogCategories[index].label.toLowerCase()}',
+            'catalog-category-${_catalogCategories[index].label.toLowerCase()}',
           ),
           selected:
               !_showSaved && index == _categoryIndex && _search.text.isEmpty,
@@ -635,10 +553,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           backgroundColor:
               colors.surfaceContainerHighest.withValues(alpha: .58),
           selectedColor: colors.primaryContainer.withValues(alpha: .78),
-          onSelected: (_) {
-            if (closeAfterSelection) Navigator.pop(context);
-            _selectCategory(index);
-          },
+          onSelected: (_) => _selectCategory(index),
         ),
     ];
   }
