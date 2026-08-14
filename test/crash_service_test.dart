@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/services/crash_service.dart';
 
@@ -10,5 +11,18 @@ void main() {
     );
 
     expect(CrashService.instance.isRecoverableForTesting(error), isTrue);
+  });
+
+  test('RenderFlex overflow is recorded as non-fatal', () {
+    final details = FlutterErrorDetails(
+      exception: FlutterError('A RenderFlex overflowed by 42 pixels.'),
+      library: 'rendering library',
+      context: ErrorDescription('during layout'),
+    );
+
+    expect(
+      CrashService.instance.isNonFatalFlutterErrorForTesting(details),
+      isTrue,
+    );
   });
 }

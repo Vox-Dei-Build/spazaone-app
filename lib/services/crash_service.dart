@@ -52,8 +52,7 @@ class CrashService {
       // when an async future rejects, but they are not real crashes and
       // inflate the fatal crash rate. UI surfaces them via snapshot.hasError
       // already.
-      if (_isRecoverableBackendError(details.exception) ||
-          _isImageLibraryError(details)) {
+      if (_isNonFatalFlutterError(details)) {
         FirebaseCrashlytics.instance.recordFlutterError(details);
         return;
       }
@@ -118,6 +117,24 @@ class CrashService {
     return _isRecoverableBackendError(error);
   }
 
+  bool _isNonFatalFlutterError(FlutterErrorDetails details) {
+    return _isRecoverableBackendError(details.exception) ||
+        _isImageLibraryError(details) ||
+        _isRenderOverflow(details);
+  }
+
+  @visibleForTesting
+  bool isNonFatalFlutterErrorForTesting(FlutterErrorDetails details) {
+    return _isNonFatalFlutterError(details);
+  }
+
+  /// A RenderFlex overflow is a visual defect, not a process-ending crash.
+  /// Keep the event searchable in Crashlytics without corrupting the fatal
+  /// crash-free metric.
+  bool _isRenderOverflow(FlutterErrorDetails details) {
+    return details.exceptionAsString().contains('A RenderFlex overflowed by');
+  }
+
   /// Errors reported by Flutter's image pipeline (NetworkImage, decode
   /// failures, etc.) are not app crashes. The framework surfaces them via
   /// `errorBuilder` on Image widgets; promoting them to fatal Crashlytics
@@ -175,10 +192,9 @@ class CrashService {
   }) async {
     try {
       final scrubbed = _scrub(context);
-      final suffix =
-          scrubbed.isEmpty
-              ? ''
-              : ' ${scrubbed.entries.map((e) => '${e.key}=${e.value}').join(' ')}';
+      final suffix = scrubbed.isEmpty
+          ? ''
+          : ' ${scrubbed.entries.map((e) => '${e.key}=${e.value}').join(' ')}';
       await FirebaseCrashlytics.instance.log('$message$suffix');
     } catch (_) {
       // ignored
@@ -211,7 +227,12 @@ class CrashService {
       'full_name',
       'name',
       'id_number',
+      'identity_number',
+      'document_number',
+      'passport_number',
+      'business_registration_number',
       'account_number',
+      'bank_account_number',
       'card_number',
       'cvv',
       'pin',
