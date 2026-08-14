@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 
 /// Plain page-local context below the visible workspace destinations.
 class WorkspaceContextHeader extends StatelessWidget {
@@ -16,6 +17,7 @@ class WorkspaceContextHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compactLandscape = usesCompactLandscapeLayout(context);
     final text = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,7 +42,9 @@ class WorkspaceContextHeader extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(6, 16, 6, 10),
+      padding: compactLandscape
+          ? const EdgeInsets.fromLTRB(6, 8, 6, 6)
+          : const EdgeInsets.fromLTRB(6, 16, 6, 10),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final stack = action != null &&

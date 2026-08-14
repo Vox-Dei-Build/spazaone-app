@@ -78,6 +78,20 @@ void main() {
           );
           final selectedDecoration = selected.decoration! as BoxDecoration;
           expect(selectedDecoration.color, kTertiaryColor);
+          expect(selectedDecoration.border, isNull);
+
+          final unselected = tester.widget<Container>(
+            find
+                .ancestor(
+                  of: find.text('Online orders'),
+                  matching: find.byType(Container),
+                )
+                .first,
+          );
+          final unselectedDecoration = unselected.decoration! as BoxDecoration;
+          final border = unselectedDecoration.border! as Border;
+          expect(border.top.width, .75);
+          expect(border.top.color.a, lessThan(1));
 
           await tester.tap(find.text('Online orders'));
           await tester.pumpAndSettle();

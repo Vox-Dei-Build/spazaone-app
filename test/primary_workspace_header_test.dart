@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/shared/widgets/wallet_balance_pill.dart';
 
 void main() {
@@ -261,5 +262,61 @@ void main() {
       find.bySemanticsLabel('Open your WhatsApp ordering link'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('global and store chrome share one row in phone landscape', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(800, 360),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(10),
+              child: ResponsiveWorkspaceHeaderLayout(
+                appHeader: PageHeader(
+                  walletWidget: const WalletBalancePill(
+                    presentation: WalletBalancePresentation(
+                      balance: 65,
+                      salesBalance: 0,
+                      isShared: false,
+                    ),
+                  ),
+                  connectivityWidget: const SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.cloud_done_outlined),
+                  ),
+                  onSettingsTap: () {},
+                ),
+                storeHeader: WorkspaceHeaderBar(
+                  storeName: storeName,
+                  setupProgressLabel: '2/6 setup',
+                  onStorePressed: () {},
+                  onShopPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('landscape-workspace-header')),
+      findsOneWidget,
+    );
+    expect(find.text('Shop link'), findsOneWidget);
+    expect(find.text('2/6 setup'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

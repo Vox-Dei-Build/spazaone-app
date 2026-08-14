@@ -6,6 +6,7 @@ import 'package:pasella/pages/settings/setup/your_shop_page.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/shared/widgets/shop_link_action.dart';
 import 'package:pasella/shared/widgets/onboarding/merchant_setup_state.dart';
 import 'package:provider/provider.dart';
@@ -29,35 +30,31 @@ class PrimaryWorkspaceHeader extends StatelessWidget {
     final storeName = session.activeStoreName;
     final storeId = session.storeId;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const PageHeader(),
-        const SizedBox(height: LayoutConstants.spaceSm),
-        _SetupAwareWorkspaceHeader(
-          storeId: storeId,
-          storeName: storeName,
-          onManageStorePressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const YourShopPage()),
-            );
-          },
-          onSetupPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const MerchantSetupPage(),
-              ),
-            );
-          },
-          onShopPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => SharePage(source: shareSource),
-              ),
-            );
-          },
-        ),
-      ],
+    return ResponsiveWorkspaceHeaderLayout(
+      appHeader: const PageHeader(),
+      storeHeader: _SetupAwareWorkspaceHeader(
+        storeId: storeId,
+        storeName: storeName,
+        onManageStorePressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const YourShopPage()),
+          );
+        },
+        onSetupPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MerchantSetupPage(),
+            ),
+          );
+        },
+        onShopPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SharePage(source: shareSource),
+            ),
+          );
+        },
+      ),
     );
   }
 }

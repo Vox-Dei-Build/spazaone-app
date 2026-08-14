@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
 
@@ -198,56 +199,53 @@ class ProductListEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.imageSizeMultiplier * 6,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.inventory_2_outlined,
-                size: 30,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+    return ScrollableCenteredContent(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.imageSizeMultiplier * 6,
+        vertical: 12,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 16),
-            Text(
-              showOnboarding ? 'No products yet' : 'No products in this group',
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.2,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-              textAlign: TextAlign.center,
+            child: Icon(
+              Icons.inventory_2_outlined,
+              size: 30,
+              color: Theme.of(context).colorScheme.primary,
             ),
-            if (showOnboarding) ...[
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: onAddProduct,
-                icon: const Icon(Icons.add),
-                label: const Text('Add product'),
-                style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.imageSizeMultiplier * 6,
-                    vertical: SizeConfig.heightMultiplier * 1.5,
-                  ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            showOnboarding ? 'No products yet' : 'No products in this group',
+            style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 2.2,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (showOnboarding) ...[
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: onAddProduct,
+              icon: const Icon(Icons.add),
+              label: const Text('Add product'),
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.imageSizeMultiplier * 6,
+                  vertical: SizeConfig.heightMultiplier * 1.5,
                 ),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }

@@ -46,6 +46,13 @@ class CrashService {
       if (details.silent) {
         return;
       }
+      if (_isRenderOverflow(details)) {
+        // Attach orientation and logical viewport dimensions before recording
+        // the non-fatal. This turns future overflow reports into actionable
+        // device/layout evidence without collecting merchant data.
+        unawaited(_recordRenderOverflow(details));
+        return;
+      }
       // Classify recoverable network / backend errors (e.g. Cloud Functions
       // transient failures, App Check token churn, image fetch failures)
       // as NON-fatal. These flow into FlutterError.onError via FutureBuilder
@@ -133,6 +140,31 @@ class CrashService {
   /// crash-free metric.
   bool _isRenderOverflow(FlutterErrorDetails details) {
     return details.exceptionAsString().contains('A RenderFlex overflowed by');
+  }
+
+  Future<void> _recordRenderOverflow(FlutterErrorDetails details) async {
+    try {
+      final views = PlatformDispatcher.instance.views;
+      if (views.isNotEmpty) {
+        final view = views.first;
+        final logicalSize = view.physicalSize / view.devicePixelRatio;
+        await FirebaseCrashlytics.instance.setCustomKey(
+          'layout_orientation',
+          logicalSize.width > logicalSize.height ? 'landscape' : 'portrait',
+        );
+        await FirebaseCrashlytics.instance.setCustomKey(
+          'layout_logical_width',
+          logicalSize.width.round(),
+        );
+        await FirebaseCrashlytics.instance.setCustomKey(
+          'layout_logical_height',
+          logicalSize.height.round(),
+        );
+      }
+      await FirebaseCrashlytics.instance.recordFlutterError(details);
+    } catch (_) {
+      // Telemetry must not become another user-visible failure.
+    }
   }
 
   /// Errors reported by Flutter's image pipeline (NetworkImage, decode

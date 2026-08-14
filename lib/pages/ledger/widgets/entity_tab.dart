@@ -8,6 +8,7 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/transactions/transaction_model.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/services/whatsapp_capability_cache.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:provider/provider.dart';
@@ -154,16 +155,16 @@ class _EntityTabState extends State<EntityTab> {
               )
               .length;
           final nestedUnread = customerData['unreadCounts'];
-          final chatUnread = nestedUnread is Map &&
-                  nestedUnread['messages'] is num
-              ? (nestedUnread['messages'] as num).toInt()
-              : legacyChatUnread;
+          final chatUnread =
+              nestedUnread is Map && nestedUnread['messages'] is num
+                  ? (nestedUnread['messages'] as num).toInt()
+                  : legacyChatUnread;
 
           // 🟠 Orders unread per customer (NEW)
-          final int ordersUnread = nestedUnread is Map &&
-                  nestedUnread['orders'] is num
-              ? (nestedUnread['orders'] as num).toInt()
-              : (customerData['ordersUnreadCount'] as int?) ?? 0;
+          final int ordersUnread =
+              nestedUnread is Map && nestedUnread['orders'] is num
+                  ? (nestedUnread['orders'] as num).toInt()
+                  : (customerData['ordersUnreadCount'] as int?) ?? 0;
 
           // ✅ Single badge shows combined unread (messages + orders)
           final int combinedUnread = chatUnread + ordersUnread;
@@ -252,52 +253,49 @@ class _EntityTabState extends State<EntityTab> {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 widget.hasCustomersNotifier.value = false;
               });
-              return Center(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Image.asset(
-                        widget.emptyAsset,
-                        width: SizeConfig.imageSizeMultiplier * 60,
+              return ScrollableCenteredContent(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.imageSizeMultiplier * 6,
+                  vertical: 12,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      widget.emptyAsset,
+                      width: SizeConfig.imageSizeMultiplier * 60,
+                    ),
+                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    Text(
+                      widget.emptyText,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: SizeConfig.textMultiplier * 2,
                       ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.imageSizeMultiplier * 6,
-                        ),
-                        child: Text(
-                          widget.emptyText,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      // PAS-UX-09: inline recovery CTA. Previously the
-                      // empty Customers tab dead-ended on image + text
-                      // and required the merchant to find the floating
-                      // "+" FAB (easy to miss on small screens). Now
-                      // the empty state itself is the onboarding
-                      // moment.
-                      if (widget.emptyCtaLabel != null &&
-                          widget.onEmptyCtaTap != null) ...[
-                        SizedBox(height: SizeConfig.heightMultiplier * 3),
-                        ElevatedButton.icon(
-                          onPressed: widget.onEmptyCtaTap,
-                          icon: const Icon(Icons.person_add),
-                          label: Text(widget.emptyCtaLabel!),
-                          style: ElevatedButton.styleFrom(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: SizeConfig.imageSizeMultiplier * 6,
-                              vertical: SizeConfig.heightMultiplier * 1.5,
-                            ),
+                      textAlign: TextAlign.center,
+                    ),
+                    // PAS-UX-09: inline recovery CTA. Previously the
+                    // empty Customers tab dead-ended on image + text
+                    // and required the merchant to find the floating
+                    // "+" FAB (easy to miss on small screens). Now
+                    // the empty state itself is the onboarding
+                    // moment.
+                    if (widget.emptyCtaLabel != null &&
+                        widget.onEmptyCtaTap != null) ...[
+                      SizedBox(height: SizeConfig.heightMultiplier * 3),
+                      ElevatedButton.icon(
+                        onPressed: widget.onEmptyCtaTap,
+                        icon: const Icon(Icons.person_add),
+                        label: Text(widget.emptyCtaLabel!),
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: SizeConfig.imageSizeMultiplier * 6,
+                            vertical: SizeConfig.heightMultiplier * 1.5,
                           ),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               );
             }
@@ -333,7 +331,11 @@ class _EntityTabState extends State<EntityTab> {
             }
 
             if (filteredEntities.isEmpty) {
-              return Center(
+              return ScrollableCenteredContent(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.imageSizeMultiplier * 6,
+                  vertical: 12,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

@@ -14,6 +14,7 @@ import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/orders_summary_bar.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_avatar.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/status_pill.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:shimmer/shimmer.dart';
 import 'online_sale_detail_page.dart';
 
@@ -786,33 +787,31 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3.2),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.receipt_long,
-                size: SizeConfig.imageSizeMultiplier * 8.0,
-                color: Theme.of(context).colorScheme.outline),
-            SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-            Text(
-              'No online sales for this filter',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: SizeConfig.textMultiplier * 1.6),
+    return ScrollableCenteredContent(
+      padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3.2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.receipt_long,
+              size: SizeConfig.imageSizeMultiplier * 8.0,
+              color: Theme.of(context).colorScheme.outline),
+          SizedBox(height: SizeConfig.heightMultiplier * 1.0),
+          Text(
+            'No online sales for this filter',
+            style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: SizeConfig.textMultiplier * 1.6),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.4),
+          Text(
+            'Try adjusting the date, status, or search.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 1.3,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.4),
-            Text(
-              'Try adjusting the date, status, or search.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.3,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -827,36 +826,34 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(hPad),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off,
-                size: SizeConfig.imageSizeMultiplier * 8.0,
-                color: Theme.of(context).colorScheme.error),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.8),
-            Text(
-              'Couldn’t load sales',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: SizeConfig.textMultiplier * 1.7),
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.3),
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.8),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
+    return ScrollableCenteredContent(
+      padding: EdgeInsets.all(hPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.cloud_off,
+              size: SizeConfig.imageSizeMultiplier * 8.0,
+              color: Theme.of(context).colorScheme.error),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.8),
+          Text(
+            'Couldn’t load sales',
+            style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: SizeConfig.textMultiplier * 1.7),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.3),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.8),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
       ),
     );
   }

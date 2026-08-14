@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
@@ -18,6 +19,7 @@ import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart
 import 'package:pasella/widgets/consent_modal.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/services/store_session.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 
 @visibleForTesting
 bool shouldShowSpazaOneRebrandNotice({
@@ -43,6 +45,227 @@ bool shouldShowMerchantOnboardingIntroForStore({
   required bool hasProducts,
 }) =>
     !introSeen && !hasCustomers && !hasProducts;
+
+/// Keeps the primary destinations available without sacrificing a quarter of
+/// a phone's landscape height to the bottom navigation bar.
+class ResponsiveDashboardShell extends StatelessWidget {
+  const ResponsiveDashboardShell({
+    super.key,
+    required this.body,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final Widget body;
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig().init(context);
+    if (usesCompactLandscapeLayout(context)) {
+      final largeText = MediaQuery.textScalerOf(context).scale(12) >= 20;
+      final railWidth = largeText ? 144.0 : 88.0;
+      return Scaffold(
+        body: Row(
+          children: [
+            SafeArea(
+              right: false,
+              child: SizedBox(
+                width: railWidth,
+                child: largeText
+                    ? _AccessibleLandscapeNavigation(
+                        selectedIndex: selectedIndex,
+                        onDestinationSelected: onDestinationSelected,
+                      )
+                    : NavigationRail(
+                        key: const ValueKey('landscape-primary-navigation'),
+                        selectedIndex: selectedIndex,
+                        onDestinationSelected: onDestinationSelected,
+                        labelType: NavigationRailLabelType.all,
+                        minWidth: railWidth,
+                        groupAlignment: 0,
+                        useIndicator: true,
+                        indicatorColor: kTertiaryColor,
+                        selectedIconTheme:
+                            const IconThemeData(color: Colors.white),
+                        selectedLabelTextStyle: const TextStyle(
+                          color: kTertiaryColor,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        backgroundColor:
+                            Theme.of(context).colorScheme.surfaceContainerLow,
+                        destinations: const [
+                          NavigationRailDestination(
+                            icon: Icon(Icons.contacts_outlined),
+                            selectedIcon: Icon(Icons.contacts_outlined),
+                            label: Text('Customers'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.inventory_outlined),
+                            selectedIcon: Icon(Icons.inventory_outlined),
+                            label: Text('Products'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.point_of_sale),
+                            selectedIcon: Icon(Icons.point_of_sale),
+                            label: Text('Sales'),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            Expanded(child: body),
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: body,
+      bottomNavigationBar: ClipRRect(
+        borderRadius: BorderRadius.circular(
+          SizeConfig.imageSizeMultiplier * 5,
+        ),
+        child: NavigationBar(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: onDestinationSelected,
+          destinations: [
+            NavigationDestination(
+              icon: Icon(
+                Icons.contacts_outlined,
+                size: SizeConfig.imageSizeMultiplier * 5,
+              ),
+              selectedIcon: Icon(
+                Icons.contacts_outlined,
+                size: SizeConfig.imageSizeMultiplier * 5,
+              ),
+              label: 'Customers',
+            ),
+            NavigationDestination(
+              icon: Icon(
+                Icons.inventory_outlined,
+                size: SizeConfig.imageSizeMultiplier * 5,
+              ),
+              selectedIcon: Icon(
+                Icons.inventory_outlined,
+                size: SizeConfig.imageSizeMultiplier * 5,
+              ),
+              label: 'Products',
+            ),
+            NavigationDestination(
+              icon: Icon(
+                Icons.point_of_sale,
+                size: SizeConfig.imageSizeMultiplier * 5,
+              ),
+              selectedIcon: Icon(
+                Icons.point_of_sale,
+                size: SizeConfig.imageSizeMultiplier * 5,
+              ),
+              label: 'Sales',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AccessibleLandscapeNavigation extends StatelessWidget {
+  const _AccessibleLandscapeNavigation({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  static const _items = <(IconData, String)>[
+    (Icons.contacts_outlined, 'Customers'),
+    (Icons.inventory_outlined, 'Products'),
+    (Icons.point_of_sale, 'Sales'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ColoredBox(
+      key: const ValueKey('landscape-primary-navigation'),
+      color: colors.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          children: [
+            for (var index = 0; index < _items.length; index++)
+              Expanded(
+                child: _AccessibleLandscapeDestination(
+                  icon: _items[index].$1,
+                  label: _items[index].$2,
+                  selected: selectedIndex == index,
+                  onTap: () => onDestinationSelected(index),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AccessibleLandscapeDestination extends StatelessWidget {
+  const _AccessibleLandscapeDestination({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final foreground = selected ? Colors.white : colors.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? kTertiaryColor : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: foreground, size: 20),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 11,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    height: 1.05,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -399,53 +622,11 @@ class _DashboardState extends State<Dashboard> {
                 // (`lib/shared/widgets/onboarding/onboarding_checklist.dart`)
                 // is `@Deprecated` — retained only for the Hive-key
                 // pattern; do not reintroduce.
-                return Scaffold(
+                return ResponsiveDashboardShell(
                   body: value.navigationOptions[value.currentIndex],
-                  bottomNavigationBar: ClipRRect(
-                    borderRadius: BorderRadius.circular(
-                      SizeConfig.imageSizeMultiplier * 5,
-                    ),
-                    child: NavigationBar(
-                      selectedIndex: value.currentIndex,
-                      onDestinationSelected: (index) =>
-                          value.handleNavigation(context, index),
-                      destinations: [
-                        NavigationDestination(
-                          icon: Icon(
-                            Icons.contacts_outlined,
-                            size: SizeConfig.imageSizeMultiplier * 5,
-                          ),
-                          selectedIcon: Icon(
-                            Icons.contacts_outlined,
-                            size: SizeConfig.imageSizeMultiplier * 5,
-                          ),
-                          label: 'Customers',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(
-                            Icons.inventory_outlined,
-                            size: SizeConfig.imageSizeMultiplier * 5,
-                          ),
-                          selectedIcon: Icon(
-                            Icons.inventory_outlined,
-                            size: SizeConfig.imageSizeMultiplier * 5,
-                          ),
-                          label: 'Products',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(
-                            Icons.point_of_sale,
-                            size: SizeConfig.imageSizeMultiplier * 5,
-                          ),
-                          selectedIcon: Icon(
-                            Icons.point_of_sale,
-                            size: SizeConfig.imageSizeMultiplier * 5,
-                          ),
-                          label: 'Sales',
-                        ),
-                      ],
-                    ),
-                  ),
+                  selectedIndex: value.currentIndex,
+                  onDestinationSelected: (index) =>
+                      value.handleNavigation(context, index),
                 );
               },
             );

@@ -147,6 +147,12 @@ class _WorkspaceSectionDestination extends StatelessWidget {
               // quieter hierarchy.
               color: selected ? kTertiaryColor : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
+              border: selected
+                  ? null
+                  : Border.all(
+                      color: colors.outlineVariant.withValues(alpha: .58),
+                      width: .75,
+                    ),
             ),
             child: Text(
               tab.label,
