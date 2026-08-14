@@ -34,9 +34,8 @@ import 'package:pasella/utils/currency_util.dart';
 /// why the negative action must not read as "Cancel".
 ///
 /// PAS-UX-12: Some flows have no underlying record to "save" if the
-/// merchant decides not to send (e.g. the standalone payment reminder
-/// from the contact kebab — there's no sale, no payment, no credit
-/// being recorded alongside the message; the reminder *is* the action).
+/// merchant decides not to send (for example, a standalone message with no
+/// underlying sale, payment or credit record).
 /// For those callers, set [showSkip] to `false` so the "Save without
 /// sending" secondary action is omitted entirely. Dismissal is then
 /// surfaced via an explicit close (X) icon in the header and the

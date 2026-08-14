@@ -103,9 +103,9 @@ class RemoteConfigService implements RemoteConfigBoolReader {
               'Hi {customerName}, welcome to {shopName}! Your account is now '
                   'online. Balance: R0,00. Thanks for joining! - {shopName}',
           'SMS_REMINDER_SHORT':
-              'Hi {customerName}, your balance of {balance} at {shopName} is '
-                  'due. Please make your payment to avoid any late fees. From '
-                  '{shopName}',
+              'Hi {customerName}, your {shopName} balance is {balance}. '
+                  'Please pay the shop or contact them if you have already '
+                  'paid. - SpazaOne',
           'SMS_TEMPLATE_KEYWORDS': '[]',
           'FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED':
               dotenv.env['FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED'] == 'true',
@@ -124,6 +124,8 @@ class RemoteConfigService implements RemoteConfigBoolReader {
           'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED':
               dotenv.env['FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED'] ==
                   'true',
+          'FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED':
+              dotenv.env['FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED'] == 'true',
           'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED':
               dotenv.env['FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED'] == 'true',
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED':

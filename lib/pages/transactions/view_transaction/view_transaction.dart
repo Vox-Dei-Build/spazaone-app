@@ -127,6 +127,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                   (transaction['remarks'] as String).isNotEmpty;
               final String remarks =
                   hasRemarks ? transaction['remarks'] as String : 'No remarks';
+              final paymentMethod = _paymentMethodLabel(
+                transaction['paymentMethod']?.toString(),
+              );
               final rawType = (transaction['type'] ?? '—').toString();
               final displayType = rawType == 'Credit' ? 'Transaction' : rawType;
 
@@ -155,6 +158,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                               (transaction['status'] ?? '—').toString(), tm),
                           buildListTile('Type', displayType, tm),
                           buildListTile('Remarks', remarks, tm),
+                          if (transaction['type'] == 'Payment')
+                            buildListTile('Payment method', paymentMethod, tm),
                           buildProductListTile(context, products, tm, hm, im),
                         ],
                       ),
@@ -167,6 +172,19 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         ),
       ),
     );
+  }
+
+  String _paymentMethodLabel(String? value) {
+    switch (value) {
+      case 'cash':
+        return 'Cash';
+      case 'bank_transfer':
+        return 'Bank transfer';
+      case 'other':
+        return 'Other';
+      default:
+        return 'Not recorded';
+    }
   }
 
   ListTile buildListTile(String title, String subtitle, double tm) {

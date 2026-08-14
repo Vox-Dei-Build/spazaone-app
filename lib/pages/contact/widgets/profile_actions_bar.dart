@@ -195,12 +195,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert),
           onSelected: (String value) async {
-            if (value == 'reminder') {
-              bool shouldProceed = await isAnonymousGate(context);
-              if (shouldProceed && context.mounted) {
-                viewModel.handleReminderTap(context);
-              }
-            } else if (value == 'edit') {
+            if (value == 'edit') {
               _navigateToEditIfAllowed(
                 context,
                 EditCustomerPage(
@@ -225,20 +220,6 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
             }
           },
           itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-            PopupMenuItem<String>(
-              value: 'reminder',
-              child: ListTile(
-                leading: const Icon(Icons.sms_outlined),
-                title: Text(
-                  'Send Payment Reminder',
-                  style: TextStyle(
-                    fontSize:
-                        SizeConfig.textMultiplier * 2, // Responsive font size
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ),
             PopupMenuItem<String>(
               value: 'edit',
               child: ListTile(

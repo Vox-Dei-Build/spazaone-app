@@ -15,7 +15,10 @@ import {
 } from "../lib/payments/v2/financialCore.js";
 import { resolvePaymentReadiness } from "../lib/payments/v2/readiness.js";
 import { buildBuyerPaymentsV2 } from "../lib/payments/v2/buyerReadiness.js";
-import { requireAdminAdjustmentMinor } from "../lib/payments/v2/admin.js";
+import {
+  requireAdminAdjustmentMinor,
+  requirePaymentRequestReviewAction,
+} from "../lib/payments/v2/admin.js";
 import {
   assertBankAccountOnlyVerificationPayload,
   maskedAccountHolderName,
@@ -37,6 +40,21 @@ test("admin Campaign Credit adjustments require signed integer cents", () => {
   assert.throws(
     () => requireAdminAdjustmentMinor(10.5),
     /valid Campaign Credit/,
+  );
+});
+
+test("payment-request delivery review accepts only the two accountable outcomes", () => {
+  assert.equal(
+    requirePaymentRequestReviewAction("confirm_delivery"),
+    "confirm_delivery",
+  );
+  assert.equal(
+    requirePaymentRequestReviewAction("release_failed"),
+    "release_failed",
+  );
+  assert.throws(
+    () => requirePaymentRequestReviewAction("retry_blindly"),
+    /valid payment-request review outcome/,
   );
 });
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   reconcileIntentData,
+  reconcilePaymentRequestReservationData,
   reconciliationOperationBindingMatches,
   reconciliationOutcome,
 } from "../lib/payments/v2/reconciliation.js";
@@ -99,5 +100,44 @@ test("an audited reconciliation operation cannot be rebound on retry", () => {
       binding,
     ),
     false,
+  );
+});
+
+test("payment-request wallet reservations reconcile to the exact cent", () => {
+  assert.deepEqual(
+    reconcilePaymentRequestReservationData({
+      status: "settled",
+      reservedMinor: 120,
+      spentMinor: 85,
+      refundedMinor: 35,
+    }),
+    [],
+  );
+  assert.deepEqual(
+    reconcilePaymentRequestReservationData({
+      status: "recovered",
+      reservedMinor: 120,
+      spentMinor: 0,
+      refundedMinor: 120,
+    }),
+    [],
+  );
+  assert.deepEqual(
+    reconcilePaymentRequestReservationData({
+      status: "settled",
+      reservedMinor: 120,
+      spentMinor: 85,
+      refundedMinor: 34,
+    }).map((issue) => issue.code),
+    ["REQUEST_RESERVATION_TOTAL_MISMATCH"],
+  );
+  assert.deepEqual(
+    reconcilePaymentRequestReservationData({
+      status: "released",
+      reservedMinor: 120,
+      spentMinor: 1,
+      refundedMinor: 119,
+    }).map((issue) => issue.code),
+    ["RELEASED_REQUEST_RESERVATION_CHARGED"],
   );
 });

@@ -217,6 +217,18 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /customerPaymentRequests/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /customerPaymentRequestState/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentRequestWalletReservations/{document=**} {
+      allow read, write: if false;
+    }
+
     match /financialReconciliationRuns/{document=**} {
       allow read, write: if false;
     }

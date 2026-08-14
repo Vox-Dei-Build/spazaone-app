@@ -75,7 +75,9 @@ function isQuarantinableV2Charge(
 }
 
 export const verifyPaystackTransaction = functions
-  .runWith({ secrets: ["PAYSTACK_SECRET_KEY"] })
+  .runWith({
+    secrets: ["PAYSTACK_SECRET_KEY", "BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET"],
+  })
   .https.onRequest(async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "Method Not Allowed" });

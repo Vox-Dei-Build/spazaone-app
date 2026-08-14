@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { after, before, test } from "node:test";
 import admin from "firebase-admin";
@@ -36,6 +37,11 @@ import {
   reserveSupplierFunding,
 } from "../lib/payments/v2/supplierFunding.js";
 import { runPaymentsV2Reconciliation } from "../lib/payments/v2/reconciliation.js";
+import {
+  recordAcceptedCustomerPaymentRequest,
+  releaseReviewedCustomerPaymentRequest,
+  reserveCustomerPaymentRequest,
+} from "../lib/payments/v2/customerPaymentRequests.js";
 
 const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "");
 const emulatorProject = String(
@@ -60,6 +66,7 @@ async function clear() {
     "campaignCreditPurchases",
     "campaignCreditRecoveryCases",
     "campaignWalletOperations",
+    "campaignWalletBalances",
     "inventoryReservations",
     "settlements",
     "commerceNotificationOutbox",
@@ -71,7 +78,11 @@ async function clear() {
     "operationsAlerts",
     "financialReconciliationRuns",
     "paymentOperations",
+    "customerPaymentRequests",
+    "customerPaymentRequestState",
+    "paymentRequestWalletReservations",
     "users",
+    "stores",
   ]) {
     await db.recursiveDelete(db.collection(name));
   }
@@ -120,6 +131,157 @@ test("concurrent intent creation is immutable and idempotent", async () => {
       }),
     ),
     /IDEMPOTENCY_BINDING_MISMATCH/,
+  );
+});
+
+test("payment-request delivery reserves once, blocks overlap and starts cooldown only after acceptance", async () => {
+  await Promise.all([
+    db.doc("users/request-merchant").set({ shopName: "Request Shop" }),
+    db.doc("users/request-merchant/wallet/current").set({
+      virtualBalance: 10,
+    }),
+    db.doc("users/request-merchant/customers/request-customer").set({
+      name: "Thandi",
+      number: "0821234567",
+      balance: -90,
+    }),
+  ]);
+  const deliveryPhone = "+27821234567";
+  const quote = {
+    merchantId: "request-merchant",
+    customerId: "request-customer",
+    customerName: "Thandi",
+    shopName: "Request Shop",
+    deliveryPhone,
+    phoneLast4: "4567",
+    phoneFingerprint: createHash("sha256").update(deliveryPhone).digest("hex"),
+    outstandingAmountMinor: 9_000,
+    mode: "whatsapp_online",
+    expectedChannel: "whatsapp",
+    messageCostMinor: 85,
+    whatsappCostMinor: 85,
+    smsCostMinor: 120,
+    reservationAmountMinor: 120,
+    walletBalanceMinor: 1_000,
+    onlinePaymentsReady: true,
+    messagePreview: "Hi Thandi, your balance is R90,00.",
+    smsPreview: "Hi Thandi, your balance is R90,00.",
+    quoteKey: "quote-request-1",
+    pricingVersion: "pricing-request-1",
+    canRequest: true,
+    reason: "ready",
+    cooldownEndsAtMs: 0,
+    lastRequest: null,
+  };
+  const [first, replay] = await Promise.all([
+    reserveCustomerPaymentRequest({
+      quote,
+      idempotencyKey: "same-send",
+      initiatedBy: "merchant-user",
+    }),
+    reserveCustomerPaymentRequest({
+      quote,
+      idempotencyKey: "same-send",
+      initiatedBy: "merchant-user",
+    }),
+  ]);
+  assert.equal(first.requestId, replay.requestId);
+  assert.deepEqual([first.deduped, replay.deduped].sort(), [false, true]);
+  assert.equal(
+    (await db.doc("users/request-merchant/wallet/current").get()).get(
+      "virtualBalance",
+    ),
+    8.8,
+  );
+  await assert.rejects(
+    reserveCustomerPaymentRequest({
+      quote,
+      idempotencyKey: "overlapping-send",
+      initiatedBy: "merchant-user",
+    }),
+    /REQUEST_IN_PROGRESS/,
+  );
+
+  await recordAcceptedCustomerPaymentRequest({
+    requestId: first.requestId,
+    channel: "whatsapp",
+    providerMessageId: "bp-conversation-1",
+  });
+  await recordAcceptedCustomerPaymentRequest({
+    requestId: first.requestId,
+    channel: "whatsapp",
+    providerMessageId: "late-duplicate",
+  });
+  const request = await db
+    .doc(`customerPaymentRequests/${first.requestId}`)
+    .get();
+  assert.equal(request.get("status"), "sent");
+  assert.equal(request.get("providerMessageId"), "bp-conversation-1");
+  assert.equal(request.get("actualMessageCostMinor"), 85);
+  assert.equal(
+    (await db.doc("users/request-merchant/wallet/current").get()).get(
+      "virtualBalance",
+    ),
+    9.15,
+  );
+  const states = await db.collection("customerPaymentRequestState").get();
+  assert.equal(states.size, 1);
+  assert.equal(states.docs[0].get("activeRequestId"), undefined);
+  assert.ok(states.docs[0].get("cooldownEndsAt").toMillis() > Date.now());
+  await assert.rejects(
+    reserveCustomerPaymentRequest({
+      quote,
+      idempotencyKey: "during-cooldown",
+      initiatedBy: "merchant-user",
+    }),
+    /COOLDOWN_ACTIVE/,
+  );
+
+  await db
+    .doc("users/request-merchant/customers/review-customer")
+    .set({ name: "Lebo", number: "0831234567", balance: -40 });
+  const reviewQuote = {
+    ...quote,
+    customerId: "review-customer",
+    customerName: "Lebo",
+    deliveryPhone: "+27831234567",
+    phoneFingerprint: createHash("sha256").update("+27831234567").digest("hex"),
+    outstandingAmountMinor: 4_000,
+    quoteKey: "quote-request-review",
+  };
+  const review = await reserveCustomerPaymentRequest({
+    quote: reviewQuote,
+    idempotencyKey: "review-send",
+    initiatedBy: "merchant-user",
+  });
+  await db.doc(`customerPaymentRequests/${review.requestId}`).update({
+    status: "needs_review",
+    operationsOwner: "operations",
+  });
+  await releaseReviewedCustomerPaymentRequest(
+    review.requestId,
+    "PROVIDER_CASE_123_CONFIRMED_NOT_DELIVERED",
+  );
+  await releaseReviewedCustomerPaymentRequest(
+    review.requestId,
+    "PROVIDER_CASE_123_CONFIRMED_NOT_DELIVERED",
+  );
+  assert.equal(
+    (await db.doc(`customerPaymentRequests/${review.requestId}`).get()).get(
+      "status",
+    ),
+    "failed",
+  );
+  const reviewedReservation = await db
+    .doc(`paymentRequestWalletReservations/${review.requestId}`)
+    .get();
+  assert.equal(reviewedReservation.get("status"), "released");
+  assert.equal(reviewedReservation.get("refundedMinor"), 120);
+  assert.equal(
+    (await db.doc("users/request-merchant/wallet/current").get()).get(
+      "virtualBalance",
+    ),
+    9.15,
   );
 });
 

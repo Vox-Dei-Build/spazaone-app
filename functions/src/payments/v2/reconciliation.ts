@@ -1,5 +1,6 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
+import { campaignOperationRef } from "../../wallet/campaignCredits";
 import {
   assertMoneySnapshot,
   isPaymentStatus,
@@ -13,6 +14,146 @@ export type ReconciliationIssue = {
   expected?: number;
   actual?: number;
 };
+
+export function reconcilePaymentRequestReservationData(
+  value: Record<string, unknown>,
+): ReconciliationIssue[] {
+  const issues: ReconciliationIssue[] = [];
+  const status = String(value.status ?? "");
+  const reserved = Number(value.reservedMinor);
+  const spent = Number(value.spentMinor ?? 0);
+  const refunded = Number(value.refundedMinor ?? 0);
+  if (!Number.isSafeInteger(reserved) || reserved <= 0) {
+    issues.push({ code: "REQUEST_RESERVATION_AMOUNT_INVALID" });
+  }
+  if (!Number.isSafeInteger(spent) || spent < 0) {
+    issues.push({ code: "REQUEST_RESERVATION_SPENT_INVALID" });
+  }
+  if (!Number.isSafeInteger(refunded) || refunded < 0) {
+    issues.push({ code: "REQUEST_RESERVATION_REFUND_INVALID" });
+  }
+  if (!["active", "settled", "released", "recovered"].includes(status)) {
+    issues.push({ code: "REQUEST_RESERVATION_STATUS_INVALID" });
+    return issues;
+  }
+  if (status === "active") {
+    if (spent !== 0 || refunded !== 0) {
+      issues.push({ code: "ACTIVE_REQUEST_RESERVATION_MOVED" });
+    }
+    return issues;
+  }
+  if (
+    Number.isSafeInteger(reserved) &&
+    Number.isSafeInteger(spent) &&
+    Number.isSafeInteger(refunded) &&
+    spent + refunded !== reserved
+  ) {
+    issues.push({
+      code: "REQUEST_RESERVATION_TOTAL_MISMATCH",
+      expected: reserved,
+      actual: spent + refunded,
+    });
+  }
+  if (status === "settled" && spent <= 0) {
+    issues.push({ code: "REQUEST_RESERVATION_CHARGE_MISSING" });
+  }
+  if (["released", "recovered"].includes(status) && spent !== 0) {
+    issues.push({ code: "RELEASED_REQUEST_RESERVATION_CHARGED" });
+  }
+  return issues;
+}
+
+export async function reconcilePaymentRequestReservationRelations(
+  reservationId: string,
+  value: Record<string, unknown>,
+): Promise<ReconciliationIssue[]> {
+  const issues: ReconciliationIssue[] = [];
+  const requestId = String(value.requestId ?? "");
+  const walletStoreId = String(value.walletStoreId ?? "");
+  if (!requestId || requestId !== reservationId || !walletStoreId) {
+    return [{ code: "REQUEST_RESERVATION_BINDING_INVALID" }];
+  }
+  const requestRef = db.doc(`customerPaymentRequests/${requestId}`);
+  const reserveOperationRef = campaignOperationRef(
+    walletStoreId,
+    `request-reserve:${requestId}`,
+  );
+  const [request, reserveOperation] = await Promise.all([
+    requestRef.get(),
+    reserveOperationRef.get(),
+  ]);
+  if (!request.exists) {
+    issues.push({ code: "PAYMENT_REQUEST_MISSING" });
+  } else {
+    if (String(request.get("requestId") ?? "") !== requestId) {
+      issues.push({ code: "PAYMENT_REQUEST_ID_MISMATCH" });
+    }
+    const status = String(value.status ?? "");
+    const requestStatus = String(request.get("status") ?? "");
+    const validRequestStates: Record<string, string[]> = {
+      active: ["queued", "dispatching", "needs_review"],
+      settled: [
+        "sent",
+        "customer_engaged",
+        "link_created",
+        "partially_paid",
+        "paid",
+      ],
+      released: ["failed", "not_deliverable"],
+      recovered: ["failed", "not_deliverable"],
+    };
+    if (!(validRequestStates[status] ?? []).includes(requestStatus)) {
+      issues.push({ code: "PAYMENT_REQUEST_RESERVATION_STATE_MISMATCH" });
+    }
+    if (
+      status === "settled" &&
+      Number(request.get("actualMessageCostMinor") ?? 0) !==
+        Number(value.spentMinor ?? 0)
+    ) {
+      issues.push({ code: "PAYMENT_REQUEST_MESSAGE_COST_MISMATCH" });
+    }
+  }
+  if (
+    !reserveOperation.exists ||
+    reserveOperation.get("kind") !== "payment-request-reservation" ||
+    Number(reserveOperation.get("metadata.reservedMinor") ?? 0) !==
+      Number(value.reservedMinor ?? 0)
+  ) {
+    issues.push({ code: "PAYMENT_REQUEST_RESERVE_OPERATION_MISSING" });
+  }
+  const refundedMinor = Number(value.refundedMinor ?? 0);
+  const outcome = String(value.status ?? "");
+  if (
+    refundedMinor > 0 &&
+    ["settled", "released", "recovered"].includes(outcome)
+  ) {
+    const operationId =
+      outcome === "settled"
+        ? `settled:${requestId}`
+        : outcome === "recovered"
+          ? `recovered:${requestId}`
+          : `released:${requestId}`;
+    const operation = await campaignOperationRef(
+      walletStoreId,
+      operationId,
+    ).get();
+    const expectedKind =
+      outcome === "settled"
+        ? "payment-request-settlement"
+        : outcome === "recovered"
+          ? "payment-request-recovery"
+          : "payment-request-release";
+    if (
+      !operation.exists ||
+      operation.get("kind") !== expectedKind ||
+      Number(operation.get("metadata.actualMinor") ?? -1) !==
+        Number(value.spentMinor ?? 0)
+    ) {
+      issues.push({ code: "PAYMENT_REQUEST_OUTCOME_OPERATION_MISSING" });
+    }
+  }
+  return issues;
+}
 
 export function reconcileIntentData(
   value: Record<string, unknown>,
@@ -385,13 +526,22 @@ export async function runPaymentsV2Reconciliation(input: {
     const cutoff = Timestamp.fromMillis(
       Date.now() - windowDays * 24 * 60 * 60 * 1000,
     );
-    const intents = await db
-      .collection("paymentIntents")
-      .where("updatedAt", ">=", cutoff)
-      .orderBy("updatedAt", "asc")
-      .limit(501)
-      .get();
-    const windowTruncated = intents.size > 500;
+    const [intents, requestReservations] = await Promise.all([
+      db
+        .collection("paymentIntents")
+        .where("updatedAt", ">=", cutoff)
+        .orderBy("updatedAt", "asc")
+        .limit(501)
+        .get(),
+      db
+        .collection("paymentRequestWalletReservations")
+        .where("updatedAt", ">=", cutoff)
+        .orderBy("updatedAt", "asc")
+        .limit(501)
+        .get(),
+    ]);
+    const windowTruncated =
+      intents.size > 500 || requestReservations.size > 500;
     const results = [];
     for (const doc of intents.docs.slice(0, 500)) {
       const value = doc.data();
@@ -400,6 +550,17 @@ export async function runPaymentsV2Reconciliation(input: {
         ...(await reconcileIntentRelations(doc.id, value)),
       ];
       results.push({ intentId: doc.id, issues });
+    }
+    for (const doc of requestReservations.docs.slice(0, 500)) {
+      const value = doc.data();
+      const issues = [
+        ...reconcilePaymentRequestReservationData(value),
+        ...(await reconcilePaymentRequestReservationRelations(doc.id, value)),
+      ];
+      results.push({
+        intentId: `payment-request-reservation:${doc.id}`,
+        issues,
+      });
     }
     const mismatches = results.filter((result) => result.issues.length > 0);
     const outcome = reconciliationOutcome({
@@ -432,6 +593,7 @@ export async function runPaymentsV2Reconciliation(input: {
         settlement: true,
         refundTotals: true,
         businessProjection: true,
+        customerPaymentRequestWallet: true,
         completeWindow: !windowTruncated,
       },
       truncated,

@@ -158,6 +158,15 @@ beforeEach(async () => {
         merchantId: "storeA",
       }),
       setDoc(doc(db, "repaymentPlans/planA"), { merchantId: "storeA" }),
+      setDoc(doc(db, "customerPaymentRequests/requestA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "customerPaymentRequestState/stateA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "paymentRequestWalletReservations/requestA"), {
+        storeId: "storeA",
+      }),
       setDoc(doc(db, "commerceNotificationOutbox/noticeA"), {
         state: "pending",
       }),
@@ -291,6 +300,9 @@ test("Payments V2 truth is server-only for owners, operators and admins", async 
     "campaignCreditPurchases/purchaseA",
     "campaignCreditRecoveryCases/recoveryA",
     "repaymentPlans/planA",
+    "customerPaymentRequests/requestA",
+    "customerPaymentRequestState/stateA",
+    "paymentRequestWalletReservations/requestA",
     "commerceNotificationOutbox/noticeA",
   ];
   for (const client of [

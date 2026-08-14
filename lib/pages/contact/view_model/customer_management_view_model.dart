@@ -2,25 +2,17 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
-import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/orders_unread_clear.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
-import 'package:pasella/shared/billing/cost_breakdown.dart';
-import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
-import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/photo_upload_util.dart';
 import 'package:pasella/utils/show_toast.dart';
-import 'package:pasella/utils/sms_pricing_util.dart';
-import 'package:pasella/templates/sms_message.dart';
 
 class CustomerManagementViewModel extends ChangeNotifier {
   final String customerName;
@@ -32,9 +24,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
   File? _profileImage;
   String? _profileImageUrl;
   int _profileImageRevision = 0;
-  late final DynamicPricingService pricingService;
-  final ValueNotifier<bool> sendingReminderNotifier =
-      ValueNotifier<bool>(false);
   bool isLoading = false;
   File? get profileImage => _profileImage; // Getter for profile image
   String? get profileImageUrl =>
@@ -68,8 +57,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
     _setLoading(true);
     try {
       notificationService = await MessagingNotificationService.create();
-      if (_disposed) return;
-      pricingService = await DynamicPricingService.initialize();
       if (_disposed) return;
       hasWhatsApp = (mobileNumber != null)
           ? await notificationService
@@ -145,8 +132,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         if (unreadCounts is Map && unreadCounts['messages'] is num) {
           unreadMessagesCount = (unreadCounts['messages'] as num).toInt();
         }
-        ordersUnreadCount = unreadCounts is Map &&
-                unreadCounts['orders'] is num
+        ordersUnreadCount = unreadCounts is Map && unreadCounts['orders'] is num
             ? (unreadCounts['orders'] as num).toInt()
             : (doc.data()?['ordersUnreadCount'] as int?) ?? 0;
         notifyListeners();
@@ -341,139 +327,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
     });
   }
 
-  void handleReminderTap(BuildContext context) async {
-    if (sendingReminderNotifier.value) return;
-
-    double netBalance =
-        customerBalanceSummaryProvider.customerBalanceSummary.netBalance;
-    if (netBalance >= 0.0) {
-      showSnackbar(
-          context, 'Balance is settled. No need for reminders!', Colors.green);
-      return;
-    }
-
-    // Compute both channel costs up-front so the user sees an
-    // accurate, channel-aware quote on the confirmation sheet
-    // (replaces the cost-blind "Send reminder?" alert dialog and the
-    // SMS-only quote that under/over-quoted the actual deduction).
-    final smsCost = SMSPricingUtil.calculateCost(
-      text: SMSMessages.reminderShort,
-      unitCost: pricingService.smsReminderTemplatePrice,
-    );
-    final whatsappCost = pricingService.whatsappUtilityPrice;
-
-    if (mobileNumber == null || mobileNumber!.isEmpty) {
-      // No phone number on file — nothing to send. Bail before the
-      // sheet so the user isn't asked to confirm a no-op.
-      showSnackbar(
-          context, 'No phone number on file for this customer.', Colors.orange);
-      return;
-    }
-
-    final expectedChannel =
-        await MessagingNotificationService.resolveExpectedChannel(
-            mobileNumber!);
-
-    // Reminder send is a pure side-effect (nothing to "record" if the
-    // merchant doesn't send), so the legacy bool API still maps cleanly:
-    // user explicitly confirms -> send, anything else -> do nothing.
-    // No silent state to surface.
-    //
-    // PAS-UX-12: There is no underlying record being saved alongside this
-    // dispatch — the reminder *is* the action — so the "Save without
-    // sending" secondary button is suppressed (`showSkip: false`).
-    // Merchants who change their mind dismiss via the close (X) icon in
-    // the sheet header (or back gesture / scrim), all of which map to
-    // dismissed and result in no send.
-    final shouldSend = await CostConfirmationSheet.show(
-      context,
-      breakdown: CostBreakdown.singleMessageMultiChannel(
-        title: 'Send payment reminder?',
-        subtitle: 'Message to $customerName',
-        whatsappCost: whatsappCost,
-        smsCost: smsCost,
-        expected: expectedChannel,
-      ),
-      confirmLabel: 'Send Reminder',
-      showSkip: false,
-    );
-
-    if (shouldSend) await _sendReminder(context);
-  }
-
-  // PAS-WA-V1: Reminder caps audit. Historic versions of this app
-  // gated reminders to "once per month" via a `lastReminderSent`
-  // cooldown read here. Pasella now charges per send (paid-usage
-  // model), so a count-based cap is invalid — merchants pay for the
-  // value they get and the only legitimate gates are: (1) settled
-  // balance, (2) phone-on-file, (3) wallet credit. The previous
-  // helper was already orphaned (no callers in `lib/`) but is
-  // removed outright to make the audit conclusion explicit and stop
-  // future readers reintroducing a cap by re-wiring it.
-  //
-  // `lastReminderSent` is still written on each send (see
-  // `_sendReminder`) and read by the reports tile for a purely
-  // cosmetic "reminder sent recently" badge — that surface is the
-  // only legitimate consumer.
-  Future<void> _sendReminder(BuildContext context) async {
-    sendingReminderNotifier.value = true;
-
-    final String userId = StoreSession.instance.storeId;
-    double netBalance =
-        customerBalanceSummaryProvider.customerBalanceSummary.netBalance;
-
-    // Connectivity check
-    var connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
-      // Inform the user about offline status and action queued
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        showSnackbar(
-            context,
-            'You\'re offline. Action queued and will complete when back online.',
-            Colors.orange);
-      });
-    }
-
-    // PAS-WA-V1: balance check must cover the worst-case channel
-    // cost. The dispatcher decides WhatsApp-vs-SMS at send-time
-    // (including a 30-day recheck for stale "no" cache entries), so
-    // we cannot know in advance which price will be deducted. Gate
-    // on the larger of the two so the wallet can never be driven
-    // negative by a fallback we didn't quote against.
-    final smsCost = SMSPricingUtil.calculateCost(
-      text: SMSMessages.reminderShort,
-      unitCost: pricingService.smsReminderTemplatePrice,
-    );
-    final whatsappCost = pricingService.whatsappUtilityPrice;
-    final reminderMessageCost = smsCost > whatsappCost ? smsCost : whatsappCost;
-
-    bool canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
-        context, userId, reminderMessageCost);
-
-    if (!canProceed) {
-      SnackbarComponents.showInsufficientBalance(context);
-      sendingReminderNotifier.value = false;
-      return; // Exit early, do NOT send the message
-    }
-
-    FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('customers')
-        .doc(customerId)
-        .update({'lastReminderSent': DateTime.now()}).then((value) async {
-      MessagingNotificationService notificationService =
-          await MessagingNotificationService.create();
-      await notificationService.sendReminderMessage(
-          userId, customerId, customerName, netBalance, mobileNumber);
-    }).catchError((error) {
-      showSnackbar(context, 'Error sending reminder. Please retry when online.',
-          Colors.red);
-    });
-
-    sendingReminderNotifier.value = false;
-  }
-
   Future<void> deleteCustomer(BuildContext context) async {
     bool confirmDelete = await _showDeleteConfirmationDialog(context);
     if (!confirmDelete) return;
@@ -558,7 +411,6 @@ class CustomerManagementViewModel extends ChangeNotifier {
     _disposed = true;
     _messagesUnreadSub?.cancel();
     _ordersUnreadSub?.cancel();
-    sendingReminderNotifier.dispose();
     nameController.dispose();
     numberController.dispose();
     super.dispose();

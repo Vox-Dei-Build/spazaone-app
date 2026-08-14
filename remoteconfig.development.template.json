@@ -66,6 +66,12 @@
       },
       "description": "Development client rollback switch for customer-account payments."
     },
+    "FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for customer payment requests. Server delivery remains independently gated."
+    },
     "FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED": {
       "defaultValue": {
         "value": "true"

@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import axios from "axios";
 import { FieldValue } from "firebase-admin/firestore";
 import twilio from "twilio";
 import { db, functions } from "../config/main";
@@ -67,6 +68,7 @@ const NOTIFICATION_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000];
 const MAX_NOTIFICATION_ATTEMPTS = NOTIFICATION_RETRY_DELAYS_MS.length + 1;
 const TERMINAL_BUYER_RESULTS = new Set([
   "whatsapp_sent",
+  "botpress_queued",
   "sms_sent",
   "skipped_no_phone",
   "skipped_conversational_reply",
@@ -125,6 +127,63 @@ function statusMessage(order: OrderNotice): string {
 async function notifyBuyer(order: OrderNotice): Promise<string> {
   const to = formatPhoneNumber(order.buyerPhone);
   if (!to) return "skipped_no_phone";
+  if (order.noticeKind === "account_payment") {
+    const mode = String(process.env.BOTPRESS_PROVIDER_MODE ?? "disabled")
+      .trim()
+      .toLowerCase();
+    if (mode === "stub") return "botpress_queued";
+    const url = String(
+      process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_URL ?? "",
+    ).trim();
+    const secret = String(
+      process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET ?? "",
+    ).trim();
+    const templateName = String(
+      process.env.BOTPRESS_PAYMENT_CONFIRMATION_TEMPLATE_NAME ?? "",
+    ).trim();
+    const templateLanguage = String(
+      process.env.BOTPRESS_PAYMENT_CONFIRMATION_TEMPLATE_LANGUAGE ?? "en",
+    ).trim();
+    if (
+      !["test", "live"].includes(mode) ||
+      !/^https:\/\//.test(url) ||
+      !secret ||
+      !templateName
+    ) {
+      return "skipped_not_configured";
+    }
+    const reference = order.orderId.slice(0, 8).toUpperCase();
+    const amount = `R ${(order.amountDueMinor / 100).toFixed(2)}`;
+    const response = await axios.post(
+      url,
+      {
+        schemaVersion: 1,
+        eventType: "account_payment_confirmation",
+        userPhone: to,
+        templateName,
+        templateLanguage,
+        templateVariables: {
+          customerName: order.buyerName || "Customer",
+          amount,
+          reference,
+        },
+        merchantId: order.sellerId,
+        customerId: order.customerId ?? "",
+        paymentIntentId: order.orderId,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "x-bp-secret": secret,
+        },
+        timeout: 15_000,
+        validateStatus: () => true,
+      },
+    );
+    return response.status >= 200 && response.status < 300
+      ? "botpress_queued"
+      : "failed";
+  }
   const config = functions.config().twilio ?? {};
   const accountSid = process.env.TWILIO_ACCOUNT_SID || config.sid;
   const authToken = process.env.TWILIO_AUTH_TOKEN || config.token;
@@ -222,6 +281,7 @@ function customerDelivery(
   willRetry: boolean,
 ): CustomerNotificationDelivery {
   if (["whatsapp_sent", "sms_sent"].includes(buyerResult)) return "sent";
+  if (buyerResult === "botpress_queued") return "queued";
   if (buyerResult === "skipped_no_phone") return "not_deliverable";
   if (buyerResult === "skipped_conversational_reply") return "skipped";
   return willRetry ? "queued" : "failed";

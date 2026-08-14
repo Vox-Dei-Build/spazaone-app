@@ -20,6 +20,7 @@ class EmulatorQaFeatureProfile {
     required this.campaignCreditPaystack,
     required this.ownedOrderPayments,
     required this.accountSettlementPayments,
+    required this.customerPaymentRequests,
     required this.supplierOrderPayments,
     required this.merchantOnboardingIntro,
   });
@@ -35,6 +36,8 @@ class EmulatorQaFeatureProfile {
   static const ownedOrderPaymentsKey = 'QA_FEATURE_OWNED_ORDER_PAYMENTS';
   static const accountSettlementPaymentsKey =
       'QA_FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS';
+  static const customerPaymentRequestsKey =
+      'QA_FEATURE_CUSTOMER_PAYMENT_REQUESTS';
   static const supplierOrderPaymentsKey = 'QA_FEATURE_SUPPLIER_ORDER_PAYMENTS';
   static const onboardingIntroKey = 'QA_FEATURE_MERCHANT_ONBOARDING_INTRO';
 
@@ -50,6 +53,8 @@ class EmulatorQaFeatureProfile {
       String.fromEnvironment(ownedOrderPaymentsKey);
   static const _accountSettlementPaymentsValue =
       String.fromEnvironment(accountSettlementPaymentsKey);
+  static const _customerPaymentRequestsValue =
+      String.fromEnvironment(customerPaymentRequestsKey);
   static const _supplierOrderPaymentsValue =
       String.fromEnvironment(supplierOrderPaymentsKey);
   static const _onboardingIntroValue =
@@ -64,6 +69,7 @@ class EmulatorQaFeatureProfile {
   final bool campaignCreditPaystack;
   final bool ownedOrderPayments;
   final bool accountSettlementPayments;
+  final bool customerPaymentRequests;
   final bool supplierOrderPayments;
   final bool merchantOnboardingIntro;
 
@@ -78,6 +84,7 @@ class EmulatorQaFeatureProfile {
       campaignCreditPaystackKey: _campaignCreditPaystackValue,
       ownedOrderPaymentsKey: _ownedOrderPaymentsValue,
       accountSettlementPaymentsKey: _accountSettlementPaymentsValue,
+      customerPaymentRequestsKey: _customerPaymentRequestsValue,
       supplierOrderPaymentsKey: _supplierOrderPaymentsValue,
       onboardingIntroKey: _onboardingIntroValue,
     });
@@ -104,6 +111,7 @@ class EmulatorQaFeatureProfile {
       campaignCreditPaystack: requiredBool(campaignCreditPaystackKey),
       ownedOrderPayments: requiredBool(ownedOrderPaymentsKey),
       accountSettlementPayments: requiredBool(accountSettlementPaymentsKey),
+      customerPaymentRequests: requiredBool(customerPaymentRequestsKey),
       supplierOrderPayments: requiredBool(supplierOrderPaymentsKey),
       merchantOnboardingIntro: requiredBool(onboardingIntroKey),
     );
@@ -133,6 +141,7 @@ class FeatureFlags {
   /// Authoritative server readiness is still required for every initialization.
   static bool enableOwnedOrderPayments = false;
   static bool enableAccountSettlementPayments = false;
+  static bool enableCustomerPaymentRequests = false;
   static bool enableSupplierOrderPayments = false;
 
   /// Multi-store/operator emergency rollback switch.
@@ -213,6 +222,7 @@ class FeatureFlags {
     enableTopUpPaystack = profile.campaignCreditPaystack;
     enableOwnedOrderPayments = profile.ownedOrderPayments;
     enableAccountSettlementPayments = profile.accountSettlementPayments;
+    enableCustomerPaymentRequests = profile.customerPaymentRequests;
     enableSupplierOrderPayments = profile.supplierOrderPayments;
     enableMerchantOnboardingIntro = profile.merchantOnboardingIntro;
   }
@@ -263,6 +273,10 @@ class FeatureFlags {
     );
     enableAccountSettlementPayments = rc.getBool(
       'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED',
+      defaultValue: false,
+    );
+    enableCustomerPaymentRequests = rc.getBool(
+      'FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED',
       defaultValue: false,
     );
     enableSupplierOrderPayments = rc.getBool(

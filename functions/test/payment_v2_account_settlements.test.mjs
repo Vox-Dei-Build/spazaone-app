@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   accountOutstandingMinor,
   nextRepaymentInstallmentMinor,
+  shouldReopenPaymentRequestAfterExpiry,
 } from "../lib/payments/v2/accountSettlements.js";
 
 test("account settlement reads the legacy negative Rand balance at its boundary", () => {
@@ -12,6 +13,35 @@ test("account settlement reads the legacy negative Rand balance at its boundary"
   assert.throws(
     () => accountOutstandingMinor("not-money"),
     /CUSTOMER_BALANCE_INVALID/,
+  );
+});
+
+test("an expired link reopens only its own still-unpaid request", () => {
+  assert.equal(
+    shouldReopenPaymentRequestAfterExpiry({
+      requestStatus: "link_created",
+      lastPaymentIntentId: "pi_latest",
+      expiredIntentId: "pi_latest",
+    }),
+    true,
+  );
+  for (const requestStatus of ["paid", "partially_paid", "needs_review"]) {
+    assert.equal(
+      shouldReopenPaymentRequestAfterExpiry({
+        requestStatus,
+        lastPaymentIntentId: "pi_latest",
+        expiredIntentId: "pi_latest",
+      }),
+      false,
+    );
+  }
+  assert.equal(
+    shouldReopenPaymentRequestAfterExpiry({
+      requestStatus: "link_created",
+      lastPaymentIntentId: "pi_newer",
+      expiredIntentId: "pi_old",
+    }),
+    false,
   );
 });
 

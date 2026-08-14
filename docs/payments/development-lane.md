@@ -56,15 +56,17 @@ COMMERCE_PAYMENTS_ENABLED=true
 CJ_SANDBOX_MODE=true
 CJ_LIVE_FULFILMENT_ENABLED=false
 BOTPRESS_PROVIDER_MODE=test
-TWILIO_PROVIDER_MODE=test
+CUSTOMER_PAYMENT_REQUESTS_ENABLED=true
 ACTIVATION_NUDGES_ENABLED=false
 ACTIVATION_NUDGES_DRY_RUN=true
 ```
 
-Paystack, CJ, Botpress and Twilio credentials remain in Secret Manager or the
-provider's secure configuration. Do not place them in source control or pass
-them in shell arguments. Development rejects a live Paystack key; production
-rejects a test key.
+Paystack, CJ and Botpress credentials remain in Secret Manager or the
+provider's secure configuration. Direct Botpress WhatsApp is the supported
+payment-request lane; Twilio is optional SMS fallback and is not a release
+dependency. Do not place credentials in source control or pass them in shell
+arguments. Development rejects a live Paystack key; production rejects a test
+key.
 
 The development Payments V2 and supplier-commerce process-level gates are on
 so sandbox transactions can be exercised. This does not make a payment public:

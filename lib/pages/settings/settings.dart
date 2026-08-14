@@ -116,8 +116,7 @@ class SettingsPage extends StatelessWidget {
                               .showPermissionExplanationDialog(context),
                           icon: Icons.notifications_outlined,
                           title: 'Notifications',
-                          subTitle:
-                              'Enable payment reminders and account updates',
+                          subTitle: 'Customer requests and account updates',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

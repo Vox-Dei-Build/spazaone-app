@@ -19,6 +19,10 @@ type CampaignCreditOperation = {
   id: string;
   kind:
     | "client-message"
+    | "payment-request-reservation"
+    | "payment-request-settlement"
+    | "payment-request-release"
+    | "payment-request-recovery"
     | "promotion-reservation"
     | "promotion-send"
     | "promotion-refund"

@@ -48,9 +48,10 @@ class PayLaterActionBar extends StatelessWidget {
             children: [
               Expanded(
                 child: _ActionPill(
-                  label: 'Transaction',
+                  label: 'Add to account',
                   icon: Icons.arrow_downward_rounded,
-                  color: const Color(0xFFC62828),
+                  color: const Color(0xFFF3F4F6),
+                  foregroundColor: const Color(0xFF29295B),
                   onTap: () => _open(
                     context,
                     (ctx) => AddCreditScreen(
@@ -64,9 +65,10 @@ class PayLaterActionBar extends StatelessWidget {
               SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
               Expanded(
                 child: _ActionPill(
-                  label: 'Payment',
+                  label: 'Record payment',
                   icon: Icons.arrow_upward_rounded,
-                  color: const Color(0xFF1B5E20),
+                  color: const Color(0xFFF3F4F6),
+                  foregroundColor: const Color(0xFF29295B),
                   onTap: () => _open(
                     context,
                     (ctx) => AddPaymentScreen(
@@ -101,12 +103,14 @@ class _ActionPill extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
+  final Color foregroundColor;
   final VoidCallback onTap;
 
   const _ActionPill({
     required this.label,
     required this.icon,
     required this.color,
+    required this.foregroundColor,
     required this.onTap,
   });
 
@@ -126,13 +130,13 @@ class _ActionPill extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon,
-                  color: Colors.white,
+                  color: foregroundColor,
                   size: SizeConfig.imageSizeMultiplier * 5),
               SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
               Text(
                 label,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: foregroundColor,
                   fontWeight: FontWeight.w700,
                   fontSize: SizeConfig.textMultiplier * 2,
                   letterSpacing: 0.2,

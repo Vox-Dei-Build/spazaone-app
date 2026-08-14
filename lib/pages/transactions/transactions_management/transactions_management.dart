@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
+import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/transactions/widgets/customer_balance_hero.dart';
+import 'package:pasella/pages/transactions/widgets/customer_payment_request_panel.dart';
 import 'package:pasella/pages/transactions/widgets/pay_later_action_bar.dart';
 import 'package:pasella/pages/transactions/widgets/transactions_list_view.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:provider/provider.dart';
 
 /// Pay Later (a.k.a. Transactions Management) screen.
@@ -81,101 +84,103 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
 
     final horizontalPadding = SizeConfig.imageSizeMultiplier * 4;
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: customerManagementViewModel.sendingReminderNotifier,
-      builder: (context, isSending, child) {
-        return Stack(
-          children: [
-            child!,
-            if (isSending)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black45,
-                  child: const Center(child: CircularProgressIndicator()),
+    return Scaffold(
+      // Sticky CTAs — always reachable, safe-area aware.
+      bottomNavigationBar: PayLaterActionBar(
+        customerName: widget.customerName,
+        customerId: widget.customerId,
+        mobileNumber: widget.mobileNumber,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Column(
+            children: [
+              Expanded(
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: customerManagementViewModel.streamTransactions(
+                    customerManagementViewModel.userId,
+                    widget.customerId,
+                  ),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    } else if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          'Could not load transactions. Please try again.',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: SizeConfig.textMultiplier * 2,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      // PAS-AUTH-03: Stock-style empty state. The
+                      // recovery actions (Transaction / Payment) live in
+                      // the sticky bottom action bar, so no third CTA
+                      // here — just an explanatory line and the
+                      // walkthrough link.
+                      return EmptyStateOnboarding(
+                        icon: Icons.receipt_long_outlined,
+                        headline:
+                            'No transactions yet for ${widget.customerName}',
+                        subtitle:
+                            'Use Add to account for a purchase on credit, or '
+                            'Record payment when this customer pays you.',
+                        tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
+                        tutorialTitle: 'How to record a transaction',
+                      );
+                    } else {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                          // The Customer Report panel previously rendered
+                          // here is now reachable from the AppBar's
+                          // insights icon button (see ProfileAppBar). The
+                          // Pay Later tab is now: ledger -> hero -> CTAs.
+                          Expanded(
+                            child: TransactionsListView(
+                              customerManagementViewModel:
+                                  customerManagementViewModel,
+                              transactions: snapshot.data!,
+                              customerId: widget.customerId,
+                              customerName: widget.customerName,
+                              mobileNumber: widget.mobileNumber,
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                  },
                 ),
               ),
-          ],
-        );
-      },
-      child: Scaffold(
-        // Sticky CTAs — always reachable, safe-area aware.
-        bottomNavigationBar: PayLaterActionBar(
-          customerName: widget.customerName,
-          customerId: widget.customerId,
-          mobileNumber: widget.mobileNumber,
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-            child: Column(
-              children: [
-                Expanded(
-                  child: StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: customerManagementViewModel.streamTransactions(
-                      customerManagementViewModel.userId,
-                      widget.customerId,
+              SizedBox(height: SizeConfig.heightMultiplier * 1.0),
+              const CustomerBalanceHero(),
+              Consumer<CustomerBalanceSummaryProvider>(
+                builder: (context, provider, _) => CustomerPaymentRequestPanel(
+                  customerId: widget.customerId,
+                  customerName: widget.customerName,
+                  mobileNumber: widget.mobileNumber,
+                  isOwing: provider.customerBalanceSummary.netBalance < 0,
+                  onAddPhone: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => EditCustomerPage(
+                        viewModel: customerManagementViewModel,
+                      ),
                     ),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      } else if (snapshot.hasError) {
-                        return Center(
-                          child: Text(
-                            'Could not load transactions. Please try again.',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w500,
-                              fontSize: SizeConfig.textMultiplier * 2,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        );
-                      } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        // PAS-AUTH-03: Stock-style empty state. The
-                        // recovery actions (Transaction / Payment) live in
-                        // the sticky bottom action bar, so no third CTA
-                        // here — just an explanatory line and the
-                        // walkthrough link.
-                        return EmptyStateOnboarding(
-                          icon: Icons.receipt_long_outlined,
-                          headline:
-                              'No transactions yet for ${widget.customerName}',
-                          subtitle:
-                              'Tap Transaction when this customer takes goods on '
-                              'account, attach a product when stock matters, '
-                              'or tap Payment when they settle up.',
-                          tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
-                          tutorialTitle: 'How to record a transaction',
-                        );
-                      } else {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
-                            // The Customer Report panel previously rendered
-                            // here is now reachable from the AppBar's
-                            // insights icon button (see ProfileAppBar). The
-                            // Pay Later tab is now: ledger -> hero -> CTAs.
-                            Expanded(
-                              child: TransactionsListView(
-                                customerManagementViewModel:
-                                    customerManagementViewModel,
-                                transactions: snapshot.data!,
-                                customerId: widget.customerId,
-                                customerName: widget.customerName,
-                                mobileNumber: widget.mobileNumber,
-                              ),
-                            ),
-                          ],
-                        );
-                      }
-                    },
+                  ),
+                  onSetUpOnlinePayments: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const WalletOnlinePaymentsPage(),
+                    ),
                   ),
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-                const CustomerBalanceHero(),
-                SizedBox(height: SizeConfig.heightMultiplier * 0.8),
-              ],
-            ),
+              ),
+              SizedBox(height: SizeConfig.heightMultiplier * 0.8),
+            ],
           ),
         ),
       ),

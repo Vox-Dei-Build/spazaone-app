@@ -11,6 +11,10 @@ import {
   PaymentPurpose,
   stableDocumentId,
 } from "./domain";
+import {
+  recordAcceptedCustomerPaymentRequest,
+  releaseReviewedCustomerPaymentRequest,
+} from "./customerPaymentRequests";
 
 function requireAdmin(context: functions.https.CallableContext): string {
   if (!context.auth) {
@@ -67,6 +71,37 @@ function requireOperationId(value: unknown): string {
     );
   }
   return id;
+}
+
+export type PaymentRequestReviewAction = "confirm_delivery" | "release_failed";
+
+export function requirePaymentRequestReviewAction(
+  value: unknown,
+): PaymentRequestReviewAction {
+  if (value !== "confirm_delivery" && value !== "release_failed") {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Choose a valid payment-request review outcome.",
+    );
+  }
+  return value;
+}
+
+function requireAuditText(
+  value: unknown,
+  label: string,
+  maximumLength = 500,
+): string {
+  const parsed = String(value ?? "")
+    .trim()
+    .slice(0, maximumLength);
+  if (!parsed) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `${label} is required.`,
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -373,8 +408,13 @@ export const setGlobalPaymentConfigurationV2 = functions.https.onCall(
       typeof data?.settlementVerificationSuspended === "boolean"
         ? data.settlementVerificationSuspended
         : undefined;
+    const requestedCustomerPaymentRequestsEnabled =
+      typeof data?.customerPaymentRequestsEnabled === "boolean"
+        ? data.customerPaymentRequestsEnabled
+        : undefined;
     const configRef = db.doc("paymentConfiguration/global");
     let resultingSettlementVerificationSuspended = false;
+    let resultingCustomerPaymentRequestsEnabled = false;
     const auditId = stableDocumentId("audit", [
       "global",
       adminUid,
@@ -391,12 +431,17 @@ export const setGlobalPaymentConfigurationV2 = functions.https.onCall(
         previous.settlementVerificationSuspended === true;
       resultingSettlementVerificationSuspended =
         settlementVerificationSuspended;
+      const customerPaymentRequestsEnabled =
+        requestedCustomerPaymentRequestsEnabled ??
+        previous.customerPaymentRequestsEnabled === true;
+      resultingCustomerPaymentRequestsEnabled = customerPaymentRequestsEnabled;
       tx.set(
         configRef,
         {
           capabilities,
           emergencySuspended,
           settlementVerificationSuspended,
+          customerPaymentRequestsEnabled,
           ...(requestedSettlementVerificationSuspended === false
             ? {
                 settlementVerificationSuspendedReason: FieldValue.delete(),
@@ -422,6 +467,9 @@ export const setGlobalPaymentConfigurationV2 = functions.https.onCall(
         previousSettlementVerificationSuspended:
           previous.settlementVerificationSuspended === true,
         nextSettlementVerificationSuspended: settlementVerificationSuspended,
+        previousCustomerPaymentRequestsEnabled:
+          previous.customerPaymentRequestsEnabled === true,
+        nextCustomerPaymentRequestsEnabled: customerPaymentRequestsEnabled,
         reason,
         createdAt: now,
       });
@@ -430,6 +478,141 @@ export const setGlobalPaymentConfigurationV2 = functions.https.onCall(
       capabilities,
       emergencySuspended,
       settlementVerificationSuspended: resultingSettlementVerificationSuspended,
+      customerPaymentRequestsEnabled: resultingCustomerPaymentRequestsEnabled,
     };
   },
 );
+
+/**
+ * Resolves an ambiguous provider-delivery result without a Firestore-console
+ * financial edit. The operation is bound to one request, outcome and evidence
+ * reference, and can be retried safely after an interrupted support session.
+ */
+export const resolveCustomerPaymentRequestDeliveryReviewV1 =
+  functions.https.onCall(async (data, context) => {
+    const adminUid = requireAdmin(context);
+    if (!context.app) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "App Check verification is required.",
+      );
+    }
+    const requestId = requireOperationId(data?.requestId);
+    const operationId = requireOperationId(data?.operationId);
+    const action = requirePaymentRequestReviewAction(data?.action);
+    const evidenceReference = requireAuditText(
+      data?.evidenceReference,
+      "A non-secret provider evidence reference",
+      200,
+    );
+    const reason = requireAuditText(data?.reason, "An audit reason");
+    const channel = data?.channel === "sms" ? "sms" : "whatsapp";
+    const providerMessageId =
+      action === "confirm_delivery"
+        ? requireAuditText(
+            data?.providerMessageId,
+            "The provider message ID",
+            200,
+          )
+        : "";
+    const auditId = stableDocumentId("audit", [
+      "payment_request_delivery_review",
+      adminUid,
+      operationId,
+    ]);
+    const auditRef = db.doc(`paymentAdministrationAudit/${auditId}`);
+    const requestRef = db.doc(`customerPaymentRequests/${requestId}`);
+    let completed = false;
+
+    await db.runTransaction(async (tx) => {
+      const [audit, request] = await Promise.all([
+        tx.get(auditRef),
+        tx.get(requestRef),
+      ]);
+      if (!request.exists) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Payment request not found.",
+        );
+      }
+      if (audit.exists) {
+        const prior = audit.data() ?? {};
+        if (
+          prior.requestId !== requestId ||
+          prior.reviewAction !== action ||
+          prior.channel !== channel ||
+          prior.evidenceReference !== evidenceReference ||
+          prior.providerMessageId !== providerMessageId ||
+          prior.reason !== reason
+        ) {
+          throw new functions.https.HttpsError(
+            "already-exists",
+            "That operationId is already bound to another review outcome.",
+          );
+        }
+        completed = prior.state === "completed";
+        return;
+      }
+      if (String(request.get("status") ?? "") !== "needs_review") {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "Only a payment request awaiting operations review can be resolved.",
+        );
+      }
+      tx.create(auditRef, {
+        auditId,
+        action: "payment_request_delivery_review",
+        reviewAction: action,
+        requestId,
+        merchantId: request.get("merchantId"),
+        customerId: request.get("customerId"),
+        channel,
+        evidenceReference,
+        providerMessageId,
+        reason,
+        actorUid: adminUid,
+        operationId,
+        state: "pending",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        schemaVersion: 1,
+      });
+    });
+
+    if (!completed) {
+      try {
+        if (action === "confirm_delivery") {
+          await recordAcceptedCustomerPaymentRequest({
+            requestId,
+            channel,
+            providerMessageId,
+          });
+        } else {
+          await releaseReviewedCustomerPaymentRequest(
+            requestId,
+            `OPERATIONS_CONFIRMED_FAILED:${evidenceReference}`,
+          );
+        }
+        await auditRef.set(
+          {
+            state: "completed",
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      } catch (error) {
+        await auditRef.set(
+          {
+            state: "failed",
+            failureCode:
+              error instanceof Error ? error.message.slice(0, 100) : "UNKNOWN",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        throw error;
+      }
+    }
+    return { requestId, action, auditId, completed: true };
+  });

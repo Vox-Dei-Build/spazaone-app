@@ -69,17 +69,20 @@ void main() {
     FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
     expect(FeatureFlags.enableOwnedOrderPayments, isFalse);
     expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableCustomerPaymentRequests, isFalse);
     expect(FeatureFlags.enableSupplierOrderPayments, isFalse);
 
     FeatureFlags.applyFlagsForTesting(
       _FakeRemoteConfig({
         'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED': true,
         'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED': false,
+        'FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED': true,
         'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED': true,
       }),
     );
     expect(FeatureFlags.enableOwnedOrderPayments, isTrue);
     expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableCustomerPaymentRequests, isTrue);
     expect(FeatureFlags.enableSupplierOrderPayments, isTrue);
   });
 
@@ -94,6 +97,7 @@ void main() {
       EmulatorQaFeatureProfile.campaignCreditPaystackKey: 'true',
       EmulatorQaFeatureProfile.ownedOrderPaymentsKey: 'true',
       EmulatorQaFeatureProfile.accountSettlementPaymentsKey: 'false',
+      EmulatorQaFeatureProfile.customerPaymentRequestsKey: 'true',
       EmulatorQaFeatureProfile.supplierOrderPaymentsKey: 'true',
       EmulatorQaFeatureProfile.onboardingIntroKey: 'true',
     });
@@ -110,6 +114,7 @@ void main() {
     expect(FeatureFlags.enableTopUpPaystack, isTrue);
     expect(FeatureFlags.enableOwnedOrderPayments, isTrue);
     expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableCustomerPaymentRequests, isTrue);
     expect(FeatureFlags.enableSupplierOrderPayments, isTrue);
     expect(FeatureFlags.enableMerchantOnboardingIntro, isTrue);
   });

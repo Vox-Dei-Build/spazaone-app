@@ -117,8 +117,8 @@ String _firstGrapheme(String value) {
 /// distinction (number on file vs not) and is sometimes the only thing
 /// telling a merchant they can't message a client.
 String _phoneTooltip(bool hasNumber) => hasNumber
-    ? 'Phone number on file — you can send WhatsApp or SMS reminders.'
-    : 'No phone number — add one to send payment reminders.';
+    ? 'Phone number on file — you can send a payment request.'
+    : 'No phone number — add one to request payment.';
 
 Widget profilePicture(
   BuildContext context,

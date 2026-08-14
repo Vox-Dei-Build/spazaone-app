@@ -30,6 +30,7 @@ class AccountPaymentService {
     required String email,
     required String channel,
     required String idempotencyKey,
+    String? paymentRequestId,
   }) async {
     final response = await _client.post(
       FunctionEndpoints.https('createAccountSettlementLinkV2'),
@@ -40,6 +41,8 @@ class AccountPaymentService {
         'email': email.trim(),
         'channel': channel,
         'idempotencyKey': idempotencyKey,
+        if (paymentRequestId != null && paymentRequestId.isNotEmpty)
+          'paymentRequestId': paymentRequestId,
       },
     );
     final body = response.body.isEmpty

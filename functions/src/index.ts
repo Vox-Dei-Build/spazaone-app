@@ -52,7 +52,18 @@ export { retryPaystackRefundsV2 } from "./payments/v2/refunds";
 export {
   createAccountSettlementLinkV2,
   createRepaymentPlanV2,
+  expireAccountSettlementIntents,
 } from "./payments/v2/accountSettlements";
+export {
+  getCustomerPaymentRequestOverviewV1,
+  sendCustomerPaymentRequestV1,
+  getCustomerPaymentRequestStatusV1,
+  getCustomerPaymentRequestContextV1BotHttp,
+  claimCustomerPaymentRequestDeliveryV1BotHttp,
+  recordCustomerPaymentRequestDeliveryV1BotHttp,
+  retryCustomerPaymentRequestDeliveries,
+  recoverExpiredPaymentRequestReservations,
+} from "./payments/v2/customerPaymentRequests";
 /* Bot */
 export * from "./customer_hub/fetchCustomerAndMerchantDetails";
 export * from "./customer_hub/sendPromoToActiveCustomers";

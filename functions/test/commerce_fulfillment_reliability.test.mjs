@@ -43,6 +43,10 @@ test("failed customer delivery is reported as queued only with a retry", () => {
     commerceNotificationResult("whatsapp_sent", "failed", true).customer,
     "sent",
   );
+  assert.equal(
+    commerceNotificationResult("botpress_queued", "push_sent", false).customer,
+    "queued",
+  );
 });
 
 test("missing customer phone is never reported as notified", () => {

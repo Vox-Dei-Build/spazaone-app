@@ -84,6 +84,18 @@ test("bot-callable payment entrypoints bind the bot secret", () => {
     ["payments/v2/ownedOrders.ts", "createOwnedOrderPaymentV2"],
     ["payments/v2/accountSettlements.ts", "createAccountSettlementLinkV2"],
     ["payments/v2/accountSettlements.ts", "createRepaymentPlanV2"],
+    [
+      "payments/v2/customerPaymentRequests.ts",
+      "getCustomerPaymentRequestContextV1BotHttp",
+    ],
+    [
+      "payments/v2/customerPaymentRequests.ts",
+      "claimCustomerPaymentRequestDeliveryV1BotHttp",
+    ],
+    [
+      "payments/v2/customerPaymentRequests.ts",
+      "recordCustomerPaymentRequestDeliveryV1BotHttp",
+    ],
     ["ecommerce/cancelOrder.ts", "cancelOrder"],
   ];
   for (const [relativePath, exportName] of entrypoints) {
@@ -93,6 +105,43 @@ test("bot-callable payment entrypoints bind the bot secret", () => {
     const binding = source.slice(start, start + 260);
     assert.match(binding, /runWith\(\{ secrets: \[[^\]]*"PASELLA_BOT_TOKEN"/);
   }
+});
+
+test("merchant payment-request entrypoints require auth and App Check", () => {
+  const source = readFileSync(
+    join(sourceRoot, "payments/v2/customerPaymentRequests.ts"),
+    "utf8",
+  );
+  assert.match(source, /requireAppCheck:\s*true/);
+  for (const exportName of [
+    "getCustomerPaymentRequestOverviewV1",
+    "sendCustomerPaymentRequestV1",
+    "getCustomerPaymentRequestStatusV1",
+  ]) {
+    const start = source.indexOf(`export const ${exportName}`);
+    assert.notEqual(start, -1, `${exportName} export missing`);
+    const endpoint = source.slice(start, start + 2_500);
+    assert.match(endpoint, /authenticateMerchant\(/);
+  }
+  assert.doesNotMatch(
+    source.slice(
+      source.indexOf("export const getCustomerPaymentRequestOverviewV1"),
+      source.indexOf("async function reserveRequest"),
+    ),
+    /api\.paystack\.co/,
+  );
+});
+
+test("payment-request review is an admin and App Check protected command", () => {
+  const source = readFileSync(join(sourceRoot, "payments/v2/admin.ts"), "utf8");
+  const start = source.indexOf(
+    "export const resolveCustomerPaymentRequestDeliveryReviewV1",
+  );
+  assert.notEqual(start, -1);
+  const command = source.slice(start, start + 1_800);
+  assert.match(command, /requireAdmin\(context\)/);
+  assert.match(command, /if \(!context\.app\)/);
+  assert.match(command, /paymentAdministrationAudit/);
 });
 
 test("billable settlement verification is app-attested and bank-only", () => {

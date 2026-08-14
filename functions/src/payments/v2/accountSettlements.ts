@@ -79,6 +79,18 @@ export function nextRepaymentInstallmentMinor(input: {
   return Math.min(remaining, installment);
 }
 
+export function shouldReopenPaymentRequestAfterExpiry(input: {
+  requestStatus: unknown;
+  lastPaymentIntentId: unknown;
+  expiredIntentId: string;
+}): boolean {
+  return (
+    ["sent", "customer_engaged", "link_created"].includes(
+      String(input.requestStatus ?? ""),
+    ) && String(input.lastPaymentIntentId ?? "") === input.expiredIntentId
+  );
+}
+
 async function authorizeMerchantOrBot(
   req: functions.https.Request,
   res: functions.Response,
@@ -121,6 +133,11 @@ function publicError(error: unknown): { status: number; message: string } {
       "The shop's settlement account is not ready.",
     ],
     ACCOUNT_CHANNEL_INVALID: [400, "Choose an available payment method."],
+    PAYMENT_REQUEST_NOT_FOUND: [404, "Payment request not found."],
+    PAYMENT_REQUEST_BINDING_MISMATCH: [
+      403,
+      "This payment request is not linked to that customer account.",
+    ],
   };
   const mapped = known[code];
   return mapped
@@ -142,6 +159,12 @@ export const createAccountSettlementLinkV2 = functions
       const initiatedBy = await authorizeMerchantOrBot(req, res, merchantId);
       if (!initiatedBy) return;
       const customerId = id(req.body?.customerId, "CUSTOMER_ID");
+      const paymentRequestValue = String(
+        req.body?.paymentRequestId ?? "",
+      ).trim();
+      const paymentRequestId = paymentRequestValue
+        ? id(paymentRequestValue, "PAYMENT_REQUEST_ID")
+        : "";
       const planIdValue = String(req.body?.repaymentPlanId ?? "").trim();
       const planId = planIdValue ? id(planIdValue, "REPAYMENT_PLAN_ID") : "";
       const purpose: PaymentPurpose = planId
@@ -152,12 +175,16 @@ export const createAccountSettlementLinkV2 = functions
       const channel = accountChannel(req.body?.channel);
       const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
       const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
-      const [customer, profile, plan] = await Promise.all([
+      const paymentRequestRef = paymentRequestId
+        ? db.doc(`customerPaymentRequests/${paymentRequestId}`)
+        : null;
+      const [customer, profile, plan, paymentRequest] = await Promise.all([
         customerRef.get(),
         profileRef.get(),
         planId
           ? db.doc(`repaymentPlans/${planId}`).get()
           : Promise.resolve(null),
+        paymentRequestRef ? paymentRequestRef.get() : Promise.resolve(null),
       ]);
       if (!customer.exists) throw new Error("CUSTOMER_NOT_FOUND");
       const customerData = customer.data() ?? {};
@@ -170,6 +197,32 @@ export const createAccountSettlementLinkV2 = functions
         );
         if (!claimedPhone || !storedPhone || claimedPhone !== storedPhone) {
           throw new Error("CUSTOMER_BINDING_MISMATCH");
+        }
+      }
+      if (paymentRequestRef) {
+        if (
+          !paymentRequest?.exists ||
+          paymentRequest.get("merchantId") !== merchantId ||
+          paymentRequest.get("customerId") !== customerId ||
+          ![
+            "sent",
+            "customer_engaged",
+            "link_created",
+            "partially_paid",
+          ].includes(String(paymentRequest.get("status") ?? ""))
+        ) {
+          throw new Error("PAYMENT_REQUEST_BINDING_MISMATCH");
+        }
+        if (initiatedBy === "botpress") {
+          const requestPhone = normalizePhoneNumber(
+            String(paymentRequest.get("deliveryPhone") ?? ""),
+          );
+          const claimedPhone = normalizePhoneNumber(
+            String(req.body?.customerPhone ?? "").replace("whatsapp:", ""),
+          );
+          if (!requestPhone || requestPhone !== claimedPhone) {
+            throw new Error("PAYMENT_REQUEST_BINDING_MISMATCH");
+          }
         }
       }
       const outstanding = accountOutstandingMinor(customerData.balance);
@@ -266,6 +319,7 @@ export const createAccountSettlementLinkV2 = functions
         tx.update(intentRef, {
           customerId,
           repaymentPlanId: planId || null,
+          paymentRequestId: paymentRequestId || null,
           selectedChannel: channel,
           paystackSubaccountCode: subaccountCode,
           settlementDestination: {
@@ -318,6 +372,7 @@ export const createAccountSettlementLinkV2 = functions
               merchantId,
               customerId,
               repaymentPlanId: planId || null,
+              paymentRequestId: paymentRequestId || null,
               selectedChannel: channel,
             },
           },
@@ -336,7 +391,12 @@ export const createAccountSettlementLinkV2 = functions
           throw new Error("PAYSTACK_INITIALIZE_RESPONSE_INVALID");
         }
         await db.runTransaction(async (tx) => {
-          const intent = await tx.get(intentRef);
+          const [intent, request] = await Promise.all([
+            tx.get(intentRef),
+            paymentRequestRef
+              ? tx.get(paymentRequestRef)
+              : Promise.resolve(null),
+          ]);
           const data = intent.data() ?? {};
           if (
             data.status === "initialized" &&
@@ -359,6 +419,15 @@ export const createAccountSettlementLinkV2 = functions
             initializedAt: now,
             updatedAt: now,
           });
+          if (paymentRequestRef && request?.exists) {
+            tx.update(paymentRequestRef, {
+              status: "link_created",
+              linkedPaymentIntentIds: FieldValue.arrayUnion(created.intentId),
+              lastPaymentIntentId: created.intentId,
+              linkCreatedAt: now,
+              updatedAt: now,
+            });
+          }
         });
         res.status(200).json({
           authorizationUrl,
@@ -401,6 +470,10 @@ export async function applyVerifiedAccountSettlementV2(
   const intentId = id(metadata.intentId, "INTENT_ID");
   const merchantId = requireStoreId(metadata.merchantId);
   const customerId = id(metadata.customerId, "CUSTOMER_ID");
+  const paymentRequestIdValue = String(metadata.paymentRequestId ?? "").trim();
+  const paymentRequestId = paymentRequestIdValue
+    ? id(paymentRequestIdValue, "PAYMENT_REQUEST_ID")
+    : "";
   const reference = id(transaction.reference, "REFERENCE");
   const amountMinor = requirePositiveMinorUnits(transaction.amount, "amount");
   const providerFeeMinor = Number(transaction.fees ?? 0);
@@ -428,17 +501,22 @@ export async function applyVerifiedAccountSettlementV2(
   const settlementRef = db.doc(
     `settlements/${stableDocumentId("st", [intentId])}`,
   );
+  const paymentRequestRef = paymentRequestId
+    ? db.doc(`customerPaymentRequests/${paymentRequestId}`)
+    : null;
   let deduped = recorded.deduped;
   let notificationId = "";
   let refundCaseId = "";
   await db.runTransaction(async (tx) => {
-    const [intent, event, customer, ledger, settlement] = await Promise.all([
-      tx.get(intentRef),
-      tx.get(eventRef),
-      tx.get(customerRef),
-      tx.get(ledgerRef),
-      tx.get(settlementRef),
-    ]);
+    const [intent, event, customer, ledger, settlement, paymentRequest] =
+      await Promise.all([
+        tx.get(intentRef),
+        tx.get(eventRef),
+        tx.get(customerRef),
+        tx.get(ledgerRef),
+        tx.get(settlementRef),
+        paymentRequestRef ? tx.get(paymentRequestRef) : Promise.resolve(null),
+      ]);
     if (!intent.exists || !event.exists || !customer.exists) {
       throw new Error("ACCOUNT_PAYMENT_CORE_MISSING");
     }
@@ -452,9 +530,18 @@ export async function applyVerifiedAccountSettlementV2(
       String(intentData.selectedChannel ?? "") !==
         String(transaction.channel ?? "") ||
       String(metadata.repaymentPlanId ?? "") !==
-        String(intentData.repaymentPlanId ?? "")
+        String(intentData.repaymentPlanId ?? "") ||
+      paymentRequestId !== String(intentData.paymentRequestId ?? "")
     ) {
       throw new Error("ACCOUNT_PAYMENT_BINDING_MISMATCH");
+    }
+    if (
+      paymentRequestRef &&
+      (!paymentRequest?.exists ||
+        paymentRequest.get("merchantId") !== merchantId ||
+        paymentRequest.get("customerId") !== customerId)
+    ) {
+      throw new Error("PAYMENT_REQUEST_BINDING_MISMATCH");
     }
     const applied = Array.isArray(intentData.appliedProviderEventIds)
       ? intentData.appliedProviderEventIds.map(String)
@@ -502,6 +589,15 @@ export async function applyVerifiedAccountSettlementV2(
         processedAt: now,
         updatedAt: now,
       });
+      if (paymentRequestRef && paymentRequest?.exists) {
+        tx.update(paymentRequestRef, {
+          status: "needs_review",
+          reviewReason: "account_balance_changed_before_payment_confirmation",
+          operationsOwner: "operations",
+          lastPaymentIntentId: intentId,
+          updatedAt: now,
+        });
+      }
       return;
     }
     const repaymentPlanId = String(intentData.repaymentPlanId ?? "");
@@ -591,6 +687,16 @@ export async function applyVerifiedAccountSettlementV2(
       processedAt: now,
       updatedAt: now,
     });
+    if (paymentRequestRef && paymentRequest?.exists) {
+      tx.update(paymentRequestRef, {
+        status: amountMinor === currentOutstanding ? "paid" : "partially_paid",
+        lastPaymentIntentId: intentId,
+        paidAmountMinor: FieldValue.increment(amountMinor),
+        remainingAmountMinor: currentOutstanding - amountMinor,
+        paymentConfirmedAt: now,
+        updatedAt: now,
+      });
+    }
     notificationId = enqueueCommerceOrderNotification(tx, {
       orderId: intentId,
       sellerId: merchantId,
@@ -623,6 +729,70 @@ export async function applyVerifiedAccountSettlementV2(
     ...(refundCaseId ? {} : { transactionId: ledgerRef.id }),
   };
 }
+
+/**
+ * Ends the app/bot's internal checkout session without claiming that Paystack
+ * can no longer confirm a late charge. Provider truth still wins in the
+ * verified webhook path above, which remains idempotent after this marker.
+ */
+export const expireAccountSettlementIntents = functions.pubsub
+  .schedule("every 15 minutes")
+  .onRun(async () => {
+    const expired = await db
+      .collection("paymentIntents")
+      .where("expiresAt", "<=", Timestamp.now())
+      .limit(100)
+      .get();
+    for (const intent of expired.docs) {
+      const data = intent.data() ?? {};
+      if (
+        !["account_settlement", "repayment_installment"].includes(
+          String(data.purpose ?? ""),
+        ) ||
+        !["created", "initialized"].includes(String(data.status ?? ""))
+      ) {
+        continue;
+      }
+      const paymentRequestId = String(data.paymentRequestId ?? "");
+      await db.runTransaction(async (tx) => {
+        const liveIntent = await tx.get(intent.ref);
+        const liveData = liveIntent.data() ?? {};
+        if (
+          !liveIntent.exists ||
+          !["created", "initialized"].includes(String(liveData.status ?? ""))
+        ) {
+          return;
+        }
+        const now = FieldValue.serverTimestamp();
+        tx.update(intent.ref, {
+          status: "expired",
+          previousStatus: String(liveData.status ?? "initialized"),
+          expiredAt: now,
+          updatedAt: now,
+        });
+        if (!paymentRequestId) return;
+        const requestRef = db.doc(
+          `customerPaymentRequests/${paymentRequestId}`,
+        );
+        const request = await tx.get(requestRef);
+        if (
+          request.exists &&
+          shouldReopenPaymentRequestAfterExpiry({
+            requestStatus: request.get("status"),
+            lastPaymentIntentId: request.get("lastPaymentIntentId"),
+            expiredIntentId: intent.id,
+          })
+        ) {
+          tx.update(requestRef, {
+            status: "customer_engaged",
+            lastExpiredPaymentIntentId: intent.id,
+            updatedAt: now,
+          });
+        }
+      });
+    }
+    return null;
+  });
 
 const CADENCE_DAYS = { weekly: 7, fortnightly: 14, monthly: 30 } as const;
 

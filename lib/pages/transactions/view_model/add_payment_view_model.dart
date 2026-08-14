@@ -15,16 +15,13 @@ import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 import 'package:pasella/utils/sms_pricing_util.dart';
-import 'package:pasella/services/account_payment_service.dart';
-import 'package:share_plus/share_plus.dart';
 
 class AddPaymentViewModel extends TransactionViewModel {
   final String customerName;
   final String customerId;
   final String? mobileNumber;
   late final DynamicPricingService pricingService;
-  final AccountPaymentService accountPaymentService = AccountPaymentService();
-  String? _paymentLinkAttemptKey;
+  String paymentMethod = 'cash';
 
   AddPaymentViewModel({
     required this.customerName,
@@ -80,6 +77,7 @@ class AddPaymentViewModel extends TransactionViewModel {
       'date': selectedDate,
       'status': 'PAID',
       'remarks': remarks,
+      'paymentMethod': paymentMethod,
     };
 
     try {
@@ -96,7 +94,7 @@ class AddPaymentViewModel extends TransactionViewModel {
           transactionId: 'ledger_payment:${transactionRef.id}',
           amountBucket: amountBucketZAR(amountEntered),
           source: 'ledger_repayment',
-          method: 'manual',
+          method: paymentMethod,
         ),
       );
 
@@ -122,7 +120,7 @@ class AddPaymentViewModel extends TransactionViewModel {
             await MessagingNotificationService.resolveExpectedChannel(
                 mobileNumber!);
         final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send payment confirmation?',
+          title: 'Send receipt to customer?',
           subtitle: 'Message to $customerName',
           whatsappCost: whatsappCost,
           smsCost: smsCost,
@@ -132,7 +130,7 @@ class AddPaymentViewModel extends TransactionViewModel {
         outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
-          confirmLabel: 'Send',
+          confirmLabel: 'Send receipt',
         );
       } else {
         // No mobile number on file — there was never a message path,
@@ -184,59 +182,9 @@ class AddPaymentViewModel extends TransactionViewModel {
     }
   }
 
-  Future<void> createAndSharePaymentLink(
-    BuildContext context, {
-    required String email,
-    required String channel,
-  }) async {
-    if (isLoading) return;
-    final merchantId = StoreSession.instance.storeId;
-    final amount = double.tryParse(amountController.text.trim());
-    final amountMinor = amount == null ? 0 : (amount * 100).round();
-    if (merchantId.isEmpty || amountMinor <= 0) {
-      showSnackbar(context, 'Enter a valid payment amount first.', Colors.red);
-      return;
-    }
-    if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(email.trim())) {
-      showSnackbar(context, 'Enter a valid customer email.', Colors.red);
-      return;
-    }
-    _paymentLinkAttemptKey ??=
-        '${customerId}_${DateTime.now().microsecondsSinceEpoch}';
-    setLoading(true);
-    try {
-      final link = await accountPaymentService.createLink(
-        merchantId: merchantId,
-        customerId: customerId,
-        amountMinor: amountMinor,
-        email: email,
-        channel: channel,
-        idempotencyKey: _paymentLinkAttemptKey!,
-      );
-      await Share.share(
-        'Hi $customerName, use this secure Spaza One link to pay '
-        'R${(link.amountMinor / 100).toStringAsFixed(2)} toward your account: '
-        '${link.authorizationUrl}\nReference: ${link.reference}',
-        subject: 'Spaza One account payment',
-      );
-      _paymentLinkAttemptKey = null;
-      if (context.mounted) {
-        showSnackbar(
-          context,
-          'Payment link ready to share. The account updates only after Paystack confirms payment.',
-          Colors.green,
-        );
-      }
-    } catch (error) {
-      if (context.mounted) {
-        final message = error
-            .toString()
-            .replaceFirst('Bad state: ', '')
-            .replaceFirst('StateError: ', '');
-        showSnackbar(context, message, Colors.red);
-      }
-    } finally {
-      setLoading(false);
-    }
+  void setPaymentMethod(String value) {
+    if (!{'cash', 'bank_transfer', 'other'}.contains(value)) return;
+    paymentMethod = value;
+    notifyListeners();
   }
 }
