@@ -189,11 +189,11 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                     controller: _mainController,
                     tabs: const [
                       WorkspaceSectionTab(
-                        label: 'Recorded sales',
+                        label: 'Recorded',
                         semanticLabel: 'Recorded sales',
                       ),
                       WorkspaceSectionTab(
-                        label: 'Online orders',
+                        label: 'Online',
                         semanticLabel: 'Online orders',
                       ),
                       WorkspaceSectionTab(

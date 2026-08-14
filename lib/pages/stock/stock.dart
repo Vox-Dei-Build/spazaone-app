@@ -74,15 +74,15 @@ class _StockPageState extends State<StockPage>
                         controller: _tabController,
                         tabs: const <WorkspaceSectionTab>[
                           WorkspaceSectionTab(
-                            label: 'Your products',
+                            label: 'Products',
                             semanticLabel: 'Your products',
                           ),
                           WorkspaceSectionTab(
-                            label: 'Supplier catalogue',
+                            label: 'Suppliers',
                             semanticLabel: 'Supplier catalogue',
                           ),
                           WorkspaceSectionTab(
-                            label: 'Stock report',
+                            label: 'Stock',
                             semanticLabel: 'Stock report',
                           ),
                         ],
@@ -124,21 +124,10 @@ class _StockPageState extends State<StockPage>
                                 ),
                               ],
                             ),
-                            Column(
-                              children: [
-                                const WorkspaceContextHeader(
-                                  title: 'Supplier catalogue',
-                                  subtitle:
-                                      'Products delivered by the supplier',
-                                ),
-                                Expanded(
-                                  child: SupplierCatalogPage(
-                                    onListingCreated: () {
-                                      _tabController.animateTo(0);
-                                    },
-                                  ),
-                                ),
-                              ],
+                            SupplierCatalogPage(
+                              onListingCreated: () {
+                                _tabController.animateTo(0);
+                              },
                             ),
                             Column(
                               children: [

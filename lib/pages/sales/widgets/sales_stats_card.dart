@@ -43,7 +43,6 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: colors.primary.withValues(alpha: .14)),
       ),
       child: InkWell(
         onTap: () =>
@@ -98,24 +97,22 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                 ],
               ),
               const SizedBox(height: 14),
-              IntrinsicHeight(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _OpenMetric(
-                        label: 'Profit',
-                        value: CurrencyUtil.format(profit),
-                      ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _OpenMetric(
+                      label: 'Profit',
+                      value: CurrencyUtil.format(profit),
                     ),
-                    VerticalDivider(color: colors.outlineVariant),
-                    Expanded(
-                      child: _OpenMetric(
-                        label: 'Recorded sales',
-                        value: count.toString(),
-                      ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _OpenMetric(
+                      label: 'Recorded sales',
+                      value: count.toString(),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -267,25 +264,32 @@ class _OpenMetric extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-        ],
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: .7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ],
+        ),
       );
 }
 

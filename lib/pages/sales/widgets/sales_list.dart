@@ -73,50 +73,58 @@ class _SalesListState extends State<SalesList> {
           itemBuilder: (context, index) {
             if (index < widget.header.length) return widget.header[index];
             final sale = data[index - widget.header.length];
-            return ListTile(
-              minVerticalPadding: 12,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              leading: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primaryContainer
-                      .withValues(alpha: .45),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.receipt_long_outlined, size: 20),
-              ),
-              title: Text(
-                DateFormat('dd MMM yyyy').format(sale.dateAdded),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(DateFormat('HH:mm').format(sale.dateAdded)),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    CurrencyUtil.format(sale.amount),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Material(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: .42),
+                borderRadius: BorderRadius.circular(16),
+                child: ListTile(
+                  minVerticalPadding: 12,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  leading: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer
+                          .withValues(alpha: .45),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.receipt_long_outlined, size: 20),
                   ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right_rounded),
-                ],
-              ),
-              onTap: () async {
-                final changed = await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => SaleDetailPage(sale: sale),
+                  title: Text(
+                    DateFormat('dd MMM yyyy').format(sale.dateAdded),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                );
-                if (changed == true) {
-                  viewModel.updateSelectedDate(DateTime.now());
-                }
-              },
-              shape: Border(
-                bottom: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant,
+                  subtitle: Text(DateFormat('HH:mm').format(sale.dateAdded)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        CurrencyUtil.format(sale.amount),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.chevron_right_rounded),
+                    ],
+                  ),
+                  onTap: () async {
+                    final changed = await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => SaleDetailPage(sale: sale),
+                      ),
+                    );
+                    if (changed == true) {
+                      viewModel.updateSelectedDate(DateTime.now());
+                    }
+                  },
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
               ),
             );

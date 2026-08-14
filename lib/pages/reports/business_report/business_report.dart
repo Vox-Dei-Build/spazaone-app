@@ -313,9 +313,6 @@ class CustomerBalanceSummary extends StatelessWidget {
             decoration: BoxDecoration(
               color: kHighLightColor,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: kPrimaryColor.withValues(alpha: .18),
-              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -351,7 +348,7 @@ class CustomerBalanceSummary extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
+            padding: const EdgeInsets.only(top: 12),
             child: Row(
               children: [
                 Expanded(
@@ -361,7 +358,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                     color: kTertiaryColor,
                   ),
                 ),
-                const _SummaryDivider(),
+                const SizedBox(width: 10),
                 Expanded(
                   child: _InlineSummaryMetric(
                     label: 'Paid up',
@@ -372,7 +369,6 @@ class CustomerBalanceSummary extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -451,39 +447,33 @@ class _InlineSummaryMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          value,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-            color: color,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: Colors.grey.shade700,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryDivider extends StatelessWidget {
-  const _SummaryDivider();
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      width: 1,
-      height: 38,
-      color: Colors.grey.shade200,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .48),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

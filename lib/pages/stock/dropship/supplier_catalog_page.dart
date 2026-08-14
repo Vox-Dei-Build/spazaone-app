@@ -357,13 +357,13 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 7),
+          padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
           child: TextField(
             controller: _search,
             enabled: !_loading,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search catalogue',
+              hintText: 'Search supplier products',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: IconButton(
                 tooltip: 'Search',
@@ -371,7 +371,10 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                 icon: const Icon(Icons.arrow_forward_rounded),
               ),
               filled: true,
-              fillColor: Theme.of(context).colorScheme.surfaceContainerLowest,
+              fillColor: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withValues(alpha: .58),
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 12),
               border: OutlineInputBorder(
@@ -395,9 +398,9 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
           ),
         ),
         SizedBox(
-          height: 38,
+          height: 36,
           child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
             scrollDirection: Axis.horizontal,
             itemCount: _catalogCategories.length + 1,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
@@ -409,6 +412,15 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                   avatar: const Icon(Icons.favorite_outline, size: 17),
                   label: Text(
                       'Saved${_savedIds.isEmpty ? '' : ' (${_savedIds.length})'}'),
+                  side: BorderSide.none,
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withValues(alpha: .58),
+                  selectedColor: Theme.of(context)
+                      .colorScheme
+                      .primaryContainer
+                      .withValues(alpha: .78),
                   onSelected: (_) => _showSavedProducts(),
                 );
               }
@@ -421,12 +433,21 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                 label: Text(category.label),
                 visualDensity: VisualDensity.compact,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 5),
+                side: BorderSide.none,
+                backgroundColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: .58),
+                selectedColor: Theme.of(context)
+                    .colorScheme
+                    .primaryContainer
+                    .withValues(alpha: .78),
                 onSelected: (_) => _selectCategory(index),
               );
             },
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Expanded(child: _body()),
       ],
     );
@@ -1035,7 +1056,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
             ],
           ),
         ),
-        const Divider(height: 1),
+        const SizedBox(height: 4),
       ],
     );
   }
@@ -1109,9 +1130,11 @@ class _CjListingSheetState extends State<_CjListingSheet> {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: .48),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Theme.of(context).dividerColor),
           ),
           child: Column(
             children: [
@@ -1123,7 +1146,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                 label: 'Estimated delivery',
                 value: CurrencyUtil.format(_quote!.shippingCostMinor / 100),
               ),
-              const Divider(),
+              const SizedBox(height: 8),
               _PriceRow(
                 label: 'Estimated landed cost',
                 value: CurrencyUtil.format(_quote!.landedCostMinor / 100),
@@ -1201,7 +1224,6 @@ class _CjListingSheetState extends State<_CjListingSheet> {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x14000000),

@@ -77,19 +77,15 @@ class WorkspaceDateFilter extends StatelessWidget {
       child: const Text('Change date'),
     );
     return Material(
-      color: Colors.transparent,
+      color: colors.surfaceContainerHighest.withValues(alpha: .58),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         key: const ValueKey('workspace-date-filter'),
         onTap: () => _showDateChoices(context),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           constraints: const BoxConstraints(minHeight: 58),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(color: colors.outlineVariant),
-              bottom: BorderSide(color: colors.outlineVariant),
-            ),
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: largeText
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,

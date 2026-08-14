@@ -26,9 +26,6 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: kHighLightColor,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: kPrimaryColor.withValues(alpha: .16),
-                ),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(18),
@@ -69,7 +66,7 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18),
+              padding: const EdgeInsets.only(top: 12),
               child: Row(
                 children: [
                   Expanded(
@@ -79,7 +76,7 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
                       color: kTertiaryColor,
                     ),
                   ),
-                  Container(width: 1, height: 42, color: Colors.grey.shade200),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: _MovementMetric(
                       label: '${summary.paymentCount} payments',
@@ -110,27 +107,37 @@ class _MovementMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          CurrencyUtil.format(amount),
-          maxLines: 1,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w900,
-              ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: kSecondaryAccent,
-              ),
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: .48),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            CurrencyUtil.format(amount),
+            maxLines: 1,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: kSecondaryAccent,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }

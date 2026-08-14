@@ -52,6 +52,49 @@ void main() {
     ]);
   });
 
+  testWidgets('catalogue gives browsing space to products on a small phone',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async =>
+        CjCatalogPage(
+          products: [supplierProduct(0), supplierProduct(1)],
+          page: 1,
+          totalPages: 1,
+          totalProducts: 2,
+          hasMore: false,
+          nextCursor: '',
+          catalogueRefreshing: false,
+          digitalPaymentsEnabled: false,
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search supplier products'), findsOneWidget);
+    expect(find.text('Supplier catalogue'), findsNothing);
+    expect(
+      tester
+          .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+          .every((chip) => chip.side == BorderSide.none),
+      isTrue,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('supplier-product-product-0'))).dy,
+      lessThan(230),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('catalogue keeps earlier products when loading more',
       (tester) async {
     final requestedPages = <int>[];

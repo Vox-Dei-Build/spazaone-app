@@ -61,10 +61,7 @@ class ProductList extends StatelessWidget {
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(4, 0, 4, 88),
           itemCount: products.length,
-          separatorBuilder: (_, __) => Divider(
-            height: 1,
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) => _ProductRow(
             key: ValueKey<String>(products[index].id!),
             product: products[index],
@@ -98,63 +95,71 @@ class _ProductRow extends StatelessWidget {
                     ? 'Out of stock'
                     : 'Low stock'
                 : 'In store';
-    return ListTile(
-      minVerticalPadding: 12,
-      contentPadding: EdgeInsets.zero,
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: product.image?.isNotEmpty == true
-              ? CachedNetworkImage(
-                  imageUrl: product.image!,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => const _ProductPlaceholder(),
-                )
-              : const _ProductPlaceholder(),
-        ),
-      ),
-      title: Text(
-        formatStringToCamelCase(product.name ?? 'Product'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-      subtitle: Text(
-        product.isDropshipListing
-            ? 'Delivered by supplier'
-            : '$quantity in stock',
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                CurrencyUtil.format(product.sellingPrice ?? 0),
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                status,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-              ),
-            ],
+    return Material(
+      color: Theme.of(context)
+          .colorScheme
+          .surfaceContainerHighest
+          .withValues(alpha: .42),
+      borderRadius: BorderRadius.circular(16),
+      child: ListTile(
+        minVerticalPadding: 10,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: product.image?.isNotEmpty == true
+                ? CachedNetworkImage(
+                    imageUrl: product.image!,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => const _ProductPlaceholder(),
+                  )
+                : const _ProductPlaceholder(),
           ),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right_rounded),
-        ],
-      ),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => product.isDropshipListing
-              ? DropshipListingPage(product: product, docID: docID)
-              : ProductDetailsPage(docID: docID, product: product),
+        ),
+        title: Text(
+          formatStringToCamelCase(product.name ?? 'Product'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          product.isDropshipListing
+              ? 'Delivered by supplier'
+              : '$quantity in stock',
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  CurrencyUtil.format(product.sellingPrice ?? 0),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  status,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded),
+          ],
+        ),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => product.isDropshipListing
+                ? DropshipListingPage(product: product, docID: docID)
+                : ProductDetailsPage(docID: docID, product: product),
+          ),
         ),
       ),
     );

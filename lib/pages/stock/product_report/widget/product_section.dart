@@ -36,27 +36,35 @@ class ProductSection extends StatelessWidget {
         else
           ...products.map((product) {
             final quantity = product.quantity ?? 0;
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-              title: Text(
-                product.name ?? 'Unknown Product',
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.8),
-              ),
-              subtitle: Text(
-                quantity == 0 ? 'No stock left' : 'Only $quantity left',
-                style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.5),
-              ),
-              trailing: Text(
-                quantity == 0 ? 'Out of stock' : 'Low stock',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: SizeConfig.textMultiplier * 1.4,
-                ),
-              ),
-              shape: Border(
-                bottom: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant,
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: .42),
+                borderRadius: BorderRadius.circular(14),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  title: Text(
+                    product.name ?? 'Unknown Product',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.8),
+                  ),
+                  subtitle: Text(
+                    quantity == 0 ? 'No stock left' : 'Only $quantity left',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.5),
+                  ),
+                  trailing: Text(
+                    quantity == 0 ? 'Out of stock' : 'Low stock',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: SizeConfig.textMultiplier * 1.4,
+                    ),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             );

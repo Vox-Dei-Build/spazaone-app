@@ -14,8 +14,9 @@ class WorkspaceSectionTab {
 /// Visible navigation for the small number of jobs within a workspace.
 ///
 /// These destinations change the purpose of the whole page, so they remain
-/// visible instead of being hidden in a filter or popup menu. Labels may use
-/// two lines at large text sizes while every destination keeps equal width.
+/// visible instead of being hidden in a filter or popup menu. The rounded
+/// surface deliberately avoids ruled navigation lines, which become visually
+/// heavy on a small phone.
 class WorkspaceSectionTabs extends StatefulWidget {
   const WorkspaceSectionTabs({
     super.key,
@@ -81,10 +82,10 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
     final selectedIndex = resolvedController.index;
     return Container(
       key: const ValueKey('workspace-section-tabs'),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: colors.outlineVariant),
-        ),
+        color: colors.surfaceContainerHighest.withValues(alpha: .7),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -94,7 +95,7 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
               child: _WorkspaceSectionDestination(
                 tab: widget.tabs[index],
                 selected: selectedIndex == index,
-                height: largeText ? 72 : 52,
+                height: largeText ? 62 : 44,
                 onTap: () {
                   if (selectedIndex == index) return;
                   resolvedController.animateTo(index);
@@ -133,25 +134,27 @@ class _WorkspaceSectionDestination extends StatelessWidget {
         child: InkWell(
           key: ValueKey('workspace-section-${tab.label}'),
           onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
           child: Container(
             height: height,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: selected ? colors.primary : Colors.transparent,
-                  width: 3,
-                ),
-              ),
+              color: selected
+                  ? colors.primaryContainer.withValues(alpha: .78)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               tab.label,
-              maxLines: 2,
+              maxLines:
+                  MediaQuery.textScalerOf(context).scale(14) >= 20 ? 2 : 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: selected ? colors.primary : colors.onSurfaceVariant,
+                    color: selected
+                        ? colors.onPrimaryContainer
+                        : colors.onSurfaceVariant,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     height: 1.1,
                   ),

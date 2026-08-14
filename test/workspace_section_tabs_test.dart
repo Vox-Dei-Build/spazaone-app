@@ -59,6 +59,14 @@ void main() {
           expect(find.text('Marketing'), findsOneWidget);
           expect(tester.takeException(), isNull);
 
+          final surface = tester.widget<Container>(
+            find.byKey(const ValueKey('workspace-section-tabs')),
+          );
+          final decoration = surface.decoration! as BoxDecoration;
+          expect(decoration.border, isNull);
+          expect(decoration.borderRadius, isNotNull);
+          expect(decoration.color, isNotNull);
+
           await tester.tap(find.text('Online orders'));
           await tester.pumpAndSettle();
           expect(find.text('Online content'), findsOneWidget);

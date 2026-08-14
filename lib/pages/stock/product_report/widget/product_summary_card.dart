@@ -92,26 +92,22 @@ class ProductValueSummary extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          IntrinsicHeight(
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ValueMetric(
-                    label: 'Stock cost',
-                    amount: costValue,
-                  ),
+          Row(
+            children: [
+              Expanded(
+                child: _ValueMetric(
+                  label: 'Stock cost',
+                  amount: costValue,
                 ),
-                VerticalDivider(
-                  color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ValueMetric(
+                  label: 'Selling value',
+                  amount: salesValue,
                 ),
-                Expanded(
-                  child: _ValueMetric(
-                    label: 'Selling value',
-                    amount: salesValue,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       );
@@ -124,8 +120,15 @@ class _ValueMetric extends StatelessWidget {
   final double amount;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withValues(alpha: .48),
+          borderRadius: BorderRadius.circular(14),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

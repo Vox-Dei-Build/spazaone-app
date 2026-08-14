@@ -136,6 +136,10 @@ void main() {
             .getSize(find.byKey(const ValueKey('workspace-date-filter')))
             .height,
         greaterThanOrEqualTo(48));
+    final filterInk = tester.widget<InkWell>(
+      find.byKey(const ValueKey('workspace-date-filter')),
+    );
+    expect(filterInk.borderRadius, isNotNull);
     await tester.tap(find.text('Change date'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Show all time'));
