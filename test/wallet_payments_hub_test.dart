@@ -34,6 +34,7 @@ void main() {
         await tester.binding.setSurfaceSize(Size(width, 640));
         addTearDown(() => tester.binding.setSurfaceSize(null));
         var balanceTaps = 0;
+        var addMoneyTaps = 0;
         var onlineTaps = 0;
         var costsTaps = 0;
 
@@ -52,6 +53,7 @@ void main() {
                   showBalance: true,
                   showOnlinePayments: true,
                   showCosts: true,
+                  onAddMoney: () => addMoneyTaps++,
                   onBalance: () => balanceTaps++,
                   onOnlinePayments: () => onlineTaps++,
                   onCosts: () => costsTaps++,
@@ -63,14 +65,18 @@ void main() {
 
         expect(find.text('SpazaOne balance'), findsOneWidget);
         expect(find.text('Online payments'), findsOneWidget);
-        expect(find.text('Costs and limits'), findsOneWidget);
+        expect(find.text('Costs & limits'), findsOneWidget);
         expect(find.text('Online sales payouts'), findsNothing);
         expect(find.text('Legacy Balance'), findsNothing);
         expect(tester.takeException(), isNull);
 
-        await tester.tap(find.text('SpazaOne balance'));
+        await tester.tap(find.text('Add money'));
+        await tester.tap(find.text('Balance activity'));
+        await tester.ensureVisible(find.text('Online payments'));
         await tester.tap(find.text('Online payments'));
-        await tester.tap(find.text('Costs and limits'));
+        await tester.ensureVisible(find.text('Costs & limits'));
+        await tester.tap(find.text('Costs & limits'));
+        expect(addMoneyTaps, 1);
         expect((balanceTaps, onlineTaps, costsTaps), (1, 1, 1));
       },
     );
@@ -91,6 +97,7 @@ void main() {
             showBalance: true,
             showOnlinePayments: true,
             showCosts: true,
+            onAddMoney: () {},
             onBalance: () {},
             onOnlinePayments: () {},
             onCosts: () {},
@@ -100,7 +107,7 @@ void main() {
     );
 
     expect(find.text('Payment confirmation in progress'), findsOneWidget);
-    expect(find.text('Ready to accept online payments'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Ready'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 }

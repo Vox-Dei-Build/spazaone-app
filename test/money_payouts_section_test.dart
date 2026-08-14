@@ -56,7 +56,9 @@ void main() {
     var tapped = false;
     await pumpSection(tester, overview(), onSetup: () => tapped = true);
     expect(
-      find.text('Set up your bank account to accept online payments.'),
+      find.text(
+        'Add your bank account so customers can pay online and you can receive your money.',
+      ),
       findsOneWidget,
     );
     await tester.tap(find.text('Set up bank account'));
@@ -76,7 +78,7 @@ void main() {
         accountName: 'Sensitive Account Holder',
       ),
     );
-    expect(find.text('We are checking your bank details.'), findsOneWidget);
+    expect(find.text('We’re checking your bank details'), findsOneWidget);
     expect(find.text('Example Bank · •••• 1234'), findsOneWidget);
     expect(find.text('Sensitive Account Holder'), findsNothing);
   });
@@ -109,8 +111,8 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Online payments are on.'), findsOneWidget);
-    expect(find.text('No online sales payouts yet.'), findsOneWidget);
+    expect(find.text('Ready for online sales'), findsOneWidget);
+    expect(find.text('No payouts yet'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

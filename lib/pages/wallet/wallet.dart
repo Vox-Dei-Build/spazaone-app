@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/tabs/sales_balance_tab.dart';
 import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
@@ -55,241 +56,151 @@ class BillingBalancePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final campaignColor = campaignBalance < 5 && onCampaignTap != null
-        ? Colors.orange.shade800
-        : Colors.green.shade700;
-    final campaign = _BillingBalanceItem(
-      label: 'SpazaOne balance',
-      scope: sharedCampaignCredits ? 'Shared across your shops' : null,
-      description: 'Use this balance for customer messages and promotions.',
-      amount: campaignBalance,
-      icon: Icons.campaign_outlined,
-      color: campaignColor,
-      onTap: onCampaignTap,
-    );
-    final legacy = _BillingBalanceItem(
-      label: 'Legacy Balance',
-      scope: storeName,
-      amount: salesBalance,
-      icon: Icons.history_rounded,
-      color: Colors.orange.shade900,
-    );
-    final items = <_BillingBalanceItem>[
-      campaign,
-      if (cashAdvanceBalance case final amount?)
-        _BillingBalanceItem(
-          label: 'Cash advance',
-          amount: amount,
-          icon: Icons.account_balance_outlined,
-          color: Colors.orange.shade800,
-        ),
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        children: [
-          _BillingBalanceTile(
-            key: const ValueKey('billing-balance-campaign'),
-            item: campaign,
-            horizontal: true,
-          ),
-          if (salesBalance > 0) ...[
-            const SizedBox(height: 10),
-            _BillingBalanceTile(
-              key: const ValueKey('billing-balance-legacy'),
-              item: legacy,
-              horizontal: true,
-            ),
-          ],
-          if (cashAdvanceBalance != null) ...[
-            const SizedBox(height: 10),
-            _BillingBalanceTile(
-              key: const ValueKey('billing-balance-cash-advance'),
-              item: items.last,
-              horizontal: true,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _BillingBalanceItem {
-  const _BillingBalanceItem({
-    required this.label,
-    required this.amount,
-    required this.icon,
-    required this.color,
-    this.scope,
-    this.description,
-    this.onTap,
-  });
-
-  final String label;
-  final String? scope;
-  final String? description;
-  final double amount;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-}
-
-class _BillingBalanceTile extends StatelessWidget {
-  const _BillingBalanceTile({
-    super.key,
-    required this.item,
-    this.horizontal = false,
-  });
-
-  final _BillingBalanceItem item;
-  final bool horizontal;
-
-  @override
-  Widget build(BuildContext context) {
-    final amount = Text(
-      CurrencyUtil.format(item.amount),
-      maxLines: 1,
-      style: TextStyle(
-        fontSize: horizontal ? 21 : 24,
-        height: 1,
-        fontWeight: FontWeight.w800,
-        color: item.color,
-      ),
-    );
-    final content = horizontal
-        ? Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          key: const ValueKey('billing-balance-campaign'),
+          container: true,
+          label: 'SpazaOne balance ${CurrencyUtil.format(campaignBalance)}',
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  _BalanceIcon(item: item),
-                  const SizedBox(width: 12),
-                  Expanded(child: _BalanceLabel(item: item)),
-                  const SizedBox(width: 12),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 96),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: amount,
+              Text(
+                'Available balance',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: kSecondaryAccent,
                     ),
-                  ),
-                ],
               ),
-              if (item.description case final description?) ...[
-                const SizedBox(height: 12),
-                Text(
-                  description,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey.shade800,
-                        height: 1.3,
-                      ),
-                ),
-              ],
-              if (item.onTap != null) ...[
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed: item.onTap,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add money'),
-                  ),
-                ),
-              ],
-            ],
-          )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _BalanceIcon(item: item),
-                  if (item.onTap != null)
-                    Icon(
-                      Icons.arrow_forward_rounded,
-                      size: 20,
-                      color: item.color,
-                    ),
-                ],
-              ),
-              const Spacer(),
+              const SizedBox(height: 8),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: amount,
-              ),
-              const SizedBox(height: 8),
-              _BalanceLabel(item: item),
-            ],
-          );
-
-    return Material(
-      color: item.color.withValues(alpha: .09),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: item.color.withValues(alpha: .18)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: item.onTap,
-        child: Padding(
-          padding: EdgeInsets.all(horizontal ? 14 : 16),
-          child: content,
-        ),
-      ),
-    );
-  }
-}
-
-class _BalanceIcon extends StatelessWidget {
-  const _BalanceIcon({required this.item});
-
-  final _BillingBalanceItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: item.color.withValues(alpha: .14),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(item.icon, size: 21, color: item.color),
-    );
-  }
-}
-
-class _BalanceLabel extends StatelessWidget {
-  const _BalanceLabel({required this.item});
-
-  final _BillingBalanceItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          item.label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        if (item.scope case final scope?)
-          Text(
-            scope,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey.shade700,
+                child: Text(
+                  CurrencyUtil.format(campaignBalance),
+                  style: const TextStyle(
+                    color: kTertiaryColor,
+                    fontSize: 40,
+                    height: 1,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1.4,
+                  ),
                 ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Use this for WhatsApp messages and promotions.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: kTertiaryColor,
+                      height: 1.35,
+                    ),
+              ),
+              if (sharedCampaignCredits) ...[
+                const SizedBox(height: 3),
+                Text(
+                  'Shared across your shops',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: kSecondaryAccent,
+                      ),
+                ),
+              ],
+              if (onCampaignTap != null) ...[
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: onCampaignTap,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text('Add money'),
+                ),
+              ],
+            ],
           ),
+        ),
+        if (salesBalance > 0) ...[
+          const SizedBox(height: 24),
+          const Divider(height: 1),
+          Padding(
+            key: const ValueKey('billing-balance-legacy'),
+            padding: const EdgeInsets.only(top: 20),
+            child: _SecondaryBalanceRow(
+              label: 'Legacy Balance',
+              detail: storeName,
+              amount: salesBalance,
+              icon: Icons.history_rounded,
+            ),
+          ),
+        ],
+        if (cashAdvanceBalance case final amount?) ...[
+          const SizedBox(height: 20),
+          _SecondaryBalanceRow(
+            label: 'Cash advance',
+            amount: amount,
+            icon: Icons.account_balance_outlined,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SecondaryBalanceRow extends StatelessWidget {
+  const _SecondaryBalanceRow({
+    required this.label,
+    required this.amount,
+    required this.icon,
+    this.detail,
+  });
+
+  final String label;
+  final String? detail;
+  final double amount;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: kHighLightColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: kPrimaryColor, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+              if (detail != null)
+                Text(
+                  detail!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: kSecondaryAccent,
+                      ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          CurrencyUtil.format(amount),
+          style: const TextStyle(
+            color: kTertiaryColor,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
       ],
     );
   }
@@ -307,6 +218,7 @@ class WalletHubMenu extends StatelessWidget {
     required this.showBalance,
     required this.showOnlinePayments,
     required this.showCosts,
+    required this.onAddMoney,
     required this.onBalance,
     required this.onOnlinePayments,
     required this.onCosts,
@@ -321,6 +233,7 @@ class WalletHubMenu extends StatelessWidget {
   final bool showBalance;
   final bool showOnlinePayments;
   final bool showCosts;
+  final VoidCallback onAddMoney;
   final VoidCallback onBalance;
   final VoidCallback onOnlinePayments;
   final VoidCallback onCosts;
@@ -330,11 +243,11 @@ class WalletHubMenu extends StatelessWidget {
     if (overviewHasError || overview == null) {
       return 'Setup status unavailable';
     }
-    if (overview!.enabled) return 'Ready to accept online payments';
+    if (overview!.enabled) return 'Ready';
     if (overview!.profile.bankVerificationStatus == 'pending_review') {
-      return 'Bank details are being checked';
+      return 'Being checked';
     }
-    return 'Set up your bank account for online sales';
+    return 'Not set up';
   }
 
   @override
@@ -343,15 +256,9 @@ class WalletHubMenu extends StatelessWidget {
       if (showBalance)
         _WalletHubDestination(
           key: const ValueKey('wallet-hub-balance'),
-          icon: Icons.account_balance_wallet_outlined,
-          title: 'SpazaOne balance',
-          value: CurrencyUtil.format(campaignBalance),
-          subtitle: hasPendingPayment
-              ? 'Payment confirmation in progress'
-              : sharedCampaignCredits
-                  ? 'Shared across your shops'
-                  : 'Customer messages and promotions',
-          color: Colors.green.shade700,
+          icon: Icons.receipt_long_outlined,
+          title: 'Balance activity',
+          subtitle: 'Money added and message costs',
           onTap: onBalance,
         ),
       if (showOnlinePayments)
@@ -359,17 +266,16 @@ class WalletHubMenu extends StatelessWidget {
           key: const ValueKey('wallet-hub-online-payments'),
           icon: Icons.account_balance_outlined,
           title: 'Online payments',
-          subtitle: _onlinePaymentStatus,
-          color: Colors.blue.shade700,
+          subtitle: 'Set up where your online sales are paid',
+          status: _onlinePaymentStatus,
           onTap: onOnlinePayments,
         ),
       if (showCosts)
         _WalletHubDestination(
           key: const ValueKey('wallet-hub-costs'),
-          icon: Icons.info_outline_rounded,
-          title: 'Costs and limits',
-          subtitle: 'Message prices, payment fees and account limits',
-          color: Colors.orange.shade800,
+          icon: Icons.calculate_outlined,
+          title: 'Costs & limits',
+          subtitle: 'Message costs and payment fees',
           onTap: onCosts,
         ),
     ];
@@ -378,26 +284,135 @@ class WalletHubMenu extends StatelessWidget {
       key: const ValueKey('wallet-payments-hub'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Choose what you want to manage',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Your balance and online sales are kept separate so each is easier to manage.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: 1.35,
-              ),
-        ),
-        const SizedBox(height: 18),
+        if (showBalance) ...[
+          _WalletBalanceHero(
+            balance: campaignBalance,
+            sharedAcrossShops: sharedCampaignCredits,
+            hasPendingPayment: hasPendingPayment,
+            onAddMoney: onAddMoney,
+          ),
+          const SizedBox(height: 22),
+        ],
+        const Divider(height: 1),
         for (var index = 0; index < destinations.length; index++) ...[
-          if (index > 0) const SizedBox(height: 12),
           _WalletHubTile(destination: destinations[index]),
+          if (index < destinations.length - 1) const Divider(height: 1),
         ],
       ],
+    );
+  }
+}
+
+class _WalletBalanceHero extends StatelessWidget {
+  const _WalletBalanceHero({
+    required this.balance,
+    required this.sharedAcrossShops,
+    required this.hasPendingPayment,
+    required this.onAddMoney,
+  });
+
+  final double balance;
+  final bool sharedAcrossShops;
+  final bool hasPendingPayment;
+  final VoidCallback onAddMoney;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: const ValueKey('wallet-balance-hero'),
+      decoration: BoxDecoration(
+        color: kHighLightColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kPrimaryColor.withValues(alpha: .18)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: kPrimaryColor,
+                  size: 20,
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'SpazaOne balance',
+                    style: TextStyle(
+                      color: kPrimaryColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                CurrencyUtil.format(balance),
+                style: const TextStyle(
+                  color: kTertiaryColor,
+                  fontSize: 38,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1.2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'For WhatsApp messages and promotions.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: kTertiaryColor,
+                    height: 1.35,
+                  ),
+            ),
+            if (sharedAcrossShops) ...[
+              const SizedBox(height: 2),
+              Text(
+                'Shared across your shops',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: kSecondaryAccent,
+                    ),
+              ),
+            ],
+            if (hasPendingPayment) ...[
+              const SizedBox(height: 10),
+              const Row(
+                children: [
+                  SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Payment confirmation in progress',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: onAddMoney,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text('Add money'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -408,17 +423,15 @@ class _WalletHubDestination {
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.color,
     required this.onTap,
-    this.value,
+    this.status,
   });
 
   final Key key;
   final IconData icon;
   final String title;
   final String subtitle;
-  final String? value;
-  final Color color;
+  final String? status;
   final VoidCallback onTap;
 }
 
@@ -429,53 +442,36 @@ class _WalletHubTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Material(
       key: destination.key,
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
+      color: Colors.transparent,
       child: InkWell(
         onTap: destination.onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 16),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
-                  color: destination.color.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(14),
+                  color: kHighLightColor,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(destination.icon, color: destination.color),
+                child: Icon(destination.icon, color: kPrimaryColor, size: 22),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            destination.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                        if (destination.value case final value?) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            value,
-                            style: TextStyle(
-                              color: destination.color,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ],
+                    Text(
+                      destination.title,
+                      style: const TextStyle(
+                        color: kTertiaryColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -489,8 +485,23 @@ class _WalletHubTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded),
+              if (destination.status case final status?) ...[
+                const SizedBox(width: 8),
+                Text(
+                  status,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: status == 'Ready'
+                            ? kPrimaryColor
+                            : Colors.orange.shade800,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: kTertiaryColor,
+              ),
             ],
           ),
         ),
@@ -652,6 +663,11 @@ class _WalletPageState extends State<WalletPage> {
     });
   }
 
+  Future<void> _openAddMoneyFromHub() async {
+    await _openAddMoney();
+    if (mounted) _openBalance();
+  }
+
   @override
   Widget build(BuildContext context) {
     final campaignWallet = context.watch<WalletBalanceProvider>();
@@ -673,6 +689,7 @@ class _WalletPageState extends State<WalletPage> {
                   FeatureFlags.enableTopUp,
               showOnlinePayments: FeatureFlags.enableBankingDetails,
               showCosts: FeatureFlags.enablePricingInfo,
+              onAddMoney: () => unawaited(_openAddMoneyFromHub()),
               onBalance: _openBalance,
               onOnlinePayments: _openOnlinePayments,
               onCosts: () => _openInfo(InfoView.info),
@@ -922,8 +939,9 @@ class _WalletBalanceDestinationPageState
             ],
             if (FeatureFlags.enableTransactionHistory) ...[
               Text(
-                'Balance activity',
+                'Activity',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: kTertiaryColor,
                       fontWeight: FontWeight.w800,
                     ),
               ),

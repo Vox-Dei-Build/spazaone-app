@@ -119,7 +119,7 @@ class BillingAccountMenu extends StatelessWidget {
         _AccountDestination(
           key: const ValueKey('billing-account-fees'),
           icon: Icons.info_outline,
-          title: 'Costs and limits',
+          title: 'Costs & limits',
           subtitle: 'Payment costs and account limits',
           color: Colors.orange.shade800,
           onTap: onFees,
@@ -255,7 +255,7 @@ class BillingAccountDestinationPage extends StatelessWidget {
       case InfoView.banking:
         return 'Set up online payments';
       case InfoView.info:
-        return 'Costs and limits';
+        return 'Costs & limits';
     }
   }
 

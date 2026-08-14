@@ -3,6 +3,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 
 class NotificationTile extends StatelessWidget {
   final String message;
@@ -29,21 +30,21 @@ class NotificationTile extends StatelessWidget {
         size: SizeConfig.textMultiplier * 2,
       ),
       title: Text(
-        "To: $phone",
+        templateType == 'whatsapp' ? 'WhatsApp messages' : 'SMS messages',
         style: TextStyle(
           fontSize: SizeConfig.textMultiplier * 1.8,
           fontWeight: FontWeight.bold,
         ),
       ),
       subtitle: Text(
-        DateFormat.yMMMd().format(date),
+        '${DateFormat.yMMMd().format(date)} · $phone',
         style: TextStyle(
             fontSize: SizeConfig.textMultiplier * 1.5, color: Colors.grey),
       ),
       trailing: Text(
         "-${CurrencyUtil.format(messageCost.toDouble())}",
         style: TextStyle(
-            color: Colors.red,
+            color: kTertiaryColor,
             fontWeight: FontWeight.bold,
             fontSize: SizeConfig.textMultiplier * 1.5),
       ),

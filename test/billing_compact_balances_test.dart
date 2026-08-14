@@ -22,10 +22,13 @@ void main() {
       ),
     );
 
-    expect(find.text('SpazaOne balance'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('billing-balance-campaign')),
+      findsOneWidget,
+    );
     expect(find.text('Shared across your shops'), findsOneWidget);
     expect(
-      find.text('Use this balance for customer messages and promotions.'),
+      find.text('Use this for WhatsApp messages and promotions.'),
       findsOneWidget,
     );
     expect(find.text('Legacy Balance'), findsOneWidget);
@@ -62,7 +65,10 @@ void main() {
       ),
     );
 
-    expect(find.text('SpazaOne balance'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('billing-balance-campaign')),
+      findsOneWidget,
+    );
     expect(find.text('Legacy Balance'), findsNothing);
     expect(find.byKey(const ValueKey('billing-balance-legacy')), findsNothing);
   });
