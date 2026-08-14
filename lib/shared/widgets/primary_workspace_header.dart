@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/pages/settings/setup/merchant_setup_page.dart';
 import 'package:pasella/pages/settings/setup/your_shop_page.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/services/store_session.dart';
@@ -35,9 +36,16 @@ class PrimaryWorkspaceHeader extends StatelessWidget {
         _SetupAwareWorkspaceHeader(
           storeId: storeId,
           storeName: storeName,
-          onStorePressed: () {
+          onManageStorePressed: () {
             Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const YourShopPage()),
+            );
+          },
+          onSetupPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const MerchantSetupPage(),
+              ),
             );
           },
           onShopPressed: () {
@@ -57,13 +65,15 @@ class _SetupAwareWorkspaceHeader extends StatefulWidget {
   const _SetupAwareWorkspaceHeader({
     required this.storeId,
     required this.storeName,
-    required this.onStorePressed,
+    required this.onManageStorePressed,
+    required this.onSetupPressed,
     required this.onShopPressed,
   });
 
   final String storeId;
   final String storeName;
-  final VoidCallback onStorePressed;
+  final VoidCallback onManageStorePressed;
+  final VoidCallback onSetupPressed;
   final VoidCallback onShopPressed;
 
   @override
@@ -102,13 +112,19 @@ class _SetupAwareWorkspaceHeaderState
         return WorkspaceHeaderBar(
           storeName: widget.storeName,
           setupProgressLabel: progress,
-          onStorePressed: widget.onStorePressed,
+          onStorePressed: workspaceShouldOpenSetup(state)
+              ? widget.onSetupPressed
+              : widget.onManageStorePressed,
           onShopPressed: widget.onShopPressed,
         );
       },
     );
   }
 }
+
+@visibleForTesting
+bool workspaceShouldOpenSetup(MerchantSetupState state) =>
+    !state.loading && !state.isComplete;
 
 /// Compact store context plus the active storefront action.
 ///

@@ -128,6 +128,7 @@ void main() {
 
         expect(find.text('Set up your shop'), findsOneWidget);
         expect(find.text('1 of 6 done'), findsOneWidget);
+        expect(find.byType(Divider), findsNothing);
       },
     );
 

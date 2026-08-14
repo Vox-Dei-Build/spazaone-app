@@ -68,6 +68,7 @@ void main() {
         expect(find.text('Costs & limits'), findsOneWidget);
         expect(find.text('Online sales payouts'), findsNothing);
         expect(find.text('Legacy Balance'), findsNothing);
+        expect(find.byType(Divider), findsNothing);
         expect(tester.takeException(), isNull);
 
         await tester.tap(find.text('Add money'));

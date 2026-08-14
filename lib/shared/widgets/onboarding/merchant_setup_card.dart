@@ -395,9 +395,7 @@ class _SetupPanel extends StatelessWidget {
               const SizedBox(height: LayoutConstants.spaceLg),
               _NextActionPanel(step: nextStep),
             ],
-            const SizedBox(height: LayoutConstants.spaceMd),
-            const Divider(height: 1),
-            const SizedBox(height: LayoutConstants.spaceSm),
+            const SizedBox(height: LayoutConstants.spaceLg),
             // The current action is already presented prominently above.
             // Keep the checklist useful without repeating the same title and
             // CTA twice in one card.

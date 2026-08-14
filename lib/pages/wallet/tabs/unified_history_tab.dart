@@ -60,8 +60,7 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
             shrinkWrap: widget.embedded,
             physics:
                 widget.embedded ? const NeverScrollableScrollPhysics() : null,
-            separatorBuilder: (_, __) =>
-                const Divider(color: Colors.grey, thickness: .3),
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemCount: merged.length,
             itemBuilder: (context, index) {
               final item = merged[index];

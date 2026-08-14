@@ -37,6 +37,7 @@ void main() {
     expect(find.textContaining('Pays for'), findsNothing);
     expect(find.textContaining('Available for withdrawal'), findsNothing);
     expect(find.textContaining('Only for this store'), findsNothing);
+    expect(find.byType(Divider), findsNothing);
     final campaign = tester.getRect(
       find.byKey(const ValueKey('billing-balance-campaign')),
     );

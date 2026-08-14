@@ -19,23 +19,18 @@ const _incomplete = MerchantSetupState(
 );
 
 void main() {
-  testWidgets('Your shop exposes setup and shop destinations without overflow',
-      (tester) async {
+  testWidgets('Your shop keeps management separate from setup', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    var setupTaps = 0;
-
     await tester.pumpWidget(
       MaterialApp(
         home: MediaQuery(
           data: const MediaQueryData(textScaler: TextScaler.linear(1.8)),
           child: Scaffold(
             body: YourShopOverview(
-              state: _incomplete,
               showStoresAndTeam: true,
-              onSetup: () => setupTaps++,
               onShopLink: () {},
               onStoreDetails: () {},
               onStoresAndTeam: () {},
@@ -47,16 +42,48 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Finish setting up your shop'), findsOneWidget);
-    expect(find.text('2 of 6 done'), findsOneWidget);
-    expect(find.text('Continue setup'), findsOneWidget);
+    expect(find.text('Finish setting up your shop'), findsNothing);
+    expect(find.text('Continue setup'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('your-shop-setup-progress')),
+      findsNothing,
+    );
     expect(find.text('Shop link'), findsOneWidget);
     expect(find.text('Store details'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const ValueKey('your-shop-overview')),
+      const Offset(0, -280),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Stores & team'), findsOneWidget);
-    expect(find.text('Online payments'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('your-shop-setup-progress')));
-    expect(setupTaps, 1);
+    expect(find.byType(Divider), findsNothing);
+  });
+
+  test('incomplete shops open setup directly from My Store', () {
+    expect(workspaceShouldOpenSetup(_incomplete), isTrue);
+    expect(
+      workspaceShouldOpenSetup(const MerchantSetupState.loading()),
+      isFalse,
+    );
+    expect(
+      workspaceShouldOpenSetup(
+        const MerchantSetupState(
+          hasCustomers: true,
+          hasProducts: true,
+          hasListedProduct: true,
+          hasOrderingLink: true,
+          hasApprovedTemplate: true,
+          hasBank: true,
+          shopName: 'My Store',
+          orderingUrl: 'https://example.com',
+          orderingCode: 'READY',
+          fallbackText: '',
+          loading: false,
+        ),
+      ),
+      isFalse,
+    );
   });
 
   testWidgets('My Store shows compact setup progress and remains tappable',

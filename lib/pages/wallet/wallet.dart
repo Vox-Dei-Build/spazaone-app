@@ -107,6 +107,7 @@ class BillingBalancePanel extends StatelessWidget {
               if (onCampaignTap != null) ...[
                 const SizedBox(height: 20),
                 FilledButton(
+                  key: const ValueKey('billing-add-money'),
                   onPressed: onCampaignTap,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(50),
@@ -122,7 +123,6 @@ class BillingBalancePanel extends StatelessWidget {
         ),
         if (salesBalance > 0) ...[
           const SizedBox(height: 24),
-          const Divider(height: 1),
           Padding(
             key: const ValueKey('billing-balance-legacy'),
             padding: const EdgeInsets.only(top: 20),
@@ -291,12 +291,11 @@ class WalletHubMenu extends StatelessWidget {
             hasPendingPayment: hasPendingPayment,
             onAddMoney: onAddMoney,
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 28),
         ],
-        const Divider(height: 1),
         for (var index = 0; index < destinations.length; index++) ...[
           _WalletHubTile(destination: destinations[index]),
-          if (index < destinations.length - 1) const Divider(height: 1),
+          if (index < destinations.length - 1) const SizedBox(height: 10),
         ],
       ],
     );
@@ -323,7 +322,6 @@ class _WalletBalanceHero extends StatelessWidget {
       decoration: BoxDecoration(
         color: kHighLightColor,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kPrimaryColor.withValues(alpha: .18)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(22),
@@ -444,11 +442,13 @@ class _WalletHubTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       key: destination.key,
-      color: Colors.transparent,
+      color: kHighLightColor.withValues(alpha: .62),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: destination.onTap,
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
             children: [
               Container(
@@ -931,6 +931,7 @@ class _WalletBalanceDestinationPageState
                 );
               },
             ),
+            const SizedBox(height: 30),
             if (_hasPendingIntent) ...[
               _PendingPaymentActivity(
                 onCheckAgain: () => unawaited(_checkPending()),
@@ -940,6 +941,7 @@ class _WalletBalanceDestinationPageState
             if (FeatureFlags.enableTransactionHistory) ...[
               Text(
                 'Activity',
+                key: const ValueKey('wallet-balance-activity-heading'),
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: kTertiaryColor,
                       fontWeight: FontWeight.w800,
