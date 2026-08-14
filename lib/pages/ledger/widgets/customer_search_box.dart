@@ -57,58 +57,40 @@ class _CustomerSearchBoxState extends State<CustomerSearchBox> {
         padding: EdgeInsets.symmetric(
           horizontal: SizeConfig.imageSizeMultiplier * 2,
         ),
-        child: Container(
-          height: SizeConfig.heightMultiplier * 5,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(color: Colors.grey.shade300, width: 1),
-          ),
-          child: Row(
-            children: [
-              SizedBox(width: SizeConfig.imageSizeMultiplier * 4),
-              Icon(
-                Icons.search,
-                size: SizeConfig.imageSizeMultiplier * 5,
-                color: Colors.grey.shade600,
+        child: TextField(
+          controller: _controller,
+          focusNode: widget.focusNode,
+          textInputAction: TextInputAction.search,
+          style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
+          decoration: InputDecoration(
+            hintText: 'Search customers',
+            prefixIcon: const Icon(Icons.search_rounded),
+            filled: true,
+            fillColor: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: .42),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
               ),
-              SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: widget.focusNode,
-                  textInputAction: TextInputAction.search,
-                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-                  decoration: InputDecoration(
-                    hintText: 'Search by name',
-                    hintStyle: TextStyle(color: Colors.grey.shade500),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    isCollapsed: true,
-                    contentPadding: EdgeInsets.zero,
-                    // PAS-UX: the clear button only renders once the
-                    // merchant has typed something. Previously it sat
-                    // there permanently, adding visual noise and
-                    // suggesting an action was always available.
-                    suffixIcon:
-                        hasText
-                            ? IconButton(
-                              icon: Icon(
-                                Icons.close,
-                                size: SizeConfig.imageSizeMultiplier * 5,
-                                color: Colors.grey.shade600,
-                              ),
-                              onPressed: () {
-                                _controller.clear();
-                              },
-                            )
-                            : null,
-                  ),
-                ),
-              ),
-            ],
+            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            suffixIcon: hasText
+                ? IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: _controller.clear,
+                  )
+                : null,
           ),
         ),
       ),

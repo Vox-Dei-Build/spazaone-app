@@ -139,6 +139,8 @@ void main() {
     expect(find.text('Status'), findsOneWidget);
     expect(find.text('Date'), findsOneWidget);
     expect(find.text('Supplier products'), findsOneWidget);
+    expect(find.text('All statuses'), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField), findsNothing);
     expect(find.text('Show orders'), findsOneWidget);
   });
 

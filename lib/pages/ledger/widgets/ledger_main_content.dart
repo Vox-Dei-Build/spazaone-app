@@ -43,6 +43,35 @@ class LedgerMainContent extends StatelessWidget {
             ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
             LedgerTabBarWithFilter(tabIndexNotifier: tabIndexNotifier),
+            ValueListenableBuilder<int>(
+              valueListenable: tabIndexNotifier,
+              builder: (context, tabIndex, _) => Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(minHeight: 52),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                alignment: Alignment.centerLeft,
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  switch (tabIndex) {
+                    0 => 'People who buy from you',
+                    1 => 'Customer payments and purchases by date',
+                    _ => 'Customer accounts at a glance',
+                  },
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ),
+            ),
             // In-flow slot for cards that should sit inside the page
             // rhythm (after the tab context) rather than crowning the
             // page above the header.

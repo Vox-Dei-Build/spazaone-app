@@ -46,9 +46,14 @@ class ProductCard extends StatelessWidget {
         );
       },
       child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 4,
-        shadowColor: Colors.black.withValues(alpha: 0.2),
+        elevation: 0,
+        color: Theme.of(context).colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
         child: Padding(
           padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
           child: Column(

@@ -70,52 +70,57 @@ class _SalesListState extends State<SalesList> {
           itemCount: data.length,
           itemBuilder: (context, index) {
             final sale = data[index];
-            return Card(
-              margin: EdgeInsets.symmetric(
-                vertical: SizeConfig.heightMultiplier * 0.5,
-                horizontal: SizeConfig.imageSizeMultiplier * 2,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  SizeConfig.imageSizeMultiplier * 2,
-                ),
-              ),
-              elevation: 3.0,
-              child: ListTile(
-                contentPadding: EdgeInsets.symmetric(
-                  vertical: SizeConfig.heightMultiplier * 0.5,
-                  horizontal: SizeConfig.imageSizeMultiplier * 2,
-                ),
-                title: Text(
-                  "Date: ${DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded)}",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: SizeConfig.textMultiplier * 2,
+            final colors = Theme.of(context).colorScheme;
+            return Column(
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 4,
                   ),
-                ),
-                subtitle: Text(
-                  "Amount: ${CurrencyUtil.format(sale.amount)}",
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontSize: SizeConfig.textMultiplier * 1.5,
-                  ),
-                ),
-                trailing: Icon(
-                  Icons.arrow_forward_ios,
-                  size: SizeConfig.imageSizeMultiplier * 4,
-                  color: Colors.grey,
-                ),
-                onTap: () async {
-                  final changed = await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => SaleDetailPage(sale: sale),
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colors.primaryContainer.withValues(alpha: .42),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  );
-                  if (changed == true) {
-                    viewModel.updateSelectedDate(DateTime.now());
-                  }
-                },
-              ),
+                    child: Icon(
+                      Icons.receipt_long_outlined,
+                      size: 20,
+                      color: colors.primary,
+                    ),
+                  ),
+                  title: Text(
+                    CurrencyUtil.format(sale.amount),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  subtitle: Text(
+                    DateFormat('dd MMM yyyy · HH:mm').format(sale.dateAdded),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    final changed = await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => SaleDetailPage(sale: sale),
+                      ),
+                    );
+                    if (changed == true) {
+                      viewModel.updateSelectedDate(DateTime.now());
+                    }
+                  },
+                ),
+                Divider(
+                  height: 1,
+                  indent: 56,
+                  color: colors.outlineVariant,
+                ),
+              ],
             );
           },
         );

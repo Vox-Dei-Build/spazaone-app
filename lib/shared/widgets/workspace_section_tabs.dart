@@ -11,8 +11,10 @@ class WorkspaceSectionTab {
   final String semanticLabel;
 }
 
-/// Visible navigation for the small number of jobs within a workspace.
+/// Quiet, visible navigation for the small number of jobs within a workspace.
 ///
+/// The visual treatment deliberately matches the focused Wallet & payments
+/// screens: neutral labels, one green underline, and no filled selected tile.
 /// These destinations change the purpose of the whole page, so they remain
 /// visible instead of being hidden in a filter or popup menu. Labels may use
 /// two lines at large text sizes while every destination keeps equal width.
@@ -76,7 +78,7 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
     assert(widget.tabs.length >= 2);
     final resolvedController = _controller!;
     final colors = Theme.of(context).colorScheme;
-    final largeText = MediaQuery.textScalerOf(context).scale(14) >= 20;
+    final largeText = MediaQuery.textScalerOf(context).scale(14) >= 19;
 
     final selectedIndex = resolvedController.index;
     return Container(
@@ -94,7 +96,7 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
               child: _WorkspaceSectionDestination(
                 tab: widget.tabs[index],
                 selected: selectedIndex == index,
-                height: largeText ? 72 : 52,
+                height: largeText ? 68 : 48,
                 onTap: () {
                   if (selectedIndex == index) return;
                   resolvedController.animateTo(index);
@@ -129,21 +131,19 @@ class _WorkspaceSectionDestination extends StatelessWidget {
       label: tab.semanticLabel,
       excludeSemantics: true,
       child: Material(
-        color: selected
-            ? colors.primaryContainer.withValues(alpha: .28)
-            : Colors.transparent,
+        color: Colors.transparent,
         child: InkWell(
           key: ValueKey('workspace-section-${tab.label}'),
           onTap: onTap,
           child: Container(
             height: height,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
                   color: selected ? colors.primary : Colors.transparent,
-                  width: 3,
+                  width: 2.5,
                 ),
               ),
             ),
@@ -154,8 +154,8 @@ class _WorkspaceSectionDestination extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                     color: selected ? colors.primary : colors.onSurfaceVariant,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    height: 1.1,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    height: 1.15,
                   ),
             ),
           ),

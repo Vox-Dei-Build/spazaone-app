@@ -45,7 +45,8 @@ void main() {
     await tester.pump();
 
     expect(find.byType(SnackBar), findsNothing);
-    expect(find.text('Out-of-stock Products'), findsOneWidget);
-    expect(find.text('Low-stock Products'), findsOneWidget);
+    expect(find.text('Stock value'), findsOneWidget);
+    expect(find.text('Out-of-stock products'), findsOneWidget);
+    expect(find.text('Low-stock products'), findsOneWidget);
   });
 }

@@ -26,9 +26,12 @@ class MarketingOverview extends StatelessWidget {
         const SizedBox(height: LayoutConstants.spaceMd),
         Card(
           elevation: 0,
+          color: theme.colorScheme.primaryContainer.withValues(alpha: .24),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0xFFE0E5E1)),
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: theme.colorScheme.primary.withValues(alpha: .15),
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(LayoutConstants.spaceMd),
