@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/pages/ledger/widgets/customer_search_box.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
 import 'package:pasella/shared/widgets/workspace_context_header.dart';
@@ -14,11 +15,13 @@ class CustomerTab extends StatefulWidget {
   /// has an obvious entry point that doesn't depend on noticing the
   /// floating "+" FAB.
   final VoidCallback? onAddCustomer;
+  final Stream<List<CustomerWithTransactions>> Function()? entitiesStream;
 
   const CustomerTab({
     required this.searchTextNotifier,
     required this.hasCustomersNotifier,
     this.onAddCustomer,
+    this.entitiesStream,
     Key? key,
   }) : super(key: key);
 
@@ -107,49 +110,37 @@ class _CustomerTabState extends State<CustomerTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        ValueListenableBuilder<bool>(
-          valueListenable: widget.hasCustomersNotifier,
-          builder: (context, hasCustomers, child) {
-            return Column(
-              children: [
-                WorkspaceContextHeader(
-                  title: 'Your customers',
-                  subtitle: 'People who buy from your shop',
-                  action: hasCustomers && widget.onAddCustomer != null
-                      ? FilledButton.icon(
-                          onPressed: widget.onAddCustomer,
-                          icon: const Icon(Icons.add_rounded, size: 19),
-                          label: const Text('Add'),
-                        )
-                      : null,
+        WorkspaceContextHeader(
+          title: 'Your customers',
+          subtitle: 'People who buy from your shop',
+          action: widget.onAddCustomer == null
+              ? null
+              : FilledButton.icon(
+                  key: const ValueKey('add-customer-action'),
+                  onPressed: widget.onAddCustomer,
+                  icon: const Icon(Icons.add_rounded, size: 19),
+                  label: const Text('Add'),
                 ),
-                if (hasCustomers)
-                  // The search field remains sticky while browsing a long
-                  // customer list, but the page purpose stays visible above.
-                  ValueListenableBuilder<bool>(
-                    valueListenable: _searchVisible,
-                    builder: (context, visible, _) {
-                      return AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeInOut,
-                        alignment: Alignment.topCenter,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 200),
-                          opacity: visible ? 1.0 : 0.0,
-                          child: visible
-                              ? CustomerSearchBox(
-                                  searchTextNotifier: widget.searchTextNotifier,
-                                  focusNode: _searchFocusNode,
-                                )
-                              : const SizedBox(
-                                  width: double.infinity,
-                                  height: 0,
-                                ),
-                        ),
-                      );
-                    },
-                  ),
-              ],
+        ),
+        // Match Products: the primary action and search stay in the same
+        // predictable places even before the first record exists.
+        ValueListenableBuilder<bool>(
+          valueListenable: _searchVisible,
+          builder: (context, visible, _) {
+            return AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: visible ? 1.0 : 0.0,
+                child: visible
+                    ? CustomerSearchBox(
+                        searchTextNotifier: widget.searchTextNotifier,
+                        focusNode: _searchFocusNode,
+                      )
+                    : const SizedBox(width: double.infinity, height: 0),
+              ),
             );
           },
         ),
@@ -161,8 +152,7 @@ class _CustomerTabState extends State<CustomerTab> {
             emptyAsset: 'assets/images/customer.webp',
             emptyText: 'No customers yet',
             hasCustomersNotifier: widget.hasCustomersNotifier,
-            emptyCtaLabel: widget.onAddCustomer == null ? null : 'Add customer',
-            onEmptyCtaTap: widget.onAddCustomer,
+            entitiesStream: widget.entitiesStream,
           ),
         ),
       ],

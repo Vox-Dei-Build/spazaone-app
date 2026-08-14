@@ -5,12 +5,47 @@ import 'package:pasella/models/reports/business_report_model.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
+import 'package:pasella/pages/ledger/widgets/customer_tab.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/shared/widgets/channel_capability_badge.dart';
 import 'package:provider/provider.dart';
 
 void main() {
+  testWidgets('customer action and search keep the Products page placement',
+      (tester) async {
+    final search = ValueNotifier<String?>(null);
+    final hasCustomers = ValueNotifier<bool>(false);
+    addTearDown(search.dispose);
+    addTearDown(hasCustomers.dispose);
+    var addTaps = 0;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppModel>(
+        create: (_) => AppModel(),
+        child: MaterialApp(
+          home: Scaffold(
+            body: CustomerTab(
+              searchTextNotifier: search,
+              hasCustomersNotifier: hasCustomers,
+              onAddCustomer: () => addTaps++,
+              entitiesStream: () =>
+                  Stream<List<CustomerWithTransactions>>.value(const []),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('add-customer-action')), findsOneWidget);
+    expect(find.text('Search customers'), findsOneWidget);
+    expect(find.text('Add customer'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('add-customer-action')));
+    expect(addTaps, 1);
+  });
+
   test('cached empty customer snapshots are not first-run truth', () {
     expect(
       customerSnapshotIsUnverified(isFromCache: true, isEmpty: true),
