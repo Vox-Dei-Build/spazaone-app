@@ -86,12 +86,44 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Online orders'), findsOneWidget);
+    expect(
+      find.text('Your stock and supplier-delivered orders'),
+      findsOneWidget,
+    );
     expect(find.text('No online orders yet'), findsOneWidget);
     expect(find.text('Share shop link'), findsOneWidget);
     expect(find.text('Online commerce'), findsNothing);
     expect(find.text('Supplier-delivered products'), findsNothing);
     expect(find.text('Owned orders'), findsNothing);
     expect(find.text('Supplier orders'), findsNothing);
+  });
+
+  testWidgets('shows a pending owned online order at its order total',
+      (tester) async {
+    Future<List<LedgerSale>> owned({
+      DateTime? selectedDay,
+      DateTime? startDate,
+      DateTime? endDate,
+    }) async =>
+        [
+          LedgerSale.fromMap({
+            'id': 'owned-pending-1',
+            'reference': 'OWN-PENDING-1',
+            'status': 'pending_payment',
+            'paymentStatus': 'pending',
+            'itemsCount': 1,
+            'orderTotal': 140.0,
+            'amountPaid': 0.0,
+            'createdAt': '2026-08-15T01:37:00Z',
+          }),
+        ];
+
+    await tester.pumpWidget(_subject(ownedLoader: owned));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Your stock'), findsOneWidget);
+    expect(find.text('Awaiting payment'), findsAtLeastNWidgets(1));
+    expect(find.text('R140,00'), findsOneWidget);
   });
 
   testWidgets('combines owned and supplier orders with quiet source labels',

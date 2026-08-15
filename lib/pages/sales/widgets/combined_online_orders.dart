@@ -418,12 +418,16 @@ class _OnlineOrderSummary {
       id: sale.reference.isEmpty ? sale.id : sale.reference,
       title: sale.itemsCount == 1 ? '1 item' : '${sale.itemsCount} items',
       subtitle: 'Your stock',
-      amountMinor: (sale.amountPaid * 100).round(),
-      statusLabel: _titleCase(status),
+      amountMinor: ((sale.amountPaid > 0 ? sale.amountPaid : sale.orderTotal) *
+              100)
+          .round(),
+      statusLabel: _ownedStatusLabel(status),
       progress: switch (status) {
-        'pending' => OnlineOrderProgressFilter.awaitingPayment,
-        'collected' => OnlineOrderProgressFilter.completed,
-        'failed' => OnlineOrderProgressFilter.needsAttention,
+        'pending' || 'pending_payment' || 'awaiting_payment' =>
+          OnlineOrderProgressFilter.awaitingPayment,
+        'collected' || 'delivered' => OnlineOrderProgressFilter.completed,
+        'failed' || 'cancelled' || 'needs_review' || 'refund_pending' =>
+          OnlineOrderProgressFilter.needsAttention,
         'refunded' => OnlineOrderProgressFilter.refunded,
         _ => OnlineOrderProgressFilter.inProgress,
       },
@@ -486,7 +490,7 @@ class _OrdersHeader extends StatelessWidget {
         children: [
           const WorkspaceContextHeader(
             title: 'Online orders',
-            subtitle: 'Orders placed through your shop link',
+            subtitle: 'Your stock and supplier-delivered orders',
           ),
           SingleChildScrollView(
             key: const ValueKey('online-order-status-filters'),
@@ -745,3 +749,10 @@ String _titleCase(String value) => value
         ? part
         : '${part.substring(0, 1).toUpperCase()}${part.substring(1)}')
     .join(' ');
+
+String _ownedStatusLabel(String value) => switch (value) {
+      'pending' || 'pending_payment' || 'awaiting_payment' =>
+        'Awaiting payment',
+      'refund_pending' => 'Refund pending',
+      _ => _titleCase(value),
+    };

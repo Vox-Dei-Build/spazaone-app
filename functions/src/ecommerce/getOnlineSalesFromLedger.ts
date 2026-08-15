@@ -1,8 +1,9 @@
 // functions/src/http/getOnlineSalesFromLedger.ts
 import { db, functions } from "../config/main";
-import { FieldPath } from "firebase-admin/firestore";
+import { FieldPath, Timestamp } from "firebase-admin/firestore";
 import { authenticateFirebaseRequest } from "../security/requestAuth";
 import { assertStoreAccess } from "../stores/storeAccess";
+import { projectPaymentsV2OwnedSale } from "./onlineSalesProjection";
 
 type AnyMap = { [k: string]: any };
 
@@ -17,9 +18,9 @@ const tsToMillis = (v: any): number => {
 /**
  * getOnlineSalesFromLedger
  * ------------------------
- * HTTP endpoint that lists recent **online sales** using the `salesLedger` (Paystack)
- * as the source of truth for **fees** and **net amounts**, and joins basic order info
- * from `users/{merchantId}/sales/{saleId}` when available.
+ * HTTP endpoint that lists recent **online sales**. Legacy Paystack sales use
+ * `salesLedger`; Payments V2 owned orders use the sale plus its immutable
+ * payment-intent snapshot. The response keeps the released LedgerSale shape.
  *
  * @function getOnlineSalesFromLedger
  * @type {import('firebase-functions').HttpsFunction}
@@ -42,10 +43,10 @@ const tsToMillis = (v: any): number => {
  * @property {any}     createdAt         - Preferred sale date (Firestore Timestamp | ISO | null)
  * @property {any}     ledgerCreatedAt   - Ledger createdAt (Timestamp | ISO | null)
  * @property {number}  orderTotal        - Order value from sale (fallback to amountPaid)
- * @property {number}  amountPaid        - What customer paid (from ledger; includes fee)
- * @property {number}  feeExVat          - Provider fee excluding VAT
- * @property {number}  feeInclVat        - Provider fee including VAT
- * @property {number}  netAmount         - Credited amount after fees
+ * @property {number}  amountPaid        - Exact amount confirmed by the payment truth source
+ * @property {number}  feeExVat          - Legacy provider fee excluding VAT, when available
+ * @property {number}  feeInclVat        - Total snapshotted payment fees for the sale
+ * @property {number}  netAmount         - Merchant proceeds after snapshotted fees
  * @property {string}  currency          - Currency code, default "ZAR"
  * @property {string}  method            - Method used (e.g., "eft", "local_card")
  * @property {string}  channel           - Paystack channel (e.g., "eft", "card")
@@ -196,9 +197,57 @@ export const getOnlineSalesFromLedger = functions.https.onRequest(
         });
       }
 
+      // Payments V2 does not write the legacy salesLedger projection. Load
+      // merchant-owned online orders from their order truth surface so paid,
+      // awaiting-payment and refund states remain visible in one workspace.
+      const salesCol = db
+        .collection("users")
+        .doc(merchantId)
+        .collection("sales");
+      let v2SaleDocs: FirebaseFirestore.DocumentSnapshot[] = [];
+      if (orderId) {
+        const sale = await salesCol.doc(orderId).get();
+        v2SaleDocs = sale.exists ? [sale] : [];
+      } else if (referenceFilter) {
+        const salesByReference = await salesCol
+          .where("paymentReference", "==", referenceFilter)
+          .limit(limit)
+          .get();
+        v2SaleDocs = salesByReference.docs;
+      } else {
+        let v2Query: FirebaseFirestore.Query = salesCol.where(
+          "paymentRail",
+          "==",
+          "paystack_v2",
+        );
+        const start = startIso ? new Date(startIso) : null;
+        const end = endIso ? new Date(endIso) : null;
+        if (start && Number.isFinite(start.getTime())) {
+          v2Query = v2Query.where("dateAdded", ">=", Timestamp.fromDate(start));
+        }
+        if (end && Number.isFinite(end.getTime())) {
+          v2Query = v2Query.where(
+            "dateAdded",
+            "<",
+            Timestamp.fromMillis(end.getTime() + 24 * 60 * 60 * 1000),
+          );
+        }
+        const v2Sales = await v2Query
+          .orderBy("dateAdded", "desc")
+          .limit(limit)
+          .get();
+        v2SaleDocs = v2Sales.docs;
+      }
+      v2SaleDocs = v2SaleDocs.filter(
+        (sale) => String(sale.get("paymentRail") ?? "") === "paystack_v2",
+      );
+
       // Join minimal sale info
       const saleIds = Array.from(
-        new Set(rows.map((r) => r.saleId).filter(Boolean)),
+        new Set([
+          ...rows.map((r) => r.saleId).filter(Boolean),
+          ...v2SaleDocs.map((sale) => sale.id),
+        ]),
       );
       const joined: Record<string, AnyMap> = {};
       for (let i = 0; i < saleIds.length; i += 10) {
@@ -212,44 +261,81 @@ export const getOnlineSalesFromLedger = functions.https.onRequest(
         for (const d of snap.docs) joined[d.id] = d.data() || {};
       }
 
-      const sales = rows
-        .map((r) => {
-          const s = joined[r.saleId] || {};
-          const orderTotal =
-            Number(s.total ?? s.amount ?? s.saleTotal ?? 0) || r.amountPaid;
-          const itemsCount = Number(
-            s.itemsCount ??
-              (s.products && typeof s.products === "object"
-                ? Object.values(s.products).reduce(
-                    (acc: number, q: any) => acc + Number(q || 0),
-                    0,
-                  )
-                : 0),
-          );
-          return {
-            id: r.saleId || r._refId,
-            reference: r.reference,
-            status: String(s.status || "paid"),
-            paymentMethod: String(s.paymentMethod || "Online"),
-            paymentStatus: String(s.paymentStatus || "paid"),
-            itemsCount,
-            createdAt: s.dateAdded || s.createdAt || r.createdAt || null,
-            ledgerCreatedAt: r.createdAt || null,
-            orderTotal,
-            amountPaid: r.amountPaid,
-            feeExVat: r.feeExVat,
-            feeInclVat: r.feeInclVat,
-            netAmount: r.netAmount,
-            currency: String(s.currency || "ZAR"),
-            method: r.method,
-            channel: r.channel,
-          };
-        })
+      for (const sale of v2SaleDocs) joined[sale.id] = sale.data() || {};
+
+      const intentIds = Array.from(
+        new Set(
+          v2SaleDocs
+            .map((sale) => String(sale.get("paymentIntentId") ?? "").trim())
+            .filter((value) => /^pi_[a-f0-9]{64}$/.test(value)),
+        ),
+      );
+      const intents = intentIds.length
+        ? await db.getAll(
+            ...intentIds.map((intentId) =>
+              db.doc(`paymentIntents/${intentId}`),
+            ),
+          )
+        : [];
+      const intentsById = new Map(
+        intents.map((intent) => [intent.id, intent.data() ?? {}]),
+      );
+
+      const legacySales = rows.map((r) => {
+        const s = joined[r.saleId] || {};
+        const orderTotal =
+          Number(s.total ?? s.amount ?? s.saleTotal ?? 0) || r.amountPaid;
+        const itemsCount = Number(
+          s.itemsCount ??
+            (s.products && typeof s.products === "object"
+              ? Object.values(s.products).reduce(
+                  (acc: number, q: any) => acc + Number(q || 0),
+                  0,
+                )
+              : 0),
+        );
+        return {
+          id: r.saleId || r._refId,
+          reference: r.reference,
+          status: String(s.status || "paid"),
+          paymentMethod: String(s.paymentMethod || "Online"),
+          paymentStatus: String(s.paymentStatus || "paid"),
+          itemsCount,
+          createdAt: s.dateAdded || s.createdAt || r.createdAt || null,
+          ledgerCreatedAt: r.createdAt || null,
+          orderTotal,
+          amountPaid: r.amountPaid,
+          feeExVat: r.feeExVat,
+          feeInclVat: r.feeInclVat,
+          netAmount: r.netAmount,
+          currency: String(s.currency || "ZAR"),
+          method: r.method,
+          channel: r.channel,
+        };
+      });
+
+      const legacySaleIds = new Set(
+        legacySales.map((sale) => String(sale.id ?? "")).filter(Boolean),
+      );
+      const v2Sales = v2SaleDocs
+        .filter((sale) => !legacySaleIds.has(sale.id))
+        .map((sale) => {
+          const data = sale.data() ?? {};
+          return projectPaymentsV2OwnedSale({
+            merchantId,
+            saleId: sale.id,
+            sale: data,
+            intent: intentsById.get(String(data.paymentIntentId ?? "")),
+          });
+        });
+
+      const sales = [...legacySales, ...v2Sales]
         .sort((a, b) => {
           const at = tsToMillis(a.createdAt) || tsToMillis(a.ledgerCreatedAt);
           const bt = tsToMillis(b.createdAt) || tsToMillis(b.ledgerCreatedAt);
           return bt - at;
-        });
+        })
+        .slice(0, limit);
 
       res.status(200).json({ sales });
     } catch (err: any) {
