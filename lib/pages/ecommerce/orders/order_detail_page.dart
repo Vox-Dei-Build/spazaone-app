@@ -23,6 +23,7 @@ import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 import 'package:pasella/services/order_status_messaging_service.dart';
 
 import 'data/order_repository.dart';
+import 'data/order_action_policy.dart';
 import 'data/payment_service.dart';
 
 class OrderDetailPage extends StatefulWidget {
@@ -707,10 +708,26 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               isAcceptedOrder && isDelivery && hasDriver && !isTerminal;
           final showUnassignDriver =
               isInDriverAllocationWindow && isDelivery && hasDriver;
-          final showMarkOutForDelivery =
-              isAcceptedOrder && isDelivery && hasDriver && !isTerminal;
-          final showMarkDelivered =
-              isOutForDelivery && isDelivery && !isDelivered && !isTerminal;
+          final showMarkOutForDelivery = isAcceptedOrder &&
+              isDelivery &&
+              hasDriver &&
+              !isTerminal &&
+              canAdvanceOrderFulfillment(
+                paymentMethod: methodForLogic,
+                isPaid: isPaid,
+                isBnpl: isBnpl,
+                isBnplApproved: isBnplApproved,
+              );
+          final showMarkDelivered = isOutForDelivery &&
+              isDelivery &&
+              !isDelivered &&
+              !isTerminal &&
+              canAdvanceOrderFulfillment(
+                paymentMethod: methodForLogic,
+                isPaid: isPaid,
+                isBnpl: isBnpl,
+                isBnplApproved: isBnplApproved,
+              );
           // "Mark Collected" is the pickup-side counterpart to
           // "Mark Delivered" for delivery orders. We deliberately
           // suppress it for delivery orders so the merchant follows the
@@ -718,37 +735,34 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           // skipping straight to "collected" — which would mute the
           // on-the-way customer ping.
           //
-          // Order of operations for pickup-with-cash is **collect first,
-          // then mark cash received** (mirrors the delivery flow where
-          // the driver marks delivered before settling). The cash button
-          // is gated on `hasHandedOver` (see `canMarkCash` above), so
-          // we no longer hide Collected while cash is owed — doing so
-          // would deadlock the order with no available action.
-          final showMarkCollected = !isCollected &&
-              !isPendingMerchantReview &&
-              !isDelivery &&
-              !(isCancelled || isRejected);
+          // Cash pickup is one combined handover + receipt action. Manual
+          // EFT/transfer and Paystack orders must be paid before collection;
+          // approved Pay Later is the only deliberate unpaid exception.
+          final showMarkCollected = canMarkPickupOrderCollected(
+            paymentMethod: methodForLogic,
+            isPaid: isPaid,
+            isBnpl: isBnpl,
+            isBnplApproved: isBnplApproved,
+            isCollected: isCollected,
+            isDelivery: isDelivery,
+            isPendingMerchantReview: isPendingMerchantReview,
+            isTerminal: isCancelled || isRejected,
+          );
 
           final createdAt = createdAtDt != null
               ? DateFormat('dd MMM yyyy · HH:mm').format(createdAtDt)
               : '—';
-          // Cash / transfer / EFT is settled in person at handover, so
-          // gate "Mark Payment Received" on the goods actually having
-          // changed hands:
-          //  * Delivery orders  → driver has confirmed `delivered`.
-          //  * Pickup orders    → customer has `collected`.
-          // Without this gate a merchant can mark cash received on an
-          // order still sitting in the shop or out on a truck, which
-          // silently reconciles money that hasn't moved.
+          // Cash is recorded at/after handover. EFT/transfer is the inverse:
+          // the merchant verifies funds first, then the app unlocks handover.
           final hasHandedOver =
               isDelivery ? isDelivered : (isCollected == true);
-          final canMarkCash = (methodForLogic == 'cash' ||
-                  methodForLogic == 'transfer' ||
-                  methodForLogic == 'eft') &&
-              !isPaid &&
-              !isTerminal &&
-              !isPendingMerchantReview &&
-              hasHandedOver;
+          final canMarkCash = canMarkManualOrderPaymentReceived(
+            paymentMethod: methodForLogic,
+            isPaid: isPaid,
+            isTerminal: isTerminal,
+            isPendingMerchantReview: isPendingMerchantReview,
+            hasHandedOver: hasHandedOver,
+          );
 
           final subtotal = OrderRepository.asNum(order['subtotal']);
           final delivery = OrderRepository.asNum(order['deliveryFee']);

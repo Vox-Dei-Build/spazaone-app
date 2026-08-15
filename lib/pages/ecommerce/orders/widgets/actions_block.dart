@@ -151,7 +151,7 @@ class ActionsBlock extends StatelessWidget {
     // "Mark Collected" and "Mark Cash Received" into a single tap. They
     // *always* happen at the same physical moment for cash-on-collection,
     // so two taps was UX tax. The merchant retains separate actions for
-    // EFT/transfer (cash button stays gated on hasHandedOver) and BNPL
+    // EFT/transfer (payment is confirmed before collection) and BNPL
     // (settle-later is a different button entirely).
     final canCombineCollectedAndCash = showMarkCollected &&
         !isDelivery &&
@@ -314,8 +314,9 @@ class ActionsBlock extends StatelessWidget {
       paymentHint =
           'Pay Later was approved. When the customer settles up, mark it paid here.';
     } else if (payment.isNotEmpty) {
-      paymentHint =
-          'The order has been handed over. Confirm payment once you’ve received the cash or transfer from the customer.';
+      paymentHint = payMethod == 'transfer' || payMethod == 'eft'
+          ? 'Confirm the EFT has reached your bank before handing over the order.'
+          : 'The order has been handed over. Confirm the cash you received from the customer.';
     }
 
     const destructiveHint =

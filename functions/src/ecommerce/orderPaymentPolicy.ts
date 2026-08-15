@@ -20,6 +20,57 @@ export function isPaymentAlreadyRecorded(
   );
 }
 
+function normalizedPaymentMethod(orderData: Record<string, unknown>): string {
+  return String(orderData.paymentMethod ?? orderData.type ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function hasBeenHandedOver(orderData: Record<string, unknown>): boolean {
+  const status = String(orderData.status ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    orderData.collected === true ||
+    orderData.collectedAt != null ||
+    orderData.deliveredAt != null ||
+    status === "collected" ||
+    status === "delivered" ||
+    status === "fulfilled"
+  );
+}
+
+/** Manual receipt actions are never allowed to override Paystack truth. */
+export function canRecordManualPayment(
+  orderData: Record<string, unknown>,
+): boolean {
+  if (String(orderData.paymentRail ?? "").toLowerCase() === "paystack_v2") {
+    return false;
+  }
+  const method = normalizedPaymentMethod(orderData);
+  if (method === "transfer" || method === "eft") return true;
+  return method === "cash" && hasBeenHandedOver(orderData);
+}
+
+/**
+ * Goods may leave only after payment, except for cash-on-handover and an
+ * explicitly approved Pay Later account.
+ */
+export function canAdvanceOrderFulfillment(
+  orderData: Record<string, unknown>,
+): boolean {
+  if (isPaymentAlreadyRecorded(orderData)) return true;
+  const method = normalizedPaymentMethod(orderData);
+  if (method === "cash") return true;
+  const paymentStatus = String(orderData.paymentStatus ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    (method === "bnpl" || method === "pay later" || method === "pay_later") &&
+    paymentStatus === "approved"
+  );
+}
+
 export function buildPaymentReceiptPatch(
   action: string,
   orderData: Record<string, unknown>,
@@ -29,15 +80,14 @@ export function buildPaymentReceiptPatch(
     const existingMethod = String(
       orderData.paymentMethod ?? orderData.type ?? "",
     ).toLowerCase();
+    const isTransfer =
+      existingMethod === "transfer" || existingMethod === "eft";
     return {
       updatedAt: now,
-      paymentMethod:
-        existingMethod === "transfer" || existingMethod === "eft"
-          ? "Transfer"
-          : "Cash",
+      paymentMethod: isTransfer ? "Transfer" : "Cash",
       paymentStatus: "paid",
       status: "paid",
-      cashReceivedAt: now,
+      ...(isTransfer ? { paidAt: now } : { cashReceivedAt: now }),
     };
   }
 

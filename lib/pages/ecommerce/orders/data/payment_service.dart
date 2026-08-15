@@ -105,7 +105,7 @@ class PaymentService {
     'MARK_DELIVERED': 'Order marked delivered',
     'ACCEPT_BNPL': 'Pay Later approved',
     'REJECT_BNPL': 'Pay Later rejected',
-    'MARK_CASH_RECEIVED': 'Cash received recorded',
+    'MARK_CASH_RECEIVED': 'Payment received recorded',
     'MARK_COLLECTED': 'Order marked collected',
     'SETTLE_BNPL': 'Pay Later settled · marked paid',
     'CANCEL_ORDER': 'Order cancelled',

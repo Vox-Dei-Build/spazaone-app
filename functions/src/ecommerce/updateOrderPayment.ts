@@ -5,6 +5,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { createHash } from "crypto";
 import {
   buildPaymentReceiptPatch,
+  canAdvanceOrderFulfillment,
+  canRecordManualPayment,
   isPaymentAlreadyRecorded,
   isPaymentReceiptAction,
 } from "./orderPaymentPolicy";
@@ -353,6 +355,18 @@ export const updateOrderPayment = functions.https.onCall(
           if (isPaymentAlreadyRecorded(currentData)) {
             return { paymentRecordedNow: false, notificationId: "" };
           }
+          if (
+            paymentAction === "MARK_CASH_RECEIVED" &&
+            !canRecordManualPayment(currentData)
+          ) {
+            throw new functions.https.HttpsError(
+              "failed-precondition",
+              String(currentData.paymentRail ?? "").toLowerCase() ===
+              "paystack_v2"
+                ? "Online payments are confirmed automatically. Wait for payment confirmation."
+                : "This payment cannot be recorded before the required order step.",
+            );
+          }
 
           const customerId = String(
             currentData.customerId ?? currentData.customerID ?? "",
@@ -505,6 +519,12 @@ export const updateOrderPayment = functions.https.onCall(
               "Assign a driver before marking the order out for delivery.",
             );
           }
+          if (!canAdvanceOrderFulfillment(orderData)) {
+            throw new functions.https.HttpsError(
+              "failed-precondition",
+              "Confirm payment before sending this order out for delivery.",
+            );
+          }
           patch = {
             ...patch,
             status: "out_for_delivery",
@@ -520,6 +540,12 @@ export const updateOrderPayment = functions.https.onCall(
           // so legacy reads (sales filters, BNPL fulfilment checks)
           // that key off `collected` continue to work without
           // duplicating the meaning of "the customer has the goods".
+          if (!canAdvanceOrderFulfillment(orderData)) {
+            throw new functions.https.HttpsError(
+              "failed-precondition",
+              "Confirm payment before marking this order delivered.",
+            );
+          }
           patch = {
             ...patch,
             status: "delivered",
@@ -605,6 +631,12 @@ export const updateOrderPayment = functions.https.onCall(
         }
 
         case "MARK_COLLECTED": {
+          if (!canAdvanceOrderFulfillment(orderData)) {
+            throw new functions.https.HttpsError(
+              "failed-precondition",
+              "Confirm payment before marking this order collected.",
+            );
+          }
           patch = {
             ...patch,
             collected: true,
