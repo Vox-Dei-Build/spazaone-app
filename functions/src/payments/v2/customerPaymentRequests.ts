@@ -13,6 +13,7 @@ import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
 import { calculateSmsSegments } from "../../utils/customerOrderingCampaignSms";
 import {
   fetchWhatsAppCapability,
+  storeWhatsAppCapability,
   WhatsAppCapability,
 } from "../../utils/whatsappCapability";
 import {
@@ -1299,28 +1300,6 @@ export const recordCustomerPaymentRequestDeliveryV1BotHttp = functions
       res.status(response.status).json({ error: response.message });
     }
   });
-
-async function storeWhatsAppCapability(
-  phone: string,
-  hasWhatsApp: boolean,
-): Promise<void> {
-  const normalized = normalizePhoneNumber(phone);
-  if (!normalized) return;
-  const collection = db.collection("successfulWhatsAppNumbers");
-  const existing = await collection
-    .where("phoneNumber", "==", normalized)
-    .limit(1)
-    .get();
-  const ref = existing.empty ? collection.doc() : existing.docs[0].ref;
-  await ref.set(
-    {
-      phoneNumber: normalized,
-      hasWhatsApp,
-      lastChecked: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
-}
 
 export const getCustomerPaymentRequestStatusV1 = functions.https.onRequest(
   async (req, res) => {

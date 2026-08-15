@@ -3,6 +3,7 @@ import { AndroidConfig } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
 import { requireBotRequest } from "../security/requestAuth";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
+import { storeWhatsAppCapability } from "../utils/whatsappCapability";
 import {
   readStoreNotificationTokens,
   removeInvalidStoreNotificationTokens,
@@ -325,7 +326,7 @@ export const logUnreadMessage = functions
         direction === "outbound" ? "outbound" : "inbound";
       const resolvedSenderRole: string =
         senderRole ?? (resolvedDirection === "outbound" ? "bot" : "customer");
-      const resolvedChannel: string = channel ?? "whatsapp";
+      const resolvedChannel = String(channel ?? "whatsapp").toLowerCase();
       const resolvedKind: string = kind ?? "text";
       const resolvedTimestamp: string =
         typeof timestamp === "string" && timestamp
@@ -338,6 +339,14 @@ export const logUnreadMessage = functions
       if (!merchantDoc.exists) {
         res.status(404).json({ error: "Merchant not found" });
         return;
+      }
+
+      // A direct inbound WhatsApp message is stronger evidence than a prior
+      // send probe: this customer is actively talking to the bot on WhatsApp.
+      // Record the capability even for a duplicate event so an interrupted
+      // earlier projection can self-heal without duplicating the transcript.
+      if (resolvedDirection === "inbound" && resolvedChannel === "whatsapp") {
+        await storeWhatsAppCapability(String(customerNumber), true);
       }
       let unreadMessages: Array<Record<string, unknown>> = [];
 

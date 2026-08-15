@@ -28,10 +28,15 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
   static final WhatsAppCapabilityCache instance = WhatsAppCapabilityCache._();
 
   static const Duration _staleAfter = Duration(days: 30);
+  // Capability can change while this process is open (for example when the
+  // customer starts a direct WhatsApp conversation). Recheck process-local
+  // entries periodically instead of pinning "unknown" or "SMS" until restart.
+  static const Duration _localRefreshAfter = Duration(seconds: 30);
   // Firestore `whereIn` allows up to 30 elements per query.
   static const int _chunkSize = 30;
 
   final Map<String, bool?> _byNormalizedNumber = <String, bool?>{};
+  final Map<String, DateTime> _loadedAt = <String, DateTime>{};
   final Set<String> _inFlight = <String>{};
 
   /// Look up a single number from the cache. Returns `null` for both
@@ -60,6 +65,7 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
     final normalized = normalizePhoneNumber(rawNumber);
     if (normalized.isEmpty || _byNormalizedNumber[normalized] == true) return;
     _byNormalizedNumber[normalized] = true;
+    _loadedAt[normalized] = DateTime.now();
     notifyListeners();
   }
 
@@ -69,11 +75,17 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
   /// the end so the ledger rebuilds once, not per chunk.
   Future<void> primeFor(Iterable<String?> rawNumbers) async {
     final normalized = <String>{};
+    final now = DateTime.now();
     for (final raw in rawNumbers) {
       if (raw == null || raw.isEmpty) continue;
       final n = normalizePhoneNumber(raw);
       if (n.isEmpty) continue;
-      if (_byNormalizedNumber.containsKey(n)) continue;
+      final loadedAt = _loadedAt[n];
+      if (_byNormalizedNumber.containsKey(n) &&
+          loadedAt != null &&
+          now.difference(loadedAt) < _localRefreshAfter) {
+        continue;
+      }
       if (_inFlight.contains(n)) continue;
       normalized.add(n);
     }
@@ -97,7 +109,8 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
         // numbers without a record don't fall back to a stale "SMS"
         // verdict from a sibling.
         for (final n in chunk) {
-          _byNormalizedNumber.putIfAbsent(n, () => null);
+          _byNormalizedNumber[n] = null;
+          _loadedAt[n] = now;
         }
 
         for (final doc in snap.docs) {
@@ -136,6 +149,7 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
       if (value.isNotEmpty) normalized.add(value);
     }
     _byNormalizedNumber.removeWhere((key, _) => normalized.contains(key));
+    _loadedAt.removeWhere((key, _) => normalized.contains(key));
     await primeFor(rawNumbers);
   }
 
@@ -143,6 +157,7 @@ class WhatsAppCapabilityCache extends ChangeNotifier {
   @visibleForTesting
   void reset() {
     _byNormalizedNumber.clear();
+    _loadedAt.clear();
     _inFlight.clear();
   }
 }
