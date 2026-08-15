@@ -485,31 +485,31 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
   }
 
   Widget _sortButton({bool compact = false}) {
-    return PopupMenuButton<_CatalogSort>(
-      key: const Key('catalog-sort'),
-      tooltip: 'Sort products',
-      initialValue: _sort,
-      icon: const Icon(Icons.sort_rounded),
-      padding: EdgeInsets.zero,
-      constraints: BoxConstraints.tightFor(
-        width: compact ? 40 : 48,
-        height: compact ? 40 : 48,
+    return SizedBox(
+      width: compact ? 40 : 48,
+      height: compact ? 40 : 48,
+      child: PopupMenuButton<_CatalogSort>(
+        key: const Key('catalog-sort'),
+        tooltip: 'Sort products',
+        initialValue: _sort,
+        icon: const Icon(Icons.sort_rounded),
+        padding: EdgeInsets.zero,
+        onSelected: (value) => setState(() => _sort = value),
+        itemBuilder: (_) => const [
+          PopupMenuItem(
+            value: _CatalogSort.recommended,
+            child: Text('Recommended'),
+          ),
+          PopupMenuItem(
+            value: _CatalogSort.lowestCost,
+            child: Text('Lowest cost'),
+          ),
+          PopupMenuItem(
+            value: _CatalogSort.fastestDelivery,
+            child: Text('Fastest delivery'),
+          ),
+        ],
       ),
-      onSelected: (value) => setState(() => _sort = value),
-      itemBuilder: (_) => const [
-        PopupMenuItem(
-          value: _CatalogSort.recommended,
-          child: Text('Recommended'),
-        ),
-        PopupMenuItem(
-          value: _CatalogSort.lowestCost,
-          child: Text('Lowest cost'),
-        ),
-        PopupMenuItem(
-          value: _CatalogSort.fastestDelivery,
-          child: Text('Fastest delivery'),
-        ),
-      ],
     );
   }
 

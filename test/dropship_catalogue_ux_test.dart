@@ -92,6 +92,12 @@ void main() {
       tester.getTopLeft(find.byKey(const Key('supplier-product-product-0'))).dy,
       lessThan(230),
     );
+    await tester.tap(find.byKey(const Key('catalog-sort')));
+    await tester.pumpAndSettle();
+    final recommendedLabel = find.text('Recommended');
+    expect(recommendedLabel, findsOneWidget);
+    expect(tester.getSize(recommendedLabel).width, greaterThan(80));
+    expect(tester.getSize(recommendedLabel).height, lessThan(30));
     expect(tester.takeException(), isNull);
   });
 
