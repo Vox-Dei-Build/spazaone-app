@@ -411,7 +411,7 @@ void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
   final path = uri.path;
   if (!MyApp.knownRoutes.contains(path)) {
     CrashService.instance.recordNonFatal(
-      StateError('Unknown notification route: $path'),
+      StateError('Unknown notification route'),
       StackTrace.current,
       reason: 'notification route not registered',
       context: {'route': route ?? ''},
@@ -614,6 +614,19 @@ Future<void> _initializeCoreServices() async {
   await ConsentService.instance.init();
   if (FirebaseEnvironment.useEmulators) return;
   await CrashService.instance.init();
+  final crashPackageInfo = await PackageInfo.fromPlatform();
+  await CrashService.instance.configureBuild(
+    version: crashPackageInfo.version,
+    buildNumber: crashPackageInfo.buildNumber,
+  );
+  await CrashService.instance.setStoreState(
+    present: StoreSession.instance.storeId.isNotEmpty,
+  );
+  StoreSession.instance.addListener(() {
+    unawaited(CrashService.instance.setStoreState(
+      present: StoreSession.instance.storeId.isNotEmpty,
+    ));
+  });
   await CrashService.instance.applyConsent(ConsentService.instance.state);
   await TelemetryService.instance.init();
 
@@ -622,8 +635,8 @@ Future<void> _initializeCoreServices() async {
   // even if the merchant has opted out of telemetry. Init must run after
   // `Hive.openBox('appBox')` above and is safe before sign-in because it
   // does not touch FirebaseAuth.
-  // Tag Crashlytics with the merchant id (and clear it on sign-out) so
-  // crash reports can be grouped per merchant without leaking PII.
+  // Track only coarse auth state. Account and store identifiers never enter
+  // Crashlytics.
   FirebaseAuth.instance.authStateChanges().listen((user) {
     CrashService.instance.setMerchantId(user?.uid);
     if (user == null) {
@@ -801,7 +814,7 @@ class MyApp extends StatefulWidget {
   @visibleForTesting
   static Route<dynamic> buildUnknownRoute(RouteSettings settings) {
     CrashService.instance.recordNonFatal(
-      StateError('Unknown route requested: ${settings.name}'),
+      StateError('Unknown route requested'),
       StackTrace.current,
       reason: 'MaterialApp.onUnknownRoute fallback',
       context: {'route': settings.name ?? ''},
@@ -974,6 +987,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
           builder: (context, child) {
+            unawaited(CrashService.instance.updateUiContext(context));
             final app = child ?? const SizedBox.shrink();
             if (SpazaRuntimeEnvironment.isProduction) return app;
             return Banner(
@@ -994,7 +1008,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               ? PhoneEntryPage.id
               : LoginPage.id,
           navigatorKey: navigatorKey,
-          navigatorObservers: [TelemetryService.instance.navigatorObserver],
+          navigatorObservers: [
+            TelemetryService.instance.navigatorObserver,
+            CrashService.instance.navigatorObserver,
+          ],
           routes: MyApp._routes,
           // Defensive: any code path that pushes a route not present in
           // `_routes` (e.g. stale FCM notification payloads from older app

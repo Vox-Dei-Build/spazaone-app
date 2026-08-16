@@ -73,6 +73,7 @@ void main() {
           hasProducts: true,
           hasListedProduct: true,
           hasOrderingLink: true,
+          hasOrderingOptions: true,
           hasApprovedTemplate: true,
           hasBank: true,
           shopName: 'My Store',

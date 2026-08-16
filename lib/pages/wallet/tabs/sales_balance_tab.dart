@@ -1,6 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/services/payment_setup_service.dart';
+import 'package:pasella/utils/currency_util.dart';
+
+String merchantSettlementStatusLabel(MerchantSettlement settlement) {
+  if (settlement.testOnly) return 'Test only — not sent to bank';
+  String date(int millis) => DateFormat('d MMM yyyy').format(
+        DateTime.fromMillisecondsSinceEpoch(millis).toLocal(),
+      );
+  return switch (settlement.status.trim().toLowerCase()) {
+    'paid' || 'completed' => settlement.providerSettlementAtMs > 0
+        ? 'Paid · ${date(settlement.providerSettlementAtMs)}'
+        : 'Paid',
+    'pending' || 'processing' => settlement.expectedSettlementAtMs > 0
+        ? 'Expected by ${date(settlement.expectedSettlementAtMs)}'
+        : 'Processing',
+    'failed' || 'review_required' => 'Needs attention',
+    _ => 'Status unavailable',
+  };
+}
 
 class MoneyPayoutsSection extends StatelessWidget {
   const MoneyPayoutsSection({
@@ -16,14 +35,7 @@ class MoneyPayoutsSection extends StatelessWidget {
   final bool hasError;
   final VoidCallback? onSetup;
 
-  String _money(int minor) => 'R ${(minor / 100).toStringAsFixed(2)}';
-
-  String _status(String raw) => switch (raw) {
-        'paid' || 'completed' => 'Paid',
-        'pending' || 'processing' => 'On the way',
-        'failed' || 'review_required' => 'Needs attention',
-        _ => raw.replaceAll('_', ' '),
-      };
+  String _money(int minor) => CurrencyUtil.format(minor / 100);
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +76,11 @@ class MoneyPayoutsSection extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 14),
+          if (overview!.outstandingSettlementMinor > 0 ||
+              overview!.testOnlySettlementMinor > 0) ...[
+            _PayoutTotals(overview: overview!),
+            const SizedBox(height: 14),
+          ],
           if (overview!.settlements.isEmpty)
             const _EmptyPayouts()
           else
@@ -79,7 +96,7 @@ class MoneyPayoutsSection extends StatelessWidget {
                     _PayoutRow(
                       orderId: payout.orderId,
                       amount: _money(payout.merchantNetProceedsMinor),
-                      status: _status(payout.status),
+                      status: merchantSettlementStatusLabel(payout),
                     ),
                 ],
               ),
@@ -88,6 +105,64 @@ class MoneyPayoutsSection extends StatelessWidget {
       ],
     );
   }
+}
+
+class _PayoutTotals extends StatelessWidget {
+  const _PayoutTotals({required this.overview});
+
+  final MerchantPaymentOverview overview;
+
+  @override
+  Widget build(BuildContext context) {
+    String money(int value) => CurrencyUtil.format(value / 100);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: kHighLightColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (overview.outstandingSettlementMinor > 0)
+              _LineTotal(
+                label: 'Outstanding payouts',
+                value: money(overview.outstandingSettlementMinor),
+              ),
+            if (overview.testOnlySettlementMinor > 0) ...[
+              if (overview.outstandingSettlementMinor > 0)
+                const SizedBox(height: 8),
+              _LineTotal(
+                label: 'Test only',
+                value: money(overview.testOnlySettlementMinor),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Test payments are not sent to your bank.',
+                style: TextStyle(color: kSecondaryAccent),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LineTotal extends StatelessWidget {
+  const _LineTotal({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(child: Text(label)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      );
 }
 
 class _OnlinePaymentSetupBlock extends StatelessWidget {

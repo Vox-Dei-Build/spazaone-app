@@ -120,6 +120,10 @@ beforeEach(async () => {
         merchantId: "storeA",
         status: "enabled",
       }),
+      setDoc(doc(db, "merchantCommerceSettings/storeA"), {
+        merchantId: "storeA",
+        delivery: { enabled: true, flatFeeMinor: 500 },
+      }),
       setDoc(doc(db, "settlements/settlementA"), { merchantId: "storeA" }),
       setDoc(doc(db, "refundCases/refundA"), { merchantId: "storeA" }),
       setDoc(doc(db, "inventoryReservations/reservationA"), {
@@ -297,6 +301,8 @@ test("Payments V2 truth is server-only for owners, operators and admins", async 
     "paymentConfiguration/global",
     "paymentSecurityBudgets/settlement_bank_validation_2026-08-13",
     "paymentAdministrationAudit/auditA",
+    "paymentAdminReviewEmailOutbox/emailA",
+    "merchantCommerceSettings/storeA",
     "campaignCreditPurchases/purchaseA",
     "campaignCreditRecoveryCases/recoveryA",
     "repaymentPlans/planA",

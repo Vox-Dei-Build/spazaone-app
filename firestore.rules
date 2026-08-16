@@ -257,6 +257,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /paymentAdminReviewEmailOutbox/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /merchantCommerceSettings/{document=**} {
+      allow read, write: if false;
+    }
+
     match /campaignCreditPurchases/{document=**} {
       allow read, write: if false;
     }

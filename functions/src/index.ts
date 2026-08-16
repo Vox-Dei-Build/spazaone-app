@@ -29,6 +29,7 @@ export * from "./payments/paystack/verifyPaystackTransaction";
 export * from "./payments/paystack/getPaystackQuote";
 export * from "./payments/v2/admin";
 export * from "./payments/v2/reconciliation";
+export * from "./payments/v2/settlementStatus";
 export {
   createCampaignTopupV2,
   getCampaignTopupQuoteV2,
@@ -40,6 +41,10 @@ export {
   prepareMerchantSettlementProfileV2,
   reviewMerchantSettlementProfileV2,
 } from "./payments/v2/merchantProfiles";
+export {
+  onMerchantSettlementReviewEmail,
+  retryPaymentAdminReviewEmails,
+} from "./payments/v2/paymentAdminReviewEmail";
 export { getMerchantPaymentOverviewV2 } from "./payments/v2/merchantOverview";
 export {
   reconcileSupplierTrackingV2,
@@ -127,6 +132,10 @@ export * from "./ecommerce/getOnlineSalesFromLedger";
 export * from "./ecommerce/getShopContextBotHttp";
 export * from "./ecommerce/getMerchantOrderingLink";
 export * from "./ecommerce/getMerchantCatalogBotHttp";
+export {
+  getMerchantOrderingOptionsV1,
+  updateMerchantOrderingOptionsV1,
+} from "./ecommerce/merchantOrderingOptions";
 /* ---- Dropshipping commerce (separate from manual Sales) ---- */
 export {
   searchCjSupplierCatalog,
@@ -144,6 +153,10 @@ export {
   createDropshipListing,
   createDropshipListing as createDropshipListingV2,
 } from "./commerce/createDropshipListing";
+export {
+  updateDropshipListing,
+  updateDropshipListing as updateDropshipListingV2,
+} from "./commerce/updateDropshipListing";
 export {
   createCommerceOrder,
   verifyCommercePaystackTransaction,

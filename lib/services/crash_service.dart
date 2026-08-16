@@ -5,6 +5,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+
+import 'package:pasella/config/spaza_environment.dart';
 
 import 'consent_service.dart';
 
@@ -25,7 +28,15 @@ class CrashService {
   CrashService._();
   static final CrashService instance = CrashService._();
 
+  final NavigatorObserver navigatorObserver = _CrashNavigatorObserver();
+
   bool _initialised = false;
+  final Map<String, Object> _lastDiagnosticValues = {};
+
+  static const String _buildCommit = String.fromEnvironment(
+    'BUILD_COMMIT',
+    defaultValue: 'unknown',
+  );
 
   /// Wires `FlutterError.onError` and `PlatformDispatcher.instance.onError`
   /// so all uncaught Flutter + async errors flow into Crashlytics.
@@ -72,6 +83,89 @@ class CrashService {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: fatal);
       return true;
     };
+  }
+
+  Future<void> configureBuild({
+    required String version,
+    required String buildNumber,
+  }) async {
+    await _setDiagnosticValues({
+      'environment': SpazaRuntimeEnvironment.label.toLowerCase(),
+      'app_version': version.trim().isEmpty ? 'unknown' : version.trim(),
+      'app_build': buildNumber.trim().isEmpty ? 'unknown' : buildNumber.trim(),
+      'build_commit': _buildCommit,
+    });
+  }
+
+  Future<void> updateUiContext(BuildContext context) async {
+    final media = MediaQuery.maybeOf(context);
+    if (media == null) return;
+    await _setDiagnosticValues({
+      'layout_orientation':
+          media.orientation == Orientation.landscape ? 'landscape' : 'portrait',
+      'viewport_size_bucket': viewportSizeBucketForTesting(media.size),
+      'text_scale_bucket': textScaleBucketForTesting(media.textScaler.scale(1)),
+      'keyboard_visibility': media.viewInsets.bottom > 0 ? 'visible' : 'hidden',
+    });
+  }
+
+  Future<void> setSurface(String? surface) async {
+    await _setDiagnosticValues({
+      'route_surface': sanitizeSurfaceForTesting(surface),
+    });
+  }
+
+  Future<void> setStoreState({required bool present}) async {
+    await _setDiagnosticValues({
+      'store_state': present ? 'present' : 'empty',
+    });
+  }
+
+  Future<void> _setDiagnosticValues(Map<String, Object> values) async {
+    try {
+      for (final entry in values.entries) {
+        if (_lastDiagnosticValues[entry.key] == entry.value) continue;
+        _lastDiagnosticValues[entry.key] = entry.value;
+        await FirebaseCrashlytics.instance.setCustomKey(entry.key, entry.value);
+      }
+    } catch (_) {
+      // Diagnostics must never affect the user flow.
+    }
+  }
+
+  @visibleForTesting
+  static String viewportSizeBucketForTesting(Size size) {
+    final shortest = size.shortestSide;
+    if (shortest < 360) return 'compact';
+    if (shortest < 600) return 'phone';
+    if (shortest < 900) return 'tablet';
+    return 'large';
+  }
+
+  @visibleForTesting
+  static String textScaleBucketForTesting(double scale) {
+    if (scale <= 1.0) return 'default';
+    if (scale <= 1.3) return 'medium';
+    if (scale <= 2.0) return 'large';
+    return 'extra_large';
+  }
+
+  @visibleForTesting
+  static String sanitizeSurfaceForTesting(String? value) {
+    final raw = (value ?? '').trim();
+    if (raw.isEmpty) return 'unnamed';
+    final path = Uri.tryParse(raw)?.path ?? '';
+    if (path.isEmpty) return 'unnamed';
+    final segments = path.split('/').where((part) => part.isNotEmpty).map(
+      (part) {
+        if (part.length > 32 || RegExp(r'\d|@|\+').hasMatch(part)) {
+          return ':dynamic';
+        }
+        return part.replaceAll(RegExp(r'[^A-Za-z_-]'), '');
+      },
+    ).where((part) => part.isNotEmpty);
+    final sanitized = '/${segments.join('/')}';
+    return sanitized.length > 120 ? sanitized.substring(0, 120) : sanitized;
   }
 
   /// Errors that represent transient backend / network / token failures rather
@@ -233,12 +327,15 @@ class CrashService {
     }
   }
 
-  /// Sets the Crashlytics user identifier to the merchant id ONLY.
-  /// Never pass email, phone, or display name -- those would leak into the
-  /// Crashlytics console and any export.
+  /// Backwards-compatible auth-state hook. No account identifier is retained.
   Future<void> setMerchantId(String? merchantId) async {
     try {
-      await FirebaseCrashlytics.instance.setUserIdentifier(merchantId ?? '');
+      await FirebaseCrashlytics.instance.setUserIdentifier('');
+      await _setDiagnosticValues({
+        'auth_state': merchantId?.trim().isNotEmpty == true
+            ? 'authenticated'
+            : 'anonymous',
+      });
     } catch (_) {
       // ignored
     }
@@ -271,10 +368,46 @@ class CrashService {
       'password',
       'otp',
       'address',
+      'coordinates',
+      'latitude',
+      'longitude',
+      'balance',
+      'amount',
+      'raw_payload',
+      'payload',
+      'user_id',
+      'merchant_id',
+      'store_id',
+      'customer_id',
+      'account_id',
     };
     return {
       for (final entry in context.entries)
-        if (!blocked.contains(entry.key.toLowerCase())) entry.key: entry.value,
+        if (!blocked.contains(entry.key.toLowerCase()))
+          entry.key: {'route', 'surface'}.contains(entry.key.toLowerCase())
+              ? sanitizeSurfaceForTesting(entry.value.toString())
+              : entry.value,
     };
+  }
+}
+
+class _CrashNavigatorObserver extends NavigatorObserver {
+  void _record(Route<dynamic>? route) {
+    unawaited(CrashService.instance.setSurface(route?.settings.name));
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _record(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _record(previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    _record(newRoute);
   }
 }

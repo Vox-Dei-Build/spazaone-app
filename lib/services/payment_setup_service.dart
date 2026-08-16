@@ -28,6 +28,10 @@ class MerchantSettlement {
     required this.platformFeeMinor,
     required this.providerFeeMinor,
     required this.merchantNetProceedsMinor,
+    this.currency = 'ZAR',
+    this.testOnly = false,
+    this.providerSettlementAtMs = 0,
+    this.expectedSettlementAtMs = 0,
   });
 
   final String orderId;
@@ -36,6 +40,10 @@ class MerchantSettlement {
   final int platformFeeMinor;
   final int providerFeeMinor;
   final int merchantNetProceedsMinor;
+  final String currency;
+  final bool testOnly;
+  final int providerSettlementAtMs;
+  final int expectedSettlementAtMs;
 }
 
 class MerchantPaymentCapability {
@@ -121,11 +129,17 @@ class MerchantPaymentOverview {
     required this.paymentsV2,
     required this.profile,
     required this.settlements,
+    this.settlementCurrency = 'ZAR',
+    this.outstandingSettlementMinor = 0,
+    this.testOnlySettlementMinor = 0,
   });
 
   final MerchantPaymentsV2 paymentsV2;
   final SettlementProfileSummary profile;
   final List<MerchantSettlement> settlements;
+  final String settlementCurrency;
+  final int outstandingSettlementMinor;
+  final int testOnlySettlementMinor;
 
   /// Backward-compatible owned-order readiness alias for 4.8.0 consumers.
   bool get enabled => paymentsV2.ownedOrders.ready;
@@ -137,6 +151,7 @@ class MerchantPaymentOverview {
     final paymentsData =
         Map<String, dynamic>.from(data['paymentsV2'] as Map? ?? {});
     final profile = Map<String, dynamic>.from(data['profile'] as Map? ?? {});
+    final totals = Map<String, dynamic>.from(data['totals'] as Map? ?? {});
     final settlements = (data['settlements'] as List? ?? const [])
         .whereType<Map>()
         .map((value) => Map<String, dynamic>.from(value))
@@ -149,6 +164,12 @@ class MerchantPaymentOverview {
             providerFeeMinor: (value['providerFeeMinor'] as num? ?? 0).toInt(),
             merchantNetProceedsMinor:
                 (value['merchantNetProceedsMinor'] as num? ?? 0).toInt(),
+            currency: value['currency']?.toString() ?? 'ZAR',
+            testOnly: value['testOnly'] == true,
+            providerSettlementAtMs:
+                (value['providerSettlementAtMs'] as num? ?? 0).toInt(),
+            expectedSettlementAtMs:
+                (value['expectedSettlementAtMs'] as num? ?? 0).toInt(),
           ),
         )
         .toList();
@@ -166,6 +187,10 @@ class MerchantPaymentOverview {
         maskedAccount: profile['maskedAccount']?.toString() ?? '',
       ),
       settlements: settlements,
+      settlementCurrency: totals['currency']?.toString() ?? 'ZAR',
+      outstandingSettlementMinor:
+          (totals['outstandingMinor'] as num? ?? 0).toInt(),
+      testOnlySettlementMinor: (totals['testOnlyMinor'] as num? ?? 0).toInt(),
     );
   }
 }

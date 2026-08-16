@@ -21,6 +21,7 @@ class MerchantSetupActions {
     required this.onAddProduct,
     required this.onChooseWhatsAppProducts,
     required this.onOpenOrderingLink,
+    this.onOpenOrderOptions,
     required this.onOpenBanking,
     required this.onCreateTemplate,
   });
@@ -29,6 +30,7 @@ class MerchantSetupActions {
   final VoidCallback onAddProduct;
   final VoidCallback onChooseWhatsAppProducts;
   final VoidCallback onOpenOrderingLink;
+  final VoidCallback? onOpenOrderOptions;
   final VoidCallback onOpenBanking;
 
   /// Opens Marketing so Spaza One can prepare the reusable product-promotion
@@ -948,6 +950,23 @@ List<_SetupStep> _buildSteps(
               ? 'Get link'
               : null,
       action: s.hasProducts ? a.onOpenOrderingLink : null,
+    ),
+    _SetupStep(
+      done: s.hasOrderingOptions,
+      icon: Icons.tune_outlined,
+      rowTitle: s.hasOrderingOptions
+          ? 'Order options chosen'
+          : 'Choose order options',
+      rowBody: s.hasOrderingOptions
+          ? 'Pickup, delivery and Pay Later availability are configured.'
+          : s.hasProducts
+              ? 'Choose whether customers can request delivery or Pay Later.'
+              : 'Available after a product exists.',
+      actionTitle: 'Choose order options',
+      actionBody:
+          'Pickup is always available. Turn delivery or Pay Later on only when you are ready.',
+      actionLabel: s.hasProducts ? 'Set options' : null,
+      action: s.hasProducts ? a.onOpenOrderOptions : null,
     ),
     _SetupStep(
       done: s.hasBank,

@@ -2,7 +2,7 @@ import axios from "axios";
 import { createHash } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackSecret } from "../../config/environment";
+import { paystackProviderMode, paystackSecret } from "../../config/environment";
 import {
   deliverCommerceOrderNotificationOutbox,
   enqueueCommerceOrderNotification,
@@ -626,6 +626,9 @@ export async function applyVerifiedAccountSettlementV2(
       paymentIntentId: intentId,
       paymentReference: reference,
       provider: "paystack",
+      providerMode: paystackProviderMode(),
+      testOnly: paystackProviderMode() === "test",
+      providerReference: reference,
       schemaVersion: 2,
     };
     tx.create(ledgerRef, transactionData);

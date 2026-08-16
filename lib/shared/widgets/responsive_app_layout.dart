@@ -113,12 +113,24 @@ class ScrollableCenteredContent extends StatelessWidget {
     return Padding(
       padding: padding,
       child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(child: child),
-          ),
-        ),
+        builder: (context, constraints) {
+          // A vertical viewport receives unbounded height from another
+          // vertical viewport (ListView, SliverList, SliverFillRemaining,
+          // etc.). Creating another SingleChildScrollView there would pass an
+          // infinite minHeight into RenderConstrainedBox and fail layout.
+          // Let the bounded ancestor own scrolling in that case.
+          if (!constraints.hasBoundedHeight) {
+            return Center(child: child);
+          }
+
+          return SingleChildScrollView(
+            key: const ValueKey('scrollable-centered-content-viewport'),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(child: child),
+            ),
+          );
+        },
       ),
     );
   }

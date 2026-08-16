@@ -26,6 +26,7 @@ class MerchantSetupState {
     required this.hasProducts,
     required this.hasListedProduct,
     required this.hasOrderingLink,
+    this.hasOrderingOptions = false,
     required this.hasApprovedTemplate,
     required this.hasBank,
     required this.shopName,
@@ -40,6 +41,7 @@ class MerchantSetupState {
         hasProducts = false,
         hasListedProduct = false,
         hasOrderingLink = false,
+        hasOrderingOptions = false,
         hasApprovedTemplate = false,
         hasBank = false,
         shopName = '',
@@ -52,6 +54,7 @@ class MerchantSetupState {
   final bool hasProducts;
   final bool hasListedProduct;
   final bool hasOrderingLink;
+  final bool hasOrderingOptions;
   final bool hasApprovedTemplate;
   final bool hasBank;
   final String shopName;
@@ -62,7 +65,7 @@ class MerchantSetupState {
 
   /// Total number of steps the card shows. Kept as a getter so tests
   /// and the card share one definition and can't drift.
-  int get totalSteps => 6;
+  int get totalSteps => 7;
 
   int get completedSteps {
     var n = 0;
@@ -70,6 +73,7 @@ class MerchantSetupState {
     if (hasProducts) n++;
     if (hasListedProduct) n++;
     if (hasOrderingLink) n++;
+    if (hasOrderingOptions) n++;
     if (hasBank) n++;
     if (hasApprovedTemplate) n++;
     return n;
@@ -176,6 +180,7 @@ Stream<MerchantSetupState> watchMerchantSetup(String userId) {
         hasProducts: latestProducts!.docs.isNotEmpty,
         hasListedProduct: latestListed!.docs.isNotEmpty,
         hasOrderingLink: hasOrderingLink,
+        hasOrderingOptions: userData?['commerceOptionsConfigured'] == true,
         hasApprovedTemplate: hasApprovedTemplate,
         hasBank: latestBank!.docs.isNotEmpty,
         shopName: shopName,

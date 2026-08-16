@@ -12,6 +12,10 @@ import {
   releaseOwnedInventoryReservation,
   reserveOwnedInventoryForSale,
 } from "../payments/v2/inventoryReservations";
+import {
+  merchantCheckoutOptionDecision,
+  merchantOrderingOptionsFrom,
+} from "./merchantOrderingOptions";
 
 type PaymentType = "Cash" | "Online" | "BNPL" | string;
 type FulfillmentType = "pickup" | "delivery" | string;
@@ -51,6 +55,8 @@ const checkoutCartHandler = async (
       preview = false, // <— only flag we keep
       idempotencyKey = null, // optional, for deduping sale creation
       paymentRail = null,
+      deliveryFeeMinor: claimedDeliveryFeeMinor = undefined,
+      totalMinor: claimedTotalMinor = undefined,
     } = (req.body || {}) as {
       merchantId: string;
       customerId: string;
@@ -70,11 +76,21 @@ const checkoutCartHandler = async (
       preview?: boolean;
       idempotencyKey?: string | null;
       paymentRail?: string | null;
+      deliveryFeeMinor?: number;
+      totalMinor?: number;
     };
 
     if (!merchantId || !customerId) {
       res.status(400).json({ error: "merchantId and customerId are required" });
       return;
+    }
+
+    if (!verifyBotRequest(req)) {
+      const uid = await authenticateFirebaseRequest(req, res, {
+        requireAppCheck: true,
+      });
+      if (!uid) return;
+      await assertStoreAccess(uid, merchantId);
     }
 
     const ptype = String(paymentType || "").toLowerCase();
@@ -93,11 +109,6 @@ const checkoutCartHandler = async (
       if (!idempotencyRef) {
         res.status(400).json({ error: "An idempotency key is required." });
         return;
-      }
-      if (!verifyBotRequest(req)) {
-        const uid = await authenticateFirebaseRequest(req, res);
-        if (!uid) return;
-        await assertStoreAccess(uid, merchantId);
       }
       const readiness = await paymentReadiness({
         merchantId,
@@ -184,7 +195,7 @@ const checkoutCartHandler = async (
     };
 
     const items: SaleItem[] = [];
-    let total = 0;
+    let subtotalMinor = 0;
     let itemsCount = 0;
     for (const snap of productDocs) {
       const pid = snap.id;
@@ -194,7 +205,7 @@ const checkoutCartHandler = async (
       const data = snap.exists ? snap.data() || {} : {};
       const unit =
         Number(data.sellingPrice ?? data.price ?? data.productPrice ?? 0) || 0;
-      total += unit * qty;
+      subtotalMinor += Math.round(unit * 100) * qty;
       items.push({
         productId: pid,
         quantity: qty,
@@ -214,37 +225,73 @@ const checkoutCartHandler = async (
       });
     }
 
+    let checkoutOptions;
+    try {
+      const settings = await db
+        .doc(`merchantCommerceSettings/${merchantId}`)
+        .get();
+      checkoutOptions = merchantCheckoutOptionDecision({
+        options: merchantOrderingOptionsFrom(settings.data()),
+        fulfillmentType,
+        paymentType,
+        deliveryAddress,
+        claimedDeliveryFeeMinor,
+        claimedTotalMinor,
+        subtotalMinor,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      const messages: Record<string, string> = {
+        DELIVERY_DISABLED: "Delivery is not available from this shop.",
+        DELIVERY_ADDRESS_REQUIRED: "Enter a delivery address.",
+        PAY_LATER_DISABLED: "Pay Later is not available from this shop.",
+        DELIVERY_FEE_MISMATCH: "The delivery fee changed. Review the total.",
+        ORDER_TOTAL_MISMATCH: "The order total changed. Review the cart.",
+        FULFILLMENT_TYPE_INVALID: "Choose pickup or delivery.",
+        PAYMENT_TYPE_INVALID: "Choose an available payment method.",
+      };
+      res.status(409).json({
+        error: messages[code] ?? "The selected order option is unavailable.",
+        code: code || "ORDER_OPTIONS_INVALID",
+      });
+      return;
+    }
+    const total = checkoutOptions.totalMinor / 100;
+    const canonicalPaymentType = checkoutOptions.paymentType;
+
     const productsMap: Record<string, number> = {};
     Object.keys(quantities).forEach(
       (pid) => (productsMap[pid] = Number(quantities[pid] || 0)),
     );
 
     const now = FieldValue.serverTimestamp();
-    const isOrderRequest = orderRequest === true;
+    const isOrderRequest =
+      orderRequest === true || checkoutOptions.requiresMerchantReview;
     const initialStatus = isOrderRequest
       ? "pending_merchant_review"
-      : ptype === "cash"
+      : canonicalPaymentType === "cash"
         ? "awaiting_collection"
-        : ptype === "bnpl"
+        : canonicalPaymentType === "bnpl"
           ? "pending_review"
-          : ptype === "online"
+          : canonicalPaymentType === "online"
             ? "pending_payment"
             : "pending";
-    const initialPaymentStatus = isOrderRequest
-      ? "unpaid"
-      : ptype === "online"
+    const initialPaymentStatus =
+      canonicalPaymentType === "online"
         ? "pending"
-        : ptype === "bnpl"
+        : canonicalPaymentType === "bnpl"
           ? "pending"
-          : undefined;
+          : isOrderRequest
+            ? "unpaid"
+            : undefined;
     const paymentMethod =
-      ptype === "cash"
+      canonicalPaymentType === "cash"
         ? "Cash"
-        : ptype === "transfer" || ptype === "eft"
+        : canonicalPaymentType === "transfer"
           ? "Transfer"
-          : ptype === "bnpl"
+          : canonicalPaymentType === "bnpl"
             ? "BNPL"
-            : ptype === "online"
+            : canonicalPaymentType === "online"
               ? "Online"
               : paymentType;
 
@@ -254,6 +301,9 @@ const checkoutCartHandler = async (
         success: true,
         preview: true,
         total,
+        subtotalMinor: checkoutOptions.subtotalMinor,
+        deliveryFeeMinor: checkoutOptions.deliveryFeeMinor,
+        totalMinor: checkoutOptions.totalMinor,
         itemsCount,
         currency: "ZAR",
         items,
@@ -367,7 +417,7 @@ const checkoutCartHandler = async (
       {
         id: saleRef.id,
         customerId,
-        type: ptype === "transfer" || ptype === "eft" ? "Cash" : paymentType,
+        type: paymentMethod,
         status: initialStatus,
         paymentMethod,
         ...(initialPaymentStatus
@@ -380,8 +430,13 @@ const checkoutCartHandler = async (
         items,
         cartSig,
         deliveryInfo: deliveryInfo || "",
-        fulfillmentType: fulfillmentType || null,
+        fulfillmentType: checkoutOptions.fulfillmentType,
         deliveryAddress: deliveryAddress || "",
+        deliveryFeeMinor: checkoutOptions.deliveryFeeMinor,
+        subtotalMinor: checkoutOptions.subtotalMinor,
+        totalMinor: checkoutOptions.totalMinor,
+        orderingOptionsVersion: 1,
+        merchantReviewRequired: checkoutOptions.requiresMerchantReview,
         requestedFulfillmentTime: requestedFulfillmentTime || "",
         cashChangeFor: cashChangeFor || null,
         remarks: remarks || "",
@@ -471,6 +526,9 @@ const checkoutCartHandler = async (
       success: true,
       saleId: saleRef.id,
       total,
+      subtotalMinor: checkoutOptions.subtotalMinor,
+      deliveryFeeMinor: checkoutOptions.deliveryFeeMinor,
+      totalMinor: checkoutOptions.totalMinor,
       itemsCount,
       status: initialStatus,
     });

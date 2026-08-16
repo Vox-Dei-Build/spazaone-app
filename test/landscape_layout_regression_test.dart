@@ -191,4 +191,77 @@ void main() {
     expect(find.byType(Scrollable), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  for (final size in <Size>[
+    const Size(320, 568),
+    const Size(360, 640),
+    const Size(412, 915),
+    const Size(640, 320),
+    const Size(800, 360),
+  ]) {
+    testWidgets(
+      'centered content is finite and scrollable at $size with large text',
+      (tester) async {
+        await _pumpAt(
+          tester,
+          size: size,
+          textScale: 2,
+          child: const Scaffold(
+            body: ScrollableCenteredContent(
+              child: SizedBox(height: 900, child: Text('Tall empty state')),
+            ),
+          ),
+        );
+
+        expect(
+          find.byKey(
+            const ValueKey('scrollable-centered-content-viewport'),
+          ),
+          findsOneWidget,
+        );
+        await tester.drag(
+          find.byKey(
+            const ValueKey('scrollable-centered-content-viewport'),
+          ),
+          const Offset(0, -200),
+        );
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'list-hosted centered content delegates scrolling at $size',
+      (tester) async {
+        await _pumpAt(
+          tester,
+          size: size,
+          textScale: 2,
+          child: Scaffold(
+            body: ListView(
+              children: const [
+                SizedBox(height: 80),
+                ScrollableCenteredContent(
+                  child: SizedBox(
+                    height: 900,
+                    child: Text('List-hosted empty state'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        expect(
+          find.byKey(
+            const ValueKey('scrollable-centered-content-viewport'),
+          ),
+          findsNothing,
+        );
+        await tester.drag(find.byType(ListView), const Offset(0, -200));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

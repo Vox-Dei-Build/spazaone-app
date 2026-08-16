@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
+import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
 import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
 import 'package:pasella/services/commerce_service.dart';
@@ -774,6 +775,78 @@ void main() {
 
     expect(promotedProducts, hasLength(2));
     expect(promotedProducts.last.id, 'dropship-product');
+  });
+
+  testWidgets('supplier inventory listing can change markup and pause',
+      (tester) async {
+    int? savedMarkup;
+    String? savedState;
+    final product = Product(
+      id: 'dropship-product',
+      name: 'Supplier lamp',
+      cost: 100,
+      sellingPrice: 120,
+      baseCostMinor: 10000,
+      markupMinor: 2000,
+      sellPriceMinor: 12000,
+      whatsappListed: true,
+      isDropshipListing: true,
+      commerceListingId: 'listing-1',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DropshipListingPage(
+          product: product,
+          docID: product.id!,
+          listingUpdater: ({
+            required sellerProductId,
+            required listingId,
+            required markupMinor,
+            required state,
+          }) async {
+            savedMarkup = markupMinor;
+            savedState = state;
+            return DropshipListingUpdateResult(
+              state: state,
+              markupMinor: markupMinor,
+              sellPriceMinor: 10000 + markupMinor,
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('edit-dropship-listing')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('edit-dropship-markup')),
+      '35.50',
+    );
+    await tester.tap(find.byKey(const ValueKey('edit-dropship-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paused').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('save-dropship-listing')));
+    await tester.pumpAndSettle();
+
+    expect(savedMarkup, 3550);
+    expect(savedState, 'paused');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const ValueKey('dropship-listing-state'),
+              skipOffstage: false,
+            ),
+          )
+          .data,
+      'Paused',
+    );
+    final promote = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('promote-dropship-listing')),
+    );
+    expect(promote.onPressed, isNull);
   });
 
   testWidgets('saved catalogue products persist and remain visibly unavailable',

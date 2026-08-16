@@ -2,7 +2,7 @@ import axios from "axios";
 import { createHash } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackSecret } from "../../config/environment";
+import { paystackProviderMode, paystackSecret } from "../../config/environment";
 import {
   confirmCjOrder,
   createCjDropshipOrder,
@@ -1159,6 +1159,9 @@ export async function applyVerifiedSupplierPaymentV2(
       merchantId: String(orderData.sellerId),
       orderId,
       provider: "paystack",
+      providerMode: paystackProviderMode(),
+      testOnly: paystackProviderMode() === "test",
+      providerReference: reference,
       subaccountCode: String(intentData.paystackSubaccountCode ?? ""),
       destination: intentData.settlementDestination ?? {},
       grossAmountMinor: amountMinor,

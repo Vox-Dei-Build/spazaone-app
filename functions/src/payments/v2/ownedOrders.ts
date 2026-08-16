@@ -2,7 +2,7 @@ import axios from "axios";
 import { createHash } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackSecret } from "../../config/environment";
+import { paystackProviderMode, paystackSecret } from "../../config/environment";
 import {
   commerceNotificationDocumentId,
   deliverCommerceOrderNotificationOutbox,
@@ -588,6 +588,9 @@ export async function applyVerifiedOwnedOrderPaymentV2(
       merchantId,
       orderId,
       provider: "paystack",
+      providerMode: paystackProviderMode(),
+      testOnly: paystackProviderMode() === "test",
+      providerReference: reference,
       subaccountCode: String(intentData.paystackSubaccountCode ?? ""),
       destination: intentData.settlementDestination ?? {},
       grossAmountMinor: amountMinor,

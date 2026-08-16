@@ -431,13 +431,19 @@ export const updateOrderPayment = functions.https.onCall(
 
       switch (paymentAction) {
         case "ACCEPT_ORDER": {
+          const onlineDelivery =
+            String(orderData.paymentRail ?? "") === "paystack_v2" &&
+            String(orderData.fulfillmentType ?? "") === "delivery";
           patch = {
             ...patch,
-            status: "accepted",
+            status: onlineDelivery ? "pending_payment" : "accepted",
             acceptedAt: now,
             acceptedBy: context.auth?.uid || merchantId,
-            paymentStatus: orderData.paymentStatus || "unpaid",
+            paymentStatus: onlineDelivery
+              ? "pending"
+              : orderData.paymentStatus || "unpaid",
             collected: false,
+            merchantReviewRequired: false,
           };
           break;
         }

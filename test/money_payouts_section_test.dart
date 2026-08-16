@@ -10,6 +10,9 @@ MerchantPaymentOverview overview({
   String maskedAccount = '',
   String accountName = '',
   bool ready = false,
+  List<MerchantSettlement> settlements = const [],
+  int outstandingMinor = 0,
+  int testOnlyMinor = 0,
 }) =>
     MerchantPaymentOverview(
       paymentsV2: MerchantPaymentsV2(
@@ -30,7 +33,9 @@ MerchantPaymentOverview overview({
         resolvedAccountName: accountName,
         maskedAccount: maskedAccount,
       ),
-      settlements: const [],
+      settlements: settlements,
+      outstandingSettlementMinor: outstandingMinor,
+      testOnlySettlementMinor: testOnlyMinor,
     );
 
 Future<void> pumpSection(
@@ -131,5 +136,60 @@ void main() {
     );
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.textContaining('temporarily unavailable'), findsOneWidget);
+  });
+
+  testWidgets('test payouts never claim money is on the way', (tester) async {
+    await pumpSection(
+      tester,
+      overview(
+        testOnlyMinor: 1250,
+        settlements: const [
+          MerchantSettlement(
+            orderId: 'order-test',
+            status: 'processing',
+            grossAmountMinor: 1500,
+            platformFeeMinor: 250,
+            providerFeeMinor: 0,
+            merchantNetProceedsMinor: 1250,
+            testOnly: true,
+          ),
+        ],
+      ),
+    );
+    expect(find.text('Test only — not sent to bank'), findsOneWidget);
+    expect(
+        find.text('Test payments are not sent to your bank.'), findsOneWidget);
+    expect(find.text('On the way'), findsNothing);
+  });
+
+  test('live payout status uses exact date or T+2 estimate', () {
+    expect(
+      merchantSettlementStatusLabel(
+        const MerchantSettlement(
+          orderId: 'paid',
+          status: 'completed',
+          grossAmountMinor: 100,
+          platformFeeMinor: 0,
+          providerFeeMinor: 0,
+          merchantNetProceedsMinor: 100,
+          providerSettlementAtMs: 1787004000000,
+        ),
+      ),
+      startsWith('Paid · '),
+    );
+    expect(
+      merchantSettlementStatusLabel(
+        const MerchantSettlement(
+          orderId: 'pending',
+          status: 'processing',
+          grossAmountMinor: 100,
+          platformFeeMinor: 0,
+          providerFeeMinor: 0,
+          merchantNetProceedsMinor: 100,
+          expectedSettlementAtMs: 1787004000000,
+        ),
+      ),
+      startsWith('Expected by '),
+    );
   });
 }

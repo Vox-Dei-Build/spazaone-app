@@ -5,6 +5,7 @@ import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/pages/settings/help/help.dart';
 import 'package:pasella/pages/settings/privacy/privacy_page.dart';
 import 'package:pasella/pages/settings/setup/merchant_setup_page.dart';
+import 'package:pasella/pages/settings/order_options/order_options_page.dart';
 import 'package:pasella/pages/settings/stores/store_workspace_card.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/utils/auth_util.dart';
@@ -64,6 +65,16 @@ class SettingsPage extends StatelessWidget {
                               ),
                             );
                           },
+                        ),
+                        SettingTile(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => OrderOptionsPage(),
+                            ),
+                          ),
+                          icon: Icons.tune_outlined,
+                          title: 'Order options',
+                          subTitle: 'Pickup, delivery fees and Pay Later',
                         ),
                         SettingTile(
                           onTap: () => Navigator.pushNamed(

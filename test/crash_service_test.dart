@@ -25,4 +25,27 @@ void main() {
       isTrue,
     );
   });
+
+  test('layout diagnostics use coarse non-PII buckets', () {
+    expect(
+      CrashService.viewportSizeBucketForTesting(const Size(320, 568)),
+      'compact',
+    );
+    expect(
+      CrashService.viewportSizeBucketForTesting(const Size(412, 915)),
+      'phone',
+    );
+    expect(CrashService.textScaleBucketForTesting(1), 'default');
+    expect(CrashService.textScaleBucketForTesting(2), 'large');
+  });
+
+  test('route diagnostics strip queries and dynamic identifiers', () {
+    expect(
+      CrashService.sanitizeSurfaceForTesting(
+        '/orders/customer-123?phone=27820000000',
+      ),
+      '/orders/:dynamic',
+    );
+    expect(CrashService.sanitizeSurfaceForTesting(null), 'unnamed');
+  });
 }

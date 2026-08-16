@@ -7,6 +7,7 @@ import { db, functions } from "../config/main";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
 import { requireBotRequest } from "../security/requestAuth";
 import { buyerSafePaymentsV2 } from "../payments/v2/buyerReadiness";
+import { merchantOrderingOptionsFrom } from "./merchantOrderingOptions";
 
 function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   const pa = a.split(".").map(Number);
@@ -321,7 +322,13 @@ export const getShopContextBotHttp = functions
         });
       }
 
-      const paymentsV2 = await buyerSafePaymentsV2(mSnap.id);
+      const [paymentsV2, orderingOptionsSnapshot] = await Promise.all([
+        buyerSafePaymentsV2(mSnap.id),
+        db.doc(`merchantCommerceSettings/${mSnap.id}`).get(),
+      ]);
+      const orderingOptions = merchantOrderingOptionsFrom(
+        orderingOptionsSnapshot.data(),
+      );
       const merchant = {
         id: mSnap.id,
         name: m.name,
@@ -336,6 +343,7 @@ export const getShopContextBotHttp = functions
         // Add Payment/Transfer workflows are unaffected by this bot surface.
         banking: paymentsV2.manualTransferForOwnedOrders ? banking : null,
         paymentsV2,
+        orderingOptions,
       };
       console.log("Merchant loaded", {
         mid: merchant.id,

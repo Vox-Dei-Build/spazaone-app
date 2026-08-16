@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/pages/settings/share/share.dart';
+import 'package:pasella/pages/settings/order_options/order_options_page.dart';
 import 'package:pasella/pages/settings/stores/store_management_page.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
@@ -36,6 +37,9 @@ class YourShopPage extends StatelessWidget {
             ),
           ),
         ),
+        onOrderOptions: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => OrderOptionsPage()),
+        ),
       ),
     );
   }
@@ -49,6 +53,7 @@ class YourShopOverview extends StatelessWidget {
     required this.onStoreDetails,
     required this.onStoresAndTeam,
     required this.onOnlinePayments,
+    this.onOrderOptions,
   });
 
   final bool showStoresAndTeam;
@@ -56,6 +61,7 @@ class YourShopOverview extends StatelessWidget {
   final VoidCallback onStoreDetails;
   final VoidCallback onStoresAndTeam;
   final VoidCallback onOnlinePayments;
+  final VoidCallback? onOrderOptions;
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +91,13 @@ class YourShopOverview extends StatelessWidget {
             onTap: onStoresAndTeam,
           ),
         ],
+        const SizedBox(height: 10),
+        _ShopDestination(
+          icon: Icons.tune_outlined,
+          title: 'Order options',
+          subtitle: 'Set delivery fees and Pay Later availability',
+          onTap: onOrderOptions ?? () {},
+        ),
         const SizedBox(height: 10),
         _ShopDestination(
           icon: Icons.account_balance_outlined,

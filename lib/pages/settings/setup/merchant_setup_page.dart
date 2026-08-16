@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/add_contact/add_contact.dart';
 import 'package:pasella/pages/settings/share/share.dart';
+import 'package:pasella/pages/settings/order_options/order_options_page.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
@@ -41,6 +42,9 @@ class MerchantSetupPage extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (_) => const SharePage(source: 'setup_guide'),
                 ),
+              ),
+              onOpenOrderOptions: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => OrderOptionsPage()),
               ),
               onOpenBanking: () => Navigator.of(context).push(
                 MaterialPageRoute(
