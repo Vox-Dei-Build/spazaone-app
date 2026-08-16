@@ -628,6 +628,9 @@ Future<void> _initializeCoreServices() async {
     ));
   });
   await CrashService.instance.applyConsent(ConsentService.instance.state);
+  await CrashService.instance.recordDevelopmentDiagnosticProbe(
+    crashReportingConsented: ConsentService.instance.state.effectiveCrash,
+  );
   await TelemetryService.instance.init();
 
   // Review nudge state is local-only (Hive `appBox`), independent of

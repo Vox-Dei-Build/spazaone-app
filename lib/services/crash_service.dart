@@ -31,11 +31,15 @@ class CrashService {
   final NavigatorObserver navigatorObserver = _CrashNavigatorObserver();
 
   bool _initialised = false;
+  bool _developmentProbeRecorded = false;
   final Map<String, Object> _lastDiagnosticValues = {};
 
   static const String _buildCommit = String.fromEnvironment(
     'BUILD_COMMIT',
     defaultValue: 'unknown',
+  );
+  static const bool _developmentProbeEnabled = bool.fromEnvironment(
+    'CRASHLYTICS_DIAGNOSTIC_PROBE',
   );
 
   /// Wires `FlutterError.onError` and `PlatformDispatcher.instance.onError`
@@ -278,6 +282,40 @@ class CrashService {
       );
     } catch (_) {
       // Swallow: a Crashlytics config call must never break the app.
+    }
+  }
+
+  /// Emits a single non-fatal event for verifying development Crashlytics
+  /// wiring and the coarse diagnostic keys set by this service.
+  ///
+  /// The probe is inert unless the app is a development build compiled with
+  /// `--dart-define=CRASHLYTICS_DIAGNOSTIC_PROBE=true`, and it never overrides
+  /// the merchant's crash-reporting consent.
+  Future<bool> recordDevelopmentDiagnosticProbe({
+    required bool crashReportingConsented,
+  }) async {
+    if (!SpazaRuntimeEnvironment.isDevelopment ||
+        !_developmentProbeEnabled ||
+        !crashReportingConsented ||
+        _developmentProbeRecorded) {
+      return false;
+    }
+    _developmentProbeRecorded = true;
+    try {
+      await _setDiagnosticValues({
+        'diagnostic_probe': 'development_nonfatal',
+      });
+      await FirebaseCrashlytics.instance.recordError(
+        StateError('SpazaOne development Crashlytics diagnostic probe'),
+        StackTrace.current,
+        reason: 'development diagnostics verification',
+        fatal: false,
+      );
+      await FirebaseCrashlytics.instance.sendUnsentReports();
+      return true;
+    } catch (_) {
+      // Telemetry verification must never affect the app flow.
+      return false;
     }
   }
 
