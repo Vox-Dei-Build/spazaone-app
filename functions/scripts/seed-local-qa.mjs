@@ -259,6 +259,7 @@ export function buildQaCatalogDocuments({
           variant,
           originCountryCode: "CN",
           stock: 40 + index,
+          quantity: 1,
           logisticName: "Spaza One QA delivery",
           logisticAging: `${aging} days`,
           productCostUsdMinor: productUsd,

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pasella/models/orders/canonical_order_status.dart';
 
 class CommerceOrder {
   const CommerceOrder({
@@ -28,6 +29,8 @@ class CommerceOrder {
     required this.logisticName,
     required this.logisticAging,
     required this.supplierOrderId,
+    this.quantity = 1,
+    this.paymentChannel = '',
     this.trackingCarrier,
     this.trackingNumber,
     this.trackingUrl,
@@ -59,9 +62,14 @@ class CommerceOrder {
   final String logisticName;
   final String logisticAging;
   final String supplierOrderId;
+  final int quantity;
+  final String paymentChannel;
   final String? trackingCarrier;
   final String? trackingNumber;
   final String? trackingUrl;
+
+  CanonicalOrderStatus get canonicalStatus =>
+      canonicalOrderStatus(status, paymentStatus: paymentStatus);
 
   static int _minor(Object? value) => value is num ? value.toInt() : 0;
 
@@ -69,9 +77,7 @@ class CommerceOrder {
     DocumentSnapshot<Map<String, dynamic>> document,
   ) {
     final data = document.data() ?? const <String, dynamic>{};
-    final buyer = Map<String, dynamic>.from(
-      data['buyer'] as Map? ?? const {},
-    );
+    final buyer = Map<String, dynamic>.from(data['buyer'] as Map? ?? const {});
     final items = data['lineItems'] as List? ?? const [];
     final item = items.isNotEmpty
         ? Map<String, dynamic>.from(items.first as Map)
@@ -111,9 +117,16 @@ class CommerceOrder {
       logisticName: item['logisticName']?.toString() ?? '',
       logisticAging: item['logisticAging']?.toString() ?? '',
       supplierOrderId: supplierOrder['orderId']?.toString() ?? '',
+      quantity:
+          _minor(data['quantity'] ?? item['quantity']).clamp(1, 20).toInt(),
+      paymentChannel: data['requestedPaymentChannel']?.toString() ??
+          (data['payment'] as Map?)?['channel']?.toString() ??
+          '',
       trackingCarrier: tracking['carrier']?.toString(),
-      trackingNumber: tracking['number']?.toString(),
-      trackingUrl: tracking['url']?.toString(),
+      trackingNumber:
+          tracking['number']?.toString() ?? data['trackingNumber']?.toString(),
+      trackingUrl:
+          tracking['url']?.toString() ?? data['trackingUrl']?.toString(),
     );
   }
 }

@@ -254,8 +254,8 @@ class AddContactViewModel extends ChangeNotifier {
         // contact is always saved and the merchant never has to guess
         // whether the welcome message went out.
         final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send welcome message to $customerName?',
-          subtitle: 'One-time onboarding message',
+          title: '$customerName was added',
+          subtitle: 'Would you like to send a welcome message now?',
           whatsappCost: whatsappCost,
           smsCost: smsCost,
           expected: expectedChannel,
@@ -263,7 +263,8 @@ class AddContactViewModel extends ChangeNotifier {
         final outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
-          confirmLabel: 'Send',
+          confirmLabel: 'Send welcome message',
+          skipLabel: 'Done without sending',
         );
 
         // Safety net for race conditions on the wallet balance. Use the

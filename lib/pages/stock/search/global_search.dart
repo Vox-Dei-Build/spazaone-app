@@ -18,6 +18,7 @@ class GlobalSearchPage extends StatelessWidget {
       create: (_) => GlobalSearchViewModel(),
       builder: (context, child) {
         return Scaffold(
+          resizeToAvoidBottomInset: true,
           appBar: CustomAppBar(
             title: isGroupSearch ? 'Search in $groupName' : 'Product Search',
           ),

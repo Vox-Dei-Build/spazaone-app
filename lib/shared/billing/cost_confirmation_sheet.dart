@@ -5,6 +5,7 @@ import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
+import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/utils/currency_util.dart';
 
@@ -12,7 +13,7 @@ import 'package:pasella/utils/currency_util.dart';
 /// the user's current balance, and the resulting balance after deduction —
 /// then asks for explicit consent before any message is dispatched.
 ///
-/// The sheet exposes three outcomes via [CostSheetOutcome]:
+/// The sheet exposes explicit outcomes via [CostSheetOutcome]:
 ///
 ///  * `send`      — primary CTA, the dispatcher is allowed to charge.
 ///  * `skip`      — secondary CTA, the action persists but no message is
@@ -21,11 +22,10 @@ import 'package:pasella/utils/currency_util.dart';
 ///                  merchant is _not_ doing — the previous "Don't send"
 ///                  read close enough to "Cancel" that release testers
 ///                  hesitated on it.
-///  * `dismissed` — sheet closed without an explicit choice (back
-///                  gesture, scrim, OS interruption). Treated the same
-///                  as `skip` for side effects; callers should still
-///                  surface a snackbar so the merchant knows the
-///                  underlying record was kept.
+///  * `keepEditing` / `discard` — when dismissal confirmation is enabled,
+///                  closing the sheet cannot silently persist the action.
+///  * `dismissed` — sheet closed in a flow that does not request a discard
+///                  confirmation. It must never imply permission to save.
 ///
 /// The legacy [show] API is retained as a thin shim that maps `send` ->
 /// `true` and everything else -> `false`, so older call sites that have
@@ -34,9 +34,8 @@ import 'package:pasella/utils/currency_util.dart';
 /// why the negative action must not read as "Cancel".
 ///
 /// PAS-UX-12: Some flows have no underlying record to "save" if the
-/// merchant decides not to send (e.g. the standalone payment reminder
-/// from the contact kebab — there's no sale, no payment, no credit
-/// being recorded alongside the message; the reminder *is* the action).
+/// merchant decides not to send (for example, a standalone message with no
+/// underlying sale, payment or credit record).
 /// For those callers, set [showSkip] to `false` so the "Save without
 /// sending" secondary action is omitted entirely. Dismissal is then
 /// surfaced via an explicit close (X) icon in the header and the
@@ -62,9 +61,13 @@ class CostConfirmationSheet extends StatelessWidget {
   static Future<CostSheetOutcome> showOutcome(
     BuildContext context, {
     required CostBreakdown breakdown,
-    String confirmLabel = 'Send',
-    String skipLabel = 'Save without sending',
+    String confirmLabel = 'Send message',
+    String skipLabel = 'Done without sending',
     bool showSkip = true,
+    bool confirmDismissal = false,
+    String dismissTitle = 'Discard this transaction?',
+    String dismissMessage =
+        'This transaction has not been saved. You can keep editing or discard it.',
   }) async {
     final result = await showModalBottomSheet<CostSheetOutcome>(
       context: context,
@@ -79,7 +82,37 @@ class CostConfirmationSheet extends StatelessWidget {
         showSkip: showSkip,
       ),
     );
-    return result ?? CostSheetOutcome.dismissed;
+    if (result != null) return result;
+    if (!confirmDismissal || !context.mounted) {
+      return CostSheetOutcome.dismissed;
+    }
+
+    return confirmDiscardOrKeep(
+      context,
+      title: dismissTitle,
+      message: dismissMessage,
+    );
+  }
+
+  /// Resolves an attempted close for flows where the sheet sits between an
+  /// editable form and its first persistence boundary.
+  @visibleForTesting
+  static Future<CostSheetOutcome> confirmDiscardOrKeep(
+    BuildContext context, {
+    String title = 'Discard this transaction?',
+    String message =
+        'This transaction has not been saved. You can keep editing or discard it.',
+  }) async {
+    final shouldDiscard = await ConfirmDialog.showDestructive(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+    );
+    return shouldDiscard
+        ? CostSheetOutcome.discard
+        : CostSheetOutcome.keepEditing;
   }
 
   /// Legacy bool variant. Returns `true` only when the user explicitly
@@ -115,7 +148,8 @@ class CostConfirmationSheet extends StatelessWidget {
     final after = balance - cost;
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: EdgeInsets.fromLTRB(
           SizeConfig.imageSizeMultiplier * 4,
           SizeConfig.heightMultiplier * 2,
@@ -146,9 +180,8 @@ class CostConfirmationSheet extends StatelessWidget {
             // it the merchant would have no visible way out of the sheet
             // other than the back gesture / tapping the scrim, which is
             // not obvious on the bottom-sheet surface. Mapping it to
-            // [CostSheetOutcome.dismissed] keeps it semantically distinct
-            // from "skip" so callers that care can still tell the cases
-            // apart.
+            // A null result lets [showOutcome] decide whether the caller
+            // requires an explicit Discard / Keep editing choice.
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -179,8 +212,7 @@ class CostConfirmationSheet extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.close),
                   tooltip: 'Close',
-                  onPressed: () =>
-                      Navigator.of(context).pop(CostSheetOutcome.dismissed),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
@@ -241,7 +273,7 @@ class CostConfirmationSheet extends StatelessWidget {
               );
             }),
 
-            if (breakdown.lines.isNotEmpty) ...[const Divider(height: 24)],
+            if (breakdown.lines.isNotEmpty) ...[const SizedBox(height: 18)],
 
             // Total
             Row(
@@ -290,9 +322,10 @@ class CostConfirmationSheet extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
               decoration: BoxDecoration(
-                color: canAfford
-                    ? Colors.green.withValues(alpha: 0.08)
-                    : Colors.orange.withValues(alpha: 0.10),
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: .55),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -302,7 +335,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(height: SizeConfig.heightMultiplier * 0.5),
                     _balanceRow(
                       'Paid from',
-                      'Shared campaign credits',
+                      'Shared SpazaOne balance',
                       valueBold: true,
                     ),
                     SizedBox(height: SizeConfig.heightMultiplier * 0.5),
@@ -311,9 +344,11 @@ class CostConfirmationSheet extends StatelessWidget {
                   SizedBox(height: SizeConfig.heightMultiplier * 0.5),
                   _balanceRow(
                     'Balance after',
-                    canAfford ? CurrencyUtil.format(after) : 'Top up to send',
+                    canAfford
+                        ? CurrencyUtil.format(after)
+                        : 'Add money to send',
                     valueColor: canAfford
-                        ? Colors.green.shade800
+                        ? const Color(0xFF30345F)
                         : Colors.orange.shade800,
                     valueBold: true,
                   ),
@@ -343,10 +378,11 @@ class CostConfirmationSheet extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
+                    child: FilledButton.icon(
                       onPressed: () =>
                           Navigator.of(context).pop(CostSheetOutcome.send),
-                      child: Padding(
+                      icon: const Icon(Icons.send_rounded, size: 19),
+                      label: Padding(
                         padding: EdgeInsets.symmetric(
                           vertical: SizeConfig.heightMultiplier * 1.2,
                         ),
@@ -358,7 +394,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(height: SizeConfig.heightMultiplier * 1),
                     SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton(
+                      child: TextButton(
                         onPressed: () => Navigator.of(
                           context,
                         ).pop(CostSheetOutcome.skip),
@@ -378,7 +414,7 @@ class CostConfirmationSheet extends StatelessWidget {
                 children: [
                   ElevatedButton.icon(
                     icon: const Icon(Icons.account_balance_wallet),
-                    label: const Text('Top Up Wallet'),
+                    label: const Text('Add money'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -386,9 +422,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     ),
                     onPressed: () {
                       Navigator.of(context).pop(CostSheetOutcome.dismissed);
-                      // PAS-UX-WTC: jump straight to the Top-Up tab —
-                      // landing on Withdraw here is what made merchants
-                      // think the "Top Up" CTA didn't work.
+                      // Legacy `topUp` maps directly to Add money.
                       Provider.of<AppModel>(context, listen: false).goToBilling(
                         context,
                         initialTab: WalletInitialTab.topUp,
@@ -399,7 +433,7 @@ class CostConfirmationSheet extends StatelessWidget {
                     SizedBox(height: SizeConfig.heightMultiplier * 1),
                     SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton(
+                      child: TextButton(
                         onPressed: () => Navigator.of(
                           context,
                         ).pop(CostSheetOutcome.skip),

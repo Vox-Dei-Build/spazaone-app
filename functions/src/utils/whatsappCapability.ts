@@ -1,3 +1,4 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../config/main";
 import { normalizePhoneNumber } from "./phoneUtils";
 
@@ -81,4 +82,39 @@ export async function fetchWhatsAppCapability(
   if (!legacyDocument.exists) return "unknown";
 
   return classifyWhatsAppCapability(legacyDocument.data() ?? null, now);
+}
+
+/**
+ * Persist a provider-backed WhatsApp capability result without creating
+ * duplicate records when an older random-id document already exists.
+ *
+ * The normalized phone number remains the only customer identifier stored on
+ * this global capability surface. Callers must not attach provider payloads,
+ * profile data, merchant ids, or message content.
+ */
+export async function storeWhatsAppCapability(
+  phoneNumber: string,
+  hasWhatsApp: boolean,
+): Promise<void> {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  if (!normalized) return;
+
+  const collection = db.collection("successfulWhatsAppNumbers");
+  const existing = await collection
+    .where("phoneNumber", "==", normalized)
+    .limit(1)
+    .get();
+  // A deterministic id makes concurrent first writes converge. Existing
+  // random-id records remain supported and are updated in place.
+  const ref = existing.empty
+    ? collection.doc(normalized)
+    : existing.docs[0].ref;
+  await ref.set(
+    {
+      phoneNumber: normalized,
+      hasWhatsApp,
+      lastChecked: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
 }

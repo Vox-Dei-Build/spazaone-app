@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
+import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
 import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
 import 'package:pasella/pages/stock/product_card/product_card.dart';
 import 'package:pasella/services/commerce_service.dart';
@@ -50,6 +51,161 @@ void main() {
       'product-2',
       'product-3',
     ]);
+  });
+
+  testWidgets('catalogue gives browsing space to products on a small phone',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async =>
+        CjCatalogPage(
+          products: [supplierProduct(0), supplierProduct(1)],
+          page: 1,
+          totalPages: 1,
+          totalProducts: 2,
+          hasMore: false,
+          nextCursor: '',
+          catalogueRefreshing: false,
+          digitalPaymentsEnabled: false,
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search supplier products'), findsOneWidget);
+    expect(find.text('Supplier catalogue'), findsNothing);
+    expect(
+      tester
+          .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+          .every((chip) => chip.side != BorderSide.none),
+      isTrue,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('supplier-product-product-0'))).dy,
+      lessThan(230),
+    );
+    await tester.tap(find.byKey(const Key('catalog-sort')));
+    await tester.pumpAndSettle();
+    final recommendedLabel = find.text('Recommended');
+    expect(recommendedLabel, findsOneWidget);
+    expect(tester.getSize(recommendedLabel).width, greaterThan(80));
+    expect(tester.getSize(recommendedLabel).height, lessThan(30));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('catalogue keeps category chips directly scrollable',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final queries = <String>[];
+
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async {
+      queries.add(query);
+      return CjCatalogPage(
+        products: [supplierProduct(0)],
+        page: 1,
+        totalPages: 1,
+        totalProducts: 1,
+        hasMore: false,
+        nextCursor: '',
+        catalogueRefreshing: false,
+        digitalPaymentsEnabled: false,
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    expect(find.byKey(const Key('catalog-all-filters')), findsNothing);
+    expect(find.byKey(const Key('catalog-category-strip')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('catalog-category-accessories')),
+      180,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('catalog-category-strip')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('catalog-category-accessories')).hitTestable(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(queries.last, 'accessories');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('catalogue moves controls beside products in phone landscape',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(720, 320));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Future<CjCatalogPage> search({
+      required String query,
+      required int page,
+      required String cursor,
+    }) async =>
+        CjCatalogPage(
+          products: List.generate(4, supplierProduct),
+          page: 1,
+          totalPages: 1,
+          totalProducts: 4,
+          hasMore: false,
+          nextCursor: '',
+          catalogueRefreshing: false,
+          digitalPaymentsEnabled: false,
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(size: Size(720, 320)),
+          child: Scaffold(body: SupplierCatalogPage(searchCatalog: search)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('catalog-landscape-layout')), findsOneWidget);
+    expect(
+      find.byKey(const Key('catalog-landscape-filters')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('catalog-sort')), findsOneWidget);
+    expect(find.text('Explore'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const Key('catalog-landscape-filters')),
+      const Offset(0, -240),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('catalog-category-accessories')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('supplier-product-product-0'))).dy,
+      lessThan(20),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('catalogue keeps earlier products when loading more',
@@ -619,6 +775,122 @@ void main() {
 
     expect(promotedProducts, hasLength(2));
     expect(promotedProducts.last.id, 'dropship-product');
+  });
+
+  testWidgets('supplier inventory listing can change markup and pause',
+      (tester) async {
+    int? savedMarkup;
+    String? savedState;
+    final product = Product(
+      id: 'dropship-product',
+      name: 'Supplier lamp',
+      cost: 100,
+      sellingPrice: 120,
+      baseCostMinor: 10000,
+      markupMinor: 2000,
+      sellPriceMinor: 12000,
+      whatsappListed: true,
+      isDropshipListing: true,
+      commerceListingId: 'listing-1',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DropshipListingPage(
+          product: product,
+          docID: product.id!,
+          listingUpdater: ({
+            required sellerProductId,
+            required listingId,
+            required markupMinor,
+            required state,
+          }) async {
+            savedMarkup = markupMinor;
+            savedState = state;
+            return DropshipListingUpdateResult(
+              state: state,
+              markupMinor: markupMinor,
+              sellPriceMinor: 10000 + markupMinor,
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('edit-dropship-listing')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('edit-dropship-markup')),
+      '35.50',
+    );
+    await tester.tap(find.byKey(const ValueKey('edit-dropship-state')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paused').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('save-dropship-listing')));
+    await tester.pumpAndSettle();
+
+    expect(savedMarkup, 3550);
+    expect(savedState, 'paused');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(
+              const ValueKey('dropship-listing-state'),
+              skipOffstage: false,
+            ),
+          )
+          .data,
+      'Paused',
+    );
+    final promote = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('promote-dropship-listing')),
+    );
+    expect(promote.onPressed, isNull);
+  });
+
+  testWidgets('supplier listing actions stack on a narrow large-text phone',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final product = Product(
+      id: 'dropship-product',
+      name: 'Supplier lamp',
+      cost: 100,
+      sellingPrice: 120,
+      whatsappListed: true,
+      isDropshipListing: true,
+      commerceListingId: 'listing-1',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: child!,
+        ),
+        home: DropshipListingPage(
+          product: product,
+          docID: product.id!,
+          promotionLauncher: (_, __) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final edit = tester.getRect(
+      find.byKey(const ValueKey('edit-dropship-listing')),
+    );
+    final promote = tester.getRect(
+      find.byKey(const ValueKey('promote-dropship-listing')),
+    );
+    expect(promote.top, greaterThan(edit.bottom));
+    expect((promote.width - edit.width).abs(), lessThan(1));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('saved catalogue products persist and remain visibly unavailable',

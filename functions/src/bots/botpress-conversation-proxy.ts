@@ -1,4 +1,5 @@
 import axios from "axios";
+import { randomUUID } from "crypto";
 import { db, functions } from "../config/main";
 import { authenticateFirebaseRequest } from "../security/requestAuth";
 import { formatPhoneNumber } from "../utils/phoneUtils";
@@ -68,10 +69,18 @@ export const getBotpressMessages = functions
       return;
     }
 
+    const requestId = randomUUID();
     const apiToken = process.env.BOTPRESS_API_TOKEN?.trim();
     const botId = process.env.BOTPRESS_BOT_ID?.trim() || DEFAULT_BOT_ID;
     if (!apiToken) {
-      res.status(503).json({ error: "Conversation service unavailable." });
+      res.status(503).json({
+        error: "Conversation service unavailable.",
+        state: "error",
+        diagnostic: {
+          code: "BOTPRESS_CONFIGURATION_MISSING",
+          requestId,
+        },
+      });
       return;
     }
 
@@ -79,10 +88,11 @@ export const getBotpressMessages = functions
       Authorization: `Bearer ${apiToken}`,
       "x-bot-id": botId,
     };
-
     try {
       let conversationId: string | null = null;
       let nextToken: string | undefined;
+      let conversationPages = 0;
+      let conversationsScanned = 0;
       for (let page = 0; page < 20 && !conversationId; page += 1) {
         const response = await axios.get(
           `${BOTPRESS_HOST}/v1/chat/conversations`,
@@ -95,6 +105,8 @@ export const getBotpressMessages = functions
         const conversations = Array.isArray(response.data?.conversations)
           ? response.data.conversations
           : [];
+        conversationPages += 1;
+        conversationsScanned += conversations.length;
         const match = conversations.find(
           (conversation: { id?: string; tags?: Record<string, unknown> }) =>
             normalizedDigits(conversation.tags?.["whatsapp:userPhone"]) ===
@@ -106,12 +118,27 @@ export const getBotpressMessages = functions
       }
 
       if (!conversationId) {
-        res.status(200).json({ messages: [] });
+        console.info("[getBotpressMessages] conversation not found", {
+          requestId,
+          conversationPages,
+          conversationsScanned,
+        });
+        res.status(200).json({
+          messages: [],
+          state: "not_found",
+          diagnostic: {
+            code: "BOTPRESS_CONVERSATION_NOT_FOUND",
+            requestId,
+            conversationPages,
+            conversationsScanned,
+          },
+        });
         return;
       }
 
       const messages: unknown[] = [];
       nextToken = undefined;
+      let messagePages = 0;
       for (let page = 0; page < 20; page += 1) {
         const response: BotpressMessagesResponse = await axios.get(
           `${BOTPRESS_HOST}/v1/chat/messages`,
@@ -128,6 +155,7 @@ export const getBotpressMessages = functions
         const pageMessages = Array.isArray(responseData.messages)
           ? responseData.messages
           : [];
+        messagePages += 1;
         messages.push(
           ...pageMessages.map((message) => {
             const value = message as {
@@ -151,12 +179,32 @@ export const getBotpressMessages = functions
         if (!nextToken) break;
       }
 
-      res.status(200).json({ messages });
+      res.status(200).json({
+        messages,
+        state: "ok",
+        diagnostic: {
+          code: "BOTPRESS_MESSAGES_FETCHED",
+          requestId,
+          conversationPages,
+          conversationsScanned,
+          messagePages,
+          messageCount: messages.length,
+        },
+      });
     } catch (error) {
       const status = axios.isAxiosError(error) ? error.response?.status : null;
       console.error("[getBotpressMessages] provider request failed", {
+        requestId,
         status,
       });
-      res.status(502).json({ error: "Conversation service unavailable." });
+      res.status(502).json({
+        error: "Conversation service unavailable.",
+        state: "error",
+        diagnostic: {
+          code: "BOTPRESS_PROVIDER_UNAVAILABLE",
+          requestId,
+          providerStatus: status ?? null,
+        },
+      });
     }
   });

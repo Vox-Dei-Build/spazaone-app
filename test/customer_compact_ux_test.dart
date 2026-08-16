@@ -5,12 +5,48 @@ import 'package:pasella/models/reports/business_report_model.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/pages/ledger/widgets/entity_tab.dart';
+import 'package:pasella/pages/ledger/widgets/customer_tab.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 import 'package:pasella/shared/widgets/channel_capability_badge.dart';
 import 'package:provider/provider.dart';
 
 void main() {
+  testWidgets('customer action and search keep the Products page placement',
+      (tester) async {
+    final search = ValueNotifier<String?>(null);
+    final hasCustomers = ValueNotifier<bool>(false);
+    addTearDown(search.dispose);
+    addTearDown(hasCustomers.dispose);
+    var addTaps = 0;
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppModel>(
+        create: (_) => AppModel(),
+        child: MaterialApp(
+          home: Scaffold(
+            body: CustomerTab(
+              searchTextNotifier: search,
+              hasCustomersNotifier: hasCustomers,
+              onAddCustomer: () => addTaps++,
+              entitiesStream: () =>
+                  Stream<List<CustomerWithTransactions>>.value(const []),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('add-customer-action')), findsOneWidget);
+    expect(find.text('Search customers'), findsOneWidget);
+    expect(find.text('Add customer'), findsNothing);
+    expect(find.byType(FloatingActionButton), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('add-customer-action')));
+    expect(addTaps, 1);
+  });
+
   test('cached empty customer snapshots are not first-run truth', () {
     expect(
       customerSnapshotIsUnverified(isFromCache: true, isEmpty: true),
@@ -71,7 +107,7 @@ void main() {
     expect(find.text('Add your first customer'), findsOneWidget);
   });
 
-  testWidgets('customer row shows channel capability without a text pill', (
+  testWidgets('customer row shows channel and phone without a status pill', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(360, 720));
@@ -108,7 +144,9 @@ void main() {
       find.bySemanticsLabel(RegExp('WhatsApp available')),
       findsOneWidget,
     );
-    expect(find.text('WhatsApp'), findsNothing);
+    expect(find.text('WhatsApp · 0648370009'), findsOneWidget);
+    expect(find.text('R120,00'), findsOneWidget);
+    expect(find.text('Owes you'), findsOneWidget);
     expect(
       find.byTooltip('Reachable on WhatsApp — reminders will use WhatsApp.'),
       findsOneWidget,
@@ -225,7 +263,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Customer balance summary'), findsNothing);
-    expect(find.text('Outstanding balance'), findsOneWidget);
+    expect(find.text('Customers owe you'), findsOneWidget);
+    expect(find.text('Active customers'), findsOneWidget);
+    expect(find.text('Paid up'), findsOneWidget);
     expect(find.text('Customers to follow up'), findsOneWidget);
     expect(find.text('A Customer With A Very Long Name'), findsOneWidget);
     expect(find.text('+27648370009'), findsOneWidget);

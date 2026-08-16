@@ -6,11 +6,11 @@ import 'package:pasella/pages/sales/widgets/add_sale.dart';
 import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
 import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
-import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
+import 'package:pasella/pages/sales/widgets/online_commerce_hub.dart';
 import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
-import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
-import 'package:pasella/shared/widgets/secondary_view_picker.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
+import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
@@ -20,8 +20,6 @@ import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
-
-enum SalesViewType { cash, online }
 
 class SalesPage extends StatefulWidget {
   const SalesPage({Key? key}) : super(key: key);
@@ -35,6 +33,9 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   DateTime? _selectedDay = DateTime.now();
   DateTime? _startDate;
   DateTime? _endDate;
+  DateTime? _onlineSelectedDay = DateTime.now();
+  DateTime? _onlineStartDate;
+  DateTime? _onlineEndDate;
 
   late final TabController _mainController;
 
@@ -47,7 +48,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
   // `_dependents.isEmpty` assertion. We now resolve the canonical
   // instance via context.read in build().
 
-  SalesViewType _selectedSalesView = SalesViewType.cash;
   bool _marketingLoaded = false;
 
   @override
@@ -55,16 +55,16 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     super.initState();
     final intentBus = SalesIntentBus.instance;
     final intent = intentBus.take();
-    final initialMainIndex = intent == null ? 0 : 1;
+    final initialMainIndex = intent == null ? 0 : 2;
 
     _mainController = TabController(
-      length: 2,
+      length: 3,
       vsync: this,
       initialIndex: initialMainIndex,
     )..addListener(() {
         if (!mounted) return;
         setState(() {});
-        if (!_mainController.indexIsChanging && _mainController.index == 1) {
+        if (!_mainController.indexIsChanging && _mainController.index == 2) {
           _loadMarketing();
         }
       });
@@ -73,7 +73,7 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     intentBus.addListener(_consumePendingIntent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_mainController.index == 1) {
+      if (_mainController.index == 2) {
         _loadMarketing();
         return;
       }
@@ -86,8 +86,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     final intent = SalesIntentBus.instance.take();
     if (intent == null || !mounted) return;
 
-    if (_mainController.index != 1) {
-      _mainController.animateTo(1);
+    if (_mainController.index != 2) {
+      _mainController.animateTo(2);
     }
     _loadMarketing();
   }
@@ -139,6 +139,30 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     _salesVM.updateSelectedDateRange(DateTime(2000), DateTime.now());
   }
 
+  void _onOnlineDateSelected(DateTime selectedDay) {
+    setState(() {
+      _onlineSelectedDay = selectedDay;
+      _onlineStartDate = null;
+      _onlineEndDate = null;
+    });
+  }
+
+  void _onOnlineDateRangeSelected(DateTime start, DateTime end) {
+    setState(() {
+      _onlineStartDate = start;
+      _onlineEndDate = end;
+      _onlineSelectedDay = null;
+    });
+  }
+
+  void _clearOnlineDateFilter() {
+    setState(() {
+      _onlineSelectedDay = null;
+      _onlineStartDate = null;
+      _onlineEndDate = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // PAS-CRASH-_dependents: the root `PromotionsViewModel` is resolved
@@ -153,7 +177,6 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       animation: salesVM,
       builder: (context, _) {
         return Scaffold(
-          floatingActionButton: _buildFAB(salesVM),
           body: SafeArea(
             child: Padding(
               padding: LayoutConstants.padding10Horizontal,
@@ -162,146 +185,91 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
                   const SalesPageHeader(),
                   SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  ContextualTabBar(
+                  WorkspaceSectionTabs(
                     controller: _mainController,
-                    labelStyle: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.8,
-                    ),
                     tabs: const [
-                      Tab(text: 'Sales'),
-                      Tab(text: 'Marketing'),
+                      WorkspaceSectionTab(
+                        label: 'Recorded',
+                        semanticLabel: 'Recorded sales',
+                      ),
+                      WorkspaceSectionTab(
+                        label: 'Online',
+                        semanticLabel: 'Online orders',
+                      ),
+                      WorkspaceSectionTab(
+                        label: 'Marketing',
+                        semanticLabel: 'Marketing',
+                      ),
                     ],
-                    action: SalesHelpAction(
-                      showMarketingHelp: _mainController.index == 1,
-                    ),
                   ),
                   Expanded(
                     child: TabBarView(
                       controller: _mainController,
                       children: [
                         // --- SALES ---
-                        Column(
-                          children: [
-                            SizedBox(height: SizeConfig.heightMultiplier * 1),
-                            SecondaryViewPicker<SalesViewType>(
-                              key: const ValueKey('sales-view-picker'),
-                              semanticLabel: 'Sales view',
-                              value: _selectedSalesView,
-                              options: const [
-                                SecondaryViewOption(
-                                  value: SalesViewType.cash,
-                                  label: 'Cash',
-                                  icon: Icons.payments_outlined,
+                        SafeArea(
+                          top: false,
+                          left: false,
+                          right: false,
+                          bottom: true,
+                          child: SalesList(
+                            viewModel: salesVM,
+                            header: [
+                              WorkspaceContextHeader(
+                                title: 'Recorded sales',
+                                subtitle: 'Cash sales recorded in SpazaOne',
+                                action: FilledButton.icon(
+                                  key: const ValueKey('record-sale-action'),
+                                  onPressed: () =>
+                                      _openAddSale(salesVM, 'workspace_header'),
+                                  icon: const Icon(Icons.add, size: 18),
+                                  label: const Text('Record'),
                                 ),
-                                SecondaryViewOption(
-                                  value: SalesViewType.online,
-                                  label: 'Online',
-                                  icon: Icons.language_rounded,
-                                ),
-                              ],
-                              onSelected: (view) {
-                                setState(() {
-                                  _selectedSalesView = view;
-                                });
-                                if (_selectedSalesView == SalesViewType.cash) {
-                                  // Refresh using the current date/range.
-                                  if (_selectedDay != null) {
-                                    _salesVM.updateSelectedDate(_selectedDay!);
-                                  } else if (_startDate != null &&
-                                      _endDate != null) {
-                                    _salesVM.updateSelectedDateRange(
-                                      _startDate!,
-                                      _endDate!,
-                                    );
-                                  } else {
-                                    _salesVM.updateSelectedDate(DateTime.now());
-                                  }
-                                }
-                              },
-                            ),
-                            if (_selectedSalesView == SalesViewType.cash ||
-                                FeatureFlags.enableOnlineSales) ...[
+                              ),
                               DateFilterBar(
                                 selectedDay: _selectedDay,
                                 startDate: _startDate,
                                 endDate: _endDate,
-                                onDaySelect: (d) {
-                                  _onDateSelected(d);
-                                  if (_selectedSalesView ==
-                                      SalesViewType.cash) {
-                                    salesVM.updateSelectedDate(d);
-                                  }
+                                onDaySelect: (day) {
+                                  _onDateSelected(day);
+                                  salesVM.updateSelectedDate(day);
                                 },
-                                onRangeSelect: (s, e) {
-                                  _onDateRangeSelected(s, e);
-                                  if (_selectedSalesView ==
-                                      SalesViewType.cash) {
-                                    salesVM.updateSelectedDateRange(s, e);
-                                  }
+                                onRangeSelect: (start, end) {
+                                  _onDateRangeSelected(start, end);
+                                  salesVM.updateSelectedDateRange(start, end);
                                 },
                                 onClear: _clearDateFilter,
                               ),
-                            ],
-                            if (_selectedSalesView == SalesViewType.cash) ...[
                               SalesStatsCard(
                                 viewModel: salesVM,
                                 selectedDay: _selectedDay,
                                 startDate: _startDate,
                                 endDate: _endDate,
                               ),
+                              SizedBox(
+                                height: SizeConfig.heightMultiplier * 1.0,
+                              ),
                             ],
-                            SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-                            Expanded(
-                              child: _selectedSalesView == SalesViewType.cash
-                                  ? SafeArea(
-                                      top: false,
-                                      left: false,
-                                      right: false,
-                                      bottom: true,
-                                      child: SalesList(
-                                        viewModel: salesVM,
-                                        // PAS-AUTH-03: wire the FAB
-                                        // action into the empty-state
-                                        // CTA so a new merchant lands
-                                        // on a one-tap path to their
-                                        // first sale.
-                                        onAddSale: () {
-                                          TelemetryService.instance.capture(
-                                            const SaleStarted(
-                                              entryPoint: 'empty_state',
-                                            ),
-                                          );
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => AddSale(
-                                                salesViewModel: salesVM,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    )
-                                  : FeatureFlags.enableOnlineSales
-                                      ? SafeArea(
-                                          top: false,
-                                          left: false,
-                                          right: false,
-                                          bottom: true,
-                                          child: OnlineSalesList(
-                                            key: ValueKey<String>(
-                                              '${_selectedDay?.toIso8601String() ?? ''}|'
-                                              '${_startDate?.toIso8601String() ?? ''}|'
-                                              '${_endDate?.toIso8601String() ?? ''}',
-                                            ),
-                                            selectedDay: _selectedDay,
-                                            startDate: _startDate,
-                                            endDate: _endDate,
-                                          ),
-                                        )
-                                      : const _OnlineSalesComingSoon(),
-                            ),
-                          ],
+                          ),
                         ),
+
+                        // --- ONLINE ORDERS ---
+                        FeatureFlags.enableOnlineSales
+                            ? SafeArea(
+                                top: false,
+                                left: false,
+                                right: false,
+                                bottom: true,
+                                child: OnlineCommerceHub(
+                                  selectedDay: _onlineSelectedDay,
+                                  startDate: _onlineStartDate,
+                                  endDate: _onlineEndDate,
+                                  onDaySelect: _onOnlineDateSelected,
+                                  onRangeSelect: _onOnlineDateRangeSelected,
+                                  onClearDates: _clearOnlineDateFilter,
+                                ),
+                              )
+                            : const _OnlineSalesComingSoon(),
 
                         // --- MARKETING ---
                         MarketingOverview(
@@ -320,36 +288,13 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget? _buildFAB(SalesViewModel salesVM) {
-    if (_mainController.index == 0) {
-      if (_selectedSalesView == SalesViewType.cash &&
-          salesVM.cachedSales.isEmpty) {
-        return null;
-      }
-      return _selectedSalesView == SalesViewType.cash
-          ? FloatingActionButton.extended(
-              heroTag: 'sales-cash-fab',
-              onPressed: () {
-                TelemetryService.instance.capture(
-                  const SaleStarted(entryPoint: 'fab'),
-                );
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => AddSale(salesViewModel: salesVM),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.add_outlined, color: Colors.white),
-              label: const Text(
-                'Record Sale',
-                style: TextStyle(color: Colors.white),
-              ),
-            )
-          : null;
-    }
-    // Marketing owns a prominent inline product CTA. Keeping a second FAB
-    // would create two competing starts for the same simple journey.
-    return null;
+  void _openAddSale(SalesViewModel salesVM, String entryPoint) {
+    TelemetryService.instance.capture(SaleStarted(entryPoint: entryPoint));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddSale(salesViewModel: salesVM),
+      ),
+    );
   }
 }
 
@@ -379,14 +324,15 @@ class _OnlineSalesComingSoon extends StatelessWidget {
             ),
             const SizedBox(height: LayoutConstants.spaceLg),
             const Text(
-              'Online sales are coming soon',
+              'Online selling is currently off',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: LayoutConstants.spaceSm),
             Text(
-              'Spaza One is finalising a payments partnership. Until then, '
-              'take orders on WhatsApp and record completed sales manually.',
+              'Your existing sales records are unchanged. Spaza One will show '
+              'each online capability here when it is enabled and ready for '
+              'your store.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey.shade700,

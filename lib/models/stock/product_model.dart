@@ -25,6 +25,7 @@ class Product {
   int? supplierShippingCostMinor;
   int? markupMinor;
   int? sellPriceMinor;
+  String? dropshipListingState;
 
   Product({
     this.id,
@@ -53,6 +54,7 @@ class Product {
     this.supplierShippingCostMinor,
     this.markupMinor,
     this.sellPriceMinor,
+    this.dropshipListingState,
   });
 
   static double? _double(Object? value) =>
@@ -90,6 +92,7 @@ class Product {
         supplierShippingCostMinor: _int(json["supplierShippingCostMinor"]),
         markupMinor: _int(json["markupMinor"]),
         sellPriceMinor: _int(json["sellPriceMinor"]),
+        dropshipListingState: json["dropshipListingState"] as String?,
       );
 
   Map<String, dynamic> toMap() => {
@@ -120,5 +123,7 @@ class Product {
           "supplierShippingCostMinor": supplierShippingCostMinor,
         if (markupMinor != null) "markupMinor": markupMinor,
         if (sellPriceMinor != null) "sellPriceMinor": sellPriceMinor,
+        if (dropshipListingState != null)
+          "dropshipListingState": dropshipListingState,
       };
 }

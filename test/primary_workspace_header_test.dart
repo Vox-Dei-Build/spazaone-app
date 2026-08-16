@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
 import 'package:pasella/shared/widgets/page_header.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/shared/widgets/wallet_balance_pill.dart';
 
 void main() {
@@ -70,7 +71,7 @@ void main() {
           expect(find.bySemanticsLabel('Spaza One'), findsOneWidget);
           expect(
             find.bySemanticsLabel(
-              RegExp('shared campaign credits.*Low balance.*Top Up'),
+              RegExp('Shared SpazaOne balance.*Low balance.*Add money'),
             ),
             findsOneWidget,
           );
@@ -127,10 +128,23 @@ void main() {
           expect(shop, findsOneWidget);
           expect(tester.getSize(store).height, greaterThanOrEqualTo(48));
           expect(tester.getSize(shop).height, greaterThanOrEqualTo(48));
-          expect(
-            tester.getTopLeft(store).dx,
-            lessThan(tester.getTopLeft(shop).dx),
-          );
+          if (textScale >= 2) {
+            expect(tester.getSize(shop).width, greaterThanOrEqualTo(104));
+          } else {
+            expect(tester.getSize(shop).width, 104);
+          }
+          expect(find.text('Shop'), findsOneWidget);
+          if (textScale >= 2) {
+            expect(
+              tester.getTopLeft(shop).dy,
+              greaterThanOrEqualTo(tester.getBottomLeft(store).dy),
+            );
+          } else {
+            expect(
+              tester.getTopLeft(store).dx,
+              lessThan(tester.getTopLeft(shop).dx),
+            );
+          }
         },
       );
     }
@@ -162,7 +176,7 @@ void main() {
     );
 
     final store = find.bySemanticsLabel(
-      'Current store, $storeName. Open stores and team',
+      'Current store, $storeName. Open your shop',
     );
     final shop = find.bySemanticsLabel(
       'Open $storeName WhatsApp ordering link',
@@ -174,6 +188,37 @@ void main() {
     await tester.tap(shop);
     expect(storeTaps, 1);
     expect(shopTaps, 1);
+  });
+
+  testWidgets('incomplete setup progress remains visible at large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 260);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: WorkspaceHeaderBar(
+                storeName: storeName,
+                setupProgressLabel: '2/6 setup',
+                onStorePressed: () {},
+                onShopPressed: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('2/6 setup'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('store context becomes read-only when switching is unavailable', (
@@ -221,5 +266,99 @@ void main() {
       find.bySemanticsLabel('Open your WhatsApp ordering link'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('global and store chrome share one row in phone landscape', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(800, 360),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(10),
+              child: ResponsiveWorkspaceHeaderLayout(
+                appHeader: PageHeader(
+                  walletWidget: const WalletBalancePill(
+                    presentation: WalletBalancePresentation(
+                      balance: 65,
+                      salesBalance: 0,
+                      isShared: false,
+                    ),
+                  ),
+                  connectivityWidget: const SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.cloud_done_outlined),
+                  ),
+                  onSettingsTap: () {},
+                ),
+                storeHeader: WorkspaceHeaderBar(
+                  storeName: storeName,
+                  setupProgressLabel: '2/6 setup',
+                  onStorePressed: () {},
+                  onShopPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('landscape-workspace-header')),
+      findsOneWidget,
+    );
+    expect(find.text('Shop'), findsOneWidget);
+    expect(find.text('2/6 setup'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ordinary landscape keeps store and shop link on one row', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(size: Size(800, 360)),
+          child: Scaffold(
+            body: SizedBox(
+              width: 280,
+              child: WorkspaceHeaderBar(
+                storeName: 'My Store',
+                setupProgressLabel: '5/6 setup',
+                onStorePressed: () {},
+                onShopPressed: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final store = find.byKey(const ValueKey('workspace-store-action'));
+    final shop = find.byKey(const ValueKey('workspace-shop-action'));
+    expect(find.text('5/6'), findsOneWidget);
+    expect(
+      tester.getTopLeft(shop).dy,
+      tester.getTopLeft(store).dy,
+    );
+    expect(tester.getSize(shop).width, 104);
+    expect(tester.takeException(), isNull);
   });
 }

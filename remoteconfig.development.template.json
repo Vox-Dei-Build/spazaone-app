@@ -1,0 +1,140 @@
+{
+  "parameters": {
+    "FEATURE_TOP_UP_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Show Campaign Credits while online checkout remains independently gated."
+    },
+    "FEATURE_TOP_UP_PAYSTACK_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development kill switch for Campaign Credit Paystack checkout."
+    },
+    "FEATURE_MULTI_STORE_OPERATORS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Keep the current production multi-store and operator experience enabled in development."
+    },
+    "FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Use the current single phone-number entry experience on clean development installs."
+    },
+    "FEATURE_DEFER_AUTH_CONSENT_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Defer telemetry consent until after development authentication, matching the current onboarding UX."
+    },
+    "FEATURE_OTP_AUTOSUBMIT_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Enable the current OTP auto-submit experience in development."
+    },
+    "FEATURE_OTP_RESEND_IN_DIALOG_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Keep OTP resend inside the current development verification dialog."
+    },
+    "FEATURE_MERCHANT_ONBOARDING_INTRO_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Show the current merchant setup introduction for new development profiles."
+    },
+    "FEATURE_ONLINE_SALES_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development presentation switch for the Online commerce hub."
+    },
+    "FEATURE_OWNED_ORDER_PAYMENTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for owned-stock online payments."
+    },
+    "FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for customer-account payments."
+    },
+    "FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for customer payment requests. Server delivery remains independently gated."
+    },
+    "FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Development client rollback switch for supplier-product online payments."
+    },
+    "FEATURE_BANKING_DETAILS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Show Payment Setup for development merchant verification QA."
+    },
+    "FEATURE_BALANCE_PAYOUT_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Legacy payout requests remain disabled in the development lane."
+    },
+    "FEATURE_MOVE_FUNDS_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Legacy wallet movement remains disabled."
+    },
+    "FEATURE_CASH_ADVANCE_ENABLED": {
+      "defaultValue": {
+        "value": "false"
+      },
+      "description": "Cash Advance is outside the commerce release."
+    }
+  },
+  "parameterGroups": {
+    "messaging_pricing": {
+      "description": "Development messaging prices mirrored from the approved production pricing inputs for exact billing QA.",
+      "parameters": {
+        "USD_SMS_REMINDER_PRICE": {
+          "defaultValue": { "value": "0.0757" }
+        },
+        "USD_SMS_PAYMENT_PRICE": {
+          "defaultValue": { "value": "0.0757" }
+        },
+        "USD_WHATSAPP_UTILITY_PRICE": {
+          "defaultValue": { "value": "0.0076" }
+        },
+        "USD_WHATSAPP_PROMOTIONAL_PRICE": {
+          "defaultValue": { "value": "0.0379" }
+        },
+        "MARKUP_SMS_PERCENTAGE": {
+          "defaultValue": { "value": "26" }
+        },
+        "MARKUP_WHATSAPP_PERCENTAGE": {
+          "defaultValue": { "value": "45" }
+        },
+        "MARKUP_PROMOTIONAL_PERCENTAGE": {
+          "defaultValue": { "value": "45" }
+        },
+        "USD_ZAR_EXCHANGE_RATE": {
+          "defaultValue": { "value": "18.25" }
+        }
+      }
+    }
+  },
+  "version": {
+    "description": "SpazaOne Development fail-closed commerce defaults"
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 
 /// PAS-AUTH-03: A reusable empty-state widget that mirrors the Stock
 /// onboarding pattern (icon → headline → subtitle → primary CTA →
@@ -64,75 +65,74 @@ class EmptyStateOnboarding extends StatelessWidget {
       if (url.isNotEmpty) tutorialUrl = url;
     }
 
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.imageSizeMultiplier * 6,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: SizeConfig.imageSizeMultiplier * 18,
-              color: Colors.grey.withOpacity(0.5),
+    return ScrollableCenteredContent(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.imageSizeMultiplier * 6,
+        vertical: 12,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: SizeConfig.imageSizeMultiplier * 18,
+            color: Colors.grey.withOpacity(0.5),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 2),
+          Text(
+            headline,
+            style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 2.2,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            textAlign: TextAlign.center,
+          ),
+          if (subtitle != null) ...[
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
             Text(
-              headline,
+              subtitle!,
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2.2,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                fontSize: SizeConfig.textMultiplier * 1.6,
+                color: Colors.grey[700],
+                height: 1.3,
               ),
               textAlign: TextAlign.center,
             ),
-            if (subtitle != null) ...[
-              SizedBox(height: SizeConfig.heightMultiplier * 1),
-              Text(
-                subtitle!,
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.6,
-                  color: Colors.grey[700],
-                  height: 1.3,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-            if (hasCta) ...[
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
-              ElevatedButton.icon(
-                onPressed: onCtaTap,
-                icon: Icon(ctaIcon),
-                label: Text(ctaLabel!),
-                style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.imageSizeMultiplier * 6,
-                    vertical: SizeConfig.heightMultiplier * 1.5,
-                  ),
-                ),
-              ),
-            ],
-            if (tutorialUrl != null) ...[
-              SizedBox(height: SizeConfig.heightMultiplier * 1),
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => LoomVideoPage(
-                        loomUrl: tutorialUrl!,
-                        title: tutorialTitle,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.play_circle_outline),
-                label: const Text('Watch a 2-min walkthrough'),
-              ),
-            ],
           ],
-        ),
+          if (hasCta) ...[
+            SizedBox(height: SizeConfig.heightMultiplier * 3),
+            ElevatedButton.icon(
+              onPressed: onCtaTap,
+              icon: Icon(ctaIcon),
+              label: Text(ctaLabel!),
+              style: ElevatedButton.styleFrom(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.imageSizeMultiplier * 6,
+                  vertical: SizeConfig.heightMultiplier * 1.5,
+                ),
+              ),
+            ),
+          ],
+          if (tutorialUrl != null) ...[
+            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => LoomVideoPage(
+                      loomUrl: tutorialUrl!,
+                      title: tutorialTitle,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.play_circle_outline),
+              label: const Text('Watch a 2-min walkthrough'),
+            ),
+          ],
+        ],
       ),
     );
   }

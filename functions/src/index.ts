@@ -11,6 +11,7 @@
 
 /* ---- Merchant Android App ---- */
 export * from "./config/main";
+export * from "./config/environment";
 export * from "./ledger/ledger";
 export * from "./ledger/onTransactionAdded";
 export * from "./reports/business_metrics";
@@ -26,11 +27,50 @@ export * from "./stock/scheduledTasks/scheduledLowStockCheck";
 export * from "./payments/paystack/createPaystackTransaction";
 export * from "./payments/paystack/verifyPaystackTransaction";
 export * from "./payments/paystack/getPaystackQuote";
+export * from "./payments/v2/admin";
+export * from "./payments/v2/reconciliation";
+export * from "./payments/v2/settlementStatus";
+export {
+  createCampaignTopupV2,
+  getCampaignTopupQuoteV2,
+  getCampaignTopupStatusV2,
+} from "./payments/v2/campaignTopup";
+export { expireOwnedInventoryReservations } from "./payments/v2/inventoryReservations";
+export { createOwnedOrderPaymentV2 } from "./payments/v2/ownedOrders";
+export {
+  prepareMerchantSettlementProfileV2,
+  reviewMerchantSettlementProfileV2,
+} from "./payments/v2/merchantProfiles";
+export { getMerchantPaymentOverviewV2 } from "./payments/v2/merchantOverview";
+export {
+  reconcileSupplierTrackingV2,
+  reconcileSupplierTrackingV2OnDemand,
+  resolveSupplierFulfilmentReviewV2,
+  retrySupplierFulfilmentsV2,
+} from "./payments/v2/supplierOrders";
+export { expireSupplierFundingReservations } from "./payments/v2/supplierFunding";
+export { retryPaystackRefundsV2 } from "./payments/v2/refunds";
+export {
+  createAccountSettlementLinkV2,
+  createRepaymentPlanV2,
+  expireAccountSettlementIntents,
+} from "./payments/v2/accountSettlements";
+export {
+  getCustomerPaymentRequestOverviewV1,
+  sendCustomerPaymentRequestV1,
+  getCustomerPaymentRequestStatusV1,
+  getCustomerPaymentRequestContextV1BotHttp,
+  claimCustomerPaymentRequestDeliveryV1BotHttp,
+  recordCustomerPaymentRequestDeliveryV1BotHttp,
+  retryCustomerPaymentRequestDeliveries,
+  recoverExpiredPaymentRequestReservations,
+} from "./payments/v2/customerPaymentRequests";
 /* Bot */
 export * from "./customer_hub/fetchCustomerAndMerchantDetails";
 export * from "./customer_hub/sendPromoToActiveCustomers";
 export * from "./bots/twillio-whatsapp-notification-bot";
 export * from "./bots/botpress-conversation-proxy";
+export * from "./bots/botpress-voice";
 
 /* ---- Customer Bot ---- */
 export * from "./community/receive-whatsapp";
@@ -59,6 +99,7 @@ export * from "./merchant_hub/productPromotionOrder";
 export * from "./merchant_hub/deleteTwilioTemplate";
 export * from "./merchant_hub/runMerchantPromotion";
 export * from "./services/deleteUserAccount";
+export * from "./services/getMessagingPricing";
 export * from "./wallet/campaignCredits";
 
 /* ---- Ecommerce ---- */
@@ -87,6 +128,10 @@ export * from "./ecommerce/getOnlineSalesFromLedger";
 export * from "./ecommerce/getShopContextBotHttp";
 export * from "./ecommerce/getMerchantOrderingLink";
 export * from "./ecommerce/getMerchantCatalogBotHttp";
+export {
+  getMerchantOrderingOptionsV1,
+  updateMerchantOrderingOptionsV1,
+} from "./ecommerce/merchantOrderingOptions";
 /* ---- Dropshipping commerce (separate from manual Sales) ---- */
 export {
   searchCjSupplierCatalog,
@@ -105,11 +150,18 @@ export {
   createDropshipListing as createDropshipListingV2,
 } from "./commerce/createDropshipListing";
 export {
+  updateDropshipListing,
+  updateDropshipListing as updateDropshipListingV2,
+} from "./commerce/updateDropshipListing";
+export {
   createCommerceOrder,
   verifyCommercePaystackTransaction,
   getCommerceOrderStatus,
 } from "./commerce/payment";
-export { prepareCommerceCheckout } from "./commerce/prepareCommerceCheckout";
+export {
+  prepareCommerceCheckout,
+  preparePublicCommerceCheckout,
+} from "./commerce/prepareCommerceCheckout";
 // Keep the Paystack endpoint deployed for forward compatibility, but every
 // commerce payment transition remains fail-closed behind
 // COMMERCE_PAYMENTS_ENABLED and the stored provider/reference binding.

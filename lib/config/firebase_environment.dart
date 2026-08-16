@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:pasella/config/spaza_environment.dart';
 
 /// Compile-time Firebase isolation for local end-to-end QA.
 ///
@@ -25,6 +26,21 @@ class FirebaseEnvironment {
     defaultValue: '',
   );
 
+  /// Mobile flavors carry their Firebase identity in the native Android and
+  /// iOS configuration selected by Gradle/Xcode. Using the `.env`-backed
+  /// generated options on those platforms would bypass that flavor selection
+  /// and can pair a development package with the production Firebase app.
+  static bool shouldUseNativePlatformOptions({
+    required bool isWeb,
+    required TargetPlatform platform,
+    bool? emulatorMode,
+  }) {
+    final usesEmulators = emulatorMode ?? useEmulators;
+    return !usesEmulators &&
+        !isWeb &&
+        (platform == TargetPlatform.android || platform == TargetPlatform.iOS);
+  }
+
   static FirebaseOptions options(FirebaseOptions production) {
     return resolveOptions(
       production,
@@ -38,8 +54,21 @@ class FirebaseEnvironment {
     FirebaseOptions production, {
     required bool emulatorMode,
     required String projectId,
+    SpazaEnvironment? runtimeEnvironment,
   }) {
-    if (!emulatorMode) return production;
+    final environment = runtimeEnvironment ?? SpazaRuntimeEnvironment.current;
+    if (!emulatorMode) {
+      SpazaRuntimeEnvironment.validateFirebaseProject(
+        environment: environment,
+        projectId: production.projectId,
+      );
+      return production;
+    }
+    if (environment != SpazaEnvironment.local) {
+      throw StateError(
+        'Firebase emulators require SPAZAONE_ENVIRONMENT=local.',
+      );
+    }
     final normalizedProjectId = projectId.trim();
     validateEmulatorConfiguration(
       projectId: normalizedProjectId,
@@ -75,6 +104,11 @@ class FirebaseEnvironment {
   }
 
   static Future<void> connect() async {
+    final initializedProjectId = Firebase.app().options.projectId;
+    SpazaRuntimeEnvironment.validateFirebaseProject(
+      environment: SpazaRuntimeEnvironment.current,
+      projectId: initializedProjectId,
+    );
     if (!useEmulators) return;
     validateEmulatorConfiguration(
       projectId: emulatorProjectId,
@@ -82,7 +116,7 @@ class FirebaseEnvironment {
     );
     validateInitializedProject(
       expectedProjectId: emulatorProjectId,
-      actualProjectId: Firebase.app().options.projectId,
+      actualProjectId: initializedProjectId,
     );
     await FirebaseAuth.instance.useAuthEmulator(emulatorHost, 9099);
     FirebaseFirestore.instance.useFirestoreEmulator(emulatorHost, 8080);

@@ -1,220 +1,376 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
-import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
-import 'package:pasella/pages/wallet/widgets/payout_request.dart';
-import 'package:pasella/pages/wallet/tabs/cash_advance_tab.dart';
-import 'package:pasella/utils/feature_flags.dart';
+import 'package:intl/intl.dart';
+import 'package:pasella/constants/constants.dart';
+import 'package:pasella/services/payment_setup_service.dart';
+import 'package:pasella/utils/currency_util.dart';
+import 'package:shimmer/shimmer.dart';
 
-class SalesBalanceTab extends StatefulWidget {
-  const SalesBalanceTab({super.key});
-
-  @override
-  State<SalesBalanceTab> createState() => _SalesBalanceTabState();
+String merchantSettlementStatusLabel(MerchantSettlement settlement) {
+  if (settlement.testOnly) return 'Test only — not sent to bank';
+  String date(int millis) => DateFormat('d MMM yyyy').format(
+        DateTime.fromMillisecondsSinceEpoch(millis).toLocal(),
+      );
+  return switch (settlement.status.trim().toLowerCase()) {
+    'paid' || 'completed' => settlement.providerSettlementAtMs > 0
+        ? 'Paid · ${date(settlement.providerSettlementAtMs)}'
+        : 'Paid',
+    'pending' || 'processing' => settlement.expectedSettlementAtMs > 0
+        ? 'Expected by ${date(settlement.expectedSettlementAtMs)}'
+        : 'Processing',
+    'failed' || 'review_required' => 'Needs attention',
+    _ => 'Status unavailable',
+  };
 }
 
-enum SalesView { sales, cashAdvance }
+class MoneyPayoutsSection extends StatelessWidget {
+  const MoneyPayoutsSection({
+    super.key,
+    required this.overview,
+    this.loading = false,
+    this.hasError = false,
+    this.onSetup,
+  });
 
-class _SalesBalanceTabState extends State<SalesBalanceTab> {
-  final WalletViewModel walletVM = WalletViewModel();
-  SalesView _selected = SalesView.sales;
+  final MerchantPaymentOverview? overview;
+  final bool loading;
+  final bool hasError;
+  final VoidCallback? onSetup;
+
+  String _money(int minor) => CurrencyUtil.format(minor / 100);
 
   @override
   Widget build(BuildContext context) {
-    Widget content;
-    if (_selected == SalesView.cashAdvance) {
-      content = const CashAdvanceTab();
-    } else {
-      content = StreamBuilder<WalletState>(
-        stream: walletVM.walletStateStream,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final walletState = snapshot.data!;
-          final double salesBalance = walletState.salesVirtualBalance;
-          final bool canWithdraw = salesBalance > 0 &&
-              walletState.hasBankAccount &&
-              !walletState.hasPendingPayout;
-          // PAS-UX-10: see cash_advance_tab — Lorem-Picsum hero image
-          // replaced with branded colour band so the merchant
-          // payments surface stops fingerprinting picsum.photos and
-          // stops showing random stock photos as the visual for a
-          // payout card.
-          const heroColor = Color(0xff2B325F);
-
-          return SingleChildScrollView(
-            padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildCard(
-                  heroColor: heroColor,
-                  heroIcon: Icons.account_balance_outlined,
-                  title: 'Withdraw',
-                  description: 'Withdraw your sales balance to your bank',
-                  primaryBtn: FilledButton.icon(
-                    onPressed: canWithdraw
-                        ? () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const PayoutPage(),
-                              ),
-                            );
-                          }
-                        : null,
-                    icon: Icon(Icons.payments_outlined,
-                        size: SizeConfig.textMultiplier * 1.5),
-                    label: Text("Withdraw",
-                        style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.5)),
-                  ),
-                  secondaryBtn: FeatureFlags.enableMoveFunds
-                      ? OutlinedButton.icon(
-                          onPressed: salesBalance > 0
-                              ? () => walletVM.transferToVirtualBalance(
-                                  context, salesBalance)
-                              : null,
-                          icon: Icon(Icons.swap_horiz,
-                              size: SizeConfig.textMultiplier * 1.5),
-                          label: Text("Move funds",
-                              style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.5)),
-                        )
-                      : const SizedBox.shrink(),
-                  footer: !canWithdraw
-                      ? Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(
-                            walletState.hasPendingPayout
-                                ? 'Pending payout request.'
-                                : walletState.salesVirtualBalance <= 0
-                                    ? 'Insufficient balance.'
-                                    : 'Please add banking details first.',
-                            style: TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: SizeConfig.textMultiplier * 1.5),
-                          ),
-                        )
-                      : null,
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    }
-
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (FeatureFlags.enableCashAdvance)
-          Theme(
-            data: Theme.of(context).copyWith(
-              segmentedButtonTheme: SegmentedButtonThemeData(
-                style: ButtonStyle(
-                  backgroundColor: MaterialStateProperty.resolveWith(
-                    (states) => states.contains(MaterialState.selected)
-                        ? Colors.green
-                        : Colors.white,
-                  ),
-                  foregroundColor: MaterialStateProperty.resolveWith(
-                    (states) => states.contains(MaterialState.selected)
-                        ? Colors.white
-                        : Colors.black87,
-                  ),
-                ),
-              ),
+        if (loading)
+          const _MoneyPayoutsLoading()
+        else if (hasError || overview == null)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Padding(
-              padding:
-                  EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier),
-              child: SegmentedButton<SalesView>(
-                segments: const [
-                  ButtonSegment(
-                    value: SalesView.sales,
-                    label: Text('Sales'),
-                    icon: Icon(Icons.monetization_on),
-                  ),
-                  ButtonSegment(
-                    value: SalesView.cashAdvance,
-                    label: Text('Cash Advance'),
-                    icon: Icon(Icons.account_balance),
-                  ),
-                ],
-                selected: <SalesView>{_selected},
-                onSelectionChanged: (selection) {
-                  setState(() => _selected = selection.first);
-                },
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Online payment details are temporarily unavailable. Pull down to try again.',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
               ),
             ),
+          )
+        else ...[
+          _OnlinePaymentSetupBlock(overview: overview!, onSetup: onSetup),
+          const SizedBox(height: 24),
+          const Divider(height: 1),
+          const SizedBox(height: 22),
+          Text(
+            'Online sales payouts',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: kTertiaryColor,
+                  fontWeight: FontWeight.w800,
+                ),
           ),
-        Expanded(child: content),
+          const SizedBox(height: 14),
+          if (overview!.outstandingSettlementMinor > 0 ||
+              overview!.testOnlySettlementMinor > 0) ...[
+            _PayoutTotals(overview: overview!),
+            const SizedBox(height: 14),
+          ],
+          if (overview!.settlements.isEmpty)
+            const _EmptyPayouts()
+          else
+            DecoratedBox(
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: Color(0xFFE4E7E5)),
+                ),
+              ),
+              child: Column(
+                children: [
+                  for (final payout in overview!.settlements)
+                    _PayoutRow(
+                      orderId: payout.orderId,
+                      amount: _money(payout.merchantNetProceedsMinor),
+                      status: merchantSettlementStatusLabel(payout),
+                    ),
+                ],
+              ),
+            ),
+        ],
       ],
     );
   }
+}
 
-  Widget _buildCard({
-    required Color heroColor,
-    required IconData heroIcon,
-    required String title,
-    required String description,
-    required Widget primaryBtn,
-    required Widget secondaryBtn,
-    Widget? footer,
-  }) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 4,
-      margin: EdgeInsets.only(bottom: SizeConfig.heightMultiplier * 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+class _MoneyPayoutsLoading extends StatelessWidget {
+  const _MoneyPayoutsLoading();
+
+  @override
+  Widget build(BuildContext context) => Shimmer.fromColors(
+        key: const ValueKey('online-payments-loading-shimmer'),
+        baseColor: Colors.black12,
+        highlightColor: Colors.black26,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: 132,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            const SizedBox(height: 24),
+            for (var index = 0; index < 3; index++) ...[
+              Container(
+                height: 66,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              if (index < 2) const SizedBox(height: 10),
+            ],
+          ],
+        ),
+      );
+}
+
+class _PayoutTotals extends StatelessWidget {
+  const _PayoutTotals({required this.overview});
+
+  final MerchantPaymentOverview overview;
+
+  @override
+  Widget build(BuildContext context) {
+    String money(int value) => CurrencyUtil.format(value / 100);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: kHighLightColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (overview.outstandingSettlementMinor > 0)
+              _LineTotal(
+                label: 'Outstanding payouts',
+                value: money(overview.outstandingSettlementMinor),
+              ),
+            if (overview.testOnlySettlementMinor > 0) ...[
+              if (overview.outstandingSettlementMinor > 0)
+                const SizedBox(height: 8),
+              _LineTotal(
+                label: 'Test only',
+                value: money(overview.testOnlySettlementMinor),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Test payments are not sent to your bank.',
+                style: TextStyle(color: kSecondaryAccent),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LineTotal extends StatelessWidget {
+  const _LineTotal({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Row(
         children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Container(
-              height: 120,
-              width: double.infinity,
-              color: heroColor,
-              child: Icon(
-                heroIcon,
-                size: 56,
-                color: Colors.white.withOpacity(0.9),
+          Expanded(child: Text(label)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      );
+}
+
+class _OnlinePaymentSetupBlock extends StatelessWidget {
+  const _OnlinePaymentSetupBlock({required this.overview, this.onSetup});
+
+  final MerchantPaymentOverview overview;
+  final VoidCallback? onSetup;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = overview.profile;
+    final pending = profile.bankVerificationStatus == 'pending_review';
+    final hasBank = profile.maskedAccount.isNotEmpty;
+    final title = overview.enabled
+        ? 'Ready for online sales'
+        : pending
+            ? 'We’re checking your bank details'
+            : 'Get paid for online sales';
+    final body = overview.enabled
+        ? 'Customers can pay online and your share is sent to the bank account below.'
+        : pending
+            ? 'We’ll let you know when your bank account is ready.'
+            : 'Add your bank account so customers can pay online and you can receive your money.';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: kHighLightColor,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.account_balance_outlined,
+              color: kPrimaryColor,
+              size: 26,
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: kTertiaryColor,
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          body,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: kSecondaryAccent,
+                height: 1.45,
+              ),
+        ),
+        if (hasBank) ...[
+          const SizedBox(height: 16),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: kHighLightColor,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  const Icon(Icons.lock_outline,
+                      color: kPrimaryColor, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${profile.bankName} · ${profile.maskedAccount}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+        ],
+        if (!overview.enabled && !pending && onSetup != null) ...[
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: onSetup,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text('Set up bank account'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _EmptyPayouts extends StatelessWidget {
+  const _EmptyPayouts();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.receipt_long_outlined, color: kSecondaryAccent),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'No payouts yet',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Your payouts will appear here after you start receiving online payments.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: kSecondaryAccent,
+                      height: 1.4,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PayoutRow extends StatelessWidget {
+  const _PayoutRow({
+    required this.orderId,
+    required this.amount,
+    required this.status,
+  });
+
+  final String orderId;
+  final String amount;
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final shortOrderId =
+        orderId.substring(0, orderId.length < 8 ? orderId.length : 8);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          const Icon(Icons.south_west_rounded, color: kPrimaryColor),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  'Order $shortOrderId',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier),
+                const SizedBox(height: 3),
                 Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.6,
-                    color: Colors.black87,
-                  ),
+                  status,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: kSecondaryAccent,
+                      ),
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                Row(
-                  children: [
-                    Expanded(child: primaryBtn),
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-                    Expanded(child: secondaryBtn),
-                  ],
-                ),
-                if (footer != null) footer,
               ],
             ),
           ),
+          const SizedBox(width: 12),
+          Text(amount, style: const TextStyle(fontWeight: FontWeight.w800)),
         ],
       ),
     );

@@ -75,6 +75,7 @@ function cachedProduct(index) {
       variant,
       originCountryCode: "CN",
       stock: 20,
+      quantity: 1,
       logisticName: "CJPacket",
       logisticAging: "10-18 days",
       productCostUsdMinor: 500,

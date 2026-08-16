@@ -3,6 +3,7 @@ import { functions, db } from "../../config/main";
 import axios from "axios";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import { normalizePaystackSecret } from "./paystackSecurity";
 import { authenticateFirebaseRequest } from "../../security/requestAuth";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
 
@@ -50,10 +51,11 @@ export const createPaystackTransaction = functions.https.onRequest(
       dotenv.config({ path: path.join(process.cwd(), ".env.local") });
       dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-      const PAYSTACK_SECRET_KEY =
+      const PAYSTACK_SECRET_KEY = normalizePaystackSecret(
         process.env.PAYSTACK_SECRET_KEY ||
-        process.env.PAYSTACK_TEST_SECRET_KEY ||
-        (functions.config().paystack?.secret as string | undefined);
+          process.env.PAYSTACK_TEST_SECRET_KEY ||
+          (functions.config().paystack?.secret as string | undefined),
+      );
 
       if (!PAYSTACK_SECRET_KEY) {
         res.status(500).json({ error: "Missing PAYSTACK_SECRET_KEY" });

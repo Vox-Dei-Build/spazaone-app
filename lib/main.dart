@@ -13,6 +13,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/config/firebase_options.dart';
 import 'package:pasella/config/firebase_environment.dart';
+import 'package:pasella/config/spaza_environment.dart';
 import 'package:pasella/models/common/queued_sms.dart';
 import 'package:pasella/models/common/sms_event.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
@@ -32,6 +33,7 @@ import 'package:pasella/services/consent_service.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/fcm_service.dart';
+import 'package:pasella/services/environment_contract_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -409,7 +411,7 @@ void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
   final path = uri.path;
   if (!MyApp.knownRoutes.contains(path)) {
     CrashService.instance.recordNonFatal(
-      StateError('Unknown notification route: $path'),
+      StateError('Unknown notification route'),
       StackTrace.current,
       reason: 'notification route not registered',
       context: {'route': route ?? ''},
@@ -531,11 +533,18 @@ Future<void> _initializeCoreServices() async {
   await dotenv.load();
 
   if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: FirebaseEnvironment.options(
-        DefaultFirebaseOptions.currentPlatform,
-      ),
-    );
+    if (FirebaseEnvironment.shouldUseNativePlatformOptions(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    )) {
+      await Firebase.initializeApp();
+    } else {
+      await Firebase.initializeApp(
+        options: FirebaseEnvironment.options(
+          DefaultFirebaseOptions.currentPlatform,
+        ),
+      );
+    }
   }
   await FirebaseEnvironment.connect();
 
@@ -549,6 +558,8 @@ Future<void> _initializeCoreServices() async {
       appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
     );
   }
+
+  await EnvironmentContractService.verify();
 
   // `useFirestoreEmulator` installs a host + plaintext transport in the SDK
   // settings. Replacing the settings object afterwards resets that host and
@@ -603,7 +614,23 @@ Future<void> _initializeCoreServices() async {
   await ConsentService.instance.init();
   if (FirebaseEnvironment.useEmulators) return;
   await CrashService.instance.init();
+  final crashPackageInfo = await PackageInfo.fromPlatform();
+  await CrashService.instance.configureBuild(
+    version: crashPackageInfo.version,
+    buildNumber: crashPackageInfo.buildNumber,
+  );
+  await CrashService.instance.setStoreState(
+    present: StoreSession.instance.storeId.isNotEmpty,
+  );
+  StoreSession.instance.addListener(() {
+    unawaited(CrashService.instance.setStoreState(
+      present: StoreSession.instance.storeId.isNotEmpty,
+    ));
+  });
   await CrashService.instance.applyConsent(ConsentService.instance.state);
+  await CrashService.instance.recordDevelopmentDiagnosticProbe(
+    crashReportingConsented: ConsentService.instance.state.effectiveCrash,
+  );
   await TelemetryService.instance.init();
 
   // Review nudge state is local-only (Hive `appBox`), independent of
@@ -611,8 +638,8 @@ Future<void> _initializeCoreServices() async {
   // even if the merchant has opted out of telemetry. Init must run after
   // `Hive.openBox('appBox')` above and is safe before sign-in because it
   // does not touch FirebaseAuth.
-  // Tag Crashlytics with the merchant id (and clear it on sign-out) so
-  // crash reports can be grouped per merchant without leaking PII.
+  // Track only coarse auth state. Account and store identifiers never enter
+  // Crashlytics.
   FirebaseAuth.instance.authStateChanges().listen((user) {
     CrashService.instance.setMerchantId(user?.uid);
     if (user == null) {
@@ -790,7 +817,7 @@ class MyApp extends StatefulWidget {
   @visibleForTesting
   static Route<dynamic> buildUnknownRoute(RouteSettings settings) {
     CrashService.instance.recordNonFatal(
-      StateError('Unknown route requested: ${settings.name}'),
+      StateError('Unknown route requested'),
       StackTrace.current,
       reason: 'MaterialApp.onUnknownRoute fallback',
       context: {'route': settings.name ?? ''},
@@ -845,12 +872,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed ||
-        FirebaseAuth.instance.currentUser == null ||
-        StoreSession.instance.loading ||
-        StoreSession.instance.lastError == null) {
+        FirebaseAuth.instance.currentUser == null) {
       return;
     }
-    unawaited(StoreSession.instance.bootstrap());
+    if (!StoreSession.instance.loading &&
+        StoreSession.instance.lastError != null) {
+      unawaited(StoreSession.instance.bootstrap());
+    }
+    // FCM token acquisition is best-effort and can fail during the original
+    // login/bootstrap window. Retry on foreground so an already-authorized
+    // merchant does not silently stop receiving customer and order alerts.
+    if (!FirebaseEnvironment.useEmulators &&
+        !StoreSession.instance.loading &&
+        StoreSession.instance.storeId.isNotEmpty) {
+      unawaited(FCMService().handleToken());
+    }
   }
 
   void _handleAuthChange(User? user) {
@@ -953,6 +989,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         // the user grants consent).
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            unawaited(CrashService.instance.updateUiContext(context));
+            final app = child ?? const SizedBox.shrink();
+            if (SpazaRuntimeEnvironment.isProduction) return app;
+            return Banner(
+              message: SpazaRuntimeEnvironment.label,
+              location: BannerLocation.topEnd,
+              color: SpazaRuntimeEnvironment.isDevelopment
+                  ? const Color(0xFFD84315)
+                  : const Color(0xFF6A1B9A),
+              child: app,
+            );
+          },
           theme: kCustomThemeData,
           // PAS-UX-22: when the number-first flag is on, launch into the
           // single-field entry screen. Default (flag off) keeps the legacy
@@ -962,7 +1011,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               ? PhoneEntryPage.id
               : LoginPage.id,
           navigatorKey: navigatorKey,
-          navigatorObservers: [TelemetryService.instance.navigatorObserver],
+          navigatorObservers: [
+            TelemetryService.instance.navigatorObserver,
+            CrashService.instance.navigatorObserver,
+          ],
           routes: MyApp._routes,
           // Defensive: any code path that pushes a route not present in
           // `_routes` (e.g. stale FCM notification payloads from older app

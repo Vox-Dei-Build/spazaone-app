@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import axios from "axios";
 import { FieldValue } from "firebase-admin/firestore";
 import twilio from "twilio";
 import { db, functions } from "../config/main";
@@ -22,6 +23,9 @@ export type OrderNotice = {
   notifyBuyer?: boolean;
   unreadOrdersCount?: number;
   unreadTotalCount?: number;
+  orderKind?: "merchant_stock" | "supplier_delivery";
+  eventKey?: string;
+  noticeKind?: "order" | "account_payment";
 };
 
 export type CustomerNotificationDelivery =
@@ -64,6 +68,7 @@ const NOTIFICATION_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000];
 const MAX_NOTIFICATION_ATTEMPTS = NOTIFICATION_RETRY_DELAYS_MS.length + 1;
 const TERMINAL_BUYER_RESULTS = new Set([
   "whatsapp_sent",
+  "botpress_queued",
   "sms_sent",
   "skipped_no_phone",
   "skipped_conversational_reply",
@@ -73,8 +78,15 @@ const TERMINAL_SELLER_RESULTS = new Set(["push_sent", "skipped_no_tokens"]);
 function statusMessage(order: OrderNotice): string {
   const reference = order.orderId.slice(0, 8).toUpperCase();
   const amount = `R ${(order.amountDueMinor / 100).toFixed(2)}`;
+  if (order.noticeKind === "account_payment") {
+    return (
+      `Spaza One: Your account payment of ${amount} was confirmed ` +
+      `(reference ${reference}). Your updated balance is available from the shop.`
+    );
+  }
   switch (order.status) {
     case "pending_payment":
+    case "awaiting_payment":
       if (order.paymentMethod === "manual") {
         return (
           `Spaza One: Order request ${reference} (${amount}) was sent to the seller. ` +
@@ -88,8 +100,10 @@ function statusMessage(order: OrderNotice): string {
         "We will update you when your order is being prepared."
       );
     case "submitted_for_fulfilment":
+    case "preparing":
       return `Spaza One: Order ${reference} is being prepared.`;
-    case "shipped": {
+    case "shipped":
+    case "on_the_way": {
       const tracking = order.trackingNumber
         ? ` Tracking: ${order.trackingNumber}.`
         : "";
@@ -104,7 +118,7 @@ function statusMessage(order: OrderNotice): string {
     case "cancelled":
       return `Spaza One: Order ${reference} was cancelled.`;
     case "refunded":
-      return `Spaza One: The refund for order ${reference} was recorded.`;
+      return `Spaza One: The refund for order ${reference} has been confirmed.`;
     default:
       return `Spaza One: Order ${reference} is now ${order.status}.`;
   }
@@ -113,6 +127,63 @@ function statusMessage(order: OrderNotice): string {
 async function notifyBuyer(order: OrderNotice): Promise<string> {
   const to = formatPhoneNumber(order.buyerPhone);
   if (!to) return "skipped_no_phone";
+  if (order.noticeKind === "account_payment") {
+    const mode = String(process.env.BOTPRESS_PROVIDER_MODE ?? "disabled")
+      .trim()
+      .toLowerCase();
+    if (mode === "stub") return "botpress_queued";
+    const url = String(
+      process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_URL ?? "",
+    ).trim();
+    const secret = String(
+      process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET ?? "",
+    ).trim();
+    const templateName = String(
+      process.env.BOTPRESS_PAYMENT_CONFIRMATION_TEMPLATE_NAME ?? "",
+    ).trim();
+    const templateLanguage = String(
+      process.env.BOTPRESS_PAYMENT_CONFIRMATION_TEMPLATE_LANGUAGE ?? "en",
+    ).trim();
+    if (
+      !["test", "live"].includes(mode) ||
+      !/^https:\/\//.test(url) ||
+      !secret ||
+      !templateName
+    ) {
+      return "skipped_not_configured";
+    }
+    const reference = order.orderId.slice(0, 8).toUpperCase();
+    const amount = `R ${(order.amountDueMinor / 100).toFixed(2)}`;
+    const response = await axios.post(
+      url,
+      {
+        schemaVersion: 1,
+        eventType: "account_payment_confirmation",
+        userPhone: to,
+        templateName,
+        templateLanguage,
+        templateVariables: {
+          customerName: order.buyerName || "Customer",
+          amount,
+          reference,
+        },
+        merchantId: order.sellerId,
+        customerId: order.customerId ?? "",
+        paymentIntentId: order.orderId,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "x-bp-secret": secret,
+        },
+        timeout: 15_000,
+        validateStatus: () => true,
+      },
+    );
+    return response.status >= 200 && response.status < 300
+      ? "botpress_queued"
+      : "failed";
+  }
   const config = functions.config().twilio ?? {};
   const accountSid = process.env.TWILIO_ACCOUNT_SID || config.sid;
   const authToken = process.env.TWILIO_AUTH_TOKEN || config.token;
@@ -160,11 +231,14 @@ async function notifySeller(order: OrderNotice): Promise<string> {
     tokens,
     notification: {
       title:
-        order.status === "pending_payment" && order.paymentMethod === "manual"
-          ? "New dropship order request"
-          : order.status === "paid"
-            ? "Dropship payment confirmed"
-            : "Order updated",
+        order.noticeKind === "account_payment"
+          ? "Account payment confirmed"
+          : order.status === "pending_payment" &&
+              order.paymentMethod === "manual"
+            ? "New order request"
+            : order.status === "paid"
+              ? "Payment confirmed"
+              : "Order updated",
       body: `Order ${reference} is ${order.status.split("_").join(" ")}.`,
     },
     data: {
@@ -173,11 +247,13 @@ async function notifySeller(order: OrderNotice): Promise<string> {
       merchantId: order.sellerId,
       route: "/customerAccount",
       notificationType: "commerce_order",
+      noticeKind: order.noticeKind ?? "order",
       action: "open_customer_orders",
       customerId: order.customerId ?? "",
       customerName: order.buyerName,
       customerNumber: order.buyerPhone,
       status: order.status,
+      orderKind: order.orderKind ?? "supplier_delivery",
       ...(order.unreadOrdersCount == null
         ? {}
         : { unreadOrdersCount: String(order.unreadOrdersCount) }),
@@ -205,6 +281,7 @@ function customerDelivery(
   willRetry: boolean,
 ): CustomerNotificationDelivery {
   if (["whatsapp_sent", "sms_sent"].includes(buyerResult)) return "sent";
+  if (buyerResult === "botpress_queued") return "queued";
   if (buyerResult === "skipped_no_phone") return "not_deliverable";
   if (buyerResult === "skipped_conversational_reply") return "skipped";
   return willRetry ? "queued" : "failed";
@@ -240,17 +317,26 @@ function outboxNotice(order: OrderNotice): OutboxNotice {
       : { trackingNumber: order.trackingNumber }),
     ...(order.trackingUrl == null ? {} : { trackingUrl: order.trackingUrl }),
     notifyBuyer: order.notifyBuyer !== false,
+    orderKind: order.orderKind ?? "supplier_delivery",
     ...(order.unreadOrdersCount == null
       ? {}
       : { unreadOrdersCount: order.unreadOrdersCount }),
     ...(order.unreadTotalCount == null
       ? {}
       : { unreadTotalCount: order.unreadTotalCount }),
+    noticeKind: order.noticeKind ?? "order",
   };
 }
 
-function notificationId(order: OrderNotice): string {
-  return `${order.orderId}--${order.status}`;
+export function commerceNotificationDocumentId(order: OrderNotice): string {
+  return [
+    order.orderKind ?? "supplier_delivery",
+    order.sellerId,
+    order.orderId,
+    order.status,
+    order.eventKey ?? order.status,
+    order.noticeKind ?? "order",
+  ].join("--");
 }
 
 /**
@@ -258,10 +344,10 @@ function notificationId(order: OrderNotice): string {
  * The deterministic document ID makes a repeated transition idempotent.
  */
 export function enqueueCommerceOrderNotification(
-  tx: FirebaseFirestore.Transaction,
+  tx: FirebaseFirestore.Transaction | FirebaseFirestore.WriteBatch,
   order: OrderNotice,
 ): string {
-  const id = notificationId(order);
+  const id = commerceNotificationDocumentId(order);
   tx.create(db.collection(COMMERCE_NOTIFICATION_OUTBOX).doc(id), {
     notice: outboxNotice(order),
     state: "pending",
@@ -366,8 +452,12 @@ export async function deliverCommerceOrderNotificationOutbox(
     },
     { merge: true },
   );
+  const orderRef =
+    order.orderKind === "merchant_stock"
+      ? db.doc(`users/${order.sellerId}/sales/${order.orderId}`)
+      : db.doc(`commerceOrders/${order.orderId}`);
   batch.set(
-    db.doc(`commerceOrders/${order.orderId}`),
+    orderRef,
     {
       notificationHistory: FieldValue.arrayUnion({
         notificationId: id,

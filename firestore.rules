@@ -58,8 +58,17 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isStoreMember(storeId);
 
-      match /{document=**} {
-        allow read, write: if isStoreMember(storeId);
+      // Settlement destinations are more sensitive than ordinary store data.
+      // Operators may see the masked app projection but cannot alter the raw
+      // legacy record that an owner/admin later submits for verification.
+      match /bankingDetails/{bankingDetailsId} {
+        allow read: if isStoreMember(storeId);
+        allow create, update, delete: if isStoreManager(storeId);
+      }
+
+      match /{collection}/{document=**} {
+        allow read, write: if collection != 'bankingDetails' &&
+          isStoreMember(storeId);
       }
     }
 
@@ -152,6 +161,120 @@ service cloud.firestore {
       allow update: if signedIn() &&
         merchantOwnsExisting(resource.data) &&
         merchantOwnsIncoming(request.resource.data);
+    }
+
+    // Failure-first Payments V2 is an Admin SDK-only trust boundary. Released
+    // clients still use legacy user-tree records, but no client (including a
+    // store owner or spazaAdmin claim) may read or forge provider proof,
+    // settlement instructions, reconciliation evidence or payment state.
+    // Purpose-limited projections are returned through authenticated
+    // Functions instead.
+    match /paymentIntents/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentEvents/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /merchantPaymentProfiles/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /settlements/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /refundCases/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /inventoryReservations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierFulfilments/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierFundingReservations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierFundingState/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /operationsAlerts/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /supplierCancellationRequests/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentOperations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /customerPaymentRequests/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /customerPaymentRequestState/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentRequestWalletReservations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /financialReconciliationRuns/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /financialMigrationRuns/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /schemaMetadata/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /developmentSeedRuns/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentConfiguration/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentSecurityBudgets/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /paymentAdministrationAudit/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /merchantCommerceSettings/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /campaignCreditPurchases/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /campaignCreditRecoveryCases/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /repaymentPlans/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /commerceNotificationOutbox/{document=**} {
+      allow read, write: if false;
     }
 
     // Canonical checkout listings cannot be edited from a client. Sellers use

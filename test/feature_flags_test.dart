@@ -52,12 +52,38 @@ void main() {
     expect(FeatureFlags.enableOnlineSales, isTrue);
   });
 
-  test('Paystack stays disabled even when a stale remote value is true', () {
+  test('Campaign Credit Paystack stays dark by default and follows its flag',
+      () {
+    FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
+    expect(FeatureFlags.enableTopUpPaystack, isFalse);
+
     FeatureFlags.applyFlagsForTesting(
       _FakeRemoteConfig({'FEATURE_TOP_UP_PAYSTACK_ENABLED': true}),
     );
 
-    expect(FeatureFlags.enableTopUpPaystack, isFalse);
+    expect(FeatureFlags.enableTopUpPaystack, isTrue);
+  });
+
+  test('commerce payment capabilities fail closed and switch independently',
+      () {
+    FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
+    expect(FeatureFlags.enableOwnedOrderPayments, isFalse);
+    expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableCustomerPaymentRequests, isFalse);
+    expect(FeatureFlags.enableSupplierOrderPayments, isFalse);
+
+    FeatureFlags.applyFlagsForTesting(
+      _FakeRemoteConfig({
+        'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED': true,
+        'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED': false,
+        'FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED': true,
+        'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED': true,
+      }),
+    );
+    expect(FeatureFlags.enableOwnedOrderPayments, isTrue);
+    expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableCustomerPaymentRequests, isTrue);
+    expect(FeatureFlags.enableSupplierOrderPayments, isTrue);
   });
 
   test('emulator QA profile applies every release-relevant value together', () {
@@ -68,6 +94,11 @@ void main() {
       EmulatorQaFeatureProfile.otpAutosubmitKey: 'false',
       EmulatorQaFeatureProfile.otpResendKey: 'false',
       EmulatorQaFeatureProfile.onlineSalesKey: 'false',
+      EmulatorQaFeatureProfile.campaignCreditPaystackKey: 'true',
+      EmulatorQaFeatureProfile.ownedOrderPaymentsKey: 'true',
+      EmulatorQaFeatureProfile.accountSettlementPaymentsKey: 'false',
+      EmulatorQaFeatureProfile.customerPaymentRequestsKey: 'true',
+      EmulatorQaFeatureProfile.supplierOrderPaymentsKey: 'true',
       EmulatorQaFeatureProfile.onboardingIntroKey: 'true',
     });
 
@@ -80,6 +111,11 @@ void main() {
     expect(FeatureFlags.enableOtpAutosubmit, isFalse);
     expect(FeatureFlags.enableOtpResendInDialog, isFalse);
     expect(FeatureFlags.enableOnlineSales, isFalse);
+    expect(FeatureFlags.enableTopUpPaystack, isTrue);
+    expect(FeatureFlags.enableOwnedOrderPayments, isTrue);
+    expect(FeatureFlags.enableAccountSettlementPayments, isFalse);
+    expect(FeatureFlags.enableCustomerPaymentRequests, isTrue);
+    expect(FeatureFlags.enableSupplierOrderPayments, isTrue);
     expect(FeatureFlags.enableMerchantOnboardingIntro, isTrue);
   });
 

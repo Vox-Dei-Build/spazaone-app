@@ -6,7 +6,11 @@ import axios from "axios";
 import * as path from "path";
 import * as dotenv from "dotenv";
 import { createHash } from "crypto";
-import { centsFromRands, verifyPaystackSignature } from "./paystackSecurity";
+import {
+  centsFromRands,
+  normalizePaystackSecret,
+  verifyPaystackSignature,
+} from "./paystackSecurity";
 import { requireStoreId } from "../../stores/storeAccess";
 import {
   campaignWalletRef,
@@ -14,11 +18,67 @@ import {
   resolveCampaignWallet,
 } from "../../wallet/campaignCredits";
 import { applyVerifiedCommercePayment } from "../../commerce/payment";
+import { applyVerifiedCampaignTopupV2 } from "../v2/campaignTopup";
+import { applyVerifiedOwnedOrderPaymentV2 } from "../v2/ownedOrders";
+import { applyVerifiedSupplierPaymentV2 } from "../v2/supplierOrders";
+import {
+  handlePaystackRefundEventV2,
+  quarantineVerifiedChargeV2,
+} from "../v2/refunds";
+import { applyVerifiedAccountSettlementV2 } from "../v2/accountSettlements";
 
 type PaymentPurpose = "sale" | "topup";
 
-export const verifyPaystackTransaction = functions.https.onRequest(
-  async (req, res) => {
+const PAYMENT_V2_PURPOSES = new Set([
+  "campaign_credit",
+  "merchant_order",
+  "supplier_order",
+  "account_settlement",
+  "repayment_installment",
+]);
+
+// These errors mean Paystack has confirmed that money moved, but the charge
+// can no longer be safely applied to the immutable business intent. They are
+// customer-money failures, not retryable infrastructure failures.
+const PAYMENT_V2_QUARANTINE_ERRORS = new Set([
+  "PROVIDER_CURRENCY_MISMATCH",
+  "PROVIDER_AMOUNT_MISMATCH",
+  "CAMPAIGN_TOPUP_BINDING_MISMATCH",
+  "CAMPAIGN_TOPUP_CREDIT_MISMATCH",
+  "CAMPAIGN_TOPUP_STATUS_INVALID",
+  "TOPUP_CHANNEL_MISMATCH",
+  "OWNED_ORDER_PAYMENT_BINDING_MISMATCH",
+  "ORDER_CHANNEL_INVALID",
+  "SALE_ALREADY_PAID",
+  "SUPPLIER_PAYMENT_BINDING_MISMATCH",
+  "SUPPLIER_ACTUAL_MARGIN_BELOW_SAFETY",
+  "ACCOUNT_PAYMENT_BINDING_MISMATCH",
+  "ACCOUNT_PAYMENT_PURPOSE_MISMATCH",
+  "REPAYMENT_PLAN_NOT_ACTIVE",
+]);
+
+function paymentV2Purpose(transaction: Record<string, any>): string {
+  return String(transaction.metadata?.purpose ?? "").toLowerCase();
+}
+
+function isQuarantinableV2Charge(
+  transaction: Record<string, any>,
+  code: string,
+): boolean {
+  return (
+    PAYMENT_V2_PURPOSES.has(paymentV2Purpose(transaction)) &&
+    /^pi_[a-f0-9]{64}$/.test(
+      String(transaction.metadata?.intentId ?? "").trim(),
+    ) &&
+    PAYMENT_V2_QUARANTINE_ERRORS.has(code)
+  );
+}
+
+export const verifyPaystackTransaction = functions
+  .runWith({
+    secrets: ["PAYSTACK_SECRET_KEY", "BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET"],
+  })
+  .https.onRequest(async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "Method Not Allowed" });
       return;
@@ -28,10 +88,11 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       dotenv.config({ path: path.join(process.cwd(), ".env.local") });
       dotenv.config({ path: path.join(process.cwd(), ".env") });
 
-      const secret =
+      const secret = normalizePaystackSecret(
         process.env.PAYSTACK_SECRET_KEY ||
-        process.env.PAYSTACK_TEST_SECRET_KEY ||
-        (functions.config().paystack?.secret as string | undefined);
+          process.env.PAYSTACK_TEST_SECRET_KEY ||
+          (functions.config().paystack?.secret as string | undefined),
+      );
       if (!secret) {
         res.status(500).json({ error: "Missing PAYSTACK_SECRET_KEY" });
         return;
@@ -51,7 +112,18 @@ export const verifyPaystackTransaction = functions.https.onRequest(
         return;
       }
 
-      if (req.body?.event !== "charge.success") {
+      const eventType = String(req.body?.event ?? "").toLowerCase();
+      if (eventType.startsWith("refund.")) {
+        const result = await handlePaystackRefundEventV2(req.body ?? {});
+        res.status(200).json({
+          ok: true,
+          purpose: "refund",
+          event: eventType,
+          matched: result.matched,
+        });
+        return;
+      }
+      if (eventType !== "charge.success") {
         // Acknowledge valid events that this endpoint does not process so the
         // provider does not retry them indefinitely.
         res.status(200).json({ ignored: true });
@@ -81,6 +153,24 @@ export const verifyPaystackTransaction = functions.https.onRequest(
         return;
       }
       if (String(transaction.currency ?? "").toUpperCase() !== "ZAR") {
+        if (
+          isQuarantinableV2Charge(transaction, "PROVIDER_CURRENCY_MISMATCH")
+        ) {
+          const quarantined = await quarantineVerifiedChargeV2({
+            transaction,
+            rawBody,
+            reason: "PROVIDER_CURRENCY_MISMATCH",
+          });
+          res.status(200).json({
+            ok: true,
+            purpose: paymentV2Purpose(transaction),
+            intentId: quarantined.intentId,
+            refundCaseId: quarantined.refundCaseId,
+            refundPending: true,
+            deduped: quarantined.deduped,
+          });
+          return;
+        }
         res.status(400).json({ error: "Unsupported transaction currency" });
         return;
       }
@@ -88,6 +178,86 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       // Security boundary: never trust metadata from the webhook request.
       // Paystack's independently verified transaction is the source of truth.
       const metadata = transaction.metadata ?? {};
+      try {
+        if (
+          String(metadata.purpose ?? "").toLowerCase() === "campaign_credit"
+        ) {
+          const result = await applyVerifiedCampaignTopupV2(
+            transaction,
+            rawBody,
+          );
+          res.status(200).json({
+            ok: true,
+            purpose: "campaign_credit",
+            intentId: result.intentId,
+            deduped: result.deduped,
+          });
+          return;
+        }
+        if (String(metadata.purpose ?? "").toLowerCase() === "merchant_order") {
+          const result = await applyVerifiedOwnedOrderPaymentV2(
+            transaction,
+            rawBody,
+          );
+          res.status(200).json({
+            ok: true,
+            purpose: "merchant_order",
+            intentId: result.intentId,
+            deduped: result.deduped,
+          });
+          return;
+        }
+        if (String(metadata.purpose ?? "").toLowerCase() === "supplier_order") {
+          const result = await applyVerifiedSupplierPaymentV2(
+            transaction,
+            rawBody,
+          );
+          res.status(200).json({
+            ok: true,
+            purpose: "supplier_order",
+            intentId: result.intentId,
+            orderId: result.orderId,
+            deduped: result.deduped,
+          });
+          return;
+        }
+        if (
+          ["account_settlement", "repayment_installment"].includes(
+            String(metadata.purpose ?? "").toLowerCase(),
+          )
+        ) {
+          const result = await applyVerifiedAccountSettlementV2(
+            transaction,
+            rawBody,
+          );
+          res.status(200).json({
+            ok: true,
+            purpose: String(metadata.purpose).toLowerCase(),
+            intentId: result.intentId,
+            transactionId: result.transactionId ?? null,
+            deduped: result.deduped,
+          });
+          return;
+        }
+      } catch (error: unknown) {
+        const code =
+          error instanceof Error ? error.message : String(error ?? "");
+        if (!isQuarantinableV2Charge(transaction, code)) throw error;
+        const quarantined = await quarantineVerifiedChargeV2({
+          transaction,
+          rawBody,
+          reason: code,
+        });
+        res.status(200).json({
+          ok: true,
+          purpose: paymentV2Purpose(transaction),
+          intentId: quarantined.intentId,
+          refundCaseId: quarantined.refundCaseId,
+          refundPending: true,
+          deduped: quarantined.deduped,
+        });
+        return;
+      }
       if (String(metadata.purpose ?? "").toLowerCase() === "commerce_order") {
         // Compatibility dispatcher only: commerce uses its own order,
         // snapshot and idempotency transaction and never reaches wallet or
@@ -278,5 +448,4 @@ export const verifyPaystackTransaction = functions.https.onRequest(
       console.error("verifyPaystackTransaction error:", code || error);
       res.status(500).json({ error: "Transaction verification failed" });
     }
-  },
-);
+  });

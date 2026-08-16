@@ -17,6 +17,11 @@ class EmulatorQaFeatureProfile {
     required this.otpAutosubmit,
     required this.otpResendInDialog,
     required this.onlineSales,
+    required this.campaignCreditPaystack,
+    required this.ownedOrderPayments,
+    required this.accountSettlementPayments,
+    required this.customerPaymentRequests,
+    required this.supplierOrderPayments,
     required this.merchantOnboardingIntro,
   });
 
@@ -26,6 +31,14 @@ class EmulatorQaFeatureProfile {
   static const otpAutosubmitKey = 'QA_FEATURE_OTP_AUTOSUBMIT';
   static const otpResendKey = 'QA_FEATURE_OTP_RESEND_IN_DIALOG';
   static const onlineSalesKey = 'QA_FEATURE_ONLINE_SALES';
+  static const campaignCreditPaystackKey =
+      'QA_FEATURE_CAMPAIGN_CREDIT_PAYSTACK';
+  static const ownedOrderPaymentsKey = 'QA_FEATURE_OWNED_ORDER_PAYMENTS';
+  static const accountSettlementPaymentsKey =
+      'QA_FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS';
+  static const customerPaymentRequestsKey =
+      'QA_FEATURE_CUSTOMER_PAYMENT_REQUESTS';
+  static const supplierOrderPaymentsKey = 'QA_FEATURE_SUPPLIER_ORDER_PAYMENTS';
   static const onboardingIntroKey = 'QA_FEATURE_MERCHANT_ONBOARDING_INTRO';
 
   static const _multiStoreValue = String.fromEnvironment(multiStoreKey);
@@ -34,6 +47,16 @@ class EmulatorQaFeatureProfile {
   static const _otpAutosubmitValue = String.fromEnvironment(otpAutosubmitKey);
   static const _otpResendValue = String.fromEnvironment(otpResendKey);
   static const _onlineSalesValue = String.fromEnvironment(onlineSalesKey);
+  static const _campaignCreditPaystackValue =
+      String.fromEnvironment(campaignCreditPaystackKey);
+  static const _ownedOrderPaymentsValue =
+      String.fromEnvironment(ownedOrderPaymentsKey);
+  static const _accountSettlementPaymentsValue =
+      String.fromEnvironment(accountSettlementPaymentsKey);
+  static const _customerPaymentRequestsValue =
+      String.fromEnvironment(customerPaymentRequestsKey);
+  static const _supplierOrderPaymentsValue =
+      String.fromEnvironment(supplierOrderPaymentsKey);
   static const _onboardingIntroValue =
       String.fromEnvironment(onboardingIntroKey);
 
@@ -43,6 +66,11 @@ class EmulatorQaFeatureProfile {
   final bool otpAutosubmit;
   final bool otpResendInDialog;
   final bool onlineSales;
+  final bool campaignCreditPaystack;
+  final bool ownedOrderPayments;
+  final bool accountSettlementPayments;
+  final bool customerPaymentRequests;
+  final bool supplierOrderPayments;
   final bool merchantOnboardingIntro;
 
   factory EmulatorQaFeatureProfile.fromEnvironment() {
@@ -53,6 +81,11 @@ class EmulatorQaFeatureProfile {
       otpAutosubmitKey: _otpAutosubmitValue,
       otpResendKey: _otpResendValue,
       onlineSalesKey: _onlineSalesValue,
+      campaignCreditPaystackKey: _campaignCreditPaystackValue,
+      ownedOrderPaymentsKey: _ownedOrderPaymentsValue,
+      accountSettlementPaymentsKey: _accountSettlementPaymentsValue,
+      customerPaymentRequestsKey: _customerPaymentRequestsValue,
+      supplierOrderPaymentsKey: _supplierOrderPaymentsValue,
       onboardingIntroKey: _onboardingIntroValue,
     });
   }
@@ -75,6 +108,11 @@ class EmulatorQaFeatureProfile {
       otpAutosubmit: requiredBool(otpAutosubmitKey),
       otpResendInDialog: requiredBool(otpResendKey),
       onlineSales: requiredBool(onlineSalesKey),
+      campaignCreditPaystack: requiredBool(campaignCreditPaystackKey),
+      ownedOrderPayments: requiredBool(ownedOrderPaymentsKey),
+      accountSettlementPayments: requiredBool(accountSettlementPaymentsKey),
+      customerPaymentRequests: requiredBool(customerPaymentRequestsKey),
+      supplierOrderPayments: requiredBool(supplierOrderPaymentsKey),
       merchantOnboardingIntro: requiredBool(onboardingIntroKey),
     );
   }
@@ -90,16 +128,21 @@ class FeatureFlags {
   static bool enableBankingDetails = true;
 
   static bool enableAnonymousGate = false;
-  // Paystack stays unavailable for v4.7.0. Do not let a stale Remote Config
-  // value expose a payment path that is not part of this release.
+  // Campaign Credit checkout is remotely activatable in 4.8.0, but a missing
+  // or failed Remote Config fetch must keep it dark.
   static bool enableTopUpPaystack = false;
   static bool enableMoveFunds = false;
 
-  /// Enables automatic online-sales reporting once Spaza One's payment
-  /// provider integration has completed compliance and is ready for sellers.
-  /// The implementation remains available behind this remote kill switch;
-  /// the safe default is the explanatory coming-soon state.
+  /// Presents the Online commerce hub. This does not enable any payment:
+  /// each purpose also requires its client gate and server readiness.
   static bool enableOnlineSales = false;
+
+  /// Independent client rollback gates beneath the Online hub presentation.
+  /// Authoritative server readiness is still required for every initialization.
+  static bool enableOwnedOrderPayments = false;
+  static bool enableAccountSettlementPayments = false;
+  static bool enableCustomerPaymentRequests = false;
+  static bool enableSupplierOrderPayments = false;
 
   /// Multi-store/operator emergency rollback switch.
   ///
@@ -176,6 +219,11 @@ class FeatureFlags {
     enableOtpAutosubmit = profile.otpAutosubmit;
     enableOtpResendInDialog = profile.otpResendInDialog;
     enableOnlineSales = profile.onlineSales;
+    enableTopUpPaystack = profile.campaignCreditPaystack;
+    enableOwnedOrderPayments = profile.ownedOrderPayments;
+    enableAccountSettlementPayments = profile.accountSettlementPayments;
+    enableCustomerPaymentRequests = profile.customerPaymentRequests;
+    enableSupplierOrderPayments = profile.supplierOrderPayments;
     enableMerchantOnboardingIntro = profile.merchantOnboardingIntro;
   }
 
@@ -207,13 +255,32 @@ class FeatureFlags {
       'FEATURE_ANONYMOUS_GATE_ENABLED',
       defaultValue: false,
     );
-    enableTopUpPaystack = false;
+    enableTopUpPaystack = rc.getBool(
+      'FEATURE_TOP_UP_PAYSTACK_ENABLED',
+      defaultValue: false,
+    );
     enableMoveFunds = rc.getBool(
       'FEATURE_MOVE_FUNDS_ENABLED',
       defaultValue: false,
     );
     enableOnlineSales = rc.getBool(
       'FEATURE_ONLINE_SALES_ENABLED',
+      defaultValue: false,
+    );
+    enableOwnedOrderPayments = rc.getBool(
+      'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED',
+      defaultValue: false,
+    );
+    enableAccountSettlementPayments = rc.getBool(
+      'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED',
+      defaultValue: false,
+    );
+    enableCustomerPaymentRequests = rc.getBool(
+      'FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED',
+      defaultValue: false,
+    );
+    enableSupplierOrderPayments = rc.getBool(
+      'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED',
       defaultValue: false,
     );
     enableMultiStoreOperators = rc.getBool(

@@ -14,6 +14,7 @@ import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/orders_summary_bar.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_avatar.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/status_pill.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:shimmer/shimmer.dart';
 import 'online_sale_detail_page.dart';
 
@@ -75,6 +76,64 @@ class LedgerSale {
 }
 
 enum OnlineStatusFilter { all, paid, collected, pending, failed, refunded }
+
+Future<List<LedgerSale>> fetchOnlineLedgerSales({
+  DateTime? selectedDay,
+  DateTime? startDate,
+  DateTime? endDate,
+}) async {
+  final uid = StoreSession.instance.storeId;
+  if (uid.isEmpty) throw Exception('Not signed in');
+
+  final url = FunctionEndpoints.https('getOnlineSalesFromLedger');
+  String? appCheck;
+  try {
+    appCheck = await FirebaseAppCheck.instance.getToken();
+  } catch (_) {}
+  String? idToken;
+  try {
+    idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+  } catch (_) {}
+
+  String? startIso;
+  String? endIso;
+  if (startDate != null && endDate != null) {
+    startIso = DateTime(startDate.year, startDate.month, startDate.day)
+        .toIso8601String();
+    endIso =
+        DateTime(endDate.year, endDate.month, endDate.day).toIso8601String();
+  } else if (selectedDay != null) {
+    startIso = DateTime(selectedDay.year, selectedDay.month, selectedDay.day)
+        .toIso8601String();
+    endIso = startIso;
+  }
+
+  final response = await http.post(
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+      if (appCheck != null) 'X-Firebase-AppCheck': appCheck,
+      if (idToken != null) 'Authorization': 'Bearer $idToken',
+    },
+    body: jsonEncode({
+      'merchantId': uid,
+      'limit': 200,
+      if (startIso != null) 'startDate': startIso,
+      if (endIso != null) 'endDate': endIso,
+    }),
+  );
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Could not load online orders');
+  }
+  final decoded = jsonDecode(response.body);
+  final list = decoded is Map && decoded['sales'] is List
+      ? decoded['sales'] as List
+      : const <dynamic>[];
+  return list
+      .whereType<Map>()
+      .map((item) => LedgerSale.fromMap(Map<String, dynamic>.from(item)))
+      .toList(growable: false);
+}
 
 class OnlineSalesList extends StatefulWidget {
   final DateTime? selectedDay;
@@ -139,63 +198,11 @@ class _OnlineSalesListState extends State<OnlineSalesList> {
   }
 
   Future<List<LedgerSale>> _fetch() async {
-    final uid = StoreSession.instance.storeId;
-    if (uid.isEmpty) throw Exception('Not signed in');
-
-    final url = FunctionEndpoints.https('getOnlineSalesFromLedger');
-
-    String? appCheck;
-    try {
-      appCheck = await FirebaseAppCheck.instance.getToken();
-    } catch (_) {}
-    String? idToken;
-    try {
-      idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-    } catch (_) {}
-
-    String? startIso;
-    String? endIso;
-    if (widget.startDate != null && widget.endDate != null) {
-      startIso = DateTime(widget.startDate!.year, widget.startDate!.month,
-              widget.startDate!.day)
-          .toIso8601String();
-      endIso = DateTime(
-              widget.endDate!.year, widget.endDate!.month, widget.endDate!.day)
-          .toIso8601String();
-    } else if (widget.selectedDay != null) {
-      startIso = DateTime(widget.selectedDay!.year, widget.selectedDay!.month,
-              widget.selectedDay!.day)
-          .toIso8601String();
-      endIso = startIso;
-    }
-
-    final resp = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        if (appCheck != null) 'X-Firebase-AppCheck': appCheck,
-        if (idToken != null) 'Authorization': 'Bearer $idToken',
-      },
-      body: jsonEncode({
-        'merchantId': uid,
-        'limit': 500,
-        if (startIso != null) 'startDate': startIso,
-        if (endIso != null) 'endDate': endIso,
-      }),
+    final items = await fetchOnlineLedgerSales(
+      selectedDay: widget.selectedDay,
+      startDate: widget.startDate,
+      endDate: widget.endDate,
     );
-
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
-    }
-
-    final decoded = jsonDecode(resp.body);
-    final list = (decoded is Map && decoded['sales'] is List)
-        ? (decoded['sales'] as List)
-        : const <dynamic>[];
-    final items = list
-        .map((e) => LedgerSale.fromMap(Map<String, dynamic>.from(e as Map)))
-        .toList();
-
     return _filterByDate(items);
   }
 
@@ -780,33 +787,31 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3.2),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.receipt_long,
-                size: SizeConfig.imageSizeMultiplier * 8.0,
-                color: Theme.of(context).colorScheme.outline),
-            SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-            Text(
-              'No online sales for this filter',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: SizeConfig.textMultiplier * 1.6),
+    return ScrollableCenteredContent(
+      padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3.2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.receipt_long,
+              size: SizeConfig.imageSizeMultiplier * 8.0,
+              color: Theme.of(context).colorScheme.outline),
+          SizedBox(height: SizeConfig.heightMultiplier * 1.0),
+          Text(
+            'No online sales for this filter',
+            style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: SizeConfig.textMultiplier * 1.6),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.4),
+          Text(
+            'Try adjusting the date, status, or search.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 1.3,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.4),
-            Text(
-              'Try adjusting the date, status, or search.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.3,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -821,36 +826,34 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(hPad),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off,
-                size: SizeConfig.imageSizeMultiplier * 8.0,
-                color: Theme.of(context).colorScheme.error),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.8),
-            Text(
-              'Couldn’t load sales',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: SizeConfig.textMultiplier * 1.7),
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.3),
-            ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.8),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
+    return ScrollableCenteredContent(
+      padding: EdgeInsets.all(hPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.cloud_off,
+              size: SizeConfig.imageSizeMultiplier * 8.0,
+              color: Theme.of(context).colorScheme.error),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.8),
+          Text(
+            'Couldn’t load sales',
+            style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: SizeConfig.textMultiplier * 1.7),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.3),
+          ),
+          SizedBox(height: SizeConfig.heightMultiplier * 0.8),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
       ),
     );
   }

@@ -6,6 +6,8 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { normalizePhoneNumber } from "../utils/phoneUtils";
 import { requireBotRequest } from "../security/requestAuth";
+import { buyerSafePaymentsV2 } from "../payments/v2/buyerReadiness";
+import { merchantOrderingOptionsFrom } from "./merchantOrderingOptions";
 
 function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   const pa = a.split(".").map(Number);
@@ -26,9 +28,66 @@ function cleanRefCode(value: unknown): string {
     .replace(/[^A-Z0-9]/g, "");
 }
 
+export function cleanWhatsAppProfileName(value: unknown): string | undefined {
+  const withoutControls = [...String(value ?? "")]
+    .map((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint < 32 || codePoint === 127 ? " " : character;
+    })
+    .join("");
+  const cleaned = withoutControls.replace(/\s+/g, " ").trim().slice(0, 80);
+  if (
+    !cleaned ||
+    /^anonymous user$/i.test(cleaned) ||
+    /^whatsapp\s+\d{4}$/i.test(cleaned) ||
+    !/\p{L}/u.test(cleaned)
+  ) {
+    return undefined;
+  }
+  return cleaned;
+}
+
+export function shouldUseWhatsAppProfileName(
+  existingName: unknown,
+  normalizedPhone: string,
+): boolean {
+  const existing = String(existingName ?? "").trim();
+  return (
+    !existing ||
+    existing.toLowerCase() ===
+      `whatsapp ${normalizedPhone.slice(-4)}`.toLowerCase()
+  );
+}
+
+async function enrichMerchantCustomerName(args: {
+  customerRef: FirebaseFirestore.DocumentReference;
+  normalizedPhone: string;
+  customerName?: unknown;
+}): Promise<void> {
+  const profileName = cleanWhatsAppProfileName(args.customerName);
+  if (!profileName) return;
+
+  const snapshot = await args.customerRef.get();
+  if (
+    !snapshot.exists ||
+    !shouldUseWhatsAppProfileName(snapshot.get("name"), args.normalizedPhone)
+  ) {
+    return;
+  }
+  await args.customerRef.set(
+    {
+      name: profileName,
+      updatedAt: FieldValue.serverTimestamp(),
+      whatsappProfileNameCapturedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
 async function findMerchantCustomerId(
   merchantId: string,
   customerPhone: unknown,
+  customerName?: unknown,
 ): Promise<string | undefined> {
   const normalized = normalizePhoneNumber(
     String(customerPhone || "").replace("whatsapp:", ""),
@@ -42,7 +101,13 @@ async function findMerchantCustomerId(
     .where("number", "==", normalized)
     .limit(1)
     .get();
-  return snap.empty ? undefined : snap.docs[0].id;
+  if (snap.empty) return undefined;
+  await enrichMerchantCustomerName({
+    customerRef: snap.docs[0].ref,
+    normalizedPhone: normalized,
+    customerName,
+  });
+  return snap.docs[0].id;
 }
 
 async function findOrCreateMerchantCustomerId(args: {
@@ -64,11 +129,18 @@ async function findOrCreateMerchantCustomerId(args: {
     .where("number", "==", normalized)
     .limit(1)
     .get();
-  if (!existing.empty) return existing.docs[0].id;
+  if (!existing.empty) {
+    await enrichMerchantCustomerName({
+      customerRef: existing.docs[0].ref,
+      normalizedPhone: normalized,
+      customerName: args.customerName,
+    });
+    return existing.docs[0].id;
+  }
 
   const customerRef = customersRef.doc();
   const displayName =
-    String(args.customerName || "").trim() ||
+    cleanWhatsAppProfileName(args.customerName) ||
     `WhatsApp ${normalized.slice(-4)}`;
   await customerRef.set({
     category: "Customer",
@@ -193,6 +265,7 @@ export const getShopContextBotHttp = functions
       const existingMerchantCustomerId = await findMerchantCustomerId(
         mid,
         customerPhone,
+        customerName,
       );
       if (existingMerchantCustomerId) {
         customerId = existingMerchantCustomerId;
@@ -249,6 +322,13 @@ export const getShopContextBotHttp = functions
         });
       }
 
+      const [paymentsV2, orderingOptionsSnapshot] = await Promise.all([
+        buyerSafePaymentsV2(mSnap.id),
+        db.doc(`merchantCommerceSettings/${mSnap.id}`).get(),
+      ]);
+      const orderingOptions = merchantOrderingOptionsFrom(
+        orderingOptionsSnapshot.data(),
+      );
       const merchant = {
         id: mSnap.id,
         name: m.name,
@@ -258,7 +338,12 @@ export const getShopContextBotHttp = functions
         whatsappEligibleOverride: !!m.whatsappEligibleOverride,
         forceEnableUntil: m.forceEnableUntil || null, // Firestore Timestamp or null
         minRequiredVersion: minVersion,
-        banking,
+        // Direct WhatsApp must stop advertising manual EFT as soon as the
+        // owned-order online capability is ready. The app's separate manual
+        // Add Payment/Transfer workflows are unaffected by this bot surface.
+        banking: paymentsV2.manualTransferForOwnedOrders ? banking : null,
+        paymentsV2,
+        orderingOptions,
       };
       console.log("Merchant loaded", {
         mid: merchant.id,

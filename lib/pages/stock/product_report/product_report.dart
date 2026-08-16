@@ -18,8 +18,9 @@ class ProductReportsTab extends StatelessWidget {
     List<Product> lowStockProducts = viewModel.checkLowStock();
     List<Product> noStockProducts =
         lowStockProducts.where((product) => product.quantity == 0).toList();
-    List<Product> lowStockProductsTwo =
-        lowStockProducts.where((product) => product.quantity! > 1).toList();
+    List<Product> lowStockProductsTwo = lowStockProducts
+        .where((product) => (product.quantity ?? 0) > 0)
+        .toList();
 
     double totalCost = allProducts.fold(
       0,
@@ -33,18 +34,17 @@ class ProductReportsTab extends StatelessWidget {
     double potentialProfit = totalSellingPrice - totalCost;
 
     return ListView(
-      padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 88),
       children: [
-        SummaryCard(title: 'Product Cost Value', amount: totalCost),
-        SummaryCard(title: 'Product Sales Value', amount: totalSellingPrice),
-        SummaryCard(title: 'Potential Product Profit', amount: potentialProfit),
-        ProductSection(
-          title: 'Low-stock Products',
-          products: lowStockProductsTwo,
+        ProductValueSummary(
+          costValue: totalCost,
+          salesValue: totalSellingPrice,
+          potentialProfit: potentialProfit,
         ),
+        const SizedBox(height: 22),
         ProductSection(
-          title: 'Out-of-stock Products',
-          products: noStockProducts,
+          title: 'Needs attention',
+          products: [...noStockProducts, ...lowStockProductsTwo],
         ),
       ],
     );

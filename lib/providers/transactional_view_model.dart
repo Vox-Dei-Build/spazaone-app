@@ -56,8 +56,6 @@ class TransactionViewModel extends ChangeNotifier {
   /// surface" — the picker collapses gracefully.
   List<Product> get suggestedProducts => const [];
 
-  /// Optional flow-specific guidance shown above the product picker.
-  String? get productSelectionNotice => null;
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   int currentPage = 0;
   int itemsPerPage = 5;
@@ -503,6 +501,16 @@ class TransactionViewModel extends ChangeNotifier {
 
   void resetFormAndNavigateAway(BuildContext context) {
     resetForm();
+    Navigator.of(context).pop();
+  }
+
+  /// Leaves a transaction form without persisting the pending edits.
+  /// Marking the current values pristine first prevents the form-level
+  /// PopScope from showing a second discard prompt after the merchant has
+  /// already made that choice in the confirmation-sheet close flow.
+  void discardFormAndNavigateAway(BuildContext context) {
+    markPristine(force: true);
+    setLoading(false);
     Navigator.of(context).pop();
   }
 

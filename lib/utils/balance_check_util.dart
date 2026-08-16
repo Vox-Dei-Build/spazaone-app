@@ -76,7 +76,7 @@ class BalanceCheckUtil {
                 style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
             content: const Text(
                 "You don't have enough app balance to send this message. "
-                "Top up to keep sending SMS and WhatsApp updates."),
+                "Add money to keep sending SMS and WhatsApp updates."),
             actions: [
               TextButton(
                 onPressed: () {
@@ -88,7 +88,7 @@ class BalanceCheckUtil {
               ),
               ElevatedButton.icon(
                 icon: const Icon(Icons.account_balance_wallet, size: 18),
-                label: Text("Top up now",
+                label: Text("Add money",
                     style: TextStyle(fontSize: SizeConfig.textMultiplier * 2)),
                 onPressed: () {
                   Navigator.of(context).pop(false);
@@ -118,7 +118,7 @@ class SnackbarComponents {
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
-            label: 'Top up',
+            label: 'Add money',
             textColor: Colors.white,
             onPressed: () {
               Provider.of<AppModel>(context, listen: false).goToBilling(

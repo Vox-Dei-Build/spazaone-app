@@ -160,14 +160,26 @@ class TransactionTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            CurrencyUtil.format(balance),
-            style: TextStyle(
-              color: balance >= 0 ? kPrimaryColor : Colors.red,
-              fontWeight: FontWeight.bold,
-              fontSize: SizeConfig.textMultiplier * 1.8,
-            ),
-            overflow: TextOverflow.ellipsis,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                CurrencyUtil.format(balance.abs()),
+                style: TextStyle(
+                  color: balance < 0 ? Colors.orange.shade800 : kPrimaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: SizeConfig.textMultiplier * 1.8,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                balance < 0 ? 'Owes you' : 'Paid up',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: SizeConfig.textMultiplier * 1.2,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -175,6 +187,23 @@ class TransactionTile extends StatelessWidget {
   }
 
   Widget _buildSubtitle() {
+    if (showChannelCapability && number != null && number!.isNotEmpty) {
+      final channel = hasWhatsApp == true
+          ? 'WhatsApp'
+          : hasWhatsApp == false
+              ? 'SMS'
+              : 'Phone';
+      return Text(
+        '$channel · $number',
+        style: TextStyle(
+          color: Colors.grey.shade600,
+          fontSize: SizeConfig.textMultiplier * 1.45,
+          fontWeight: FontWeight.w400,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
     // Detect the "no real transactions yet" state. New contacts are
     // initialised with a synthetic placeholder transaction
     // (`getDefaultTransaction` in add_contact_view_model.dart) whose

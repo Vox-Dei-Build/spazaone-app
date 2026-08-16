@@ -1,5 +1,10 @@
 import { createHmac, timingSafeEqual } from "crypto";
 
+/** Secret Manager/CLI inputs commonly include a terminal newline. */
+export function normalizePaystackSecret(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 /** Verify Paystack's SHA-512 HMAC without leaking timing information. */
 export function verifyPaystackSignature(
   rawBody: Buffer,

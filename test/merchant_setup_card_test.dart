@@ -34,6 +34,7 @@ MerchantSetupActions _noopActions({
   VoidCallback? onAddProduct,
   VoidCallback? onChooseWhatsAppProducts,
   VoidCallback? onOpenOrderingLink,
+  VoidCallback? onOpenOrderOptions,
   VoidCallback? onOpenBanking,
   VoidCallback? onCreateTemplate,
 }) {
@@ -42,6 +43,7 @@ MerchantSetupActions _noopActions({
     onAddProduct: onAddProduct ?? () {},
     onChooseWhatsAppProducts: onChooseWhatsAppProducts ?? () {},
     onOpenOrderingLink: onOpenOrderingLink ?? () {},
+    onOpenOrderOptions: onOpenOrderOptions ?? () {},
     onOpenBanking: onOpenBanking ?? () {},
     onCreateTemplate: onCreateTemplate ?? () {},
   );
@@ -96,6 +98,7 @@ const _allButTemplate = MerchantSetupState(
   hasProducts: true,
   hasListedProduct: true,
   hasOrderingLink: true,
+  hasOrderingOptions: true,
   hasApprovedTemplate: false,
   hasBank: true,
   shopName: 'Acme Shop',
@@ -110,6 +113,7 @@ const _allDone = MerchantSetupState(
   hasProducts: true,
   hasListedProduct: true,
   hasOrderingLink: true,
+  hasOrderingOptions: true,
   hasApprovedTemplate: true,
   hasBank: true,
   shopName: 'Acme Shop',
@@ -122,12 +126,13 @@ const _allDone = MerchantSetupState(
 void main() {
   group('MerchantSetupCard header + copy', () {
     testWidgets(
-      'renders "Set up your shop" and progress out of six',
+      'renders "Set up your shop" and progress out of seven',
       (tester) async {
         await _pumpCardWith(tester, _customerOnly);
 
         expect(find.text('Set up your shop'), findsOneWidget);
-        expect(find.text('1 of 6 done'), findsOneWidget);
+        expect(find.text('1 of 7 done'), findsOneWidget);
+        expect(find.byType(Divider), findsNothing);
       },
     );
 
@@ -182,7 +187,7 @@ void main() {
       (tester) async {
         await _pumpCardWith(tester, _allButTemplate);
 
-        expect(find.text('Prepare WhatsApp promotions'), findsOneWidget);
+        expect(find.text('WhatsApp promotion approval'), findsOneWidget);
         expect(
           find.widgetWithText(ElevatedButton, 'Open Marketing'),
           findsOneWidget,
@@ -200,7 +205,7 @@ void main() {
 
         expect(
           find.textContaining('Available after a product exists'),
-          findsNWidgets(3),
+          findsNWidgets(4),
         );
       },
     );
@@ -231,20 +236,20 @@ void main() {
       (tester) async {
         await _pumpCardWith(tester, _customerAndProduct);
 
-        // With customer+product done, WhatsApp/link/payout/template
+        // With customer+product done, WhatsApp/link/options/payout/template
         // rows are all tappable. Only "First customer" and
         // "First product" are done, so they show check circles, not
         // chevrons. The current WhatsApp-products action is promoted above
-        // the checklist, leaving 3 chevrons in the rows.
+        // the checklist, leaving 4 chevrons in the rows.
         final chevrons = find.byIcon(Icons.chevron_right);
-        expect(chevrons, findsNWidgets(3));
+        expect(chevrons, findsNWidgets(4));
       },
     );
   });
 
   group('Complete state', () {
     testWidgets(
-      'all six done → swaps to shop link panel with Share on WhatsApp',
+      'all seven done → swaps to shop link panel with Share on WhatsApp',
       (tester) async {
         await _pumpCardWith(tester, _allDone);
 
@@ -353,6 +358,7 @@ void main() {
         // Banking is not the next action — WhatsApp products is —
         // but the banking row is still tappable via its chevron
         // InkWell. Tap on the row title text.
+        await tester.ensureVisible(find.text('Add payout details'));
         await tester.tap(find.text('Add payout details'));
         await tester.pump();
 

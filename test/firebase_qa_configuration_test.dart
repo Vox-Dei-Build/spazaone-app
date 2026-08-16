@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/config/firebase_environment.dart';
+import 'package:pasella/config/spaza_environment.dart';
 
 void main() {
   const production = FirebaseOptions(
@@ -29,6 +30,7 @@ void main() {
       production,
       emulatorMode: true,
       projectId: 'demo-spazaone-qa',
+      runtimeEnvironment: SpazaEnvironment.local,
     );
 
     expect(resolved.projectId, 'demo-spazaone-qa');
@@ -97,7 +99,7 @@ void main() {
     expect(productionManifest, isNot(contains('FirebaseInitProvider')));
   });
 
-  test('tracked and runtime Firebase app identities stay aligned', () {
+  test('development and production Firebase app identities stay isolated', () {
     final environment = <String, String>{};
     for (final rawLine in File('.env').readAsLinesSync()) {
       final line = rawLine.trim();
@@ -112,27 +114,83 @@ void main() {
               );
     }
 
-    const androidAppId = '1:716158514645:android:a4f2b4756aafcebbe5795c';
-    const iosAppId = '1:716158514645:ios:17eba128d70a92a7e5795c';
+    const productionIosAppId = '1:716158514645:ios:17eba128d70a92a7e5795c';
+    final runtimeProject = environment['FIREBASE_ANDROID_PROJECT_ID'];
     expect(
-      environment['FIREBASE_ANDROID_APP_ID'] == androidAppId,
-      isTrue,
-      reason: 'Android .env app identity must match the registered app.',
+      environment['FIREBASE_IOS_PROJECT_ID'],
+      runtimeProject,
+      reason: 'Android and iOS .env files must target the same lane.',
     );
-    expect(
-      environment['FIREBASE_IOS_APP_ID'] == iosAppId,
-      isTrue,
-      reason: 'iOS .env app identity must match the registered app.',
-    );
+
+    if (runtimeProject == 'spazaone-dev') {
+      final developmentAndroid = jsonDecode(
+        File('android/app/src/development/google-services.json')
+            .readAsStringSync(),
+      ) as Map<String, dynamic>;
+      final projectInfo =
+          developmentAndroid['project_info'] as Map<String, dynamic>;
+      final clients = developmentAndroid['client'] as List<dynamic>;
+      final clientInfo = (clients.first as Map<String, dynamic>)['client_info']
+          as Map<String, dynamic>;
+      final androidClientInfo =
+          clientInfo['android_client_info'] as Map<String, dynamic>;
+
+      expect(
+        environment['FIREBASE_ANDROID_APP_ID'],
+        clientInfo['mobilesdk_app_id'],
+        reason: 'Android .env app identity must match the registered app.',
+      );
+      expect(projectInfo['project_id'], 'spazaone-dev');
+      expect(androidClientInfo['package_name'], 'com.tsepo.spazaone.dev');
+
+      final developmentIosPlist = File(
+        'ios/GoogleService-Info-development.plist',
+      ).readAsStringSync();
+      expect(
+        developmentIosPlist,
+        contains(environment['FIREBASE_IOS_APP_ID']),
+        reason: 'iOS .env app identity must match the registered app.',
+      );
+      expect(developmentIosPlist, contains('spazaone-dev'));
+      expect(developmentIosPlist, contains('com.tsepo.spazaone.dev'));
+    } else {
+      expect(runtimeProject, 'pasella-ledger');
+      expect(environment['FIREBASE_IOS_APP_ID'], productionIosAppId);
+    }
 
     final crashlytics = jsonDecode(
       File('ios/firebase_app_id_file.json').readAsStringSync(),
     ) as Map<String, dynamic>;
-    expect(crashlytics['GOOGLE_APP_ID'], iosAppId);
+    expect(crashlytics['GOOGLE_APP_ID'], productionIosAppId);
     expect(crashlytics['FIREBASE_PROJECT_ID'], 'pasella-ledger');
 
-    final iosPlist = File('ios/GoogleService-Info.plist').readAsStringSync();
-    expect(iosPlist, contains(iosAppId));
-    expect(iosPlist, contains('com.tsepo.pasella'));
+    final productionIosPlist =
+        File('ios/GoogleService-Info.plist').readAsStringSync();
+    expect(productionIosPlist, contains(productionIosAppId));
+    expect(productionIosPlist, contains('pasella-ledger'));
+    expect(productionIosPlist, contains('com.tsepo.pasella'));
+    expect(productionIosPlist, isNot(contains('spazaone-dev')));
+  });
+
+  test('iOS phone auth callback scheme follows the selected Firebase lane', () {
+    final infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
+    final xcodeProject =
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+
+    expect(infoPlist, contains(r'$(SPAZAONE_FIREBASE_URL_SCHEME)'));
+    expect(
+      xcodeProject,
+      contains(
+        'SPAZAONE_FIREBASE_URL_SCHEME = '
+        '"app-1-317368517217-ios-b3e0537994e1b4a984a020";',
+      ),
+    );
+    expect(
+      xcodeProject,
+      contains(
+        'SPAZAONE_FIREBASE_URL_SCHEME = '
+        '"app-1-716158514645-ios-17eba128d70a92a7e5795c";',
+      ),
+    );
   });
 }

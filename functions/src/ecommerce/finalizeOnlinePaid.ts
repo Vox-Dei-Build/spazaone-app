@@ -1,6 +1,7 @@
 // functions/src/http/finalizeOnlinePaid.ts
 import { db, functions } from "../config/main";
 import { FieldValue } from "firebase-admin/firestore";
+import { consumeOwnedInventoryReservation } from "../payments/v2/inventoryReservations";
 
 /**
  * Finalizes the inventory and clears the customer's cart for a given order.
@@ -40,6 +41,19 @@ async function finalizeInventoryOnce(
 
   const now = FieldValue.serverTimestamp();
 
+  const preflight = await saleRef.get();
+  if (!preflight.exists) throw new Error("SALE_NOT_FOUND");
+  const reservationId = String(
+    preflight.data()?.inventoryReservationId ?? "",
+  ).trim();
+  if (reservationId) {
+    await consumeOwnedInventoryReservation({
+      reservationId,
+      merchantId,
+      orderId,
+    });
+  }
+
   await db.runTransaction(async (tx) => {
     // ── PHASE A: READS (no writes here)
     const saleSnap = await tx.get(saleRef);
@@ -69,7 +83,7 @@ async function finalizeInventoryOnce(
       qty: number;
       hasQtyField: boolean;
     }> = [];
-    for (const pid of productIds) {
+    for (const pid of reservationId ? [] : productIds) {
       const pref = db
         .collection("users")
         .doc(merchantId)
@@ -130,6 +144,12 @@ async function finalizeInventoryOnce(
     // 4) Mark sale as finalized
     tx.update(saleRef, {
       inventoryFinalized: true,
+      ...(reservationId
+        ? {
+            inventoryReservationConsumed: true,
+            inventoryReservationConsumedAt: now,
+          }
+        : {}),
       finalizedAt: now,
       updatedAt: now,
     });

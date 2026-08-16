@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   buildPaymentReceiptPatch,
+  canAdvanceOrderFulfillment,
+  canRecordManualPayment,
   isPaymentAlreadyRecorded,
   isPaymentReceiptAction,
 } from "../lib/ecommerce/orderPaymentPolicy.js";
@@ -35,7 +37,7 @@ test("preserves transfer and BNPL payment semantics in atomic patches", () => {
       paymentMethod: "Transfer",
       paymentStatus: "paid",
       status: "paid",
-      cashReceivedAt: now,
+      paidAt: now,
     },
   );
   assert.deepEqual(buildPaymentReceiptPatch("SETTLE_BNPL", {}, now), {
@@ -44,4 +46,73 @@ test("preserves transfer and BNPL payment semantics in atomic patches", () => {
     status: "paid",
     paidAt: now,
   });
+});
+
+test("requires EFT before handover and cash at handover", () => {
+  assert.equal(
+    canRecordManualPayment({ paymentMethod: "EFT", paymentStatus: "unpaid" }),
+    true,
+  );
+  assert.equal(
+    canAdvanceOrderFulfillment({
+      paymentMethod: "EFT",
+      paymentStatus: "unpaid",
+    }),
+    false,
+  );
+  assert.equal(
+    canAdvanceOrderFulfillment({
+      paymentMethod: "EFT",
+      paymentStatus: "paid",
+    }),
+    true,
+  );
+  assert.equal(
+    canRecordManualPayment({ paymentMethod: "Cash", collected: false }),
+    false,
+  );
+  assert.equal(
+    canRecordManualPayment({ paymentMethod: "Cash", collected: true }),
+    true,
+  );
+  assert.equal(
+    canAdvanceOrderFulfillment({
+      paymentMethod: "Cash",
+      paymentStatus: "unpaid",
+    }),
+    true,
+  );
+});
+
+test("keeps online payment webhook-only and Pay Later explicit", () => {
+  assert.equal(
+    canRecordManualPayment({
+      paymentMethod: "EFT",
+      paymentRail: "paystack_v2",
+      paymentStatus: "pending",
+    }),
+    false,
+  );
+  assert.equal(
+    canAdvanceOrderFulfillment({
+      paymentMethod: "paystack",
+      paymentRail: "paystack_v2",
+      paymentStatus: "pending",
+    }),
+    false,
+  );
+  assert.equal(
+    canAdvanceOrderFulfillment({
+      paymentMethod: "BNPL",
+      paymentStatus: "approved",
+    }),
+    true,
+  );
+  assert.equal(
+    canAdvanceOrderFulfillment({
+      paymentMethod: "BNPL",
+      paymentStatus: "pending",
+    }),
+    false,
+  );
 });

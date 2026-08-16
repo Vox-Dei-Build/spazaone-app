@@ -1,35 +1,96 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/config/remote_config.dart';
+import 'package:pasella/services/store_session.dart';
 
+class MessagingPricingUnavailable implements Exception {
+  const MessagingPricingUnavailable([
+    this.message = 'Messaging pricing is temporarily unavailable.',
+  ]);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class MessagingPricingSnapshotV1 {
+  const MessagingPricingSnapshotV1({
+    required this.smsCustomerMinor,
+    required this.smsPaymentMinor,
+    required this.whatsappUtilityMinor,
+    required this.whatsappPromotionMinor,
+  });
+
+  final int smsCustomerMinor;
+  final int smsPaymentMinor;
+  final int whatsappUtilityMinor;
+  final int whatsappPromotionMinor;
+
+  factory MessagingPricingSnapshotV1.fromMap(Map<String, dynamic> data) {
+    int requiredMinor(String key) {
+      final value = data[key];
+      if (value is! num || value.toInt() <= 0) {
+        throw const MessagingPricingUnavailable();
+      }
+      return value.toInt();
+    }
+
+    if (data['schemaVersion'] != 1 || data['currency'] != 'ZAR') {
+      throw const MessagingPricingUnavailable();
+    }
+    return MessagingPricingSnapshotV1(
+      smsCustomerMinor: requiredMinor('smsCustomerMinor'),
+      smsPaymentMinor: requiredMinor('smsPaymentMinor'),
+      whatsappUtilityMinor: requiredMinor('whatsappUtilityMinor'),
+      whatsappPromotionMinor: requiredMinor('whatsappPromotionMinor'),
+    );
+  }
+}
+
+typedef MessagingPricingLoader = Future<Map<String, dynamic>> Function(
+  String storeId,
+);
+
+/// Validated messaging prices supplied by the server billing authority.
+///
+/// Remote Config remains available for non-messaging presentation values, but
+/// no paid send may derive an authoritative rate from a client-side default.
 class DynamicPricingService {
+  const DynamicPricingService(
+    this.remoteConfigService,
+    this.snapshot,
+  );
+
   final RemoteConfigService remoteConfigService;
+  final MessagingPricingSnapshotV1 snapshot;
 
-  DynamicPricingService(this.remoteConfigService);
-
-  static Future<DynamicPricingService> initialize() async {
+  static Future<DynamicPricingService> initialize({
+    MessagingPricingLoader? loader,
+  }) async {
     final remoteConfigService = await RemoteConfigService.getInstance();
-
-    return DynamicPricingService(remoteConfigService);
+    try {
+      final storeId = StoreSession.instance.storeId;
+      final data = loader == null
+          ? Map<String, dynamic>.from(
+              (await FirebaseFunctions.instance
+                      .httpsCallable('getMessagingPricingV1')
+                      .call({if (storeId.isNotEmpty) 'storeId': storeId}))
+                  .data as Map,
+            )
+          : await loader(storeId);
+      return DynamicPricingService(
+        remoteConfigService,
+        MessagingPricingSnapshotV1.fromMap(data),
+      );
+    } on MessagingPricingUnavailable {
+      rethrow;
+    } catch (_) {
+      throw const MessagingPricingUnavailable();
+    }
   }
 
-  double calculatePrice(String usdPriceKey, String markupPercentageKey) {
-    final usdPrice = double.parse(remoteConfigService.getString(usdPriceKey));
-    final markupPercent =
-        double.parse(remoteConfigService.getString(markupPercentageKey));
-    final double exchangeRate =
-        double.parse(remoteConfigService.getString('USD_ZAR_EXCHANGE_RATE'));
-
-    final zarBase = usdPrice * exchangeRate;
-    final finalPrice = zarBase + (zarBase * markupPercent / 100);
-
-    return double.parse(finalPrice.toStringAsFixed(2));
-  }
-
-  double get smsReminderTemplatePrice =>
-      calculatePrice('USD_SMS_REMINDER_PRICE', 'MARKUP_SMS_PERCENTAGE');
-  double get smsPaymentTemplatePrice =>
-      calculatePrice('USD_SMS_PAYMENT_PRICE', 'MARKUP_SMS_PERCENTAGE');
-  double get whatsappUtilityPrice => calculatePrice(
-      'USD_WHATSAPP_UTILITY_PRICE', 'MARKUP_WHATSAPP_PERCENTAGE');
-  double get whatsappPromotionPrice => calculatePrice(
-      'USD_WHATSAPP_PROMOTIONAL_PRICE', 'MARKUP_PROMOTIONAL_PERCENTAGE');
+  double get smsReminderTemplatePrice => snapshot.smsCustomerMinor / 100;
+  double get smsPaymentTemplatePrice => snapshot.smsPaymentMinor / 100;
+  double get whatsappUtilityPrice => snapshot.whatsappUtilityMinor / 100;
+  double get whatsappPromotionPrice => snapshot.whatsappPromotionMinor / 100;
 }

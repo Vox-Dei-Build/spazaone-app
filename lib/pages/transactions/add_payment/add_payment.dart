@@ -25,21 +25,20 @@ class AddPaymentScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create:
-          (_) => AddPaymentViewModel(
-            customerName: customerName,
-            customerId: customerId,
-            mobileNumber: mobileNumber,
-          ),
+      create: (_) => AddPaymentViewModel(
+        customerName: customerName,
+        customerId: customerId,
+        mobileNumber: mobileNumber,
+      ),
       child: Consumer<AddPaymentViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
-            title: 'Add Payment for $customerName',
+            title: 'Record payment for $customerName',
             scaffoldKey: viewModel.scaffoldKey,
             formKey: viewModel.formKey,
             isLoading: viewModel.isLoading,
             isDirty: viewModel.isDirty,
-            primaryActionLabel: 'Add Payment',
+            primaryActionLabel: 'Record payment',
             primaryActionIcon: Icons.arrow_upward,
             primaryActionColor: Colors.green,
             onPrimaryAction: () => viewModel.addPaymentTransaction(context),
@@ -64,18 +63,38 @@ class AddPaymentScreen extends StatelessWidget {
                   },
                 ),
                 DateRow(
-                  label: 'Date of Payment',
+                  label: 'Date of payment',
                   value: viewModel.selectedDate,
                   firstDate: DateTime(2000),
                   lastDate: DateTime.now(),
                   onPick: viewModel.setSelectedDate,
                 ),
                 const SizedBox(height: LayoutConstants.spaceLg),
+                DropdownButtonFormField<String>(
+                  value: viewModel.paymentMethod,
+                  decoration: const InputDecoration(
+                    labelText: 'Payment method',
+                    prefixIcon: Icon(Icons.payments_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                    DropdownMenuItem(
+                      value: 'bank_transfer',
+                      child: Text('Bank transfer'),
+                    ),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: viewModel.isLoading
+                      ? null
+                      : (value) => viewModel.setPaymentMethod(value ?? 'cash'),
+                ),
+                const SizedBox(height: LayoutConstants.spaceLg),
                 TextFormField(
                   controller: viewModel.remarksController,
                   maxLines: 3,
                   decoration: const InputDecoration(
-                    labelText: 'Remarks/Notes',
+                    labelText: 'Notes (optional)',
                     border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(
                       vertical: LayoutConstants.spaceMd,

@@ -2,6 +2,20 @@
 import { db, functions } from "../config/main";
 import { FieldValue } from "firebase-admin/firestore";
 import { computeCartSig } from "./cartSig";
+import {
+  authenticateFirebaseRequest,
+  verifyBotRequest,
+} from "../security/requestAuth";
+import { assertStoreAccess } from "../stores/storeAccess";
+import { paymentReadiness } from "../payments/v2/readiness";
+import {
+  releaseOwnedInventoryReservation,
+  reserveOwnedInventoryForSale,
+} from "../payments/v2/inventoryReservations";
+import {
+  merchantCheckoutOptionDecision,
+  merchantOrderingOptionsFrom,
+} from "./merchantOrderingOptions";
 
 type PaymentType = "Cash" | "Online" | "BNPL" | string;
 type FulfillmentType = "pickup" | "delivery" | string;
@@ -12,7 +26,10 @@ function idempotencyDocId(value: string | null): string | null {
   return encodeURIComponent(normalized).slice(0, 500);
 }
 
-export const checkoutCart = functions.https.onRequest(async (req, res) => {
+const checkoutCartHandler = async (
+  req: functions.https.Request,
+  res: functions.Response,
+) => {
   if (req.method !== "POST") {
     res.status(405).send("Method Not Allowed");
     return;
@@ -37,6 +54,9 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       mediaRefs = [],
       preview = false, // <— only flag we keep
       idempotencyKey = null, // optional, for deduping sale creation
+      paymentRail = null,
+      deliveryFeeMinor: claimedDeliveryFeeMinor = undefined,
+      totalMinor: claimedTotalMinor = undefined,
     } = (req.body || {}) as {
       merchantId: string;
       customerId: string;
@@ -55,6 +75,9 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       mediaRefs?: string[];
       preview?: boolean;
       idempotencyKey?: string | null;
+      paymentRail?: string | null;
+      deliveryFeeMinor?: number;
+      totalMinor?: number;
     };
 
     if (!merchantId || !customerId) {
@@ -62,7 +85,17 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       return;
     }
 
+    if (!verifyBotRequest(req)) {
+      const uid = await authenticateFirebaseRequest(req, res, {
+        requireAppCheck: true,
+      });
+      if (!uid) return;
+      await assertStoreAccess(uid, merchantId);
+    }
+
     const ptype = String(paymentType || "").toLowerCase();
+    const isPaystackV2 =
+      ptype === "online" && String(paymentRail ?? "") === "paystack_v2";
     const idempotencyId = idempotencyDocId(idempotencyKey);
     const idempotencyRef = idempotencyId
       ? db
@@ -71,6 +104,24 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
           .collection("checkoutIdempotency")
           .doc(idempotencyId)
       : null;
+
+    if (isPaystackV2) {
+      if (!idempotencyRef) {
+        res.status(400).json({ error: "An idempotency key is required." });
+        return;
+      }
+      const readiness = await paymentReadiness({
+        merchantId,
+        purpose: "merchant_order",
+      });
+      if (!readiness.enabled) {
+        res.status(409).json({
+          error: "Online payments are not available for this shop yet.",
+          reason: readiness.reason,
+        });
+        return;
+      }
+    }
 
     if (idempotencyRef) {
       const existing = await idempotencyRef.get();
@@ -144,7 +195,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     };
 
     const items: SaleItem[] = [];
-    let total = 0;
+    let subtotalMinor = 0;
     let itemsCount = 0;
     for (const snap of productDocs) {
       const pid = snap.id;
@@ -154,7 +205,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       const data = snap.exists ? snap.data() || {} : {};
       const unit =
         Number(data.sellingPrice ?? data.price ?? data.productPrice ?? 0) || 0;
-      total += unit * qty;
+      subtotalMinor += Math.round(unit * 100) * qty;
       items.push({
         productId: pid,
         quantity: qty,
@@ -174,37 +225,73 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       });
     }
 
+    let checkoutOptions;
+    try {
+      const settings = await db
+        .doc(`merchantCommerceSettings/${merchantId}`)
+        .get();
+      checkoutOptions = merchantCheckoutOptionDecision({
+        options: merchantOrderingOptionsFrom(settings.data()),
+        fulfillmentType,
+        paymentType,
+        deliveryAddress,
+        claimedDeliveryFeeMinor,
+        claimedTotalMinor,
+        subtotalMinor,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      const messages: Record<string, string> = {
+        DELIVERY_DISABLED: "Delivery is not available from this shop.",
+        DELIVERY_ADDRESS_REQUIRED: "Enter a delivery address.",
+        PAY_LATER_DISABLED: "Pay Later is not available from this shop.",
+        DELIVERY_FEE_MISMATCH: "The delivery fee changed. Review the total.",
+        ORDER_TOTAL_MISMATCH: "The order total changed. Review the cart.",
+        FULFILLMENT_TYPE_INVALID: "Choose pickup or delivery.",
+        PAYMENT_TYPE_INVALID: "Choose an available payment method.",
+      };
+      res.status(409).json({
+        error: messages[code] ?? "The selected order option is unavailable.",
+        code: code || "ORDER_OPTIONS_INVALID",
+      });
+      return;
+    }
+    const total = checkoutOptions.totalMinor / 100;
+    const canonicalPaymentType = checkoutOptions.paymentType;
+
     const productsMap: Record<string, number> = {};
     Object.keys(quantities).forEach(
       (pid) => (productsMap[pid] = Number(quantities[pid] || 0)),
     );
 
     const now = FieldValue.serverTimestamp();
-    const isOrderRequest = orderRequest === true;
+    const isOrderRequest =
+      orderRequest === true || checkoutOptions.requiresMerchantReview;
     const initialStatus = isOrderRequest
       ? "pending_merchant_review"
-      : ptype === "cash"
+      : canonicalPaymentType === "cash"
         ? "awaiting_collection"
-        : ptype === "bnpl"
+        : canonicalPaymentType === "bnpl"
           ? "pending_review"
-          : ptype === "online"
+          : canonicalPaymentType === "online"
             ? "pending_payment"
             : "pending";
-    const initialPaymentStatus = isOrderRequest
-      ? "unpaid"
-      : ptype === "online"
+    const initialPaymentStatus =
+      canonicalPaymentType === "online"
         ? "pending"
-        : ptype === "bnpl"
+        : canonicalPaymentType === "bnpl"
           ? "pending"
-          : undefined;
+          : isOrderRequest
+            ? "unpaid"
+            : undefined;
     const paymentMethod =
-      ptype === "cash"
+      canonicalPaymentType === "cash"
         ? "Cash"
-        : ptype === "transfer" || ptype === "eft"
+        : canonicalPaymentType === "transfer"
           ? "Transfer"
-          : ptype === "bnpl"
+          : canonicalPaymentType === "bnpl"
             ? "BNPL"
-            : ptype === "online"
+            : canonicalPaymentType === "online"
               ? "Online"
               : paymentType;
 
@@ -214,6 +301,9 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
         success: true,
         preview: true,
         total,
+        subtotalMinor: checkoutOptions.subtotalMinor,
+        deliveryFeeMinor: checkoutOptions.deliveryFeeMinor,
+        totalMinor: checkoutOptions.totalMinor,
         itemsCount,
         currency: "ZAR",
         items,
@@ -287,6 +377,13 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
             return;
           }
           // Supersede: cancel old & drop its cart lock atomically
+          const reservationId = String(os.inventoryReservationId ?? "").trim();
+          if (reservationId && os.inventoryReserved === true) {
+            await releaseOwnedInventoryReservation({
+              reservationId,
+              reason: "cart_changed",
+            });
+          }
           await db.runTransaction(async (tx) => {
             const prevRef = db
               .collection("users")
@@ -320,7 +417,7 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       {
         id: saleRef.id,
         customerId,
-        type: ptype === "transfer" || ptype === "eft" ? "Cash" : paymentType,
+        type: paymentMethod,
         status: initialStatus,
         paymentMethod,
         ...(initialPaymentStatus
@@ -333,8 +430,13 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
         items,
         cartSig,
         deliveryInfo: deliveryInfo || "",
-        fulfillmentType: fulfillmentType || null,
+        fulfillmentType: checkoutOptions.fulfillmentType,
         deliveryAddress: deliveryAddress || "",
+        deliveryFeeMinor: checkoutOptions.deliveryFeeMinor,
+        subtotalMinor: checkoutOptions.subtotalMinor,
+        totalMinor: checkoutOptions.totalMinor,
+        orderingOptionsVersion: 1,
+        merchantReviewRequired: checkoutOptions.requiresMerchantReview,
         requestedFulfillmentTime: requestedFulfillmentTime || "",
         cashChangeFor: cashChangeFor || null,
         remarks: remarks || "",
@@ -347,10 +449,47 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
         dateAdded: now,
         updatedAt: now,
         inventoryFinalized: false,
+        ...(isPaystackV2
+          ? { paymentRail: "paystack_v2", source: "paystack_v2" }
+          : {}),
         idempotencyKey: idempotencyKey || null,
       },
       { merge: true },
     );
+
+    if (isPaystackV2) {
+      try {
+        await reserveOwnedInventoryForSale({
+          merchantId,
+          orderId: saleRef.id,
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "unknown";
+        await saleRef.set(
+          {
+            status: "cancelled",
+            paymentStatus: "cancelled",
+            cancelledReason: code,
+            cancelledAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        const unavailable = [
+          "INVENTORY_UNAVAILABLE",
+          "INVENTORY_PRODUCT_UNAVAILABLE",
+          "INVENTORY_PRICE_CHANGED",
+          "SALE_TOTAL_CHANGED",
+        ].includes(code);
+        res.status(unavailable ? 409 : 500).json({
+          error: unavailable
+            ? "The cart changed or an item is no longer available. Review the cart and try again."
+            : "The order could not reserve stock. No payment was opened.",
+          code: unavailable ? code : "INVENTORY_RESERVATION_FAILED",
+        });
+        return;
+      }
+    }
 
     if (idempotencyRef) {
       await idempotencyRef.set(
@@ -387,6 +526,9 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
       success: true,
       saleId: saleRef.id,
       total,
+      subtotalMinor: checkoutOptions.subtotalMinor,
+      deliveryFeeMinor: checkoutOptions.deliveryFeeMinor,
+      totalMinor: checkoutOptions.totalMinor,
       itemsCount,
       status: initialStatus,
     });
@@ -395,4 +537,8 @@ export const checkoutCart = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ error: "Failed to checkout" });
     return;
   }
-});
+};
+
+export const checkoutCart = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(checkoutCartHandler);

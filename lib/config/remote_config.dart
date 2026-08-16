@@ -84,8 +84,7 @@ class RemoteConfigService implements RemoteConfigBoolReader {
           'PAYSTACK_EFT_PERCENT': dotenv.env['PAYSTACK_EFT_PERCENT'] ?? '2.0',
           'PAYSTACK_INT_PERCENT': dotenv.env['PAYSTACK_INT_PERCENT'] ?? '3.1',
           'PAYSTACK_INT_FLAT': dotenv.env['PAYSTACK_INT_FLAT'] ?? '1.0',
-          'PAYSTACK_SETTLEMENT_FEE':
-              dotenv.env['PAYSTACK_SETTLEMENT_FEE'] ?? '3.0',
+          'PAYSTACK_TRANSFER_FEE': dotenv.env['PAYSTACK_TRANSFER_FEE'] ?? '3.0',
           'PAYSTACK_VAT_PERCENT': dotenv.env['PAYSTACK_VAT_PERCENT'] ?? '15.0',
           // SMS template defaults — these mirror the production Remote Config
           // values (post-QW-0 with ASCII hyphens in the sign-off). Defaults
@@ -104,9 +103,9 @@ class RemoteConfigService implements RemoteConfigBoolReader {
               'Hi {customerName}, welcome to {shopName}! Your account is now '
                   'online. Balance: R0,00. Thanks for joining! - {shopName}',
           'SMS_REMINDER_SHORT':
-              'Hi {customerName}, your balance of {balance} at {shopName} is '
-                  'due. Please make your payment to avoid any late fees. From '
-                  '{shopName}',
+              'Hi {customerName}, your {shopName} balance is {balance}. '
+                  'Please pay the shop or contact them if you have already '
+                  'paid. - SpazaOne',
           'SMS_TEMPLATE_KEYWORDS': '[]',
           'FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED':
               dotenv.env['FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED'] == 'true',
@@ -118,6 +117,17 @@ class RemoteConfigService implements RemoteConfigBoolReader {
               dotenv.env['FEATURE_OTP_RESEND_IN_DIALOG_ENABLED'] == 'true',
           'FEATURE_ONLINE_SALES_ENABLED':
               dotenv.env['FEATURE_ONLINE_SALES_ENABLED'] == 'true',
+          'FEATURE_TOP_UP_PAYSTACK_ENABLED':
+              dotenv.env['FEATURE_TOP_UP_PAYSTACK_ENABLED'] == 'true',
+          'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED':
+              dotenv.env['FEATURE_OWNED_ORDER_PAYMENTS_ENABLED'] == 'true',
+          'FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED':
+              dotenv.env['FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS_ENABLED'] ==
+                  'true',
+          'FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED':
+              dotenv.env['FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED'] == 'true',
+          'FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED':
+              dotenv.env['FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED'] == 'true',
           'FEATURE_MULTI_STORE_OPERATORS_ENABLED':
               (dotenv.env['FEATURE_MULTI_STORE_OPERATORS_ENABLED'] ?? 'true') ==
                   'true',

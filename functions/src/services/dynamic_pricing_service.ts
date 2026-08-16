@@ -1,155 +1,136 @@
-// functions/src/services/dynamic_pricing_service.ts
 import * as admin from "firebase-admin";
 
+export type RemoteConfigTemplateLike = {
+  parameters?: Record<string, unknown>;
+  parameterGroups?: Record<string, { parameters?: Record<string, unknown> }>;
+};
+
+export type MessagingPricingSnapshotV1 = {
+  schemaVersion: 1;
+  currency: "ZAR";
+  smsCustomerMinor: number;
+  smsPaymentMinor: number;
+  whatsappUtilityMinor: number;
+  whatsappPromotionMinor: number;
+};
+
+export class MessagingPricingUnavailableError extends Error {
+  constructor(message = "Messaging pricing is unavailable.") {
+    super(message);
+    this.name = "MessagingPricingUnavailableError";
+  }
+}
+
+function parameter(template: RemoteConfigTemplateLike, key: string): unknown {
+  const direct = template.parameters?.[key];
+  if (direct) return direct;
+  for (const group of Object.values(template.parameterGroups ?? {})) {
+    const grouped = group.parameters?.[key];
+    if (grouped) return grouped;
+  }
+  return undefined;
+}
+
+function numberValue(
+  template: RemoteConfigTemplateLike,
+  key: string,
+  { allowZero = false }: { allowZero?: boolean } = {},
+): number {
+  const raw = (
+    parameter(template, key) as
+      | { defaultValue?: { value?: unknown; defaultValue?: unknown } }
+      | undefined
+  )?.defaultValue;
+  const candidate = raw?.value ?? raw?.defaultValue;
+  const value = Number(candidate);
+  const lowerBoundOk = allowZero ? value >= 0 : value > 0;
+  if (!Number.isFinite(value) || !lowerBoundOk) {
+    throw new MessagingPricingUnavailableError(
+      `Required messaging price input ${key} is missing or invalid.`,
+    );
+  }
+  return value;
+}
+
+function priceMinor(
+  template: RemoteConfigTemplateLike,
+  usdKey: string,
+  markupKey: string,
+): number {
+  const usd = numberValue(template, usdKey);
+  const markup = numberValue(template, markupKey, { allowZero: true });
+  const exchangeRate = numberValue(template, "USD_ZAR_EXCHANGE_RATE");
+  const minor = Math.round(usd * exchangeRate * (1 + markup / 100) * 100);
+  if (!Number.isSafeInteger(minor) || minor <= 0) {
+    throw new MessagingPricingUnavailableError();
+  }
+  return minor;
+}
+
 /**
- * Computes per‑unit messaging prices by fetching
- * Remote Config parameters (both top‑level and grouped),
- * converting USD→ZAR, and applying markups.
+ * Builds the only buyer-safe messaging pricing projection exposed to clients.
+ * Missing, malformed and zero provider inputs fail closed instead of turning
+ * a paid send into a free message.
  */
-export class DynamicPricingService {
-  private template: admin.remoteConfig.RemoteConfigTemplate;
-
-  /**
-   * @param {admin.remoteConfig.RemoteConfigTemplate} template
-   *   The fetched Remote Config template containing parameters and groups.
-   */
-  private constructor(template: admin.remoteConfig.RemoteConfigTemplate) {
-    this.template = template;
-  }
-
-  /**
-   * Fetches the latest Remote Config template and returns
-   * an initialized DynamicPricingService.
-   *
-   * @return {Promise<DynamicPricingService>}
-   *   A promise resolving to the pricing service instance.
-   */
-  static async initialize(): Promise<DynamicPricingService> {
-    const tpl = await admin.remoteConfig().getTemplate();
-    console.log("[PRICING SERVICE] fetched ETag:", tpl.etag);
-    console.log(
-      "[PRICING SERVICE] top‑level parameters:",
-      Object.keys(tpl.parameters),
-    );
-    console.log(
-      "[PRICING SERVICE] parameterGroups:",
-      Object.keys(tpl.parameterGroups),
-    );
-    return new DynamicPricingService(tpl);
-  }
-
-  /**
-   * Reads a parameter’s default value by key, searching both
-   * the top‑level `parameters` map and each `parameterGroups` entry.
-   * Defaults to `"0"` if not found.
-   *
-   * @param {string} key
-   *   The Remote Config parameter key to look up.
-   * @return {string}
-   *   The parameter’s string value, or `"0"` if missing.
-   */
-  private getParamValue(key: string): string {
-    let param = this.template.parameters[key];
-
-    if (!param) {
-      // Search within each parameter group
-      for (const group of Object.values(this.template.parameterGroups)) {
-        // Remote Config can return empty groups without a `parameters`
-        // object. The promotion callable previously crashed here before it
-        // reached the pricing group, surfacing only "internal" to merchants.
-        const parameters = group?.parameters;
-        if (parameters?.[key]) {
-          param = parameters[key];
-          break;
-        }
-      }
-    }
-
-    if (!param?.defaultValue) {
-      console.warn(
-        `[PRICING SERVICE] missing RC param "${key}", defaulting to 0`,
-      );
-      return "0";
-    }
-
-    // Duck‑type to extract string
-    const dv = param.defaultValue as { value?: string; defaultValue?: string };
-    if (typeof dv.value === "string") return dv.value;
-    if (typeof dv.defaultValue === "string") return dv.defaultValue;
-    return "0";
-  }
-
-  /**
-   * Converts a USD price to ZAR and applies a markup percentage.
-   *
-   * @param {string} usdKey
-   *   The parameter key holding the USD base price.
-   * @param {string} markupKey
-   *   The parameter key holding the markup percentage.
-   * @return {number}
-   *   The final price in ZAR, rounded to two decimals.
-   */
-  private calculatePrice(usdKey: string, markupKey: string): number {
-    const usd = parseFloat(this.getParamValue(usdKey));
-    const mark = parseFloat(this.getParamValue(markupKey));
-    const rate = parseFloat(this.getParamValue("USD_ZAR_EXCHANGE_RATE"));
-    const base = usd * rate;
-    const price = base + (base * mark) / 100;
-    console.log(
-      `[PRICING SERVICE] ${usdKey}=${usd}, ${markupKey}=${mark}%, rate=${rate} → ${price}`,
-    );
-    return Math.round(price * 100) / 100;
-  }
-
-  /**
-   * SMS reminder template price per recipient.
-   *
-   * @return {number}
-   *   The SMS reminder price in ZAR.
-   */
-  get smsReminderTemplatePrice(): number {
-    return this.calculatePrice(
+export function messagingPricingSnapshotV1(
+  template: RemoteConfigTemplateLike,
+): MessagingPricingSnapshotV1 {
+  return {
+    schemaVersion: 1,
+    currency: "ZAR",
+    smsCustomerMinor: priceMinor(
+      template,
       "USD_SMS_REMINDER_PRICE",
       "MARKUP_SMS_PERCENTAGE",
-    );
-  }
-
-  /**
-   * SMS payment template price per recipient.
-   *
-   * @return {number}
-   *   The SMS payment price in ZAR.
-   */
-  get smsPaymentTemplatePrice(): number {
-    return this.calculatePrice(
+    ),
+    smsPaymentMinor: priceMinor(
+      template,
       "USD_SMS_PAYMENT_PRICE",
       "MARKUP_SMS_PERCENTAGE",
-    );
-  }
-
-  /**
-   * WhatsApp utility message price per recipient.
-   *
-   * @return {number}
-   *   The WhatsApp utility message price in ZAR.
-   */
-  get whatsappUtilityPrice(): number {
-    return this.calculatePrice(
+    ),
+    whatsappUtilityMinor: priceMinor(
+      template,
       "USD_WHATSAPP_UTILITY_PRICE",
       "MARKUP_WHATSAPP_PERCENTAGE",
-    );
-  }
-
-  /**
-   * WhatsApp promotional message price per recipient.
-   *
-   * @return {number}
-   *   The WhatsApp promotional message price in ZAR.
-   */
-  get whatsappPromotionPrice(): number {
-    return this.calculatePrice(
+    ),
+    whatsappPromotionMinor: priceMinor(
+      template,
       "USD_WHATSAPP_PROMOTIONAL_PRICE",
       "MARKUP_PROMOTIONAL_PERCENTAGE",
-    );
+    ),
+  };
+}
+
+/** Server-side pricing authority shared by send paths and the app projection. */
+export class DynamicPricingService {
+  private readonly snapshot: MessagingPricingSnapshotV1;
+
+  private constructor(template: admin.remoteConfig.RemoteConfigTemplate) {
+    this.snapshot = messagingPricingSnapshotV1(template);
+  }
+
+  static async initialize(): Promise<DynamicPricingService> {
+    const template = await admin.remoteConfig().getTemplate();
+    return new DynamicPricingService(template);
+  }
+
+  get buyerSafeSnapshot(): MessagingPricingSnapshotV1 {
+    return { ...this.snapshot };
+  }
+
+  get smsReminderTemplatePrice(): number {
+    return this.snapshot.smsCustomerMinor / 100;
+  }
+
+  get smsPaymentTemplatePrice(): number {
+    return this.snapshot.smsPaymentMinor / 100;
+  }
+
+  get whatsappUtilityPrice(): number {
+    return this.snapshot.whatsappUtilityMinor / 100;
+  }
+
+  get whatsappPromotionPrice(): number {
+    return this.snapshot.whatsappPromotionMinor / 100;
   }
 }

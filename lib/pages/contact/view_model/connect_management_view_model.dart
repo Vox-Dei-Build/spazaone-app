@@ -9,6 +9,73 @@ import 'package:pasella/services/botpress_service.dart';
 import 'package:pasella/services/twilio_service.dart';
 import 'package:pasella/services/secure_function_client.dart';
 import 'package:pasella/utils/phone_util.dart';
+import 'package:pasella/models/conversation/conversation_presentation.dart';
+
+/// Deduplicates provider mirrors without comparing every message with every
+/// previously accepted message. Exact IDs are indexed directly; rendered
+/// candidates are limited to the small time window in which cross-provider
+/// mirrors can legitimately drift.
+@visibleForTesting
+List<T> dedupeByIdAndTimeBucket<T>(
+  Iterable<T> values, {
+  required String? Function(T value) idOf,
+  required String? Function(T value) renderedSignatureOf,
+  required DateTime? Function(T value) dateOf,
+  required bool Function(T existing, T next) isRenderedDuplicate,
+  required T Function(T existing, T next) merge,
+  int windowMinutes = 2,
+}) {
+  final deduped = <T>[];
+  final indexById = <String, int>{};
+  final indexesByRenderedMinute = <String, List<int>>{};
+
+  for (final value in values) {
+    final valueId = idOf(value)?.trim();
+    int? duplicateIndex =
+        valueId == null || valueId.isEmpty ? null : indexById[valueId];
+    final signature = renderedSignatureOf(value);
+    final date = dateOf(value);
+    final minute = date == null ? null : date.millisecondsSinceEpoch ~/ 60000;
+
+    if (duplicateIndex == null && signature != null && minute != null) {
+      final candidates = <int>{};
+      for (var offset = -windowMinutes; offset <= windowMinutes; offset++) {
+        candidates.addAll(
+          indexesByRenderedMinute['$signature:${minute + offset}'] ??
+              const <int>[],
+        );
+      }
+      final orderedCandidates = candidates.toList()..sort();
+      for (final index in orderedCandidates) {
+        if (isRenderedDuplicate(deduped[index], value)) {
+          duplicateIndex = index;
+          break;
+        }
+      }
+    }
+
+    if (duplicateIndex == null) {
+      final index = deduped.length;
+      deduped.add(value);
+      if (valueId != null && valueId.isNotEmpty) {
+        indexById[valueId] = index;
+      }
+      if (signature != null && minute != null) {
+        indexesByRenderedMinute
+            .putIfAbsent('$signature:$minute', () => <int>[])
+            .add(index);
+      }
+      continue;
+    }
+
+    deduped[duplicateIndex] = merge(deduped[duplicateIndex], value);
+    if (valueId != null && valueId.isNotEmpty) {
+      indexById[valueId] = duplicateIndex;
+    }
+  }
+
+  return deduped;
+}
 
 class ConnectManagementViewModel {
   final String customerId;
@@ -27,6 +94,8 @@ class ConnectManagementViewModel {
   bool _hasLoadedOnce = false;
   Future<void>? _initFuture;
   final ValueNotifier<bool> loadingNotifier = ValueNotifier(false);
+  final ValueNotifier<String?> conversationWarningNotifier =
+      ValueNotifier(null);
   late TwilioService _twilio;
   late BotpressService _botpress;
   Timer? _poll;
@@ -99,9 +168,7 @@ class ConnectManagementViewModel {
           customerNumber: customerNumber,
           customerId: customerId,
         ),
-        _botpress.fetchBotpressMessages(
-          customerId: customerId,
-        ),
+        _fetchBotpressSafely(),
       ]);
 
       final sentSms = results[0];
@@ -181,6 +248,27 @@ class ConnectManagementViewModel {
     }
   }
 
+  Future<List<Map<String, dynamic>>> _fetchBotpressSafely() async {
+    try {
+      final messages = await _botpress.fetchBotpressMessages(
+        customerId: customerId,
+      );
+      if (!isDisposed) conversationWarningNotifier.value = null;
+      return messages;
+    } on BotpressConversationException catch (error) {
+      if (!isDisposed) conversationWarningNotifier.value = error.message;
+      // ignore: avoid_print
+      print('[botpress] ${error.code}');
+      return const [];
+    } catch (_) {
+      if (!isDisposed) {
+        conversationWarningNotifier.value =
+            'Bot conversation history is temporarily unavailable. Other message history is still shown.';
+      }
+      return const [];
+    }
+  }
+
   DateTime? _asDate(dynamic v) {
     if (v == null) return null;
     if (v is DateTime) return v.toLocal();
@@ -203,29 +291,23 @@ class ConnectManagementViewModel {
 
   List<Map<String, dynamic>> _dedupeMergedMessages(
       Iterable<Map<String, dynamic>> messages) {
-    final deduped = <Map<String, dynamic>>[];
-
-    for (final message in messages) {
-      final duplicateIndex = deduped.indexWhere((existing) =>
-          _isSameMessageId(existing, message) ||
-          _isRenderedDuplicate(existing, message));
-
-      if (duplicateIndex == -1) {
-        deduped.add(message);
-        continue;
-      }
-
-      deduped[duplicateIndex] =
-          _mergeDuplicateMessage(deduped[duplicateIndex], message);
-    }
-
-    return deduped;
+    return dedupeByIdAndTimeBucket<Map<String, dynamic>>(
+      messages,
+      idOf: (message) => message['id']?.toString(),
+      renderedSignatureOf: _renderedDuplicateSignature,
+      dateOf: (message) => _asDate(message['dateSent']),
+      isRenderedDuplicate: _isRenderedDuplicate,
+      merge: _mergeDuplicateMessage,
+    );
   }
 
-  bool _isSameMessageId(Map<String, dynamic> a, Map<String, dynamic> b) {
-    final aId = a['id']?.toString();
-    final bId = b['id']?.toString();
-    return aId != null && aId.isNotEmpty && aId == bId;
+  String? _renderedDuplicateSignature(Map<String, dynamic> message) {
+    final channel = _messageChannel(message);
+    if (channel.isEmpty) return null;
+    final body = _renderedMessageKey(message['message']);
+    final media = _renderedMessageKey(message['mediaUrl']);
+    if (body.isEmpty && media.isEmpty) return null;
+    return '${_renderedDirection(message)}|$channel|$body|$media';
   }
 
   bool _isRenderedDuplicate(Map<String, dynamic> a, Map<String, dynamic> b) {
@@ -335,6 +417,13 @@ class ConnectManagementViewModel {
     merged['payloadType'] = _notificationValue(preferred['payloadType']) ??
         _notificationValue(secondary['payloadType']);
     merged['payload'] = preferred['payload'] ?? secondary['payload'];
+    final richestPresentation = selectRichestConversationPresentation(
+      preferred,
+      secondary,
+    );
+    merged['presentationModel'] = richestPresentation;
+    merged['presentation'] =
+        preferred['presentation'] ?? secondary['presentation'];
     merged['replyTo'] = _notificationValue(preferred['replyTo']) ??
         _notificationValue(secondary['replyTo']);
     merged['readAt'] = preferred['readAt'] ?? secondary['readAt'];
@@ -486,9 +575,22 @@ class ConnectManagementViewModel {
     _poll?.cancel();
     _truthSurfaceSubscription?.cancel();
     loadingNotifier.dispose();
+    conversationWarningNotifier.dispose();
     if (_isInitialized) _botpress.dispose();
     _controller.close();
   }
+}
+
+@visibleForTesting
+ConversationPresentationV1 selectRichestConversationPresentation(
+  Map<String, dynamic> first,
+  Map<String, dynamic> second,
+) {
+  final firstPresentation = ConversationPresentationV1.fromMessage(first);
+  final secondPresentation = ConversationPresentationV1.fromMessage(second);
+  return firstPresentation.richnessScore >= secondPresentation.richnessScore
+      ? firstPresentation
+      : secondPresentation;
 }
 
 /// V1 truth-surface helpers (`fix/pas-wa-v1-bot-message-truth`).
@@ -560,6 +662,7 @@ extension _TruthSurfaceSubscription on ConnectManagementViewModel {
       'isSMS': channel == 'sms',
       'isAI': senderRole == 'bot',
       'kind': entry['kind']?.toString() ?? 'text',
+      'presentation': entry['presentation'],
       'source': 'truth-surface',
       'isRead': entry['isRead'] == true,
       'readAt': _asDate(entry['readAt']),

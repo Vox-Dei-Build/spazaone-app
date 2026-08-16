@@ -27,6 +27,18 @@ class DropshipListingResult {
   final String checkoutUrl;
 }
 
+class DropshipListingUpdateResult {
+  const DropshipListingUpdateResult({
+    required this.state,
+    required this.markupMinor,
+    required this.sellPriceMinor,
+  });
+
+  final String state;
+  final int markupMinor;
+  final int sellPriceMinor;
+}
+
 sealed class DropshipListingFailure implements Exception {
   const DropshipListingFailure(this.message);
 
@@ -307,6 +319,29 @@ class CommerceService {
       listingId: data['listingId']?.toString() ?? '',
       sellerProductId: data['sellerProductId']?.toString() ?? '',
       checkoutUrl: data['checkoutUrl']?.toString() ?? '',
+    );
+  }
+
+  Future<DropshipListingUpdateResult> updateDropshipListing({
+    required String sellerProductId,
+    required String listingId,
+    required int markupMinor,
+    required String state,
+  }) async {
+    final result = await _functions
+        .httpsCallable(dropshipCallableName('updateDropshipListing'))
+        .call({
+      'storeId': StoreSession.instance.storeId,
+      'sellerProductId': sellerProductId,
+      'listingId': listingId,
+      'markupMinor': markupMinor,
+      'state': state,
+    });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return DropshipListingUpdateResult(
+      state: data['state']?.toString() ?? state,
+      markupMinor: (data['markupMinor'] as num?)?.toInt() ?? markupMinor,
+      sellPriceMinor: (data['sellPriceMinor'] as num?)?.toInt() ?? 0,
     );
   }
 

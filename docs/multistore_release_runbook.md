@@ -171,8 +171,6 @@ TWILIO_ACCOUNT_SID=<YOUR_TWILIO_ACCOUNT_SID>
 TWILIO_NUMBER=+27000000000
 TWILIO_MERCHANT_MESSAGING_SERVICE_SID=<YOUR_MERCHANT_MESSAGING_SERVICE_SID>
 TWILIO_CUSTOMER_MESSAGING_SERVICE_SID=<YOUR_CUSTOMER_MESSAGING_SERVICE_SID>
-EMAIL_ADMINLOGIN=emulator-disabled
-EMAIL_ADMINPASS=emulator-disabled
 WHATSAPP_SENDER_NUMBER_ID=emulator-disabled
 ```
 
@@ -235,6 +233,11 @@ flutter run -d emulator-5554 \
   --dart-define=QA_FEATURE_OTP_AUTOSUBMIT=false \
   --dart-define=QA_FEATURE_OTP_RESEND_IN_DIALOG=false \
   --dart-define=QA_FEATURE_ONLINE_SALES=false \
+  --dart-define=QA_FEATURE_CAMPAIGN_CREDIT_PAYSTACK=false \
+  --dart-define=QA_FEATURE_OWNED_ORDER_PAYMENTS=false \
+  --dart-define=QA_FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS=false \
+  --dart-define=QA_FEATURE_CUSTOMER_PAYMENT_REQUESTS=false \
+  --dart-define=QA_FEATURE_SUPPLIER_ORDER_PAYMENTS=false \
   --dart-define=QA_FEATURE_MERCHANT_ONBOARDING_INTRO=true
 ```
 
@@ -270,6 +273,30 @@ Functions, Twilio, and Nodemailer dependency lines. Production dependency
 audits for Functions and both Botpress packages must remain at zero critical and
 zero high findings. Do not use total audit counts for this gate because the
 local build/test toolchains are excluded from deployed production packages.
+
+### Customer payment-request operations
+
+Payment requests are created only through `sendCustomerPaymentRequestV1`.
+Support must not edit `customerPaymentRequests`,
+`customerPaymentRequestState`, or `paymentRequestWalletReservations` in the
+Firestore console.
+
+An ambiguous provider result keeps the wallet reservation and assigns the
+request to Operations. Resolve it only through the App Check- and admin-claim
+protected `resolveCustomerPaymentRequestDeliveryReviewV1` command with a
+unique `operationId`, a non-secret provider evidence reference, and an audit
+reason:
+
+- `confirm_delivery` requires the provider message ID and exact delivery
+  channel. It consumes the authoritative message price and starts the 24-hour
+  cooldown.
+- `release_failed` requires evidence that no delivery occurred. It releases
+  the reservation and does not start the cooldown.
+
+The operation is bound idempotently in `paymentAdministrationAudit`. Never use
+this command to guess an outcome, re-send a message, or resolve a provider
+state whose evidence remains ambiguous. Run on-demand reconciliation after
+every reviewed request and stop on any unexplained cent.
 
 ## Production rollout
 

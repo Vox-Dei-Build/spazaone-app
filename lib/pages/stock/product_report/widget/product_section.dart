@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/models/stock/product_model.dart';
-import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
 
 class ProductSection extends StatelessWidget {
@@ -14,48 +13,63 @@ class ProductSection extends StatelessWidget {
   Widget build(BuildContext context) {
     SizeConfig().init(context); // Initialize SizeConfig
 
-    return Card(
-      margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 1),
-      child: ExpansionTile(
-        title: Text(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
           title,
-          style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2,
-            fontWeight: FontWeight.bold,
-          ),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
         ),
-        children: products.map((product) {
-          return ListTile(
-            title: Text(
-              product.name ?? 'Unknown Product',
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.8),
+        const SizedBox(height: 8),
+        if (products.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            child: Text(
+              'Stock levels look good.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
-            subtitle: Text(
-              'Quantity: ${product.quantity ?? 0}',
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.5),
-            ),
-            trailing: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'Cost: ${CurrencyUtil.format(product.cost ?? 0)}',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: SizeConfig.textMultiplier * 1.5,
+          )
+        else
+          ...products.map((product) {
+            final quantity = product.quantity ?? 0;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: .42),
+                borderRadius: BorderRadius.circular(14),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  title: Text(
+                    product.name ?? 'Unknown Product',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.8),
+                  ),
+                  subtitle: Text(
+                    quantity == 0 ? 'No stock left' : 'Only $quantity left',
+                    style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.5),
+                  ),
+                  trailing: Text(
+                    quantity == 0 ? 'Out of stock' : 'Low stock',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: SizeConfig.textMultiplier * 1.4,
+                    ),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                Text(
-                  'Selling Price: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontSize: SizeConfig.textMultiplier * 1.5,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
+              ),
+            );
+          }),
+      ],
     );
   }
 }

@@ -13,7 +13,7 @@ class NewProductPage extends StatefulWidget {
   final Function(Product)? onProductAdded;
 
   const NewProductPage({Key? key, this.group, this.onProductAdded})
-    : super(key: key);
+      : super(key: key);
 
   @override
   _NewProductPageState createState() => _NewProductPageState();
@@ -47,66 +47,11 @@ class _NewProductPageState extends State<NewProductPage> {
             // disabled-on-loading CTA — locally. The scaffold can
             // adopt this page later if/when ProductForm is decoupled
             // from owning its Form.
-            floatingActionButton: Padding(
-              padding: const EdgeInsets.only(bottom: 35, right: 5),
-              child: FloatingActionButton.extended(
-                backgroundColor:
-                    viewModel.hasUnsavedChanges ? Colors.green : Colors.grey,
-                onPressed:
-                    viewModel.isLoading || !viewModel.hasUnsavedChanges
-                        ? null
-                        : () async {
-                          if (_formKey.currentState?.validate() ?? false) {
-                            Product? addedProduct = await viewModel.saveProduct(
-                              context,
-                              _newProduct,
-                              null,
-                              showSuccessSnackbar: false,
-                            );
-                            if (addedProduct == null) return;
-                            if (widget.onProductAdded != null) {
-                              widget.onProductAdded!(
-                                addedProduct,
-                              ); // Indicate product added
-                            }
-                            SchedulerBinding.instance.addPostFrameCallback((_) {
-                              if (!context.mounted) return;
-                              final rootMessenger =
-                                  ScaffoldMessenger.maybeOf(
-                                    Navigator.of(
-                                      context,
-                                      rootNavigator: true,
-                                    ).context,
-                                  ) ??
-                                  ScaffoldMessenger.maybeOf(context);
-                              rootMessenger?.hideCurrentSnackBar();
-                              rootMessenger?.showSnackBar(
-                                const SnackBar(
-                                  content: Text('Product added successfully.'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                              Navigator.pop(context);
-                            });
-                          }
-                        },
-                icon:
-                    viewModel.isLoading
-                        ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                        : const Icon(Icons.done, color: Colors.white),
-                label: Text(
-                  viewModel.isLoading ? 'Saving…' : 'Save product',
-                  style: const TextStyle(color: Colors.white),
-                ),
-                tooltip: 'Save product',
-              ),
+            bottomNavigationBar: _ProductSaveBar(
+              label: 'Save product',
+              busy: viewModel.isLoading,
+              enabled: viewModel.hasUnsavedChanges,
+              onPressed: () => _save(context, viewModel),
             ),
             appBar: const CustomAppBar(title: "New Product"),
             body: PopScope(
@@ -119,8 +64,7 @@ class _NewProductPageState extends State<NewProductPage> {
                 final shouldDiscard = await ConfirmDialog.showDestructive(
                   context,
                   title: 'Discard new product?',
-                  message:
-                      'You have unsaved changes. Leaving now will discard '
+                  message: 'You have unsaved changes. Leaving now will discard '
                       'them.',
                   confirmLabel: 'Discard',
                   cancelLabel: 'Keep editing',
@@ -156,4 +100,64 @@ class _NewProductPageState extends State<NewProductPage> {
       ),
     );
   }
+
+  Future<void> _save(
+    BuildContext context,
+    ProductViewModel viewModel,
+  ) async {
+    FocusScope.of(context).unfocus();
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final addedProduct = await viewModel.saveProduct(
+      context,
+      _newProduct,
+      null,
+      showSuccessSnackbar: false,
+    );
+    if (addedProduct == null) return;
+    widget.onProductAdded?.call(addedProduct);
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      final rootMessenger = ScaffoldMessenger.maybeOf(
+            Navigator.of(context, rootNavigator: true).context,
+          ) ??
+          ScaffoldMessenger.maybeOf(context);
+      rootMessenger?.hideCurrentSnackBar();
+      rootMessenger?.showSnackBar(
+        const SnackBar(content: Text('Product added successfully.')),
+      );
+      Navigator.pop(context);
+    });
+  }
+}
+
+class _ProductSaveBar extends StatelessWidget {
+  const _ProductSaveBar({
+    required this.label,
+    required this.busy,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            onPressed: busy || !enabled ? null : onPressed,
+            icon: busy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.check_rounded),
+            label: Text(busy ? 'Saving…' : label),
+          ),
+        ),
+      );
 }

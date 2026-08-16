@@ -94,12 +94,18 @@ void main() {
     expect(find.text('Cancel order'), findsOneWidget);
   });
 
-  testWidgets('partner details appear only when the paid order can be placed',
+  testWidgets('paid supplier order shows automatic fulfilment ownership',
       (tester) async {
     await _open(tester, 'paid');
 
-    expect(find.text('Place delivery order'), findsNWidgets(2));
-    expect(find.text('Fulfilment partner: CJdropshipping'), findsOneWidget);
+    expect(find.text('Place delivery order'), findsNothing);
+    await tester.ensureVisible(find.text('Fulfilment operations'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fulfilment operations'));
+    await tester.pumpAndSettle();
+    expect(find.text('Automatic fulfilment pending'), findsOneWidget);
+    expect(find.textContaining('recheck supplier cost'), findsOneWidget);
+    expect(find.textContaining('CJdropshipping'), findsNothing);
     expect(find.text('Copy all order details'), findsOneWidget);
     expect(
         find.text('Confirm payment received & notify customer'), findsNothing);
@@ -116,6 +122,10 @@ void main() {
     await _open(tester, 'submitted_for_fulfilment');
 
     expect(find.text('Place delivery order'), findsNothing);
+    await tester.ensureVisible(find.text('Fulfilment operations'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fulfilment operations'));
+    await tester.pumpAndSettle();
     expect(find.text('Fulfilment partner: CJdropshipping'), findsNothing);
     expect(find.text('Delivery order record'), findsOneWidget);
     expect(find.text('Delivery order: CJ-123'), findsOneWidget);
@@ -125,7 +135,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('More order actions'));
     await tester.pumpAndSettle();
-    expect(find.text('Cancel and start refund'), findsOneWidget);
+    expect(find.text('Request cancellation review'), findsOneWidget);
   });
 
   testWidgets('refund completion remains available as an overflow action',
@@ -138,10 +148,14 @@ void main() {
     );
 
     expect(find.text('Place delivery order'), findsNothing);
+    await tester.ensureVisible(find.text('Fulfilment operations'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fulfilment operations'));
+    await tester.pumpAndSettle();
     expect(find.text('Delivery order record'), findsOneWidget);
     await tester.tap(find.text('More order actions'));
     await tester.pumpAndSettle();
-    expect(find.text('Confirm refund completed'), findsOneWidget);
+    expect(find.text('Confirm manual refund completed'), findsOneWidget);
   });
 
   testWidgets('tracking asks only for number and optional link',

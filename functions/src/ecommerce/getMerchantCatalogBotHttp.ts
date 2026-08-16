@@ -14,6 +14,8 @@ type CatalogProduct = {
   aliases?: string[];
   unit?: string;
   price?: number;
+  description?: string;
+  popularityScore?: number;
   imageUrl?: string;
   isDropshipListing?: boolean;
   commerceListingId?: string;
@@ -88,9 +90,15 @@ export const getMerchantCatalogBotHttp = functions
             data.sellingPrice ?? data.price ?? data.productPrice,
           );
           const imageUrl = cleanString(data.imageUrl ?? data.image);
+          const description = cleanString(data.description);
+          const popularityScore = cleanPrice(data.whatsappPopularityScore);
           if (aliases) product.aliases = aliases;
           if (unit) product.unit = unit;
           if (price !== undefined) product.price = price;
+          if (description) product.description = description;
+          if (popularityScore !== undefined && popularityScore > 0) {
+            product.popularityScore = popularityScore;
+          }
           if (imageUrl) product.imageUrl = imageUrl;
           if (data.isDropshipListing === true) {
             const commerceListingId = cleanString(data.commerceListingId);

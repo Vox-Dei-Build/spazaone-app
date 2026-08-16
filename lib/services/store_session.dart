@@ -37,9 +37,11 @@ class StoreMembership {
 
   String get resolvedCampaignWalletStoreId {
     final configured = campaignWalletStoreId?.trim() ?? '';
-    return sharedCampaignCredits && configured.isNotEmpty
-        ? configured
-        : storeId;
+    // Shared-wallet enrolment must fail closed when its canonical wallet
+    // pointer is missing. Falling back to the selected store silently creates
+    // a second balance and can also produce an empty Firestore document path
+    // while auth/store state is being cleared.
+    return sharedCampaignCredits ? configured : storeId;
   }
 
   bool get canManageOperators =>

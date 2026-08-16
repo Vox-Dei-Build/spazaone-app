@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buyerSafeTrackingCarrier,
+  canonicalCommerceOrderStatus,
   isOpenCommerceOrder,
   orderCreatedAtMillis,
   presentCommerceOrder,
@@ -39,6 +40,8 @@ test("commerce orders are explicitly identified for WhatsApp tracking", () => {
 
   assert.equal(row.source, "commerce");
   assert.equal(row.orderKind, "supplier_delivery");
+  assert.equal(row.status, "preparing");
+  assert.equal(row.sourceStatus, "submitted_for_fulfilment");
   assert.equal(row.total, 547.89);
   assert.equal(row.itemsCount, 1);
   assert.equal(row.items[0].productId, "product-1");
@@ -48,6 +51,28 @@ test("commerce orders are explicitly identified for WhatsApp tracking", () => {
     number: "TRACK-123",
     url: "https://tracking.example.test/TRACK-123",
   });
+});
+
+test("supplier source states use the canonical customer lifecycle", () => {
+  assert.equal(
+    canonicalCommerceOrderStatus("pending_payment"),
+    "awaiting_payment",
+  );
+  assert.equal(canonicalCommerceOrderStatus("paid"), "paid");
+  assert.equal(
+    canonicalCommerceOrderStatus("submitted_for_fulfilment"),
+    "preparing",
+  );
+  assert.equal(canonicalCommerceOrderStatus("shipped"), "on_the_way");
+  assert.equal(canonicalCommerceOrderStatus("delivered"), "delivered");
+  assert.equal(
+    canonicalCommerceOrderStatus("cancelled", "refund_pending"),
+    "cancelled",
+  );
+  assert.equal(
+    canonicalCommerceOrderStatus("cancelled", "refunded"),
+    "refunded",
+  );
 });
 
 test("only active fulfilment states count as open supplier orders", () => {

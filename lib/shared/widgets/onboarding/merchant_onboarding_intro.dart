@@ -6,7 +6,7 @@ import 'package:pasella/constants/layout_constants.dart';
 /// The previous paged walkthrough made the primary action move between
 /// screens and could look broken when a system dialog or small phone changed
 /// the available height. This single sheet keeps one clear starting action;
-/// the full checklist remains available from Settings → Shop Setup.
+/// the full checklist remains available from My Store → Shop setup.
 class MerchantOnboardingIntro extends StatelessWidget {
   const MerchantOnboardingIntro({
     super.key,
@@ -90,7 +90,7 @@ class MerchantOnboardingIntro extends StatelessWidget {
             ),
             const SizedBox(height: LayoutConstants.spaceXs),
             Text(
-              'Start with one customer. The full checklist stays in Settings → Shop Setup.',
+              'Start with one customer. You can return to Shop setup from My Store.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
                 height: 1.35,

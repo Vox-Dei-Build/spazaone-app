@@ -76,6 +76,41 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
             ),
             child: Column(
               children: [
+                ValueListenableBuilder<String?>(
+                  valueListenable:
+                      connectManagementViewModel.conversationWarningNotifier,
+                  builder: (context, warning, _) {
+                    if (warning == null || warning.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Material(
+                      color: Colors.orange.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 18,
+                              color: Colors.orange.shade900,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                warning,
+                                style: TextStyle(
+                                  color: Colors.orange.shade900,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 Expanded(
                   child: StreamBuilder<List<Map<String, dynamic>>>(
                     stream: connectManagementViewModel.streamMessages(),

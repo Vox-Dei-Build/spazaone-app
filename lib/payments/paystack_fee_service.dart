@@ -6,9 +6,9 @@ class PaystackFeeQuote {
   final double feeExVat;
   final double vat;
   final double feeInclVat;
-  final double payoutFeeExVat;
-  final double payoutVat;
-  final double payoutFeeInclVat;
+  final double transferFeeExVat;
+  final double transferVat;
+  final double transferFeeInclVat;
   final double totalFeesInclVat;
   final double netToMerchant;
 
@@ -18,9 +18,14 @@ class PaystackFeeQuote {
         feeExVat = (data['feeExVat'] as num).toDouble(),
         vat = (data['vat'] as num).toDouble(),
         feeInclVat = (data['feeInclVat'] as num).toDouble(),
-        payoutFeeExVat = (data['payoutFeeExVat'] as num).toDouble(),
-        payoutVat = (data['payoutVat'] as num).toDouble(),
-        payoutFeeInclVat = (data['payoutFeeInclVat'] as num).toDouble(),
+        transferFeeExVat =
+            ((data['transferFeeExVat'] ?? data['payoutFeeExVat']) as num)
+                .toDouble(),
+        transferVat =
+            ((data['transferVat'] ?? data['payoutVat']) as num).toDouble(),
+        transferFeeInclVat =
+            ((data['transferFeeInclVat'] ?? data['payoutFeeInclVat']) as num)
+                .toDouble(),
         totalFeesInclVat = (data['totalFeesInclVat'] as num).toDouble(),
         netToMerchant = (data['netToMerchant'] as num).toDouble();
 }
@@ -29,14 +34,14 @@ class PaystackFeeService {
   static Future<PaystackFeeQuote> quote({
     required double amountZar,
     required String method, // 'local_card' | 'eft' | 'international'
-    bool includePayout = false,
+    bool includeTransfer = false,
   }) async {
     final callable =
         FirebaseFunctions.instance.httpsCallable('getPaystackQuote');
     final res = await callable.call({
       'amountZar': amountZar,
       'method': method,
-      'includePayout': includePayout,
+      'includeTransfer': includeTransfer,
     });
     return PaystackFeeQuote.fromMap(res.data as Map);
   }

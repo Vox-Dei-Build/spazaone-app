@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/models/transactions/transaction_model.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/services/whatsapp_capability_cache.dart';
-import 'package:pasella/shared/widgets/onboarding/activation_coachmark.dart';
-import 'package:pasella/shared/widgets/loom_video_page.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/utils/string_utils.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:provider/provider.dart';
@@ -54,14 +52,6 @@ class EntityTab extends StatefulWidget {
   final String? emptyCtaLabel;
   final VoidCallback? onEmptyCtaTap;
 
-  /// PAS-AUTH-03: optional walkthrough video key. When set and the
-  /// matching Remote Config entry returns a non-empty URL, a "Watch a
-  /// 2-min walkthrough" link is rendered below the primary CTA — same
-  /// pattern Stock already uses. Kept on EntityTab (vs. only on
-  /// CustomerTab) so future tabs (Supplier, etc.) can opt in.
-  final String? tutorialKey;
-  final String tutorialTitle;
-
   const EntityTab({
     required this.searchTextNotifier,
     required this.category,
@@ -72,8 +62,6 @@ class EntityTab extends StatefulWidget {
     this.scrollController,
     this.emptyCtaLabel,
     this.onEmptyCtaTap,
-    this.tutorialKey,
-    this.tutorialTitle = 'How to use Spaza One',
     Key? key,
   }) : super(key: key);
 
@@ -167,16 +155,16 @@ class _EntityTabState extends State<EntityTab> {
               )
               .length;
           final nestedUnread = customerData['unreadCounts'];
-          final chatUnread = nestedUnread is Map &&
-                  nestedUnread['messages'] is num
-              ? (nestedUnread['messages'] as num).toInt()
-              : legacyChatUnread;
+          final chatUnread =
+              nestedUnread is Map && nestedUnread['messages'] is num
+                  ? (nestedUnread['messages'] as num).toInt()
+                  : legacyChatUnread;
 
           // 🟠 Orders unread per customer (NEW)
-          final int ordersUnread = nestedUnread is Map &&
-                  nestedUnread['orders'] is num
-              ? (nestedUnread['orders'] as num).toInt()
-              : (customerData['ordersUnreadCount'] as int?) ?? 0;
+          final int ordersUnread =
+              nestedUnread is Map && nestedUnread['orders'] is num
+                  ? (nestedUnread['orders'] as num).toInt()
+                  : (customerData['ordersUnreadCount'] as int?) ?? 0;
 
           // ✅ Single badge shows combined unread (messages + orders)
           final int combinedUnread = chatUnread + ordersUnread;
@@ -203,8 +191,6 @@ class _EntityTabState extends State<EntityTab> {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final currentUserId =
-        widget.entitiesStream == null ? StoreSession.instance.storeId : '';
     final dataModel = context.watch<AppModel>();
     return Scaffold(
       body: Padding(
@@ -267,99 +253,49 @@ class _EntityTabState extends State<EntityTab> {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 widget.hasCustomersNotifier.value = false;
               });
-              return Center(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Image.asset(
-                        widget.emptyAsset,
-                        width: SizeConfig.imageSizeMultiplier * 60,
+              return ScrollableCenteredContent(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.imageSizeMultiplier * 6,
+                  vertical: 12,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      widget.emptyAsset,
+                      width: SizeConfig.imageSizeMultiplier * 60,
+                    ),
+                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    Text(
+                      widget.emptyText,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: SizeConfig.textMultiplier * 2,
                       ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.imageSizeMultiplier * 6,
-                        ),
-                        child: Text(
-                          widget.emptyText,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      // PAS-UX-09: inline recovery CTA. Previously the
-                      // empty Customers tab dead-ended on image + text
-                      // and required the merchant to find the floating
-                      // "+" FAB (easy to miss on small screens). Now
-                      // the empty state itself is the onboarding
-                      // moment.
-                      if (widget.emptyCtaLabel != null &&
-                          widget.onEmptyCtaTap != null) ...[
-                        SizedBox(height: SizeConfig.heightMultiplier * 3),
-                        ActivationCoachmark(
-                          userId: currentUserId,
-                          coachmarkKey: 'add_first_customer',
-                          title: 'Start with one customer',
-                          message:
-                              'Save one real customer. Spaza One opens their Pay Later screen next.',
-                          icon: Icons.person_add_alt_1_outlined,
-                          enabled: widget.category == 'Customer',
-                          child: ElevatedButton.icon(
-                            onPressed: widget.onEmptyCtaTap,
-                            icon: const Icon(Icons.person_add),
-                            label: Text(widget.emptyCtaLabel!),
-                            style: ElevatedButton.styleFrom(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: SizeConfig.imageSizeMultiplier * 6,
-                                vertical: SizeConfig.heightMultiplier * 1.5,
-                              ),
-                            ),
+                      textAlign: TextAlign.center,
+                    ),
+                    // PAS-UX-09: inline recovery CTA. Previously the
+                    // empty Customers tab dead-ended on image + text
+                    // and required the merchant to find the floating
+                    // "+" FAB (easy to miss on small screens). Now
+                    // the empty state itself is the onboarding
+                    // moment.
+                    if (widget.emptyCtaLabel != null &&
+                        widget.onEmptyCtaTap != null) ...[
+                      SizedBox(height: SizeConfig.heightMultiplier * 3),
+                      ElevatedButton.icon(
+                        onPressed: widget.onEmptyCtaTap,
+                        icon: const Icon(Icons.person_add),
+                        label: Text(widget.emptyCtaLabel!),
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: SizeConfig.imageSizeMultiplier * 6,
+                            vertical: SizeConfig.heightMultiplier * 1.5,
                           ),
                         ),
-                      ],
-                      // PAS-AUTH-03: secondary walkthrough link. Only
-                      // renders when Remote Config has a URL for the
-                      // tutorial key — silently hidden otherwise so we
-                      // never show a button that opens an empty
-                      // WebView.
-                      if (widget.tutorialKey != null) ...[
-                        Builder(
-                          builder: (context) {
-                            final url = TutorialConfig.getTutorialUrl(
-                              widget.tutorialKey!,
-                            );
-                            if (url.isEmpty) return const SizedBox.shrink();
-                            return Column(
-                              children: [
-                                SizedBox(
-                                  height: SizeConfig.heightMultiplier * 1,
-                                ),
-                                TextButton.icon(
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => LoomVideoPage(
-                                          loomUrl: url,
-                                          title: widget.tutorialTitle,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.play_circle_outline),
-                                  label: const Text(
-                                    'Watch a 2-min walkthrough',
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               );
             }
@@ -395,7 +331,11 @@ class _EntityTabState extends State<EntityTab> {
             }
 
             if (filteredEntities.isEmpty) {
-              return Center(
+              return ScrollableCenteredContent(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.imageSizeMultiplier * 6,
+                  vertical: 12,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

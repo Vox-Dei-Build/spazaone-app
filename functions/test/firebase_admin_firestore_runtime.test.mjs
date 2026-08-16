@@ -21,9 +21,12 @@ function TypeScriptFiles(directory) {
 }
 
 test("firebase-admin modular Firestore runtime exports are callable", () => {
-  const { FieldPath, FieldValue, GeoPoint, Timestamp } = require(
-    "firebase-admin/firestore",
-  );
+  const {
+    FieldPath,
+    FieldValue,
+    GeoPoint,
+    Timestamp,
+  } = require("firebase-admin/firestore");
 
   assert.equal(typeof FieldValue?.serverTimestamp, "function");
   assert.equal(typeof Timestamp?.now, "function");
@@ -84,15 +87,39 @@ test("merchant ordering number accepts the Functions environment", () => {
   const previous = process.env.ORDERING_WHATSAPP_NUMBER;
   process.env.ORDERING_WHATSAPP_NUMBER = "+27600000000";
   try {
-    const { configuredPasellaWhatsappNumber } = require(
-      "../lib/ecommerce/getMerchantOrderingLink",
-    );
+    const {
+      configuredPasellaWhatsappNumber,
+    } = require("../lib/ecommerce/getMerchantOrderingLink");
     assert.equal(configuredPasellaWhatsappNumber(), "+27600000000");
   } finally {
     if (previous == null) {
       delete process.env.ORDERING_WHATSAPP_NUMBER;
     } else {
       process.env.ORDERING_WHATSAPP_NUMBER = previous;
+    }
+  }
+});
+
+test("merchant ordering number does not fall back to Twilio", () => {
+  const previousOrdering = process.env.ORDERING_WHATSAPP_NUMBER;
+  const previousTwilio = process.env.TWILIO_NUMBER;
+  delete process.env.ORDERING_WHATSAPP_NUMBER;
+  process.env.TWILIO_NUMBER = "+27609999999";
+  try {
+    const {
+      configuredPasellaWhatsappNumber,
+    } = require("../lib/ecommerce/getMerchantOrderingLink");
+    assert.equal(configuredPasellaWhatsappNumber(), "");
+  } finally {
+    if (previousOrdering == null) {
+      delete process.env.ORDERING_WHATSAPP_NUMBER;
+    } else {
+      process.env.ORDERING_WHATSAPP_NUMBER = previousOrdering;
+    }
+    if (previousTwilio == null) {
+      delete process.env.TWILIO_NUMBER;
+    } else {
+      process.env.TWILIO_NUMBER = previousTwilio;
     }
   }
 });

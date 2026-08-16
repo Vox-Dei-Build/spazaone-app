@@ -796,7 +796,7 @@ class PromotionsViewModel extends ChangeNotifier {
       // provide a usable fallback so we never leave the merchant
       // staring at a silent failure.
       final detail = e.message == 'INSUFFICIENT_CAMPAIGN_CREDITS'
-          ? 'Your campaign credits changed before sending. Top up and try again.'
+          ? 'Your SpazaOne balance changed before sending. Add money and try again.'
           : (e.message != null && e.message!.trim().isNotEmpty)
               ? e.message!
               : 'Send failed (code: ${e.code}). No further detail returned — '

@@ -58,10 +58,12 @@ class OrderFilterChips extends StatelessWidget {
   /// re-shuffle later).
   static const _moreStatuses = <OrderStatus>[
     OrderStatus.accepted,
+    OrderStatus.preparing,
     OrderStatus.paid,
     OrderStatus.uncollected,
     OrderStatus.collected,
     OrderStatus.outForDelivery,
+    OrderStatus.onTheWay,
     OrderStatus.delivered,
     OrderStatus.bnplPending,
     OrderStatus.bnplOutstanding,
@@ -123,7 +125,7 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = selected ? kPrimaryColor : const Color(0xFFF1F3F5);
+    final bg = selected ? kTertiaryColor : const Color(0xFFF1F3F5);
     final fg = selected ? Colors.white : const Color(0xFF1A1F2B);
     final countBg = selected
         ? Colors.white.withOpacity(0.22)
@@ -201,10 +203,8 @@ class _MoreChip extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => _MoreStatusesSheet(
-        statuses: statuses,
-        selected: specific,
-      ),
+      builder: (ctx) =>
+          _MoreStatusesSheet(statuses: statuses, selected: specific),
     );
     if (picked != null) onPick(picked);
   }
@@ -214,7 +214,7 @@ class _MoreChip extends StatelessWidget {
     final hasSpecific = specific != null;
     final label = hasSpecific ? specific!.label : 'More';
     final selected = hasSpecific;
-    final bg = selected ? kPrimaryColor : const Color(0xFFF1F3F5);
+    final bg = selected ? kTertiaryColor : const Color(0xFFF1F3F5);
     final fg = selected ? Colors.white : const Color(0xFF1A1F2B);
 
     return Material(
@@ -274,9 +274,7 @@ class _MoreStatusesSheet extends StatelessWidget {
             // Drag handle
             Center(
               child: Container(
-                margin: EdgeInsets.only(
-                  top: SizeConfig.heightMultiplier * 1.2,
-                ),
+                margin: EdgeInsets.only(top: SizeConfig.heightMultiplier * 1.2),
                 width: SizeConfig.imageSizeMultiplier * 10,
                 height: 4,
                 decoration: BoxDecoration(
@@ -378,8 +376,9 @@ class OrderFilterChipsSkeleton extends StatelessWidget {
         children: List.generate(5, (i) {
           final w = [70.0, 95.0, 78.0, 100.0, 72.0][i];
           return Padding(
-            padding:
-                EdgeInsets.only(right: SizeConfig.imageSizeMultiplier * 1.8),
+            padding: EdgeInsets.only(
+              right: SizeConfig.imageSizeMultiplier * 1.8,
+            ),
             child: Container(
               width: w,
               height: SizeConfig.heightMultiplier * 4.2,

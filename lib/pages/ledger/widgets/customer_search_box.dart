@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/shared/widgets/workspace_search_field.dart';
 
 class CustomerSearchBox extends StatefulWidget {
   final ValueNotifier<String?> searchTextNotifier;
@@ -45,72 +45,13 @@ class _CustomerSearchBoxState extends State<CustomerSearchBox> {
 
   @override
   Widget build(BuildContext context) {
-    final hasText = _controller.text.isNotEmpty;
-    return Semantics(
-      container: true,
-      explicitChildNodes: true,
-      label: 'Search customers by name',
-      child: Padding(
-        // PAS-UX: align with EntityTab's horizontal list padding so the
-        // search field reads as anchored to the list it filters rather
-        // than as a floating banner above it.
-        padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.imageSizeMultiplier * 2,
-        ),
-        child: Container(
-          height: SizeConfig.heightMultiplier * 5,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(color: Colors.grey.shade300, width: 1),
-          ),
-          child: Row(
-            children: [
-              SizedBox(width: SizeConfig.imageSizeMultiplier * 4),
-              Icon(
-                Icons.search,
-                size: SizeConfig.imageSizeMultiplier * 5,
-                color: Colors.grey.shade600,
-              ),
-              SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: widget.focusNode,
-                  textInputAction: TextInputAction.search,
-                  style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-                  decoration: InputDecoration(
-                    hintText: 'Search by name',
-                    hintStyle: TextStyle(color: Colors.grey.shade500),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    isCollapsed: true,
-                    contentPadding: EdgeInsets.zero,
-                    // PAS-UX: the clear button only renders once the
-                    // merchant has typed something. Previously it sat
-                    // there permanently, adding visual noise and
-                    // suggesting an action was always available.
-                    suffixIcon:
-                        hasText
-                            ? IconButton(
-                              icon: Icon(
-                                Icons.close,
-                                size: SizeConfig.imageSizeMultiplier * 5,
-                                color: Colors.grey.shade600,
-                              ),
-                              onPressed: () {
-                                _controller.clear();
-                              },
-                            )
-                            : null,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: WorkspaceSearchField(
+        controller: _controller,
+        focusNode: widget.focusNode,
+        hintText: 'Search customers',
+        semanticLabel: 'Search customers by name',
       ),
     );
   }

@@ -21,6 +21,7 @@ class MerchantSetupActions {
     required this.onAddProduct,
     required this.onChooseWhatsAppProducts,
     required this.onOpenOrderingLink,
+    this.onOpenOrderOptions,
     required this.onOpenBanking,
     required this.onCreateTemplate,
   });
@@ -29,6 +30,7 @@ class MerchantSetupActions {
   final VoidCallback onAddProduct;
   final VoidCallback onChooseWhatsAppProducts;
   final VoidCallback onOpenOrderingLink;
+  final VoidCallback? onOpenOrderOptions;
   final VoidCallback onOpenBanking;
 
   /// Opens Marketing so Spaza One can prepare the reusable product-promotion
@@ -395,9 +397,7 @@ class _SetupPanel extends StatelessWidget {
               const SizedBox(height: LayoutConstants.spaceLg),
               _NextActionPanel(step: nextStep),
             ],
-            const SizedBox(height: LayoutConstants.spaceMd),
-            const Divider(height: 1),
-            const SizedBox(height: LayoutConstants.spaceSm),
+            const SizedBox(height: LayoutConstants.spaceLg),
             // The current action is already presented prominently above.
             // Keep the checklist useful without repeating the same title and
             // CTA twice in one card.
@@ -952,6 +952,23 @@ List<_SetupStep> _buildSteps(
       action: s.hasProducts ? a.onOpenOrderingLink : null,
     ),
     _SetupStep(
+      done: s.hasOrderingOptions,
+      icon: Icons.tune_outlined,
+      rowTitle: s.hasOrderingOptions
+          ? 'Order options chosen'
+          : 'Choose order options',
+      rowBody: s.hasOrderingOptions
+          ? 'Pickup, delivery and Pay Later availability are configured.'
+          : s.hasProducts
+              ? 'Choose whether customers can request delivery or Pay Later.'
+              : 'Available after a product exists.',
+      actionTitle: 'Choose order options',
+      actionBody:
+          'Pickup is always available. Turn delivery or Pay Later on only when you are ready.',
+      actionLabel: s.hasProducts ? 'Set options' : null,
+      action: s.hasProducts ? a.onOpenOrderOptions : null,
+    ),
+    _SetupStep(
       done: s.hasBank,
       icon: Icons.account_balance_outlined,
       rowTitle: s.hasBank ? 'Payout details added' : 'Add payout details',
@@ -968,15 +985,15 @@ List<_SetupStep> _buildSteps(
       icon: Icons.campaign_outlined,
       rowTitle: s.hasApprovedTemplate
           ? 'WhatsApp promotions ready'
-          : 'Prepare WhatsApp promotions',
+          : 'WhatsApp promotion approval',
       rowBody: s.hasApprovedTemplate
           ? 'Marketing messages are ready when you need them.'
           : s.hasProducts
-              ? 'Spaza One prepares the reusable message and handles Meta approval.'
+              ? 'Meta must approve the reusable product message before it can be sent.'
               : 'Available after a product exists.',
-      actionTitle: 'Prepare WhatsApp promotions',
+      actionTitle: 'WhatsApp promotion approval',
       actionBody:
-          'Spaza One creates and submits the reusable product message for you.',
+          'Spaza One creates the reusable product message and shows its Meta approval status.',
       actionLabel: s.hasProducts ? 'Open Marketing' : null,
       action: s.hasProducts ? a.onCreateTemplate : null,
     ),

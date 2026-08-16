@@ -11,16 +11,19 @@ class ShopLinkAction extends StatelessWidget {
     super.key,
     required this.onPressed,
     this.storeName,
+    this.fillWidth = false,
+    this.compact = false,
   });
 
   final VoidCallback onPressed;
   final String? storeName;
+  final bool fillWidth;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
     final resolvedStoreName = storeName?.trim() ?? '';
-    final useStackedLayout = MediaQuery.textScalerOf(context).scale(13) >= 20;
     final semanticLabel = resolvedStoreName.isEmpty
         ? 'Open your WhatsApp ordering link'
         : 'Open $resolvedStoreName WhatsApp ordering link';
@@ -30,9 +33,10 @@ class ShopLinkAction extends StatelessWidget {
       color: primary,
     );
     final label = Text(
-      useStackedLayout ? 'Shop\nlink' : 'Shop link',
-      maxLines: useStackedLayout ? 2 : 1,
-      softWrap: useStackedLayout,
+      compact ? 'Shop' : 'Shop link',
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.visible,
       textAlign: TextAlign.center,
     );
 
@@ -48,11 +52,9 @@ class ShopLinkAction extends StatelessWidget {
           style: TextButton.styleFrom(
             foregroundColor: primary,
             backgroundColor: primary.withValues(alpha: 0.09),
-            minimumSize: const Size(0, 48),
-            padding: EdgeInsets.symmetric(
-              horizontal: useStackedLayout ? 10 : 14,
-              vertical: useStackedLayout ? 6 : 0,
-            ),
+            minimumSize: Size(compact ? 96 : 104, 48),
+            fixedSize: compact && !fillWidth ? const Size(104, 48) : null,
+            padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
             tapTargetSize: MaterialTapTargetSize.padded,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
@@ -62,23 +64,15 @@ class ShopLinkAction extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          child: useStackedLayout
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    icon,
-                    const SizedBox(height: 2),
-                    label,
-                  ],
-                )
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    icon,
-                    const SizedBox(width: 8),
-                    label,
-                  ],
-                ),
+          child: Row(
+            mainAxisSize: fillWidth ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              icon,
+              SizedBox(width: compact ? 6 : 8),
+              Flexible(child: label),
+            ],
+          ),
         ),
       ),
     );

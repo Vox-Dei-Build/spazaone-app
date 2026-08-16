@@ -16,7 +16,7 @@
 	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
 	<false/>
 	<key>CFBundleDisplayName</key>
-	<string>SpazaOne</string>
+	<string>$(SPAZAONE_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,7 +24,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>SpazaOne</string>
+	<string>$(SPAZAONE_DISPLAY_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -38,7 +38,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>app-1-716158514645-ios-17eba128d70a92a7e5795c</string>
+				<string>$(SPAZAONE_FIREBASE_URL_SCHEME)</string>
 			</array>
 		</dict>
 	</array>

@@ -336,6 +336,52 @@ definitions:
         npm --prefix functions ci --prefer-offline
         npm --prefix functions run test:ci
 
+    - &verify_production_backend_contract
+      name: Verify production backend contract
+      script: |
+        set -euo pipefail
+        if [ -z "${CM_COMMIT:-}" ]; then
+          echo "::error:: CM_COMMIT is required for a release build."
+          exit 1
+        fi
+        RESPONSE_FILE=$(mktemp)
+        HTTP_CODE=$(curl --silent --show-error \
+          --output "$RESPONSE_FILE" \
+          --write-out '%{http_code}' \
+          --header 'Content-Type: application/json' \
+          --data '{"data":{}}' \
+          'https://us-central1-pasella-ledger.cloudfunctions.net/getEnvironmentInfo')
+        python3 - "$RESPONSE_FILE" "$HTTP_CODE" "$CM_COMMIT" <<'PY'
+        import json
+        import sys
+
+        response_path, http_code, expected_commit = sys.argv[1:]
+        if http_code != '200':
+            raise SystemExit(
+                f'::error:: Production backend contract returned HTTP {http_code}.'
+            )
+        with open(response_path, encoding='utf-8') as handle:
+            payload = json.load(handle)
+        result = payload.get('result') or payload.get('data') or {}
+        expected = {
+            'product': 'SpazaOne',
+            'environment': 'production',
+            'firebaseProjectId': 'pasella-ledger',
+            'apiContractVersion': '2026-08-12',
+            'firestoreSchemaVersion': 2,
+            'buildCommit': expected_commit,
+        }
+        mismatches = [
+            key for key, value in expected.items() if result.get(key) != value
+        ]
+        if mismatches:
+            raise SystemExit(
+                '::error:: Production backend contract mismatch: '
+                + ', '.join(mismatches)
+            )
+        print('Production backend identity and release commit verified.')
+        PY
+
 workflows:
   android-release:
     name: Android — Play Internal
@@ -381,6 +427,7 @@ workflows:
       - *flutter_analyze
       - *flutter_test
       - *functions_test
+      - *verify_production_backend_contract
       - name: Verify version code matches the git tag
         script: |
           # Tag format: v<major>.<minor>.<patch>+<buildNumber>
@@ -435,13 +482,14 @@ workflows:
           # so Gradle's signingConfigs.release block (which reads from
           # key.properties) will produce a release-signed bundle
           # without any local file shuffling.
-          flutter build appbundle --release \
+          flutter build appbundle --flavor production --release \
+            --dart-define=SPAZAONE_ENVIRONMENT=production \
             --dart-define=USE_FIREBASE_EMULATORS=false \
             --dart-define=DROPSHIP_CATALOG_V2=true
       - name: Verify 16 KB page-size compliance
         script: |
           set -euo pipefail
-          AAB="build/app/outputs/bundle/release/app-release.aab"
+          AAB="build/app/outputs/bundle/productionRelease/app-production-release.aab"
           if [ ! -f "$AAB" ]; then
             echo "::error:: AAB not found at $AAB"
             exit 1
@@ -535,6 +583,7 @@ workflows:
       - *flutter_analyze
       - *flutter_test
       - *functions_test
+      - *verify_production_backend_contract
       - name: Verify version code matches the git tag
         script: |
           TAG="${CM_TAG:-}"
@@ -600,7 +649,8 @@ workflows:
             echo "::error:: $HOME/export_options.plist missing \u2014 xcode-project use-profiles did not run or did not find a profile."
             exit 1
           fi
-          flutter build ipa --release \
+          flutter build ipa --flavor production --release \
+            --dart-define=SPAZAONE_ENVIRONMENT=production \
             --dart-define=USE_FIREBASE_EMULATORS=false \
             --dart-define=DROPSHIP_CATALOG_V2=true \
             --export-options-plist="$HOME/export_options.plist"

@@ -37,8 +37,8 @@ class OrdersFilter {
 
   const OrdersFilter.group(this.group) : specific = null;
   const OrdersFilter.specific(OrderStatus status)
-      : group = null,
-        specific = status;
+    : group = null,
+      specific = status;
 
   static const all = OrdersFilter.group(OrderFilterGroup.all);
 
@@ -52,13 +52,15 @@ class OrdersFilter {
         case OrderFilterGroup.all:
           return true;
         case OrderFilterGroup.pending:
-          return status == OrderStatus.pending;
+          return status == OrderStatus.pending ||
+              status == OrderStatus.awaitingPayment;
         case OrderFilterGroup.bnpl:
           return status == OrderStatus.bnplPending ||
               status == OrderStatus.bnplOutstanding ||
               status == OrderStatus.bnplRejected;
         case OrderFilterGroup.delivery:
           return status == OrderStatus.outForDelivery ||
+              status == OrderStatus.onTheWay ||
               status == OrderStatus.delivered;
       }
     }
@@ -82,14 +84,17 @@ OrderStatus computeStatus(OrderModel o) {
   // Use the same “method for logic” pattern as detail page
   final methodForLogic = ((pm.isNotEmpty ? pm : typ)).trim().toLowerCase();
 
-  final isBnpl = typ.toUpperCase() == 'BNPL' ||
+  final isBnpl =
+      typ.toUpperCase() == 'BNPL' ||
       methodForLogic == 'bnpl' ||
       sLow.contains('bnpl');
 
-  final isBnplApproved = isBnpl &&
+  final isBnplApproved =
+      isBnpl &&
       (ps.toLowerCase() == 'approved' || sLow.contains('bnpl_outstanding'));
 
-  final isBnplRejected = isBnpl &&
+  final isBnplRejected =
+      isBnpl &&
       (ps.toLowerCase() == 'rejected' || sLow.contains('bnpl_rejected'));
 
   final isPaid =

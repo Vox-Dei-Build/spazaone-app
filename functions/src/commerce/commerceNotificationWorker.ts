@@ -13,7 +13,11 @@ export async function processAllCommerceNotificationOutboxes(
 }
 
 export const retryCommerceOrderNotifications = functions
-  .runWith({ timeoutSeconds: 120, memory: "256MB" })
+  .runWith({
+    timeoutSeconds: 120,
+    memory: "256MB",
+    secrets: ["BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET"],
+  })
   .pubsub.schedule("every 2 minutes")
   .onRun(async () => {
     await processAllCommerceNotificationOutboxes();

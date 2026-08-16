@@ -10,8 +10,9 @@ import { functions } from "../../config/main";
  * - "international" -> 3.1% + R1.00 (excl VAT)
  *
  * All fees exclude VAT; function returns VAT and totals too.
- * Settlement/payout fee (R3.00 excl VAT) is optional because you usually
- * withdraw aggregated balances — pass includePayout=true to factor it in.
+ * Paystack automatic payouts are free. The optional R3.00 excl VAT charge is
+ * only for an outbound bank transfer initiated through Paystack's Transfers
+ * API. `includePayout` remains accepted as a backwards-compatible alias.
  */
 export const getPaystackQuote = functions.https.onCall(async (data) => {
   const amount = Number(data?.amountZar);
@@ -19,7 +20,9 @@ export const getPaystackQuote = functions.https.onCall(async (data) => {
     | "local_card"
     | "eft"
     | "international";
-  const includePayout = Boolean(data?.includePayout || false);
+  const includeTransfer = Boolean(
+    data?.includeTransfer || data?.includePayout || false,
+  );
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new functions.https.HttpsError(
@@ -30,7 +33,7 @@ export const getPaystackQuote = functions.https.onCall(async (data) => {
 
   const VAT = 0.15;
   const R1 = 1.0;
-  const PAYOUT_FEE_EX_VAT = includePayout ? 3.0 : 0.0;
+  const TRANSFER_FEE_EX_VAT = includeTransfer ? 3.0 : 0.0;
 
   let pct = 0;
   let flat = 0;
@@ -59,11 +62,11 @@ export const getPaystackQuote = functions.https.onCall(async (data) => {
   const vat = feeExVat * VAT;
   const feeInclVat = feeExVat + vat;
 
-  const payoutFeeExVat = PAYOUT_FEE_EX_VAT;
-  const payoutVat = payoutFeeExVat * VAT;
-  const payoutFeeInclVat = payoutFeeExVat + payoutVat;
+  const transferFeeExVat = TRANSFER_FEE_EX_VAT;
+  const transferVat = transferFeeExVat * VAT;
+  const transferFeeInclVat = transferFeeExVat + transferVat;
 
-  const totalFeesInclVat = feeInclVat + payoutFeeInclVat;
+  const totalFeesInclVat = feeInclVat + transferFeeInclVat;
   const netToMerchant = amount - totalFeesInclVat;
 
   const r = (n: number) => Math.round(n * 100) / 100;
@@ -74,9 +77,13 @@ export const getPaystackQuote = functions.https.onCall(async (data) => {
     feeExVat: r(feeExVat),
     vat: r(vat),
     feeInclVat: r(feeInclVat),
-    payoutFeeExVat: r(payoutFeeExVat),
-    payoutVat: r(payoutVat),
-    payoutFeeInclVat: r(payoutFeeInclVat),
+    transferFeeExVat: r(transferFeeExVat),
+    transferVat: r(transferVat),
+    transferFeeInclVat: r(transferFeeInclVat),
+    // Backwards-compatible response aliases for released clients.
+    payoutFeeExVat: r(transferFeeExVat),
+    payoutVat: r(transferVat),
+    payoutFeeInclVat: r(transferFeeInclVat),
     totalFeesInclVat: r(totalFeesInclVat),
     netToMerchant: r(netToMerchant),
   };

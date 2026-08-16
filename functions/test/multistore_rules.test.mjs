@@ -22,8 +22,12 @@ import { getBytes, ref, uploadString } from "firebase/storage";
 let env;
 
 before(async () => {
+  // Cross-service Storage rules use Firestore membership lookups. The test
+  // project must therefore match the emulator hub project; a hard-coded
+  // second demo project makes those lookups target an empty namespace.
+  const projectId = process.env.GCLOUD_PROJECT || "demo-spazaone-multistore";
   env = await initializeTestEnvironment({
-    projectId: "demo-spazaone-multistore",
+    projectId,
     firestore: {
       rules: await readFile(
         new URL("../../firestore.rules", import.meta.url),
@@ -50,6 +54,10 @@ beforeEach(async () => {
         virtualBalance: 50,
         salesVirtualBalance: 900,
       }),
+      setDoc(doc(db, "users/storeA/bankingDetails/default"), {
+        bankName: "Test Bank",
+        accountNumber: "1234567890",
+      }),
       setDoc(doc(db, "users/storeA/customers/customerA"), { balance: -10 }),
       setDoc(
         doc(db, "users/storeA/customers/customerA/transactions/transactionA"),
@@ -64,6 +72,10 @@ beforeEach(async () => {
       setDoc(doc(db, "stores/storeA"), { name: "Alpha", ownerUid: "ownerA" }),
       setDoc(doc(db, "stores/storeA/operators/operator1"), {
         role: "operator",
+        status: "active",
+      }),
+      setDoc(doc(db, "stores/storeA/operators/admin1"), {
+        role: "admin",
         status: "active",
       }),
       setDoc(doc(db, "stores/storeB/operators/operator1"), {
@@ -96,6 +108,71 @@ beforeEach(async () => {
       }),
       setDoc(doc(db, "paymentReferences/referenceA"), {
         merchantId: "storeA",
+      }),
+      setDoc(doc(db, "paymentIntents/intentA"), {
+        merchantId: "storeA",
+        status: "paid",
+      }),
+      setDoc(doc(db, "paymentEvents/eventA"), {
+        provider: "paystack",
+      }),
+      setDoc(doc(db, "merchantPaymentProfiles/storeA"), {
+        merchantId: "storeA",
+        status: "enabled",
+      }),
+      setDoc(doc(db, "merchantCommerceSettings/storeA"), {
+        merchantId: "storeA",
+        delivery: { enabled: true, flatFeeMinor: 500 },
+      }),
+      setDoc(doc(db, "settlements/settlementA"), { merchantId: "storeA" }),
+      setDoc(doc(db, "refundCases/refundA"), { merchantId: "storeA" }),
+      setDoc(doc(db, "inventoryReservations/reservationA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "supplierFulfilments/fulfilmentA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "supplierFundingReservations/reservationA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "supplierFundingState/cj"), {
+        provider: "cj",
+      }),
+      setDoc(doc(db, "operationsAlerts/alertA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "supplierCancellationRequests/requestA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "paymentOperations/operationA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "financialReconciliationRuns/runA"), {
+        status: "balanced",
+      }),
+      setDoc(doc(db, "paymentConfiguration/global"), { enabled: false }),
+      setDoc(
+        doc(db, "paymentSecurityBudgets/settlement_bank_validation_2026-08-13"),
+        { attemptCount: 1 },
+      ),
+      setDoc(doc(db, "campaignCreditPurchases/purchaseA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "campaignCreditRecoveryCases/recoveryA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "repaymentPlans/planA"), { merchantId: "storeA" }),
+      setDoc(doc(db, "customerPaymentRequests/requestA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "customerPaymentRequestState/stateA"), {
+        merchantId: "storeA",
+      }),
+      setDoc(doc(db, "paymentRequestWalletReservations/requestA"), {
+        storeId: "storeA",
+      }),
+      setDoc(doc(db, "commerceNotificationOutbox/noticeA"), {
+        state: "pending",
       }),
       setDoc(doc(db, "commerceListings/listingA"), {
         sellerId: "storeA",
@@ -160,6 +237,23 @@ test("active operator can use assigned store and disabled membership cannot", as
   await assertFails(getDoc(doc(db, "users/storeB/customers/customerB")));
 });
 
+test("only owners and admins can alter settlement banking details", async () => {
+  const operator = env.authenticatedContext("operator1").firestore();
+  const adminDb = env.authenticatedContext("admin1").firestore();
+  const legacyOwner = env.authenticatedContext("storeA").firestore();
+  const bankingPath = "users/storeA/bankingDetails/default";
+  await assertSucceeds(getDoc(doc(operator, bankingPath)));
+  await assertFails(
+    updateDoc(doc(operator, bankingPath), { accountNumber: "9999999999" }),
+  );
+  await assertSucceeds(
+    updateDoc(doc(adminDb, bankingPath), { reference: "Admin approved" }),
+  );
+  await assertSucceeds(
+    updateDoc(doc(legacyOwner, bankingPath), { reference: "Owner approved" }),
+  );
+});
+
 test("operator cannot grant itself membership or inspect phone invites", async () => {
   const db = env.authenticatedContext("operator1").firestore();
   await assertFails(
@@ -184,6 +278,49 @@ test("shared operator sees campaign balance but not canonical sales fields", asy
   await assertFails(
     getDoc(doc(db, "campaignWalletAccess/storeA/members/operator2")),
   );
+});
+
+test("Payments V2 truth is server-only for owners, operators and admins", async () => {
+  const paths = [
+    "paymentIntents/intentA",
+    "paymentEvents/eventA",
+    "merchantPaymentProfiles/storeA",
+    "settlements/settlementA",
+    "refundCases/refundA",
+    "inventoryReservations/reservationA",
+    "supplierFulfilments/fulfilmentA",
+    "supplierFundingReservations/reservationA",
+    "supplierFundingState/cj",
+    "operationsAlerts/alertA",
+    "supplierCancellationRequests/requestA",
+    "paymentOperations/operationA",
+    "financialReconciliationRuns/runA",
+    "financialMigrationRuns/runA",
+    "schemaMetadata/paymentsV2",
+    "developmentSeedRuns/runA",
+    "paymentConfiguration/global",
+    "paymentSecurityBudgets/settlement_bank_validation_2026-08-13",
+    "paymentAdministrationAudit/auditA",
+    "merchantCommerceSettings/storeA",
+    "campaignCreditPurchases/purchaseA",
+    "campaignCreditRecoveryCases/recoveryA",
+    "repaymentPlans/planA",
+    "customerPaymentRequests/requestA",
+    "customerPaymentRequestState/stateA",
+    "paymentRequestWalletReservations/requestA",
+    "commerceNotificationOutbox/noticeA",
+  ];
+  for (const client of [
+    env.authenticatedContext("storeA").firestore(),
+    env.authenticatedContext("operator1").firestore(),
+    env.authenticatedContext("spaza-admin", { spazaAdmin: true }).firestore(),
+    env.unauthenticatedContext().firestore(),
+  ]) {
+    for (const path of paths) {
+      await assertFails(getDoc(doc(client, path)));
+      await assertFails(setDoc(doc(client, path), { forged: true }));
+    }
+  }
 });
 
 test("operator can update only notification fields on its own membership", async () => {

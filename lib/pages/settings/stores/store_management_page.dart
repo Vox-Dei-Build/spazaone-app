@@ -96,8 +96,8 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
-                      'Campaign and top-up credits are automatically shared '
-                      'across every store you own. Sales and withdrawals '
+                      'Your SpazaOne balance is automatically shared across '
+                      'every store you own. Sales and withdrawals '
                       'stay separate.',
                     ),
                   ),
@@ -131,7 +131,7 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
         SnackBar(
           content: Text(
             store.sharedCampaignCredits
-                ? '${store.storeName} is ready with shared campaign credits.'
+                ? '${store.storeName} is ready with your shared SpazaOne balance.'
                 : '${store.storeName} is ready.',
           ),
         ),
@@ -376,7 +376,7 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                               ),
                             ),
                             subtitle: Text(
-                              '${_roleLabel(store.role)}${store.sharedCampaignCredits ? ' · Shared campaign credits' : ''}',
+                              '${_roleLabel(store.role)}${store.sharedCampaignCredits ? ' · Shared SpazaOne balance' : ''}',
                             ),
                             trailing: active
                                 ? Icon(

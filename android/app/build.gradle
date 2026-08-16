@@ -52,6 +52,20 @@ def firebaseMessagingAutoInitEnabled =
 def firebaseInitProviderEnabled = firebaseMessagingAutoInitEnabled
 def firebaseEmulatorCleartextEnabled =
     dartDefineValues['USE_FIREBASE_EMULATORS'] == 'true'
+def spazaOneEnvironment =
+    dartDefineValues['SPAZAONE_ENVIRONMENT'] ?: 'production'
+def requestedGradleTasks = gradle.startParameter.taskNames.join(' ').toLowerCase()
+if (requestedGradleTasks.contains('development') &&
+    !(spazaOneEnvironment in ['development', 'local'])) {
+    throw new GradleException(
+        'The development flavor requires SPAZAONE_ENVIRONMENT=development '
+        + 'or local.')
+}
+if (requestedGradleTasks.contains('production') &&
+    spazaOneEnvironment != 'production') {
+    throw new GradleException(
+        'The production flavor requires SPAZAONE_ENVIRONMENT=production.')
+}
 
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
@@ -92,6 +106,21 @@ android {
             firebaseMessagingAutoInitEnabled.toString()
         manifestPlaceholders.firebaseEmulatorCleartextEnabled =
             firebaseEmulatorCleartextEnabled.toString()
+        manifestPlaceholders.appName = 'SpazaOne'
+    }
+
+    flavorDimensions 'environment'
+    productFlavors {
+        development {
+            dimension 'environment'
+            applicationId 'com.tsepo.spazaone.dev'
+            manifestPlaceholders.appName = 'SpazaOne Dev'
+        }
+        production {
+            dimension 'environment'
+            applicationId 'com.tsepo.pasella'
+            manifestPlaceholders.appName = 'SpazaOne'
+        }
     }
 
     signingConfigs {

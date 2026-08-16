@@ -52,4 +52,61 @@ void main() {
     );
     expect(find.text('Cancel Order'), findsOneWidget);
   });
+
+  testWidgets('shows payment first for an unpaid EFT pickup', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ActionsBlock(
+            paymentMethod: 'eft',
+            isPaid: false,
+            isBnpl: false,
+            isBnplApproved: false,
+            isCancelled: false,
+            isRejected: false,
+            onAcceptBnpl: () {},
+            onRejectBnpl: () {},
+            onMarkCash: () {},
+            onSettleBnpl: () {},
+            onMarkCollected: () {},
+            onCancelOrder: () {},
+            showMarkCollected: false,
+            showMarkCash: true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Mark Payment Received'), findsOneWidget);
+    expect(find.text('Mark Collected'), findsNothing);
+    expect(find.textContaining('before handing over'), findsOneWidget);
+  });
+
+  testWidgets('shows collection only after EFT is paid', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ActionsBlock(
+            paymentMethod: 'eft',
+            isPaid: true,
+            isBnpl: false,
+            isBnplApproved: false,
+            isCancelled: false,
+            isRejected: false,
+            onAcceptBnpl: () {},
+            onRejectBnpl: () {},
+            onMarkCash: () {},
+            onSettleBnpl: () {},
+            onMarkCollected: () {},
+            onCancelOrder: () {},
+            showMarkCollected: true,
+            showMarkCash: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Mark Collected'), findsOneWidget);
+    expect(find.text('Mark Payment Received'), findsNothing);
+  });
 }

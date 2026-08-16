@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/models/conversation/conversation_presentation.dart';
 import 'message_card.dart';
 
 class MessagesListView extends StatefulWidget {
   final List<Map<String, dynamic>> messages;
   final String? profileImageUrl;
   final String customerName;
+  final ConversationPresentationV1 Function(Map<String, dynamic>)
+      presentationParser;
 
   const MessagesListView({
     super.key,
     required this.messages,
     this.profileImageUrl,
     required this.customerName,
+    this.presentationParser = ConversationPresentationV1.fromMessage,
   });
 
   @override
@@ -24,12 +28,14 @@ class _MessagesListViewState extends State<MessagesListView> {
   int _lastMessageCount = 0;
   int _scrollRequest = 0;
   String _latestMessageKey = '';
+  List<_MessageRow> _rows = const [];
 
   @override
   void initState() {
     super.initState();
     _lastMessageCount = widget.messages.length;
     _latestMessageKey = _messageKey(widget.messages);
+    _rows = _buildRows(widget.messages).reversed.toList(growable: false);
     _scheduleScrollToBottom();
   }
 
@@ -37,6 +43,9 @@ class _MessagesListViewState extends State<MessagesListView> {
   void didUpdateWidget(covariant MessagesListView oldWidget) {
     super.didUpdateWidget(oldWidget);
     final latestMessageKey = _messageKey(widget.messages);
+    if (!identical(oldWidget.messages, widget.messages)) {
+      _rows = _buildRows(widget.messages).reversed.toList(growable: false);
+    }
     if (widget.messages.length != _lastMessageCount ||
         latestMessageKey != _latestMessageKey) {
       _lastMessageCount = widget.messages.length;
@@ -80,23 +89,64 @@ class _MessagesListViewState extends State<MessagesListView> {
     }
   }
 
-  List<_MessageRow> _buildRows() {
+  List<_MessageRow> _buildRows(List<Map<String, dynamic>> messages) {
     final rows = <_MessageRow>[];
     String? currentDateKey;
+    final messagesById = <String, Map<String, dynamic>>{};
+    final preparedMessages = <Map<String, dynamic>>[];
 
-    for (final message in widget.messages) {
+    // Normalize each rich presentation once per stream emission. MessageCard
+    // receives the cached model and the build method stays proportional to
+    // the small number of visible bubbles rather than the whole history.
+    for (final message in messages) {
+      final prepared = <String, dynamic>{
+        ...message,
+        'presentationModel': widget.presentationParser(message),
+      };
+      preparedMessages.add(prepared);
+      for (final key in ['id', 'sid']) {
+        final id = prepared[key]?.toString().trim();
+        if (id != null && id.isNotEmpty) messagesById[id] = prepared;
+      }
+    }
+
+    for (final message in preparedMessages) {
       final date = _asDate(message['dateSent'])?.toLocal();
       if (date == null) continue;
 
-      final dateKey = DateFormat('yyyy-MM-dd').format(date);
+      final dateKey = _dateKey(date);
       if (dateKey != currentDateKey) {
         rows.add(_MessageRow.header(dateKey));
         currentDateKey = dateKey;
       }
-      rows.add(_MessageRow.message(message));
+      final presentation = ConversationPresentationV1.fromMessage(message);
+      final replyTo =
+          message['replyTo']?.toString().trim() ?? presentation.replyToId;
+      final quoted = replyTo == null ? null : messagesById[replyTo];
+      if (quoted == null) {
+        rows.add(_MessageRow.message(message));
+      } else {
+        final quotedPresentation =
+            quoted['presentationModel'] as ConversationPresentationV1;
+        final quotedText = quotedPresentation.text ??
+            quotedPresentation.title ??
+            quoted['message']?.toString();
+        rows.add(
+          _MessageRow.message({
+            ...message,
+            if (quotedText != null && quotedText.trim().isNotEmpty)
+              'quotedText': quotedText.trim(),
+            'quotedDirection': quoted['direction'],
+          }),
+        );
+      }
     }
     return rows;
   }
+
+  String _dateKey(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 
   String _formatDate(String date) {
     final messageDate = DateTime.parse(date);
@@ -111,23 +161,21 @@ class _MessagesListViewState extends State<MessagesListView> {
 
   @override
   Widget build(BuildContext context) {
-    // A reversed chat list builds the newest row first and anchors it at the
-    // bottom. Reversing the chronological row collection at the same time
-    // preserves the expected visual order and keeps date headers above their
-    // messages.
-    final rows = _buildRows().reversed.toList(growable: false);
-
     return ListView.builder(
       controller: _scrollController,
       reverse: true,
-      itemCount: rows.length,
+      itemCount: _rows.length,
       itemBuilder: (context, index) {
-        final row = rows[index];
+        final row = _rows[index];
         if (row.dateKey != null) {
-          return _buildDateHeader(_formatDate(row.dateKey!));
+          return KeyedSubtree(
+            key: ValueKey('date:${row.dateKey}'),
+            child: _buildDateHeader(_formatDate(row.dateKey!)),
+          );
         }
         return MessageCard(
           row.message!,
+          key: ValueKey(row.stableKey),
           profileImageUrl: widget.profileImageUrl,
           customerName: widget.customerName,
         );
@@ -165,11 +213,27 @@ class _MessagesListViewState extends State<MessagesListView> {
 class _MessageRow {
   final String? dateKey;
   final Map<String, dynamic>? message;
+  final String stableKey;
 
-  const _MessageRow._({this.dateKey, this.message});
+  const _MessageRow._({
+    this.dateKey,
+    this.message,
+    required this.stableKey,
+  });
 
-  factory _MessageRow.header(String dateKey) => _MessageRow._(dateKey: dateKey);
+  factory _MessageRow.header(String dateKey) =>
+      _MessageRow._(dateKey: dateKey, stableKey: 'date:$dateKey');
 
-  factory _MessageRow.message(Map<String, dynamic> message) =>
-      _MessageRow._(message: message);
+  factory _MessageRow.message(Map<String, dynamic> message) {
+    final id = message['id'] ?? message['sid'];
+    final fallback = Object.hash(
+      message['dateSent'],
+      message['direction'],
+      message['message'],
+    );
+    return _MessageRow._(
+      message: message,
+      stableKey: 'message:${id ?? fallback}',
+    );
+  }
 }

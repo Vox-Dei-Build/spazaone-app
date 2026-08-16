@@ -17,8 +17,8 @@ class PaystackFeeBreakdownCard extends StatelessWidget {
     final rows = <_KV>[
       _KV('Amount', zar(quote.amount)),
       _KV('Processing fee (incl. VAT)', zar(quote.feeInclVat)),
-      if (quote.payoutFeeInclVat > 0)
-        _KV('Payout fee (incl. VAT)', zar(quote.payoutFeeInclVat)),
+      if (quote.transferFeeInclVat > 0)
+        _KV('Bank transfer fee (incl. VAT)', zar(quote.transferFeeInclVat)),
       _KV('Total fees', zar(quote.totalFeesInclVat)),
       _KV('You receive', zar(quote.netToMerchant)),
     ];
@@ -28,31 +28,29 @@ class PaystackFeeBreakdownCard extends StatelessWidget {
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              ...rows.map(
-                (kv) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(kv.k, style: TextStyle(color: Colors.grey[700])),
-                      Text(
-                        kv.v,
-                        style: TextStyle(
-                          fontWeight: kv.k == 'You receive'
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ],
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          ...rows.map(
+            (kv) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(kv.k, style: TextStyle(color: Colors.grey[700])),
+                  Text(
+                    kv.v,
+                    style: TextStyle(
+                      fontWeight: kv.k == 'You receive'
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
                   ),
-                ),
+                ],
               ),
-            ]),
+            ),
+          ),
+        ]),
       ),
     );
   }

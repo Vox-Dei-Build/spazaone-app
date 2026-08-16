@@ -36,10 +36,6 @@ class AddCreditViewModel extends TransactionViewModel {
   @override
   List<Product> get suggestedProducts => _suggestedProducts;
 
-  @override
-  String get productSelectionNotice =>
-      'Pay Later is for stock you have on hand. Dropshipping products stay in Orders.';
-
   /// Max number of recent credit transactions to scan for the
   /// heuristic. Keeps the read bounded and the suggestion list
   /// dominated by current buying patterns rather than ancient ones.
@@ -181,33 +177,6 @@ class AddCreditViewModel extends TransactionViewModel {
         'products': selectedProducts,
       };
 
-      var connectivityResult = await Connectivity().checkConnectivity();
-      if (connectivityResult == ConnectivityResult.none) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          showSnackbar(
-            context,
-            'You\'re offline. Action queued and will complete when back online.',
-            Colors.orange,
-          );
-        });
-      }
-
-      await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('customers')
-          .doc(customerId)
-          .collection('transactions')
-          .add(transactionData);
-
-      // NOTE: stock decrement was previously here. It now runs AFTER the
-      // cost-confirmation sheet returns a non-dismissed outcome — see
-      // PAS-UX-03 audit finding (data-integrity smell on cancelled
-      // credits). The credit row above is still written first because
-      // rolling that back across an offline Firestore queue would be
-      // worse than the alternative; the post-sheet snackbar makes the
-      // persisted state explicit instead of silent.
-
       final smsCost = SMSPricingUtil.calculateCost(
         text: SMSMessages.creditConfirmationShort,
         unitCost: pricingService.smsReminderTemplatePrice,
@@ -218,9 +187,9 @@ class AddCreditViewModel extends TransactionViewModel {
       //   * send      -> dispatcher charges + SMS goes out
       //   * skip      -> merchant explicitly chose "record only"
       //   * dismissed -> sheet closed without a choice
-      // Both skip and dismissed mean no message is sent. We still
-      // commit the stock decrement (the merchant gave the goods) but
-      // we surface that explicitly via snackbar.
+      // Only send and skip are permission to commit. Closing the drawer
+      // asks whether to keep editing or discard before any Firestore or
+      // inventory write is allowed.
       CostSheetOutcome outcome = CostSheetOutcome.skip;
       double quotedTotal = smsCost;
       if (mobileNumber != null && mobileNumber!.isNotEmpty) {
@@ -229,7 +198,7 @@ class AddCreditViewModel extends TransactionViewModel {
           mobileNumber!,
         );
         final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send transaction confirmation?',
+          title: 'Transaction recorded',
           subtitle: 'Message to $customerName',
           whatsappCost: whatsappCost,
           smsCost: smsCost,
@@ -239,18 +208,45 @@ class AddCreditViewModel extends TransactionViewModel {
         outcome = await CostConfirmationSheet.showOutcome(
           context,
           breakdown: breakdown,
-          confirmLabel: 'Send',
+          confirmLabel: 'Send confirmation',
+          skipLabel: 'Done without sending',
+          confirmDismissal: true,
         );
       } else {
         // No number on file — the only honest outcome is "record only".
         outcome = CostSheetOutcome.skip;
       }
 
-      // Stock decrement runs only after the merchant has had a chance
-      // to interact with the cost sheet. The sale itself is committed
-      // either way (the goods are leaving the shelf), but ordering
-      // means a merchant who instantly backs out before any choice
-      // never sees a silent inventory hit.
+      if (!outcome.shouldCommit) {
+        if (outcome.shouldDiscard && context.mounted) {
+          discardFormAndNavigateAway(context);
+        }
+        return;
+      }
+
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(
+            context,
+            'You\'re offline. Action queued and will complete when back online.',
+            Colors.orange,
+          );
+        });
+      }
+
+      // The ledger row and stock movement happen only after the merchant has
+      // explicitly chosen Send confirmation or Done without sending.
+      await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('customers')
+          .doc(customerId)
+          .collection('transactions')
+          .add(transactionData);
+
+      // Keep the stock mutation ordered after the ledger write so both are
+      // downstream of the same explicit merchant choice.
       for (var productId in selectedProducts.keys) {
         Product? product = products.firstWhere(
           (p) => p.id == productId,

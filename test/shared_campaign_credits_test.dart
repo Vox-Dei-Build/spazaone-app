@@ -27,7 +27,7 @@ void main() {
     expect(membership.resolvedCampaignWalletStoreId, 'legacy-owner');
   });
 
-  test('missing shared wallet pointer fails back to the selected store', () {
+  test('missing shared wallet pointer fails closed', () {
     final membership = StoreMembership.fromMap({
       'storeId': 'store-a',
       'storeName': 'Store A',
@@ -36,6 +36,6 @@ void main() {
       'campaignWalletStoreId': '  ',
     });
 
-    expect(membership.resolvedCampaignWalletStoreId, 'store-a');
+    expect(membership.resolvedCampaignWalletStoreId, isEmpty);
   });
 }

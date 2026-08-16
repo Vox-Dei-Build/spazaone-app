@@ -2,6 +2,7 @@ import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
 import 'package:pasella/pages/reports/business_report/view_model/business_report_view_model.dart';
 import 'package:pasella/pages/reports/business_report/widgets/date_range_ledger_drilldown.dart';
@@ -10,15 +11,20 @@ import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/report_date_filter_bar.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
-import 'package:pasella/shared/widgets/secondary_view_picker.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
-enum ReportView { summary, payLater }
+enum ReportView { activity, summary }
 
 class BusinessReportPage extends StatefulWidget {
-  const BusinessReportPage({super.key});
+  const BusinessReportPage({
+    super.key,
+    this.view = ReportView.activity,
+  });
   static const id = '/businessReportPage';
+
+  final ReportView view;
 
   @override
   State<BusinessReportPage> createState() => _BusinessReportPageState();
@@ -30,7 +36,6 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
   DateTime? _startDate;
   DateTime? _endDate;
   DateTime? _selectedDay;
-  ReportView _selectedView = ReportView.summary;
   bool _isDateViewRowsLoading = true;
 
   @override
@@ -47,14 +52,20 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
     _selectedDay = _endDate;
 
-    balanceSummaryViewModel.fetchBalanceSummaryWithRange(
-      _startDate!,
-      _endDate!,
-    );
     businessReportViewModel = BusinessReportViewModel(currentUser);
-    businessReportViewModel.reportFutureNotifier.value = businessReportViewModel
-        .fetchReportWithRange(DateTime(2000, 1, 1), _endDate!);
-    businessReportViewModel.fetchAllTimeTotalCustomers();
+    if (widget.view == ReportView.activity) {
+      balanceSummaryViewModel.fetchBalanceSummaryWithRange(
+        _startDate!,
+        _endDate!,
+      );
+    } else {
+      businessReportViewModel.reportFutureNotifier.value =
+          businessReportViewModel.fetchReportWithRange(
+        DateTime(2000, 1, 1),
+        _endDate!,
+      );
+      businessReportViewModel.fetchAllTimeTotalCustomers();
+    }
   }
 
   void _onDateSelected(DateTime selectedDay) {
@@ -145,34 +156,15 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        vertical: SizeConfig.heightMultiplier * 0.5,
-                      ),
-                      child: SecondaryViewPicker<ReportView>(
-                        key: const ValueKey('customer-report-view-picker'),
-                        semanticLabel: 'Report view',
-                        value: _selectedView,
-                        options: const [
-                          SecondaryViewOption(
-                            value: ReportView.summary,
-                            label: 'Date view',
-                            icon: Icons.receipt_long_outlined,
-                          ),
-                          SecondaryViewOption(
-                            value: ReportView.payLater,
-                            label: 'Summary',
-                            icon: Icons.account_balance_wallet_outlined,
-                          ),
-                        ],
-                        onSelected: (view) {
-                          setState(() {
-                            _selectedView = view;
-                          });
-                        },
-                      ),
+                    WorkspaceContextHeader(
+                      title: widget.view == ReportView.activity
+                          ? 'Customer activity'
+                          : 'Customer summary',
+                      subtitle: widget.view == ReportView.activity
+                          ? 'Sales and payments in one timeline'
+                          : 'A simple view of what customers owe',
                     ),
-                    if (_selectedView == ReportView.summary) ...[
+                    if (widget.view == ReportView.activity) ...[
                       ReportDateFilterBar(
                         selectedDay: _selectedDay,
                         startDate: _startDate,
@@ -221,7 +213,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                           ],
                         ),
                       ),
-                    ] else if (_selectedView == ReportView.payLater) ...[
+                    ] else ...[
                       ValueListenableBuilder<Future<Report>?>(
                         valueListenable:
                             businessReportViewModel.reportFutureNotifier,
@@ -307,9 +299,9 @@ class CustomerBalanceSummary extends StatelessWidget {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
     final owingCount = report.customersWithNPAs.length;
-    final ratio = totalCustomers == null || totalCustomers == 0
+    final paidUpCount = totalCustomers == null
         ? null
-        : ((owingCount / totalCustomers!) * 100).clamp(0.0, 100.0);
+        : (totalCustomers! - owingCount).clamp(0, totalCustomers!);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
@@ -317,93 +309,62 @@ class CustomerBalanceSummary extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: kHighLightColor,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE8ECE8)),
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: primary.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        Icons.account_balance_wallet_outlined,
-                        color: primary,
-                        size: 23,
-                      ),
-                    ),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Outstanding balance',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              CurrencyUtil.format(
-                                report.cashflowImpact.abs(),
-                              ),
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                color: primary,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.6,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Customers owe you',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: kPrimaryColor,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  child: Divider(height: 1, color: Color(0xFFEDEFEA)),
+                const SizedBox(height: 10),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    CurrencyUtil.format(report.cashflowImpact.abs()),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: kTertiaryColor,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.8,
+                    ),
+                  ),
                 ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InlineSummaryMetric(
-                        label: 'Owing',
-                        value: '$owingCount',
-                        color: Colors.orange.shade800,
-                      ),
-                    ),
-                    const _SummaryDivider(),
-                    Expanded(
-                      child: _InlineSummaryMetric(
-                        label: 'Customers',
-                        value: totalCustomers?.toString() ?? '—',
-                        color: Colors.blueGrey.shade700,
-                      ),
-                    ),
-                    const _SummaryDivider(),
-                    Expanded(
-                      child: _InlineSummaryMetric(
-                        label: 'Owing rate',
-                        value: ratio == null
-                            ? '—'
-                            : '${ratio.toStringAsFixed(0)}%',
-                        color: primary,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 6),
+                Text(
+                  'Across $owingCount customer ${owingCount == 1 ? 'account' : 'accounts'}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: kSecondaryAccent,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _InlineSummaryMetric(
+                    label: 'Active customers',
+                    value: totalCustomers?.toString() ?? '—',
+                    color: kTertiaryColor,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InlineSummaryMetric(
+                    label: 'Paid up',
+                    value: paidUpCount?.toString() ?? '—',
+                    color: kPrimaryColor,
+                  ),
                 ),
               ],
             ),
@@ -486,39 +447,33 @@ class _InlineSummaryMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          value,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-            color: color,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: Colors.grey.shade700,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryDivider extends StatelessWidget {
-  const _SummaryDivider();
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      width: 1,
-      height: 38,
-      color: Colors.grey.shade200,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .48),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -428,7 +428,7 @@ class WalletViewModel extends ChangeNotifier {
       if (!context.mounted) return;
       showSnackbar(
         context,
-        'R$amount moved to campaign credits.',
+        'R$amount moved to your SpazaOne balance.',
         Colors.green,
       );
     } on FirebaseFunctionsException catch (error) {

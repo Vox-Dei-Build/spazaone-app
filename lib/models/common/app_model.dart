@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/models/customer/customer_model.dart';
 import 'package:pasella/pages/ledger/ledger.dart';
-import 'package:pasella/pages/ledger/widgets/tab.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/pages/sales/sales.dart';
 import 'package:pasella/pages/stock/stock.dart';
@@ -22,11 +21,8 @@ class AppModel with ChangeNotifier {
 
   /// public helper to go to billing without worrying about the index.
   ///
-  /// When [initialTab] is provided the WalletPage opens directly on that
-  /// tab — used by low-balance / top-up CTAs so merchants land on Top-Up
-  /// instead of Withdraw (which was the previous default and a common
-  /// source of confusion when triggered from an "insufficient balance"
-  /// prompt).
+  /// Legacy destinations remain accepted: `topUp` opens Add money and
+  /// `withdraw` opens Online payments at the payouts section.
   void goToBilling(BuildContext ctx, {WalletInitialTab? initialTab}) {
     if (initialTab == null) {
       Navigator.pushNamed(ctx, WalletPage.id);
@@ -46,13 +42,6 @@ class AppModel with ChangeNotifier {
     _currentIndex = index;
     notifyListeners();
   }
-
-  final List<Widget> _tabs = [
-    const CustomTab(title: 'CUSTOMERS'),
-    const CustomTab(title: 'REPORT'),
-  ];
-
-  List<Widget> get tabs => _tabs;
 
   String _selectedCustomerCategory = 'Customer';
   String get selectedCustomerCategory => _selectedCustomerCategory;
@@ -113,35 +102,30 @@ class AppModel with ChangeNotifier {
     // Apply reminder date filters
     if (_reminderDateFilter[0][1]) {
       // Today
-      filteredEntries =
-          filteredEntries.where((entry) {
-            final lastTransactionDate =
-                entry.customer.lastTransaction?['date'] as Timestamp?;
-            final date = lastTransactionDate?.toDate();
-            final now = DateTime.now();
-            return date != null &&
-                date.year == now.year &&
-                date.month == now.month &&
-                date.day == now.day;
-          }).toList();
+      filteredEntries = filteredEntries.where((entry) {
+        final lastTransactionDate =
+            entry.customer.lastTransaction?['date'] as Timestamp?;
+        final date = lastTransactionDate?.toDate();
+        final now = DateTime.now();
+        return date != null &&
+            date.year == now.year &&
+            date.month == now.month &&
+            date.day == now.day;
+      }).toList();
     } else if (_reminderDateFilter[1][1]) {
       // Pending
-      filteredEntries =
-          filteredEntries.where((entry) {
-            final lastTransactionDate =
-                entry.customer.lastTransaction?['date'] as Timestamp?;
-            return lastTransactionDate?.toDate().isBefore(DateTime.now()) ??
-                false;
-          }).toList();
+      filteredEntries = filteredEntries.where((entry) {
+        final lastTransactionDate =
+            entry.customer.lastTransaction?['date'] as Timestamp?;
+        return lastTransactionDate?.toDate().isBefore(DateTime.now()) ?? false;
+      }).toList();
     } else if (_reminderDateFilter[2][1]) {
       // Upcoming
-      filteredEntries =
-          filteredEntries.where((entry) {
-            final lastTransactionDate =
-                entry.customer.lastTransaction?['date'] as Timestamp?;
-            return lastTransactionDate?.toDate().isAfter(DateTime.now()) ??
-                false;
-          }).toList();
+      filteredEntries = filteredEntries.where((entry) {
+        final lastTransactionDate =
+            entry.customer.lastTransaction?['date'] as Timestamp?;
+        return lastTransactionDate?.toDate().isAfter(DateTime.now()) ?? false;
+      }).toList();
     }
 
     // Sort the filtered entries
@@ -164,10 +148,9 @@ class AppModel with ChangeNotifier {
         });
         break;
       case "Non-Payers":
-        filteredEntries =
-            filteredEntries.where((entry) {
-              return entry.customer.isNPA == true;
-            }).toList();
+        filteredEntries = filteredEntries.where((entry) {
+          return entry.customer.isNPA == true;
+        }).toList();
         break;
     }
 

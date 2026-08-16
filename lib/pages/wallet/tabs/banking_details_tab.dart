@@ -5,6 +5,8 @@ import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/add_banking_details.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/widgets/private_region.dart';
+import 'package:pasella/services/payment_setup_service.dart';
+import 'package:pasella/services/store_session.dart';
 
 class BankingDetailsTab extends StatefulWidget {
   const BankingDetailsTab({super.key});
@@ -16,6 +18,7 @@ class BankingDetailsTab extends StatefulWidget {
 class _BankingDetailsTabState extends State<BankingDetailsTab> {
   late WalletViewModel walletViewModel = WalletViewModel();
   bool isLoading = true;
+  bool isVerifying = false;
 
   @override
   void initState() {
@@ -35,6 +38,41 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
     await walletViewModel.initializeBankingDetails();
     if (!mounted) return;
     setState(() => isLoading = false);
+  }
+
+  Future<void> _verifyForOnlineSettlements() async {
+    final details = await showDialog<BankAccountVerificationDetails>(
+      context: context,
+      builder: (_) => const BankAccountVerificationDialog(),
+    );
+    if (details == null || !mounted) return;
+    setState(() => isVerifying = true);
+    try {
+      final result = await PaymentSetupService.prepareSettlementProfile(
+        merchantId: StoreSession.instance.storeId,
+        bankingDetailsId: walletViewModel.editingDocumentId!,
+        accountType: details.accountType,
+        documentType: details.documentType,
+        documentNumber: details.documentNumber,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['status'] == 'enabled'
+                ? 'Bank account verified for online sales.'
+                : 'Bank account checked. SpazaOne review is required before online payments can start.',
+          ),
+        ),
+      );
+    } on PaymentSetupException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => isVerifying = false);
+    }
   }
 
   @override
@@ -70,27 +108,218 @@ class _BankingDetailsTabState extends State<BankingDetailsTab> {
                 reference: walletViewModel.reference.text,
               ),
             SizedBox(height: SizeConfig.heightMultiplier * 2),
-            CustomButton(
-              title: 'Add / Edit Bank Account',
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AddBankingDetailsPage(
-                      walletViewModel: walletViewModel,
+            if (StoreSession.instance.canManageOperators)
+              CustomButton(
+                title: 'Add / Edit Bank Account',
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddBankingDetailsPage(
+                        walletViewModel: walletViewModel,
+                      ),
                     ),
-                  ),
-                );
-                await _loadBankingDetails();
-              },
-              color: Colors.green,
-              icon: Icons.add,
-              fontSize: SizeConfig.textMultiplier * 2,
-              width: SizeConfig.imageSizeMultiplier * 65,
-            ),
+                  );
+                  await _loadBankingDetails();
+                },
+                color: Colors.green,
+                icon: Icons.add,
+                fontSize: SizeConfig.textMultiplier * 2,
+                width: SizeConfig.imageSizeMultiplier * 65,
+              ),
+            if (walletViewModel.editingDocumentId != null &&
+                StoreSession.instance.canManageOperators) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const ValueKey('verify-paystack-settlement-account'),
+                onPressed: isVerifying ? null : _verifyForOnlineSettlements,
+                icon: isVerifying
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.verified_user_outlined),
+                label: const Text('Verify for online payments'),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'New or changed bank accounts are checked before online sales can be paid into them. Bank changes may require SpazaOne review.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ] else if (walletViewModel.editingDocumentId != null) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Only the store owner or an administrator can verify the bank account for online sales.',
+                textAlign: TextAlign.center,
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Sensitive values collected only long enough to call the protected bank
+/// validation endpoint. Nothing in this object is persisted or logged.
+class BankAccountVerificationDetails {
+  const BankAccountVerificationDetails({
+    required this.accountType,
+    required this.documentType,
+    required this.documentNumber,
+  });
+
+  final String accountType;
+  final String documentType;
+  final String documentNumber;
+}
+
+/// Keyboard-safe bank validation form.
+///
+/// The controller belongs to the dialog route so it is disposed only after
+/// the closing animation has removed every InputDecorator from the tree.
+class BankAccountVerificationDialog extends StatefulWidget {
+  const BankAccountVerificationDialog({super.key});
+
+  @override
+  State<BankAccountVerificationDialog> createState() =>
+      _BankAccountVerificationDialogState();
+}
+
+class _BankAccountVerificationDialogState
+    extends State<BankAccountVerificationDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _documentNumber = TextEditingController();
+  String _accountType = 'personal';
+  String _documentType = 'identityNumber';
+
+  @override
+  void dispose() {
+    _documentNumber.clear();
+    _documentNumber.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState?.validate() != true) return;
+    Navigator.of(context).pop(
+      BankAccountVerificationDetails(
+        accountType: _accountType,
+        documentType: _documentType,
+        documentNumber: _documentNumber.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey('bank-account-verification-dialog'),
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      title: const Text('Verify bank account'),
+      content: PrivateRegion(
+        child: SizedBox(
+          width: double.maxFinite,
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  key: const ValueKey('bank-verification-account-type'),
+                  value: _accountType,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Account owner'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'personal',
+                      child: Text('Personal', overflow: TextOverflow.ellipsis),
+                    ),
+                    DropdownMenuItem(
+                      value: 'business',
+                      child: Text('Business', overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      _accountType = value;
+                      _documentType = value == 'business'
+                          ? 'businessRegistrationNumber'
+                          : 'identityNumber';
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (_accountType == 'personal')
+                  DropdownButtonFormField<String>(
+                    key: const ValueKey('bank-verification-document-type'),
+                    value: _documentType,
+                    isExpanded: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Identity document'),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'identityNumber',
+                        child: Text(
+                          'South African ID',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'passportNumber',
+                        child:
+                            Text('Passport', overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _documentType = value);
+                      }
+                    },
+                  ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const ValueKey('bank-verification-document-number'),
+                  controller: _documentNumber,
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _submit(),
+                  validator: (value) => (value?.trim().length ?? 0) < 5
+                      ? 'Enter a valid document number.'
+                      : null,
+                  decoration: InputDecoration(
+                    labelText: _accountType == 'business'
+                        ? 'Business registration number'
+                        : _documentType == 'passportNumber'
+                            ? 'Passport number'
+                            : 'Identity number',
+                    helperText:
+                        'Sent once for validation. SpazaOne stores only a protected fingerprint.',
+                    helperMaxLines: 3,
+                    errorMaxLines: 2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('submit-bank-account-verification'),
+          onPressed: _submit,
+          child: const Text('Validate'),
+        ),
+      ],
     );
   }
 }

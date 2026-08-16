@@ -64,10 +64,9 @@ class WalletBalancePill extends StatelessWidget {
 
         return Semantics(
           button: true,
-          label:
-              'Billing, ${isShared ? 'shared campaign credits' : 'campaign credits'} '
+          label: '${isShared ? 'Shared SpazaOne balance' : 'SpazaOne balance'} '
               '${CurrencyUtil.format(balance)}'
-              '${isLow ? '. Low balance. Opens Top Up' : ''}',
+              '${isLow ? '. Low balance. Opens Add money' : ''}',
           excludeSemantics: true,
           child: Stack(
             clipBehavior: Clip.none,
@@ -184,8 +183,7 @@ class _PillBody extends StatelessWidget {
                     ),
                   ],
                   // On narrow headers the orange treatment is the compact
-                  // top-up affordance; the full label remains in semantics
-                  // and tapping still opens the Top Up tab directly.
+                  // add-money affordance; the full label remains in semantics.
                   if (isLow && !compact) ...[
                     SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
                     Container(
@@ -198,7 +196,7 @@ class _PillBody extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'Top up',
+                        'Add money',
                         style: TextStyle(
                           fontSize: SizeConfig.textMultiplier * 1.2,
                           fontWeight: FontWeight.w600,

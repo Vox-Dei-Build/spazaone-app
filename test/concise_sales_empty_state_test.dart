@@ -14,7 +14,7 @@ void main() {
       ),
     );
 
-    expect(find.text('No cash sales yet'), findsOneWidget);
+    expect(find.text('No recorded sales yet'), findsOneWidget);
     expect(find.text('Record sale'), findsOneWidget);
     expect(find.textContaining('day-end'), findsNothing);
     expect(find.textContaining('walkthrough'), findsNothing);

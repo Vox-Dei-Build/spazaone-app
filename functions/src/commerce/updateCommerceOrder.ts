@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { assertStoreAccess } from "../stores/storeAccess";
 import {
+  canManuallyConfirmCommerceRefund,
   CommerceOrderAction,
   paymentStatusAfterAction,
   targetStatusForAction,
@@ -12,6 +13,10 @@ import {
   enqueueCommerceOrderNotification,
 } from "./notifications";
 import { validatedTrackingUrl } from "./tracking";
+import {
+  executePaystackRefundV2,
+  refundCaseDocumentId,
+} from "../payments/v2/refunds";
 
 function requiredText(value: unknown, field: string, max = 160): string {
   const text = String(value ?? "").trim();
@@ -89,6 +94,15 @@ export const updateCommerceOrder = functions.https.onCall(
       );
     }
     if (
+      action === "mark_refunded" &&
+      !canManuallyConfirmCommerceRefund(beforeData.payment?.provider)
+    ) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Online refunds complete only after the payment provider confirms them.",
+      );
+    }
+    if (
       action === "submit_for_fulfilment" &&
       beforeData.supplierId === "cj_dropshipping" &&
       !supplierOrderId
@@ -112,11 +126,132 @@ export const updateCommerceOrder = functions.https.onCall(
       );
     }
 
+    const cjAccepted =
+      action === "cancel" &&
+      String(beforeData.supplierId ?? "") === "cj_dropshipping" &&
+      Boolean(
+        String(beforeData.supplierOrder?.orderId ?? "").trim() ||
+          [
+            "submitted_for_fulfilment",
+            "preparing",
+            "shipped",
+            "on_the_way",
+            "delivered",
+          ].includes(String(beforeData.status ?? "")),
+      );
+    if (cjAccepted) {
+      const requestRef = db.doc(`supplierCancellationRequests/${orderId}`);
+      const alertRef = db.doc(`operationsAlerts/supplier-cancel-${orderId}`);
+      const now = FieldValue.serverTimestamp();
+      const batch = db.batch();
+      batch.set(
+        requestRef,
+        {
+          requestId: requestRef.id,
+          orderId,
+          intentId: String(beforeData.paymentIntentId ?? ""),
+          cjOrderId: String(beforeData.supplierOrder?.orderId ?? ""),
+          requestedByUid: context.auth.uid,
+          requestedByRole: actorRole,
+          reason,
+          status: "operations_review",
+          owner: "operations",
+          customerPromise: "review_only",
+          createdAt: now,
+          updatedAt: now,
+          schemaVersion: 2,
+        },
+        { merge: true },
+      );
+      batch.set(
+        orderRef,
+        {
+          cancellationRequest: {
+            status: "operations_review",
+            owner: "operations",
+            requestId: requestRef.id,
+            requestedByUid: context.auth.uid,
+            reason,
+            requestedAt: now,
+          },
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+      batch.set(
+        alertRef,
+        {
+          alertId: alertRef.id,
+          type: "supplier_cancellation_request",
+          orderId,
+          cjOrderId: String(beforeData.supplierOrder?.orderId ?? ""),
+          owner: "operations",
+          status: "open",
+          createdAt: now,
+          updatedAt: now,
+          schemaVersion: 2,
+        },
+        { merge: true },
+      );
+      await batch.commit();
+      return {
+        orderId,
+        status: String(beforeData.status ?? "submitted_for_fulfilment"),
+        cancellationRequestStatus: "operations_review",
+        message:
+          "Cancellation was sent to operations for review. No refund is promised until supplier and provider outcomes are confirmed.",
+      };
+    }
+
+    let refundCaseId = "";
+    let refundIntentId = "";
+    let refundAmountMinor = 0;
+    const refundIdempotencyKey = `supplier-order-cancel:${orderId}`;
+    if (
+      action === "cancel" &&
+      String(beforeData.payment?.provider ?? "") === "paystack" &&
+      String(beforeData.paymentStatus ?? "") === "paid"
+    ) {
+      // Validate the transition before creating a money-moving operations
+      // case. A concurrent state change is checked again in the transaction.
+      targetStatusForAction(
+        beforeData.status,
+        action,
+        beforeData.paymentStatus,
+      );
+      refundIntentId = requiredText(
+        beforeData.paymentIntentId,
+        "paymentIntentId",
+        200,
+      );
+      refundAmountMinor = Number(beforeData.amountDueMinor);
+      if (!Number.isSafeInteger(refundAmountMinor) || refundAmountMinor <= 0) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "The verified payment amount is unavailable.",
+        );
+      }
+      refundCaseId = refundCaseDocumentId({
+        intentId: refundIntentId,
+        idempotencyKey: refundIdempotencyKey,
+      });
+    }
+
     let notificationId = "";
     let resultStatus = "";
     try {
       await db.runTransaction(async (tx) => {
-        const current = await tx.get(orderRef);
+        const refundIntentRef = refundCaseId
+          ? db.doc(`paymentIntents/${refundIntentId}`)
+          : null;
+        const refundCaseRef = refundCaseId
+          ? db.doc(`refundCases/${refundCaseId}`)
+          : null;
+        const [current, refundIntent, existingRefundCase] = await Promise.all([
+          tx.get(orderRef),
+          refundIntentRef ? tx.get(refundIntentRef) : Promise.resolve(null),
+          refundCaseRef ? tx.get(refundCaseRef) : Promise.resolve(null),
+        ]);
         if (!current.exists) throw new Error("ORDER_NOT_FOUND");
         const currentData = current.data() ?? {};
         const next = targetStatusForAction(
@@ -129,6 +264,63 @@ export const updateCommerceOrder = functions.https.onCall(
           action,
         );
         const now = FieldValue.serverTimestamp();
+        if (refundIntentRef && refundCaseRef && refundIntent) {
+          if (!refundIntent.exists) throw new Error("INTENT_NOT_FOUND");
+          const intentData = refundIntent.data() ?? {};
+          if (
+            intentData.purpose !== "supplier_order" ||
+            intentData.businessBinding?.id !== orderId ||
+            !["paid", "refund_pending"].includes(
+              String(intentData.status ?? ""),
+            )
+          ) {
+            throw new Error("SUPPLIER_REFUND_BINDING_MISMATCH");
+          }
+          if (existingRefundCase?.exists) {
+            if (existingRefundCase.get("intentId") !== refundIntentId) {
+              throw new Error("REFUND_IDEMPOTENCY_MISMATCH");
+            }
+            refundAmountMinor = Number(
+              existingRefundCase.get("refundAmountMinor"),
+            );
+          } else {
+            const expected = Number(intentData.expectedAmountMinor);
+            const confirmed = Number(intentData.confirmedRefundMinor ?? 0);
+            const requested = Number(intentData.requestedRefundMinor ?? 0);
+            const remaining = expected - confirmed - requested;
+            if (
+              expected !== Number(currentData.amountDueMinor) ||
+              ![confirmed, requested].every(Number.isSafeInteger) ||
+              !Number.isSafeInteger(remaining) ||
+              remaining <= 0
+            ) {
+              throw new Error("REFUND_AMOUNT_EXCEEDS_REMAINING");
+            }
+            refundAmountMinor = remaining;
+            tx.create(refundCaseRef, {
+              refundCaseId,
+              intentId: refundIntentId,
+              commerceOrderId: orderId,
+              refundAmountMinor,
+              currency: "ZAR",
+              status: "requested",
+              provider: "paystack",
+              providerConfirmed: false,
+              reason: reason ?? "supplier_order_cancelled",
+              owner: "operations",
+              attemptCount: 0,
+              schemaVersion: 2,
+              createdAt: now,
+              updatedAt: now,
+            });
+            tx.update(refundIntentRef, {
+              status: "refund_pending",
+              requestedRefundMinor: FieldValue.increment(refundAmountMinor),
+              refundProviderConfirmed: false,
+              updatedAt: now,
+            });
+          }
+        }
         const update: FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData> =
           {
             status: next,
@@ -171,6 +363,7 @@ export const updateCommerceOrder = functions.https.onCall(
           update.deliveredAt = now;
         } else if (action === "cancel") {
           update.cancelledAt = now;
+          if (refundCaseId) update.refundCaseId = refundCaseId;
           update.cancellation = {
             reason,
             actorUid: context.auth?.uid,
@@ -178,6 +371,8 @@ export const updateCommerceOrder = functions.https.onCall(
         } else if (action === "mark_refunded") {
           update.refundedAt = now;
           update.refund = {
+            mode: "manual_payment_return",
+            providerConfirmed: false,
             reference: optionalText(data?.refundReference, 200),
             note: optionalText(data?.refundNote, 500),
             recordedBy: context.auth?.uid,
@@ -215,6 +410,14 @@ export const updateCommerceOrder = functions.https.onCall(
         );
       }
       throw error;
+    }
+    if (refundCaseId) {
+      await executePaystackRefundV2(refundCaseId).catch((error) => {
+        console.error("[commerce] refund submission queued", {
+          refundCaseId,
+          code: error instanceof Error ? error.message : "unknown",
+        });
+      });
     }
     let notification: CommerceNotificationResult = {
       notificationId,

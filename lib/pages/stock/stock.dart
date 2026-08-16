@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
-import 'package:pasella/shared/widgets/contextual_tab_bar.dart';
-import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
+import 'package:pasella/shared/widgets/workspace_context_header.dart';
+import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
+import 'package:pasella/shared/widgets/workspace_search_field.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
@@ -55,27 +55,12 @@ class _StockPageState extends State<StockPage>
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => StockViewModel()..loadProducts(),
+      create: (_) => StockViewModel()..watchProducts(),
       child: Consumer<StockViewModel>(
         builder: (context, viewModel, child) {
           return DefaultTabController(
             length: 3,
             child: Scaffold(
-              floatingActionButton: ValueListenableBuilder<int>(
-                valueListenable: _tabIndexNotifier,
-                builder: (context, tabIndex, child) {
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: SizeConfig.heightMultiplier * 1,
-                      right: SizeConfig.imageSizeMultiplier * 1,
-                    ),
-                    child: SizedBox(
-                      height: SizeConfig.heightMultiplier * 7,
-                      child: _buildFloatingActionButton(tabIndex, viewModel),
-                    ),
-                  );
-                },
-              ),
               body: SafeArea(
                 child: Padding(
                   padding: LayoutConstants.padding10Horizontal,
@@ -86,55 +71,67 @@ class _StockPageState extends State<StockPage>
                         shareSource: 'products_header',
                       ),
                       SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      ContextualTabBar(
+                      WorkspaceSectionTabs(
                         controller: _tabController,
-                        labelPadding: EdgeInsets.zero,
-                        labelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.45,
-                          fontWeight: FontWeight.normal,
-                        ),
-                        unselectedLabelStyle: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.45,
-                          fontWeight: FontWeight.normal,
-                        ),
-                        tabs: const [
-                          Tab(text: 'PRODUCTS'),
-                          Tab(text: 'CATALOGUE'),
-                          Tab(text: 'REPORT'),
-                        ],
-                        action: ValueListenableBuilder<int>(
-                          valueListenable: _tabIndexNotifier,
-                          builder: (context, tabIndex, _) => StockTabActions(
-                            showProductSearch: tabIndex == 0,
-                            onSearch: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const GlobalSearchPage(),
-                                ),
-                              );
-                            },
-                            onHelp: _openTutorial,
+                        tabs: const <WorkspaceSectionTab>[
+                          WorkspaceSectionTab(
+                            label: 'Products',
+                            semanticLabel: 'Your products',
                           ),
-                        ),
+                          WorkspaceSectionTab(
+                            label: 'Suppliers',
+                            semanticLabel: 'Supplier catalogue',
+                          ),
+                          WorkspaceSectionTab(
+                            label: 'Stock',
+                            semanticLabel: 'Stock report',
+                          ),
+                        ],
                       ),
                       Expanded(
                         child: TabBarView(
                           controller: _tabController,
                           children: [
-                            ProductList(
-                              viewModel: viewModel,
-                              groupName:
-                                  null, // Set groupname to null so that all products show up
-                              // Keep one direct action in the empty state.
-                              // Help remains available from the header menu.
-                              onAddProduct: () => _openNewProduct(),
+                            Column(
+                              children: [
+                                ProductWorkspaceToolbar(
+                                  onAddProduct: _openNewProduct,
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const GlobalSearchPage(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                Expanded(
+                                  child: ProductList(
+                                    viewModel: viewModel,
+                                    groupName: null,
+                                    onAddProduct: _openNewProduct,
+                                    showEmptyAction: false,
+                                  ),
+                                ),
+                              ],
                             ),
                             SupplierCatalogPage(
                               onListingCreated: () {
                                 _tabController.animateTo(0);
                               },
                             ),
-                            ProductReportsTab(viewModel: viewModel),
+                            Column(
+                              children: [
+                                const WorkspaceContextHeader(
+                                  title: 'Stock report',
+                                  subtitle: 'What your current stock is worth',
+                                ),
+                                Expanded(
+                                  child:
+                                      ProductReportsTab(viewModel: viewModel),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -149,27 +146,6 @@ class _StockPageState extends State<StockPage>
     );
   }
 
-  Widget _buildFloatingActionButton(int tabIndex, StockViewModel viewModel) {
-    return tabIndex == 0 && viewModel.products.isNotEmpty
-        ? FloatingActionButton.extended(
-            elevation: 3.0,
-            onPressed: _openNewProduct,
-            icon: Icon(
-              Icons.add_outlined,
-              color: Colors.white,
-              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
-            ),
-            label: Text(
-              'Add Product',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
-              ),
-            ),
-          )
-        : Container();
-  }
-
   /// Shared launcher used by the FAB and product empty state.
   void _openNewProduct() {
     Navigator.of(context)
@@ -179,16 +155,55 @@ class _StockPageState extends State<StockPage>
       _tabController.animateTo(0);
     });
   }
+}
 
-  /// Launcher for the capture-stock walkthrough in the header menu.
-  void _openTutorial() {
-    final url = TutorialConfig.getTutorialUrl(
-      TutorialConfig.TUTORIAL_CAPTURE_STOCK,
-    );
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            LoomVideoPage(loomUrl: url, title: 'How to Capture Stock'),
+/// Content-first controls for the merchant's own catalogue.
+///
+/// The active Products destination already supplies the page context, so a
+/// second title/subtitle block only takes space away from the catalogue. Search
+/// and the primary Add action instead share one predictable toolbar.
+class ProductWorkspaceToolbar extends StatelessWidget {
+  const ProductWorkspaceToolbar({
+    super.key,
+    required this.onTap,
+    required this.onAddProduct,
+  });
+
+  final VoidCallback onTap;
+  final VoidCallback onAddProduct;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: WorkspaceSearchField(
+              key: const ValueKey('search-products-launcher'),
+              hintText: 'Search products',
+              semanticLabel: 'Open product search',
+              readOnly: true,
+              onTap: onTap,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              key: const ValueKey('add-product-action'),
+              onPressed: onAddProduct,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add'),
+            ),
+          ),
+        ],
       ),
     );
   }
