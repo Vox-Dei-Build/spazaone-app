@@ -120,41 +120,22 @@ class _OnlineCommerceHubState extends State<OnlineCommerceHub> {
           setupRequired = !owned.ready && !supplier.ready;
         }
 
-        return Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-                child: TextButton.icon(
-                  key: const ValueKey('online-orders-order-options'),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => OrderOptionsPage(),
-                    ),
-                  ),
-                  icon: const Icon(Icons.tune_outlined, size: 18),
-                  label: const Text('Order options'),
-                ),
-              ),
-            ),
-            Expanded(
-              child: CombinedOnlineOrders(
-                selectedDay: widget.selectedDay,
-                startDate: widget.startDate,
-                endDate: widget.endDate,
-                onDaySelect: widget.onDaySelect,
-                onRangeSelect: widget.onRangeSelect,
-                onClearDates: widget.onClearDates,
-                setupRequired: setupRequired,
-                canShareShop: snapshot.hasData && !setupRequired,
-                readinessUnavailable: snapshot.hasError,
-                onRetryReadiness: _refreshOverview,
-                onSetup: _openSetup,
-                onShareShop: _openShopLink,
-              ),
-            ),
-          ],
+        return CombinedOnlineOrders(
+          selectedDay: widget.selectedDay,
+          startDate: widget.startDate,
+          endDate: widget.endDate,
+          onDaySelect: widget.onDaySelect,
+          onRangeSelect: widget.onRangeSelect,
+          onClearDates: widget.onClearDates,
+          setupRequired: setupRequired,
+          canShareShop: snapshot.hasData && !setupRequired,
+          readinessUnavailable: snapshot.hasError,
+          onRetryReadiness: _refreshOverview,
+          onSetup: _openSetup,
+          onShareShop: _openShopLink,
+          onOrderOptions: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => OrderOptionsPage()),
+          ),
         );
       },
     );

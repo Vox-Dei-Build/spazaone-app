@@ -27,6 +27,39 @@ MerchantPaymentOverview _overview({bool ready = false}) =>
     );
 
 void main() {
+  testWidgets('wallet hub uses a content-shaped shimmer while loading',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WalletHubMenu(
+            campaignBalance: 0,
+            sharedCampaignCredits: false,
+            hasPendingPayment: false,
+            overview: null,
+            overviewLoading: true,
+            overviewHasError: false,
+            balanceLoading: true,
+            showBalance: true,
+            showOnlinePayments: true,
+            showCosts: true,
+            onAddMoney: () {},
+            onBalance: () {},
+            onOnlinePayments: () {},
+            onCosts: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('wallet-loading-shimmer')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('wallet-balance-hero')), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
   for (final width in <double>[320, 360]) {
     testWidgets(
       'Wallet & payments hub stays focused at ${width.toInt()}dp',

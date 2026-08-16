@@ -41,10 +41,6 @@ export {
   prepareMerchantSettlementProfileV2,
   reviewMerchantSettlementProfileV2,
 } from "./payments/v2/merchantProfiles";
-export {
-  onMerchantSettlementReviewEmail,
-  retryPaymentAdminReviewEmails,
-} from "./payments/v2/paymentAdminReviewEmail";
 export { getMerchantPaymentOverviewV2 } from "./payments/v2/merchantOverview";
 export {
   reconcileSupplierTrackingV2,

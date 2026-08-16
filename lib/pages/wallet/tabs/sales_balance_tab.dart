@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/services/payment_setup_service.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:shimmer/shimmer.dart';
 
 String merchantSettlementStatusLabel(MerchantSettlement settlement) {
   if (settlement.testOnly) return 'Test only — not sent to bank';
@@ -43,10 +44,7 @@ class MoneyPayoutsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (loading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 48),
-            child: Center(child: CircularProgressIndicator()),
-          )
+          const _MoneyPayoutsLoading()
         else if (hasError || overview == null)
           DecoratedBox(
             decoration: BoxDecoration(
@@ -105,6 +103,40 @@ class MoneyPayoutsSection extends StatelessWidget {
       ],
     );
   }
+}
+
+class _MoneyPayoutsLoading extends StatelessWidget {
+  const _MoneyPayoutsLoading();
+
+  @override
+  Widget build(BuildContext context) => Shimmer.fromColors(
+        key: const ValueKey('online-payments-loading-shimmer'),
+        baseColor: Colors.black12,
+        highlightColor: Colors.black26,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: 132,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            const SizedBox(height: 24),
+            for (var index = 0; index < 3; index++) ...[
+              Container(
+                height: 66,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              if (index < 2) const SizedBox(height: 10),
+            ],
+          ],
+        ),
+      );
 }
 
 class _PayoutTotals extends StatelessWidget {

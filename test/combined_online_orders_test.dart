@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
@@ -20,6 +22,7 @@ Widget _subject({
   Stream<List<CommerceOrder>> Function()? supplierStream,
   bool setupRequired = false,
   double textScale = 1,
+  VoidCallback? onOrderOptions,
 }) {
   return MaterialApp(
     home: MediaQuery(
@@ -34,6 +37,7 @@ Widget _subject({
           onClearDates: () {},
           onSetup: () {},
           onShareShop: () {},
+          onOrderOptions: onOrderOptions,
           setupRequired: setupRequired,
           ownedLoader: ownedLoader ?? _emptyOwned,
           supplierStream:
@@ -74,6 +78,56 @@ CommerceOrder _supplierOrder() => CommerceOrder(
     );
 
 void main() {
+  testWidgets('order options is a compact header action', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _subject(onOrderOptions: () => taps++),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('online-orders-order-options')),
+      findsOneWidget,
+    );
+    expect(find.text('Order options'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('online-orders-order-options')),
+    );
+    expect(taps, 1);
+  });
+
+  testWidgets('shows shimmer until both empty order sources resolve',
+      (tester) async {
+    final owned = Completer<List<LedgerSale>>();
+    final supplier = StreamController<List<CommerceOrder>>();
+    addTearDown(supplier.close);
+
+    await tester.pumpWidget(
+      _subject(
+        ownedLoader: ({selectedDay, startDate, endDate}) => owned.future,
+        supplierStream: () => supplier.stream,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('online-orders-loading-shimmer')),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    owned.complete(const <LedgerSale>[]);
+    supplier.add(const <CommerceOrder>[]);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('online-orders-loading-shimmer')),
+      findsNothing,
+    );
+    expect(find.text('No online orders yet'), findsOneWidget);
+  });
+
   testWidgets('online empty state is compact and overflow-safe',
       (tester) async {
     tester.view.physicalSize = const Size(320, 568);

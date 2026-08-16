@@ -20,6 +20,7 @@ import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/wallet_utils.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 
 /// Legacy enum values are retained for deep-link compatibility. In 4.8,
 /// `withdraw` opens Online payments and `topUp` opens Add money.
@@ -215,6 +216,7 @@ class WalletHubMenu extends StatelessWidget {
     required this.overview,
     required this.overviewLoading,
     required this.overviewHasError,
+    this.balanceLoading = false,
     required this.showBalance,
     required this.showOnlinePayments,
     required this.showCosts,
@@ -230,6 +232,7 @@ class WalletHubMenu extends StatelessWidget {
   final MerchantPaymentOverview? overview;
   final bool overviewLoading;
   final bool overviewHasError;
+  final bool balanceLoading;
   final bool showBalance;
   final bool showOnlinePayments;
   final bool showCosts;
@@ -252,6 +255,14 @@ class WalletHubMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (balanceLoading || (overviewLoading && overview == null)) {
+      return _WalletHubLoading(
+        showBalance: showBalance,
+        destinationCount:
+            [showBalance, showOnlinePayments, showCosts].where((v) => v).length,
+      );
+    }
+
     final destinations = <_WalletHubDestination>[
       if (showBalance)
         _WalletHubDestination(
@@ -300,6 +311,64 @@ class WalletHubMenu extends StatelessWidget {
       ],
     );
   }
+}
+
+class _WalletHubLoading extends StatelessWidget {
+  const _WalletHubLoading({
+    required this.showBalance,
+    required this.destinationCount,
+  });
+
+  final bool showBalance;
+  final int destinationCount;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget block({required double height, double radius = 16}) => Container(
+          height: height,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(radius),
+          ),
+        );
+
+    return Shimmer.fromColors(
+      key: const ValueKey('wallet-loading-shimmer'),
+      baseColor: Colors.black12,
+      highlightColor: Colors.black26,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showBalance) ...[
+            block(height: 210, radius: 22),
+            const SizedBox(height: 28),
+          ],
+          for (var index = 0; index < destinationCount; index++) ...[
+            block(height: 74),
+            if (index < destinationCount - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _WalletBalancePanelLoading extends StatelessWidget {
+  const _WalletBalancePanelLoading();
+
+  @override
+  Widget build(BuildContext context) => Shimmer.fromColors(
+        key: const ValueKey('wallet-balance-loading-shimmer'),
+        baseColor: Colors.black12,
+        highlightColor: Colors.black26,
+        child: Container(
+          height: 180,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      );
 }
 
 class _WalletBalanceHero extends StatelessWidget {
@@ -685,6 +754,7 @@ class _WalletPageState extends State<WalletPage> {
               overview: snapshot.data,
               overviewLoading: snapshot.connectionState != ConnectionState.done,
               overviewHasError: snapshot.hasError,
+              balanceLoading: campaignWallet.isLoading,
               showBalance: FeatureFlags.enableTransactionHistory ||
                   FeatureFlags.enableTopUp,
               showOnlinePayments: FeatureFlags.enableBankingDetails,
@@ -903,11 +973,8 @@ class _WalletBalanceDestinationPageState
             StreamBuilder<WalletState>(
               stream: _walletVM.walletStateStream,
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
+                if (!snapshot.hasData || campaignWallet.isLoading) {
+                  return const _WalletBalancePanelLoading();
                 }
                 final walletState = snapshot.data!;
                 return Column(

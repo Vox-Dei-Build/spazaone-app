@@ -849,6 +849,50 @@ void main() {
     expect(promote.onPressed, isNull);
   });
 
+  testWidgets('supplier listing actions stack on a narrow large-text phone',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final product = Product(
+      id: 'dropship-product',
+      name: 'Supplier lamp',
+      cost: 100,
+      sellingPrice: 120,
+      whatsappListed: true,
+      isDropshipListing: true,
+      commerceListingId: 'listing-1',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: child!,
+        ),
+        home: DropshipListingPage(
+          product: product,
+          docID: product.id!,
+          promotionLauncher: (_, __) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final edit = tester.getRect(
+      find.byKey(const ValueKey('edit-dropship-listing')),
+    );
+    final promote = tester.getRect(
+      find.byKey(const ValueKey('promote-dropship-listing')),
+    );
+    expect(promote.top, greaterThan(edit.bottom));
+    expect((promote.width - edit.width).abs(), lessThan(1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('saved catalogue products persist and remain visibly unavailable',
       (tester) async {
     final available = supplierProduct(1);

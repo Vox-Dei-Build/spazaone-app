@@ -8,6 +8,7 @@ import 'package:pasella/pages/stock/dropship/commerce_orders_page.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:shimmer/shimmer.dart';
 
 enum OnlineOrderSourceFilter { all, owned, supplier }
 
@@ -42,6 +43,7 @@ class CombinedOnlineOrders extends StatefulWidget {
     required this.onClearDates,
     required this.onSetup,
     required this.onShareShop,
+    this.onOrderOptions,
     this.setupRequired = false,
     this.canShareShop = true,
     this.readinessUnavailable = false,
@@ -58,6 +60,7 @@ class CombinedOnlineOrders extends StatefulWidget {
   final VoidCallback onClearDates;
   final VoidCallback onSetup;
   final VoidCallback onShareShop;
+  final VoidCallback? onOrderOptions;
   final bool setupRequired;
   final bool canShareShop;
   final bool readinessUnavailable;
@@ -306,11 +309,12 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
           builder: (context, ownedSnapshot) {
             final owned = ownedSnapshot.data ?? const <LedgerSale>[];
             final supplier = supplierSnapshot.data ?? const <CommerceOrder>[];
-            final isInitialLoading = ownedSnapshot.connectionState ==
-                    ConnectionState.waiting &&
-                supplierSnapshot.connectionState == ConnectionState.waiting &&
-                owned.isEmpty &&
-                supplier.isEmpty;
+            final isInitialLoading =
+                (ownedSnapshot.connectionState == ConnectionState.waiting ||
+                        supplierSnapshot.connectionState ==
+                            ConnectionState.waiting) &&
+                    owned.isEmpty &&
+                    supplier.isEmpty;
             final orders = _combine(owned, supplier);
             final partialError = ownedSnapshot.hasError ||
                 supplierSnapshot.hasError ||
@@ -328,6 +332,7 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                     onProgress: (value) => setState(() => _progress = value),
                     filterCount: _secondaryFilterCount,
                     onFilter: _showFilters,
+                    onOrderOptions: widget.onOrderOptions,
                   ),
                   if (widget.setupRequired && orders.isNotEmpty)
                     _SetupNotice(onPressed: widget.onSetup),
@@ -352,10 +357,7 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                       },
                     ),
                   if (isInitialLoading)
-                    const Padding(
-                      padding: EdgeInsets.all(48),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
+                    const _OnlineOrdersLoading()
                   else if (orders.isEmpty)
                     _OrdersEmpty(
                       setupRequired: widget.setupRequired,
@@ -418,15 +420,20 @@ class _OnlineOrderSummary {
       id: sale.reference.isEmpty ? sale.id : sale.reference,
       title: sale.itemsCount == 1 ? '1 item' : '${sale.itemsCount} items',
       subtitle: 'Your stock',
-      amountMinor: ((sale.amountPaid > 0 ? sale.amountPaid : sale.orderTotal) *
-              100)
-          .round(),
+      amountMinor:
+          ((sale.amountPaid > 0 ? sale.amountPaid : sale.orderTotal) * 100)
+              .round(),
       statusLabel: _ownedStatusLabel(status),
       progress: switch (status) {
-        'pending' || 'pending_payment' || 'awaiting_payment' =>
+        'pending' ||
+        'pending_payment' ||
+        'awaiting_payment' =>
           OnlineOrderProgressFilter.awaitingPayment,
         'collected' || 'delivered' => OnlineOrderProgressFilter.completed,
-        'failed' || 'cancelled' || 'needs_review' || 'refund_pending' =>
+        'failed' ||
+        'cancelled' ||
+        'needs_review' ||
+        'refund_pending' =>
           OnlineOrderProgressFilter.needsAttention,
         'refunded' => OnlineOrderProgressFilter.refunded,
         _ => OnlineOrderProgressFilter.inProgress,
@@ -477,20 +484,30 @@ class _OrdersHeader extends StatelessWidget {
     required this.onProgress,
     required this.filterCount,
     required this.onFilter,
+    this.onOrderOptions,
   });
 
   final OnlineOrderProgressFilter progress;
   final ValueChanged<OnlineOrderProgressFilter> onProgress;
   final int filterCount;
   final VoidCallback onFilter;
+  final VoidCallback? onOrderOptions;
 
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const WorkspaceContextHeader(
+          WorkspaceContextHeader(
             title: 'Online orders',
             subtitle: 'Your stock and supplier-delivered orders',
+            action: onOrderOptions == null
+                ? null
+                : IconButton.outlined(
+                    key: const ValueKey('online-orders-order-options'),
+                    onPressed: onOrderOptions,
+                    tooltip: 'Order options',
+                    icon: const Icon(Icons.tune_outlined, size: 20),
+                  ),
           ),
           SingleChildScrollView(
             key: const ValueKey('online-order-status-filters'),
@@ -524,6 +541,70 @@ class _OrdersHeader extends StatelessWidget {
           ),
         ],
       );
+}
+
+class _OnlineOrdersLoading extends StatelessWidget {
+  const _OnlineOrdersLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar(double width, {double height = 12}) => Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        );
+
+    return Shimmer.fromColors(
+      key: const ValueKey('online-orders-loading-shimmer'),
+      baseColor: Colors.black12,
+      highlightColor: Colors.black26,
+      child: Column(
+        children: [
+          for (var index = 0; index < 5; index++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            bar(150, height: 14),
+                            const SizedBox(height: 8),
+                            bar(100),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      bar(70, height: 16),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SetupNotice extends StatelessWidget {
@@ -751,7 +832,9 @@ String _titleCase(String value) => value
     .join(' ');
 
 String _ownedStatusLabel(String value) => switch (value) {
-      'pending' || 'pending_payment' || 'awaiting_payment' =>
+      'pending' ||
+      'pending_payment' ||
+      'awaiting_payment' =>
         'Awaiting payment',
       'refund_pending' => 'Refund pending',
       _ => _titleCase(value),

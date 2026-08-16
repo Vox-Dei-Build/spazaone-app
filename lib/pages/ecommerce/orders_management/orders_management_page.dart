@@ -245,7 +245,9 @@ class _OrdersManagementPageState extends State<OrdersManagementPage>
       return ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: 6,
-        itemBuilder: (_, __) => const OrderSkeleton(),
+        itemBuilder: (_, index) => OrderSkeleton(
+          key: ValueKey('order-loading-shimmer-$index'),
+        ),
       );
     }
     if (ctrl.truthSurface == OrdersTruthSurface.error) {

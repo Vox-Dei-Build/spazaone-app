@@ -38,6 +38,18 @@ void main() {
           .value,
       isFalse,
     );
+
+    final pickup = tester.getRect(
+      find.byKey(const ValueKey('pickup-option-card')),
+    );
+    final payLater = tester.getRect(
+      find.byKey(const ValueKey('pay-later-option-card')),
+    );
+    final delivery = tester.getRect(
+      find.byKey(const ValueKey('delivery-option-card')),
+    );
+    expect(payLater.top - pickup.bottom, 12);
+    expect(delivery.top - payLater.bottom, 12);
   });
 
   testWidgets('saves delivery fee, service area and Pay Later', (tester) async {

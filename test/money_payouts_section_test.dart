@@ -134,7 +134,11 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('online-payments-loading-shimmer')),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.textContaining('temporarily unavailable'), findsOneWidget);
   });
 

@@ -129,6 +129,8 @@ class _OrderOptionsPageState extends State<OrderOptionsPage> {
                   ),
                   const SizedBox(height: 18),
                   const Card(
+                    key: ValueKey('pickup-option-card'),
+                    margin: EdgeInsets.zero,
                     child: ListTile(
                       leading: Icon(Icons.store_mall_directory_outlined),
                       title: Text('Pickup'),
@@ -136,7 +138,10 @@ class _OrderOptionsPageState extends State<OrderOptionsPage> {
                       trailing: Icon(Icons.check_circle_outline),
                     ),
                   ),
+                  const SizedBox(height: 12),
                   Card(
+                    key: const ValueKey('pay-later-option-card'),
+                    margin: EdgeInsets.zero,
                     child: SwitchListTile(
                       key: const ValueKey('pay-later-option'),
                       secondary: const Icon(Icons.schedule_outlined),
@@ -150,7 +155,10 @@ class _OrderOptionsPageState extends State<OrderOptionsPage> {
                           : (value) => setState(() => _payLater = value),
                     ),
                   ),
+                  const SizedBox(height: 12),
                   Card(
+                    key: const ValueKey('delivery-option-card'),
+                    margin: EdgeInsets.zero,
                     child: Column(
                       children: [
                         SwitchListTile(

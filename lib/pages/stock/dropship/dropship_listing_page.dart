@@ -248,28 +248,43 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  key: const ValueKey('edit-dropship-listing'),
-                  onPressed: _editListing,
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Edit listing'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  key: const ValueKey('promote-dropship-listing'),
-                  onPressed: _listingState == 'active'
-                      ? () => _promote(context)
-                      : null,
-                  icon: const Icon(Icons.campaign_outlined),
-                  label: const Text('Promote on WhatsApp'),
-                ),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stackActions = constraints.maxWidth < 420 ||
+                  MediaQuery.textScalerOf(context).scale(14) >= 18;
+              final edit = OutlinedButton.icon(
+                key: const ValueKey('edit-dropship-listing'),
+                onPressed: _editListing,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit listing'),
+              );
+              final promote = ElevatedButton.icon(
+                key: const ValueKey('promote-dropship-listing'),
+                onPressed:
+                    _listingState == 'active' ? () => _promote(context) : null,
+                icon: const Icon(Icons.campaign_outlined),
+                label: const Text('Promote on WhatsApp'),
+              );
+
+              if (stackActions) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    edit,
+                    const SizedBox(height: 8),
+                    promote,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: edit),
+                  const SizedBox(width: 10),
+                  Expanded(child: promote),
+                ],
+              );
+            },
           ),
         ),
       ),

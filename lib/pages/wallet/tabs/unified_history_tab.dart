@@ -6,6 +6,7 @@ import 'package:pasella/pages/wallet/widgets/top_up_tile.dart';
 import 'package:pasella/pages/wallet/widgets/icon_helper.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:shimmer/shimmer.dart';
 
 class UnifiedHistoryTab extends StatefulWidget {
   final WalletViewModel viewModel;
@@ -39,7 +40,7 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
         future: _transactionsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const _WalletHistoryLoading();
           }
 
           if (snapshot.hasError) {
@@ -133,6 +134,32 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
       ),
     );
   }
+}
+
+class _WalletHistoryLoading extends StatelessWidget {
+  const _WalletHistoryLoading();
+
+  @override
+  Widget build(BuildContext context) => Shimmer.fromColors(
+        key: const ValueKey('wallet-history-loading-shimmer'),
+        baseColor: Colors.black12,
+        highlightColor: Colors.black26,
+        child: Column(
+          children: [
+            for (var index = 0; index < 5; index++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  height: 68,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
 }
 
 /// 🟢 Empty State Widget
