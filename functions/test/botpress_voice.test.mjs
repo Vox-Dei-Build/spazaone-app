@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   assessVoiceTranscript,
@@ -67,4 +68,17 @@ test("uncertain or empty transcripts ask the customer to type or resend", () => 
     true,
   );
   assert.equal(assessVoiceTranscript([]).fallbackRequired, true);
+});
+
+test("voice endpoint preserves the legacy bot contract during rollout", () => {
+  const source = readFileSync(
+    new URL("../src/bots/botpress-voice.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /req\.body\?\.audioUrl\s*\?\?\s*req\.body\?\.mediaUrl/);
+  assert.match(source, /text:\s*assessment\.transcript/);
+  assert.match(
+    source,
+    /export const transcribeVoiceNoteBotHttp\s*=\s*transcribeBotpressVoice/,
+  );
 });

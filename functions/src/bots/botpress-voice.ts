@@ -231,7 +231,9 @@ export const transcribeBotpressVoice = functions
     let sizeBytes = 0;
     let durationSeconds = 0;
     try {
-      const audioUrl = validatedBotpressAudioUrl(req.body?.audioUrl);
+      const audioUrl = validatedBotpressAudioUrl(
+        req.body?.audioUrl ?? req.body?.mediaUrl,
+      );
       const download = await axios.get<ArrayBuffer>(audioUrl.toString(), {
         responseType: "arraybuffer",
         timeout: 15_000,
@@ -274,6 +276,11 @@ export const transcribeBotpressVoice = functions
         ok: true,
         requestId,
         ...assessment,
+        // Keep the legacy Botpress transport contract alive while the bot and
+        // backend are rolled out independently. New callers use `transcript`;
+        // the currently deployed bot still reads `text`.
+        text: assessment.transcript,
+        engine: "google-speech",
         fallback: assessment.fallbackRequired
           ? "I could not hear that clearly. Please resend the voice note or type your message."
           : null,
@@ -298,3 +305,8 @@ export const transcribeBotpressVoice = functions
       });
     }
   });
+
+// The production bot historically called this endpoint. Export the same
+// hardened handler under both names so Functions can be deployed first,
+// followed by the bot, without a voice-note outage between releases.
+export const transcribeVoiceNoteBotHttp = transcribeBotpressVoice;
