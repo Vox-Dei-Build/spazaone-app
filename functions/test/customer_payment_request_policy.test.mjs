@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   selectCustomerPaymentRequestMode,
@@ -12,7 +13,7 @@ test("routes online WhatsApp, reminder WhatsApp and definitive SMS separately", 
     selectCustomerPaymentRequestMode({
       whatsappCapability: "whatsapp",
       onlinePaymentsReady: true,
-      botpressReady: true,
+      whatsappTemplateReady: true,
       smsReady: true,
     }),
     "whatsapp_online",
@@ -21,7 +22,7 @@ test("routes online WhatsApp, reminder WhatsApp and definitive SMS separately", 
     selectCustomerPaymentRequestMode({
       whatsappCapability: "unknown",
       onlinePaymentsReady: false,
-      botpressReady: true,
+      whatsappTemplateReady: true,
       smsReady: true,
     }),
     "whatsapp_reminder",
@@ -30,7 +31,7 @@ test("routes online WhatsApp, reminder WhatsApp and definitive SMS separately", 
     selectCustomerPaymentRequestMode({
       whatsappCapability: "sms",
       onlinePaymentsReady: true,
-      botpressReady: true,
+      whatsappTemplateReady: true,
       smsReady: true,
     }),
     "sms_reminder",
@@ -39,7 +40,7 @@ test("routes online WhatsApp, reminder WhatsApp and definitive SMS separately", 
     selectCustomerPaymentRequestMode({
       whatsappCapability: "sms",
       onlinePaymentsReady: true,
-      botpressReady: true,
+      whatsappTemplateReady: true,
       smsReady: false,
     }),
     null,
@@ -71,4 +72,24 @@ test("verifies proactive delivery payload signatures without timing leaks", () =
     }),
     false,
   );
+});
+
+test("sends proactive payment requests through approved Twilio Content", () => {
+  const source = readFileSync(
+    new URL("../src/payments/v2/customerPaymentRequests.ts", import.meta.url),
+    "utf8",
+  );
+  const start = source.indexOf(
+    "export async function dispatchCustomerPaymentRequest",
+  );
+  const end = source.indexOf(
+    "export const claimCustomerPaymentRequestDeliveryV1BotHttp",
+    start,
+  );
+  const dispatch = source.slice(start, end);
+  assert.match(source, /TWILIO_PAYMENT_REQUEST_CONTENT_SID/);
+  assert.match(dispatch, /contentSid:\s*runtime\.contentSid/);
+  assert.match(dispatch, /messagingServiceSid:\s*runtime\.messagingServiceSid/);
+  assert.match(dispatch, /contentVariables:\s*JSON\.stringify/);
+  assert.doesNotMatch(dispatch, /BOTPRESS_PAYMENT_REQUEST_WEBHOOK_URL/);
 });

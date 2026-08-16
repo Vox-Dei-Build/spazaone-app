@@ -1,4 +1,3 @@
-import axios from "axios";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import twilio from "twilio/lib/index";
@@ -151,16 +150,23 @@ function providerMode(name: string): string {
     .toLowerCase();
 }
 
-function botpressReady(): boolean {
-  const mode = providerMode("BOTPRESS_PROVIDER_MODE");
+export function twilioPaymentRequestReady(): boolean {
+  const mode = providerMode("TWILIO_PROVIDER_MODE");
   if (mode === "stub") return true;
+  const config = (functions.config().twilio ?? {}) as Record<string, unknown>;
   return (
     ["test", "live"].includes(mode) &&
-    /^https:\/\//.test(
-      String(process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_URL ?? "").trim(),
+    Boolean(
+      process.env.TWILIO_ACCOUNT_SID ?? process.env.TWILIO_SID ?? config.sid,
     ) &&
-    Boolean(process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET?.trim()) &&
-    Boolean(process.env.BOTPRESS_PAYMENT_REQUEST_TEMPLATE_NAME?.trim())
+    Boolean(
+      process.env.TWILIO_AUTH_TOKEN ?? process.env.TWILIO_TOKEN ?? config.token,
+    ) &&
+    Boolean(
+      process.env.TWILIO_CUSTOMER_MESSAGING_SERVICE_SID ??
+        config.customer_messaging_service_sid,
+    ) &&
+    Boolean(process.env.TWILIO_PAYMENT_REQUEST_CONTENT_SID)
   );
 }
 
@@ -179,10 +185,10 @@ function smsReady(): boolean {
 export function selectCustomerPaymentRequestMode(input: {
   whatsappCapability: WhatsAppCapability;
   onlinePaymentsReady: boolean;
-  botpressReady: boolean;
+  whatsappTemplateReady: boolean;
   smsReady: boolean;
 }): CustomerPaymentRequestMode | null {
-  if (input.whatsappCapability !== "sms" && input.botpressReady) {
+  if (input.whatsappCapability !== "sms" && input.whatsappTemplateReady) {
     return input.onlinePaymentsReady ? "whatsapp_online" : "whatsapp_reminder";
   }
   return input.smsReady ? "sms_reminder" : null;
@@ -254,12 +260,12 @@ async function buildQuote(
   const capability: WhatsAppCapability = deliveryPhone
     ? await fetchWhatsAppCapability(deliveryPhone)
     : "unknown";
-  const canUseBotpress = botpressReady();
+  const canUseWhatsAppTemplate = twilioPaymentRequestReady();
   const canUseSms = smsReady();
   const selectedMode = selectCustomerPaymentRequestMode({
     whatsappCapability: capability,
     onlinePaymentsReady,
-    botpressReady: canUseBotpress,
+    whatsappTemplateReady: canUseWhatsAppTemplate,
     smsReady: canUseSms,
   });
   const mode: CustomerPaymentRequestMode = selectedMode ?? "sms_reminder";
@@ -627,7 +633,7 @@ export async function reserveCustomerPaymentRequest(args: {
 
 export const sendCustomerPaymentRequestV1 = functions
   .runWith({
-    secrets: ["BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET", "TWILIO_AUTH_TOKEN"],
+    secrets: ["TWILIO_AUTH_TOKEN"],
   })
   .https.onRequest(async (req, res) => {
     if (req.method !== "POST") {
@@ -993,21 +999,57 @@ async function queueRetryOrReview(id: string, code: string): Promise<void> {
   if (review) await markNeedsReview(id, code);
 }
 
-function twilioRuntime() {
+function twilioClient() {
   const config = (functions.config().twilio ?? {}) as Record<string, unknown>;
   const accountSid = String(
-    process.env.TWILIO_ACCOUNT_SID ?? config.sid ?? "",
+    process.env.TWILIO_ACCOUNT_SID ??
+      process.env.TWILIO_SID ??
+      config.sid ??
+      "",
   ).trim();
   const authToken = String(
-    process.env.TWILIO_AUTH_TOKEN ?? config.token ?? "",
+    process.env.TWILIO_AUTH_TOKEN ??
+      process.env.TWILIO_TOKEN ??
+      config.token ??
+      "",
   ).trim();
+  if (!accountSid || !authToken) {
+    throw new Error("TWILIO_CONFIGURATION_MISSING");
+  }
+  return twilio(accountSid, authToken);
+}
+
+function twilioSmsRuntime() {
+  const config = (functions.config().twilio ?? {}) as Record<string, unknown>;
   const smsNumber = String(
-    process.env.TWILIO_SMS_NUMBER ?? config.number ?? "",
+    process.env.TWILIO_SMS_NUMBER ??
+      process.env.TWILIO_NUMBER ??
+      config.number ??
+      "",
   ).trim();
-  if (!accountSid || !authToken || !smsNumber) {
+  if (!smsNumber) {
     throw new Error("SMS_CONFIGURATION_MISSING");
   }
-  return { client: twilio(accountSid, authToken), smsNumber };
+  return { client: twilioClient(), smsNumber };
+}
+
+function twilioPaymentRequestRuntime() {
+  const config = (functions.config().twilio ?? {}) as Record<string, unknown>;
+  const messagingServiceSid = String(
+    process.env.TWILIO_CUSTOMER_MESSAGING_SERVICE_SID ??
+      config.customer_messaging_service_sid ??
+      "",
+  ).trim();
+  const contentSid = String(
+    process.env.TWILIO_PAYMENT_REQUEST_CONTENT_SID ?? "",
+  ).trim();
+  if (!/^MG[A-Za-z0-9]{32}$/.test(messagingServiceSid)) {
+    throw new Error("TWILIO_CUSTOMER_MESSAGING_SERVICE_INVALID");
+  }
+  if (!/^HX[A-Za-z0-9]{32}$/.test(contentSid)) {
+    throw new Error("TWILIO_PAYMENT_REQUEST_CONTENT_INVALID");
+  }
+  return { client: twilioClient(), messagingServiceSid, contentSid };
 }
 
 async function sendSmsFallback(id: string): Promise<void> {
@@ -1052,18 +1094,19 @@ async function sendSmsFallback(id: string): Promise<void> {
   const data = request.data() ?? {};
   try {
     const mode = providerMode("TWILIO_PROVIDER_MODE");
-    const providerMessageId =
-      mode === "stub"
-        ? `stub-sms-${id}`
-        : String(
-            (
-              await twilioRuntime().client.messages.create({
-                to: String(data.deliveryPhone),
-                from: twilioRuntime().smsNumber,
-                body: String(data.smsPreview),
-              })
-            ).sid ?? "",
-          );
+    let providerMessageId = `stub-sms-${id}`;
+    if (mode !== "stub") {
+      const runtime = twilioSmsRuntime();
+      providerMessageId = String(
+        (
+          await runtime.client.messages.create({
+            to: String(data.deliveryPhone),
+            from: runtime.smsNumber,
+            body: String(data.smsPreview),
+          })
+        ).sid ?? "",
+      );
+    }
     if (!providerMessageId) throw new Error("SMS_ACCEPTANCE_MISSING");
     await recordAcceptedCustomerPaymentRequest({
       requestId: id,
@@ -1112,105 +1155,37 @@ export async function dispatchCustomerPaymentRequest(
     return;
   }
   try {
-    if (providerMode("BOTPRESS_PROVIDER_MODE") === "stub") {
+    if (providerMode("TWILIO_PROVIDER_MODE") === "stub") {
       await recordAcceptedCustomerPaymentRequest({
         requestId: id,
         channel: "whatsapp",
-        providerMessageId: `stub-wa-${id}`,
+        providerMessageId: `stub-twilio-wa-${id}`,
       });
       return;
     }
-    const url = String(
-      process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_URL ?? "",
-    ).trim();
-    const secret = String(
-      process.env.BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET ?? "",
-    ).trim();
-    const templateName = String(
-      process.env.BOTPRESS_PAYMENT_REQUEST_TEMPLATE_NAME ?? "",
-    ).trim();
-    const templateLanguage = String(
-      process.env.BOTPRESS_PAYMENT_REQUEST_TEMPLATE_LANGUAGE ?? "en",
-    ).trim();
-    if (!/^https:\/\//.test(url) || !secret || !templateName) {
-      await markFailed(id, "failed", "BOTPRESS_CONFIGURATION_MISSING");
-      return;
-    }
-    const payload = {
-      schemaVersion: 1,
-      userPhone: data.deliveryPhone,
-      templateName,
-      templateLanguage,
-      templateVariables: {
+    const runtime = twilioPaymentRequestRuntime();
+    const message = await runtime.client.messages.create({
+      to: `whatsapp:${formatPhoneNumber(String(data.deliveryPhone))}`,
+      messagingServiceSid: runtime.messagingServiceSid,
+      contentSid: runtime.contentSid,
+      contentVariables: JSON.stringify({
         customerName: String(data.customerName ?? "Customer"),
         shopName: String(data.shopName ?? "SpazaOne"),
         amount: moneyZar(Number(data.outstandingSnapshotMinor ?? 0)),
-        paymentRequestId: id,
-      },
-      requestId: id,
-      merchantId: data.merchantId,
-      customerId: data.customerId,
-      customerPhone: data.deliveryPhone,
-      customerName: data.customerName,
-      shopName: data.shopName,
-      amount: moneyZar(Number(data.outstandingSnapshotMinor ?? 0)),
-      message: data.messagePreview,
-      button:
-        data.mode === "whatsapp_online"
-          ? { label: "Pay securely", value: `payment request ${id}` }
-          : null,
-      deliveryClaimUrl: `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/claimCustomerPaymentRequestDeliveryV1BotHttp`,
-      callbackUrl: `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/recordCustomerPaymentRequestDeliveryV1BotHttp`,
-    };
-    const raw = JSON.stringify(payload);
-    const signature = createHmac("sha256", secret).update(raw).digest("hex");
-    const response = await axios.post(url, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        "x-bp-secret": secret,
-        "X-SpazaOne-Signature": signature,
-      },
-      timeout: 15_000,
-      validateStatus: () => true,
+        requestId: id,
+      }),
     });
-    if (response.status >= 200 && response.status < 300) {
-      if (response.data?.accepted === true) {
-        await recordAcceptedCustomerPaymentRequest({
-          requestId: id,
-          channel: "whatsapp",
-          providerMessageId: String(
-            response.data.providerMessageId ?? `bp-${id}`,
-          ),
-        });
-        return;
-      }
-      if (response.data?.definitive === true) {
-        await sendSmsFallback(id);
-        return;
-      }
-      await ref.set(
-        {
-          webhookAcceptedAt: FieldValue.serverTimestamp(),
-          dispatchLeaseUntil: Timestamp.fromMillis(Date.now() + 3 * 60_000),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
-      return;
-    }
-    if (
-      response.status >= 400 &&
-      response.status < 500 &&
-      response.status !== 429
-    ) {
-      await markFailed(id, "failed", "BOTPRESS_WEBHOOK_REJECTED");
-      return;
-    }
-    await queueRetryOrReview(id, "BOTPRESS_ACCEPTANCE_AMBIGUOUS");
+    const acceptedMessageId = String(message.sid ?? "").trim();
+    if (!acceptedMessageId) throw new Error("TWILIO_ACCEPTANCE_MISSING");
+    await recordAcceptedCustomerPaymentRequest({
+      requestId: id,
+      channel: "whatsapp",
+      providerMessageId: acceptedMessageId,
+    });
   } catch (error) {
     await queueRetryOrReview(
       id,
-      error instanceof Error ? error.message : "BOTPRESS_DISPATCH_AMBIGUOUS",
+      error instanceof Error ? error.message : "TWILIO_DISPATCH_AMBIGUOUS",
     );
   }
 }
@@ -1415,7 +1390,7 @@ export const getCustomerPaymentRequestContextV1BotHttp = functions
 
 export const retryCustomerPaymentRequestDeliveries = functions
   .runWith({
-    secrets: ["BOTPRESS_PAYMENT_REQUEST_WEBHOOK_SECRET", "TWILIO_AUTH_TOKEN"],
+    secrets: ["TWILIO_AUTH_TOKEN"],
   })
   .pubsub.schedule("every 5 minutes")
   .onRun(async () => {
