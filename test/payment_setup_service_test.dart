@@ -29,6 +29,13 @@ void main() {
         },
       },
       'profile': {'maskedAccount': '•••• 1234'},
+      'verification': {
+        'stage': 'submitted',
+        'reason': 'authorization_review_pending',
+        'requestStatus': 'authorization_required',
+        'hasSavedBankingDetails': true,
+        'requestedAtMs': 1234,
+      },
       'settlements': <dynamic>[],
     });
 
@@ -38,6 +45,9 @@ void main() {
     expect(overview.enabled, isFalse);
     expect(overview.reason, 'merchant_not_enabled');
     expect(overview.profile.maskedAccount, '•••• 1234');
+    expect(overview.verification.stage, 'submitted');
+    expect(overview.verification.awaitingAuthorization, isTrue);
+    expect(overview.verification.requestedAtMs, 1234);
   });
 
   test('legacy readiness is only an owned-order compatibility alias', () {
@@ -50,5 +60,6 @@ void main() {
     expect(overview.paymentsV2.campaignCredits.ready, isFalse);
     expect(overview.paymentsV2.accountPayments.ready, isFalse);
     expect(overview.paymentsV2.supplierOrders.ready, isFalse);
+    expect(overview.verification.stage, 'not_started');
   });
 }

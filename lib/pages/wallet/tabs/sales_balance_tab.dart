@@ -206,18 +206,65 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final profile = overview.profile;
-    final pending = profile.bankVerificationStatus == 'pending_review';
-    final hasBank = profile.maskedAccount.isNotEmpty;
-    final title = overview.enabled
-        ? 'Ready for online sales'
-        : pending
-            ? 'We’re checking your bank details'
-            : 'Get paid for online sales';
-    final body = overview.enabled
-        ? 'Customers can pay online and your share is sent to the bank account below.'
-        : pending
-            ? 'We’ll let you know when your bank account is ready.'
-            : 'Add your bank account so customers can pay online and you can receive your money.';
+    final verification = overview.verification;
+    final bankName =
+        profile.bankName.isNotEmpty ? profile.bankName : verification.bankName;
+    final maskedAccount = profile.maskedAccount.isNotEmpty
+        ? profile.maskedAccount
+        : verification.maskedAccount;
+    final hasBank = maskedAccount.isNotEmpty;
+    final (title, body, actionLabel) = switch (verification.stage) {
+      'submitted' => (
+          'Verification request sent',
+          'Your request is saved and waiting for review. You can leave the app and check again later.',
+          'View verification',
+        ),
+      'ready_to_verify' => (
+          'Ready for the secure bank check',
+          'Confirm the account owner and identity or registration details to continue.',
+          'Continue verification',
+        ),
+      'submitting' => (
+          'Checking your bank details',
+          'The secure bank check is still processing. Do not submit the same details again.',
+          'View verification',
+        ),
+      'pending_review' => (
+          'Bank details submitted',
+          'The bank check passed and the final review is in progress.',
+          'View verification',
+        ),
+      'changes_required' => (
+          'Bank details need changes',
+          'Review the saved bank account, update it if needed and submit it again.',
+          'Review details',
+        ),
+      'rejected' => (
+          'Verification wasn’t approved',
+          'Use updated bank details or contact support before trying again.',
+          'Review options',
+        ),
+      'blocked' => (
+          'Verification is paused',
+          'A support review is needed before bank verification can continue.',
+          'Get help',
+        ),
+      'approved' => (
+          'Ready for online sales',
+          'Customers can pay online and your share is sent to the bank account below.',
+          null,
+        ),
+      'missing_information' => (
+          'Add your bank details',
+          'Add the payout account information needed to start online payment verification.',
+          'Add bank details',
+        ),
+      _ => (
+          'Get paid for online sales',
+          'Request verification for your bank account so online-sale payouts go to the right place.',
+          'Start verification',
+        ),
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -269,7 +316,7 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '${profile.bankName} · ${profile.maskedAccount}',
+                      '$bankName · $maskedAccount',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -278,7 +325,7 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
             ),
           ),
         ],
-        if (!overview.enabled && !pending && onSetup != null) ...[
+        if (actionLabel != null && onSetup != null) ...[
           const SizedBox(height: 20),
           FilledButton(
             onPressed: onSetup,
@@ -288,7 +335,7 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
-            child: const Text('Set up bank account'),
+            child: Text(actionLabel),
           ),
         ],
       ],

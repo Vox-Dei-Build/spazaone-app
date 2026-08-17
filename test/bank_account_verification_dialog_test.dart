@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/pages/wallet/tabs/banking_details_tab.dart';
+import 'package:pasella/services/payment_setup_service.dart';
 
 void main() {
   testWidgets(
@@ -95,6 +96,71 @@ void main() {
 
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('submitted verification is persistent and not shown as an error',
+      (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MerchantVerificationJourneyCard(
+            journey: MerchantVerificationJourney(
+              stage: 'submitted',
+              reason: 'authorization_review_pending',
+              bankName: 'Example Bank',
+              maskedAccount: '•••• 1234',
+            ),
+            isSubmitting: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Verification request sent'), findsOneWidget);
+    expect(find.textContaining('progress is saved'), findsOneWidget);
+    expect(find.text('Example Bank · •••• 1234'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('authorized merchant can continue at large text on a small phone',
+      (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    var continued = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.8)),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              child: MerchantVerificationJourneyCard(
+                journey: const MerchantVerificationJourney(
+                  stage: 'ready_to_verify',
+                  reason: 'authorization_ready',
+                ),
+                isSubmitting: false,
+                onVerify: () async => continued = true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('Continue verification'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue verification'));
+    await tester.pump();
+    expect(continued, isTrue);
     expect(tester.takeException(), isNull);
   });
 }
