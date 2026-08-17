@@ -13,6 +13,7 @@ import {
   authenticateFirebaseRequest,
   verifyBotRequest,
 } from "../../security/requestAuth";
+import { merchantBotFeatureDecision } from "../../ecommerce/merchantBotFeatureAccess";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
 import {
   buildMoneySnapshot,
@@ -116,11 +117,24 @@ export const createOwnedOrderPaymentV2 = functions
     try {
       const merchantId = requireStoreId(req.body?.merchantId);
       let initiatedBy = "bot";
-      if (!verifyBotRequest(req)) {
+      const botRequest = verifyBotRequest(req);
+      if (!botRequest) {
         const uid = await authenticateFirebaseRequest(req, res);
         if (!uid) return;
         await assertStoreAccess(uid, merchantId);
         initiatedBy = uid;
+      }
+      if (
+        botRequest &&
+        !(await merchantBotFeatureDecision(merchantId, "ownedOrderPayments"))
+          .enabled
+      ) {
+        res.status(409).json({
+          error:
+            "This shop needs to update Spaza One before online payments can be used.",
+          code: "MERCHANT_APP_UPDATE_REQUIRED",
+        });
+        return;
       }
       const readiness = await paymentReadiness({
         merchantId,
@@ -152,7 +166,7 @@ export const createOwnedOrderPaymentV2 = functions
       }
       const saleData = sale.data() ?? {};
       if (
-        verifyBotRequest(req) &&
+        botRequest &&
         String(saleData.customerId ?? "") !==
           String(req.body?.customerId ?? "").trim()
       ) {

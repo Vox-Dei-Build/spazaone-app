@@ -431,49 +431,65 @@ Future<void> _initializeRemoteConfigAndSmartlook() async {
   }
 }
 
-/// Heartbeat: send app version/build once after sign-in and on updates (throttled 24h).
+/// Heartbeat: report the active store's app version/build after sign-in,
+/// store switches and app updates (throttled per store for 24 hours).
 Future<void> setupMerchantHeartbeatBootHook() async {
-  // Open a small local box to track last heartbeat
   final box = await Hive.openBox('appBox');
+  final info = await PackageInfo.fromPlatform();
+  final currentVersion = info.version;
+  final currentBuild = int.tryParse(info.buildNumber) ?? 0;
+  final platform = defaultTargetPlatform.name;
+  final inFlightStores = <String>{};
 
-  FirebaseAuth.instance.authStateChanges().listen((user) async {
+  Future<void> sendForActiveStore() async {
+    final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    final storeId = StoreSession.instance.storeId.trim();
+    if (storeId.isEmpty || !inFlightStores.add(storeId)) return;
 
-    // Current app version/build
-    final info = await PackageInfo.fromPlatform();
-    final currentVersion = info.version;
-    final currentBuild = int.tryParse(info.buildNumber) ?? 0;
-
-    // Last sent snapshot
-    final lastVersion = box.get('hb_version') as String?;
-    final lastBuild = box.get('hb_build') as int?;
-    final lastAt = box.get('hb_last_ms') as int?;
+    final keyPrefix = 'hb_${user.uid}_${storeId}_$platform';
+    final lastVersion = box.get('${keyPrefix}_version') as String?;
+    final lastBuild = box.get('${keyPrefix}_build') as int?;
+    final lastAt = box.get('${keyPrefix}_last_ms') as int?;
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final stale =
-        lastAt == null || (nowMs - lastAt) > 24 * 60 * 60 * 1000; // 24h
+    final stale = lastAt == null || (nowMs - lastAt) > 24 * 60 * 60 * 1000;
     final changed = lastVersion != currentVersion || lastBuild != currentBuild;
 
-    if (stale || changed) {
-      try {
+    try {
+      if (stale || changed) {
         await MerchantHeartbeat.instance.send(
-          merchantId: StoreSession.instance.storeId,
+          merchantId: storeId,
         );
-        await box.put('hb_version', currentVersion);
-        await box.put('hb_build', currentBuild);
-        await box.put('hb_last_ms', nowMs);
-      } catch (e, st) {
-        // Non-blocking by design: heartbeat failures must never block the
-        // user. Funnel into Crashlytics as a non-fatal so we still see them.
-        await CrashService.instance.recordNonFatal(
-          e,
-          st,
-          reason: 'merchant heartbeat failed',
-          context: {'merchant_id': StoreSession.instance.storeId},
-        );
+        await box.put('${keyPrefix}_version', currentVersion);
+        await box.put('${keyPrefix}_build', currentBuild);
+        await box.put('${keyPrefix}_last_ms', nowMs);
       }
+    } catch (error, stack) {
+      await CrashService.instance.recordNonFatal(
+        error,
+        stack,
+        reason: 'merchant heartbeat failed',
+        context: {
+          'store_state': 'present',
+          'platform': platform,
+          'build': currentBuild,
+        },
+      );
+    } finally {
+      inFlightStores.remove(storeId);
     }
+  }
+
+  void scheduleHeartbeat() {
+    unawaited(sendForActiveStore());
+  }
+
+  FirebaseAuth.instance.authStateChanges().listen((_) {
+    scheduleHeartbeat();
   });
+  StoreSession.instance.addListener(scheduleHeartbeat);
+  scheduleHeartbeat();
 }
 
 void _onMessageOpenedAppHandler(RemoteMessage message) {

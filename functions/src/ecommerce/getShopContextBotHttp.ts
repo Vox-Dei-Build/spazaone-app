@@ -8,6 +8,10 @@ import { normalizePhoneNumber } from "../utils/phoneUtils";
 import { requireBotRequest } from "../security/requestAuth";
 import { buyerSafePaymentsV2 } from "../payments/v2/buyerReadiness";
 import { merchantOrderingOptionsFrom } from "./merchantOrderingOptions";
+import {
+  applyMerchantBotFeatureAccess,
+  resolveMerchantBotFeatureAccess,
+} from "./merchantBotFeatureAccess";
 
 function versionLt(a = "0.0.0", b = "0.0.0"): boolean {
   const pa = a.split(".").map(Number);
@@ -322,17 +326,28 @@ export const getShopContextBotHttp = functions
         });
       }
 
-      const [paymentsV2, orderingOptionsSnapshot] = await Promise.all([
+      const [rawPaymentsV2, orderingOptionsSnapshot] = await Promise.all([
         buyerSafePaymentsV2(mSnap.id),
         db.doc(`merchantCommerceSettings/${mSnap.id}`).get(),
       ]);
-      const orderingOptions = merchantOrderingOptionsFrom(
-        orderingOptionsSnapshot.data(),
-      );
+      const botFeatureAccess = resolveMerchantBotFeatureAccess({
+        merchantBuild: m.buildNumber,
+        config: cfgSnap.data(),
+      });
+      const gatedFeatures = applyMerchantBotFeatureAccess({
+        paymentsV2: rawPaymentsV2,
+        orderingOptions: merchantOrderingOptionsFrom(
+          orderingOptionsSnapshot.data(),
+        ),
+        access: botFeatureAccess,
+      });
+      const paymentsV2 = gatedFeatures.paymentsV2;
+      const orderingOptions = gatedFeatures.orderingOptions;
       const merchant = {
         id: mSnap.id,
         name: m.name,
         appVersion: m.appVersion, // may be undefined pre-release
+        buildNumber: Number(m.buildNumber ?? 0),
         isPaused: !!m.isPaused,
         hasProducts: !!m.hasProducts,
         whatsappEligibleOverride: !!m.whatsappEligibleOverride,
@@ -344,6 +359,7 @@ export const getShopContextBotHttp = functions
         banking: paymentsV2.manualTransferForOwnedOrders ? banking : null,
         paymentsV2,
         orderingOptions,
+        botFeatureAccess,
       };
       console.log("Merchant loaded", {
         mid: merchant.id,

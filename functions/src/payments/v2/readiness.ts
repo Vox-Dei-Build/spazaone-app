@@ -15,7 +15,8 @@ export type PaymentReadiness = {
     | "global_suspended"
     | "capability_disabled"
     | "merchant_not_enabled"
-    | "merchant_capability_disabled";
+    | "merchant_capability_disabled"
+    | "merchant_update_required";
 };
 
 function envEnabled(value: unknown): boolean {

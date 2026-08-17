@@ -16,6 +16,7 @@ import { verifyPaystackSignature } from "../payments/paystack/paystackSecurity";
 import { formatPhoneNumber, normalizePhoneNumber } from "../utils/phoneUtils";
 import { commercePaymentsEnabled } from "./readiness";
 import { verifyBotRequest } from "../security/requestAuth";
+import { merchantBotFeatureDecision } from "../ecommerce/merchantBotFeatureAccess";
 import {
   deliverOrderCreatedOutbox,
   orderCreatedOutboxRef,
@@ -524,6 +525,18 @@ export const createCommerceOrder = functions
         ? clean(req.body?.customerId, "CUSTOMER", 128)
         : "";
       if (whatsappBotOrder) {
+        if (
+          !(
+            await merchantBotFeatureDecision(expectedSellerId, "supplierOrders")
+          ).enabled
+        ) {
+          res.status(409).json({
+            error:
+              "This shop needs to update Spaza One before supplier ordering can be used.",
+            code: "MERCHANT_APP_UPDATE_REQUIRED",
+          });
+          return;
+        }
         await requireBoundBotCustomer({
           sellerId: expectedSellerId,
           customerId: botCustomerId,

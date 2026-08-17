@@ -7,6 +7,7 @@
  */
 import { db, functions } from "../config/main";
 import { requireBotRequest } from "../security/requestAuth";
+import { merchantBotFeatureDecision } from "./merchantBotFeatureAccess";
 
 type CatalogProduct = {
   id: string;
@@ -64,11 +65,10 @@ export const getMerchantCatalogBotHttp = functions
     }
 
     try {
-      const snap = await db
-        .collection("users")
-        .doc(merchantId)
-        .collection("products")
-        .get();
+      const [snap, supplierAccess] = await Promise.all([
+        db.collection("users").doc(merchantId).collection("products").get(),
+        merchantBotFeatureDecision(merchantId, "supplierOrders"),
+      ]);
 
       const catalog: CatalogProduct[] = snap.docs
         .map((doc) => {
@@ -101,6 +101,7 @@ export const getMerchantCatalogBotHttp = functions
           }
           if (imageUrl) product.imageUrl = imageUrl;
           if (data.isDropshipListing === true) {
+            if (!supplierAccess.enabled) return null;
             const commerceListingId = cleanString(data.commerceListingId);
             if (!commerceListingId) return null;
             product.isDropshipListing = true;

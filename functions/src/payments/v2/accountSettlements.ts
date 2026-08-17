@@ -11,6 +11,7 @@ import {
   authenticateFirebaseRequest,
   verifyBotRequest,
 } from "../../security/requestAuth";
+import { merchantBotFeatureDecision } from "../../ecommerce/merchantBotFeatureAccess";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
 import { normalizePhoneNumber } from "../../utils/phoneUtils";
 import {
@@ -158,6 +159,18 @@ export const createAccountSettlementLinkV2 = functions
       );
       const initiatedBy = await authorizeMerchantOrBot(req, res, merchantId);
       if (!initiatedBy) return;
+      if (
+        initiatedBy === "botpress" &&
+        !(await merchantBotFeatureDecision(merchantId, "accountPayments"))
+          .enabled
+      ) {
+        res.status(409).json({
+          error:
+            "This shop needs to update Spaza One before account payments can be used.",
+          code: "MERCHANT_APP_UPDATE_REQUIRED",
+        });
+        return;
+      }
       const customerId = id(req.body?.customerId, "CUSTOMER_ID");
       const paymentRequestValue = String(
         req.body?.paymentRequestId ?? "",
@@ -813,6 +826,18 @@ export const createRepaymentPlanV2 = functions
       );
       const initiatedBy = await authorizeMerchantOrBot(req, res, merchantId);
       if (!initiatedBy) return;
+      if (
+        initiatedBy === "botpress" &&
+        !(await merchantBotFeatureDecision(merchantId, "accountPayments"))
+          .enabled
+      ) {
+        res.status(409).json({
+          error:
+            "This shop needs to update Spaza One before repayment plans can be used.",
+          code: "MERCHANT_APP_UPDATE_REQUIRED",
+        });
+        return;
+      }
       const readiness = await paymentReadiness({
         merchantId,
         purpose: "repayment_installment",

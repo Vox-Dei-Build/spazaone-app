@@ -3,6 +3,7 @@ import axios from "axios";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { verifyBotRequest } from "../security/requestAuth";
+import { merchantBotFeatureDecision } from "../ecommerce/merchantBotFeatureAccess";
 import { CjLandedQuote, quoteCjVariant } from "./cjClient";
 import { priceCommerceOrder, requireMinorUnits } from "./domain";
 import { merchantManualPaymentOptions } from "./manualPaymentInstructions";
@@ -671,6 +672,16 @@ export const prepareCommerceCheckout = functions
       const merchantId = safeId(input.merchantId, "MERCHANT");
       const customerId = safeId(input.customerId, "CUSTOMER");
       const listingId = safeId(input.listingId, "LISTING");
+      if (
+        !(await merchantBotFeatureDecision(merchantId, "supplierOrders"))
+          .enabled
+      ) {
+        res.status(200).json({
+          status: "unavailable",
+          reason: "merchant_update_required",
+        });
+        return;
+      }
       const quantity = Number(input.quantity ?? 1);
       if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
         res

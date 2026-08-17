@@ -26,6 +26,15 @@ a merchant until their resolved Paystack subaccount has been approved.
 `campaign_credit` is the intentional exception because its proceeds do not
 settle to the merchant.
 
+Direct WhatsApp adds a separate merchant-app compatibility gate. Delivery,
+Pay Later, owned-order payments, account payments and supplier ordering require
+an authenticated merchant heartbeat from build 88 or newer. The default can be
+advanced per feature through `config/app.botFeatureMinimumBuilds`. Older
+merchants keep legacy owned-product browsing, pickup, cash and manual-transfer
+ordering, but the server masks newer choices and rejects a direct or stale bot
+request. `whatsappEligibleOverride` and `forceEnableUntil` do not bypass this
+feature-level gate.
+
 The emergency response is to set `emergencySuspended=true`, preserve the
 affected records, run reconciliation, and identify every charged intent that
 still needs fulfilment or a refund. Do not delete or rewrite provider events.

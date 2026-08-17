@@ -16,6 +16,10 @@ import {
   merchantCheckoutOptionDecision,
   merchantOrderingOptionsFrom,
 } from "./merchantOrderingOptions";
+import {
+  loadMerchantBotFeatureAccess,
+  requiredMerchantBotCheckoutFeatures,
+} from "./merchantBotFeatureAccess";
 
 type PaymentType = "Cash" | "Online" | "BNPL" | string;
 type FulfillmentType = "pickup" | "delivery" | string;
@@ -85,7 +89,8 @@ const checkoutCartHandler = async (
       return;
     }
 
-    if (!verifyBotRequest(req)) {
+    const botRequest = verifyBotRequest(req);
+    if (!botRequest) {
       const uid = await authenticateFirebaseRequest(req, res, {
         requireAppCheck: true,
       });
@@ -96,6 +101,36 @@ const checkoutCartHandler = async (
     const ptype = String(paymentType || "").toLowerCase();
     const isPaystackV2 =
       ptype === "online" && String(paymentRail ?? "") === "paystack_v2";
+    if (botRequest) {
+      const requiredFeatures = requiredMerchantBotCheckoutFeatures({
+        fulfillmentType,
+        paymentType,
+        paymentRail,
+      });
+      const access = requiredFeatures.length
+        ? await loadMerchantBotFeatureAccess(merchantId)
+        : null;
+      const blockedFeature = requiredFeatures.find(
+        (feature) => !access?.features[feature].enabled,
+      );
+      const blocked =
+        blockedFeature && access
+          ? {
+              feature: blockedFeature,
+              decision: access.features[blockedFeature],
+            }
+          : null;
+      if (blocked) {
+        res.status(409).json({
+          error:
+            "This shop needs to update Spaza One before this option can be used.",
+          code: "MERCHANT_APP_UPDATE_REQUIRED",
+          feature: blocked.feature,
+          minimumBuild: blocked.decision.minimumBuild,
+        });
+        return;
+      }
+    }
     const idempotencyId = idempotencyDocId(idempotencyKey);
     const idempotencyRef = idempotencyId
       ? db
