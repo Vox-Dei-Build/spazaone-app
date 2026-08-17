@@ -296,4 +296,26 @@ test("merchant heartbeat records only an exact source commit", () => {
     xcodeCloudBootstrap,
     /--dart-define=BUILD_COMMIT="\$CI_COMMIT"/,
   );
+  assert.match(
+    xcodeCloudBootstrap,
+    /flutter build ios --config-only --flavor production --release/,
+  );
+
+  const defaultXcodeScheme = readFileSync(
+    join(
+      sourceRoot,
+      "..",
+      "..",
+      "ios",
+      "Runner.xcodeproj",
+      "xcshareddata",
+      "xcschemes",
+      "Runner.xcscheme",
+    ),
+    "utf8",
+  );
+  assert.match(
+    defaultXcodeScheme,
+    /<ArchiveAction\s+buildConfiguration = "Release-production"/,
+  );
 });

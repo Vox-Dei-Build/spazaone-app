@@ -49,7 +49,7 @@ flutter pub get
 # Xcode Cloud is a backup CI path, not a release authority. Keep any archive it
 # produces behaviorally aligned with the canonical Codemagic build instead of
 # silently compiling the stable V1 catalogue aliases.
-flutter build ios --config-only --release \
+flutter build ios --config-only --flavor production --release \
   --dart-define=BUILD_COMMIT="$CI_COMMIT" \
   --dart-define=DROPSHIP_CATALOG_V2=true \
   --dart-define=USE_FIREBASE_EMULATORS=false
