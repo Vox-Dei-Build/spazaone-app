@@ -167,11 +167,18 @@ export function settlementVerificationDecision(flags: VerificationFlags): {
   };
 }
 
-function normalizedName(value: unknown): string {
-  return String(value ?? "")
+const ZA_BANK_NAME_ALIASES: Readonly<Record<string, string>> = {
+  fnb: "firstnationalbank",
+  firstnational: "firstnationalbank",
+  firstnationalbank: "firstnationalbank",
+};
+
+export function normalizedBankName(value: unknown): string {
+  const normalized = String(value ?? "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+  return ZA_BANK_NAME_ALIASES[normalized] ?? normalized;
 }
 
 function accountNumber(value: unknown): string {
@@ -713,7 +720,8 @@ export const prepareMerchantSettlementProfileV2 = functions
         const candidateCode = String(candidate?.code ?? "").replace(/\s/g, "");
         return (
           (requestedBranchCode && candidateCode === requestedBranchCode) ||
-          normalizedName(candidate?.name) === normalizedName(requestedBankName)
+          normalizedBankName(candidate?.name) ===
+            normalizedBankName(requestedBankName)
         );
       });
       const bankCode = String(bank?.code ?? "").trim();

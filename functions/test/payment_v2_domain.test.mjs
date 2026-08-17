@@ -22,6 +22,7 @@ import {
 import {
   assertBankAccountOnlyVerificationPayload,
   maskedAccountHolderName,
+  normalizedBankName,
   protectedIdentityFingerprint,
   settlementVerificationBudgetDecision,
   settlementVerificationAuthorizationDecision,
@@ -357,6 +358,15 @@ test("settlement identity evidence is keyed and customer-safe", () => {
   );
   assert.equal(first.includes("900101"), false);
   assert.equal(maskedAccountHolderName("Nomsa Dlamini"), "N•••• D••••••");
+});
+
+test("settlement bank matching canonicalizes the FNB merchant label", () => {
+  assert.equal(normalizedBankName("FNB"), "firstnationalbank");
+  assert.equal(
+    normalizedBankName("First National Bank"),
+    "firstnationalbank",
+  );
+  assert.notEqual(normalizedBankName("FNB"), normalizedBankName("Nedbank"));
 });
 
 test("settlement setup accepts only matching personal and business evidence", () => {
