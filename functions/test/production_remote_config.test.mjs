@@ -62,8 +62,14 @@ test("build 88 presentation flags preserve production defaults and config", () =
       .spazaone_480_ios_build_88.value,
     "true",
   );
-  assert.match(candidate.conditions[0].expression, /app\.build == '88'/);
-  assert.match(candidate.conditions[1].expression, /app\.build == '88'/);
+  assert.match(
+    candidate.conditions[0].expression,
+    /app\.build\.exactlyMatches\(\['88'\]\)/,
+  );
+  assert.match(
+    candidate.conditions[1].expression,
+    /app\.build\.exactlyMatches\(\['88'\]\)/,
+  );
 });
 
 test("preparation is idempotent and never adds a payment-authority flag", () => {
