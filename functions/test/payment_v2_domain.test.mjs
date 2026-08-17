@@ -342,6 +342,19 @@ test("settlement verification requires a live admin authorization budget", () =>
     }).reason,
     "BANK_VALIDATION_PREAUTH_CONSUMED",
   );
+  assert.equal(
+    settlementVerificationAuthorizationDecision({
+      state: "authorized",
+      expiresAtMs: nowMs + 60_000,
+      remainingAttempts: 2,
+      nowMs,
+      bankingDetailsId: "bank-1",
+      bankingDetailsUpdatedAtMs: 100,
+      expectedBankingDetailsId: "bank-1",
+      expectedBankingDetailsUpdatedAtMs: 101,
+    }).reason,
+    "BANK_VALIDATION_PREAUTH_DESTINATION_CHANGED",
+  );
 });
 
 test("settlement identity evidence is keyed and customer-safe", () => {
@@ -362,10 +375,7 @@ test("settlement identity evidence is keyed and customer-safe", () => {
 
 test("settlement bank matching canonicalizes the FNB merchant label", () => {
   assert.equal(normalizedBankName("FNB"), "firstnationalbank");
-  assert.equal(
-    normalizedBankName("First National Bank"),
-    "firstnationalbank",
-  );
+  assert.equal(normalizedBankName("First National Bank"), "firstnationalbank");
   assert.notEqual(normalizedBankName("FNB"), normalizedBankName("Nedbank"));
 });
 

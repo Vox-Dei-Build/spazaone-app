@@ -60,6 +60,7 @@ export function settlementAuthorizationRequestDecision(input: {
   }
   if (
     ["authorized", "pending_review"].includes(status) &&
+    input.sameVisibleDestination &&
     !input.authorizationInvalid
   ) {
     return {
@@ -98,6 +99,8 @@ function safeText(value: unknown, maximumLength: number): string {
 
 export async function upsertSettlementAuthorizationRequest(input: {
   merchantId: string;
+  bankingDetailsId: string;
+  bankingDetailsUpdatedAtMs: number;
   storeName: unknown;
   bankName: unknown;
   accountNumber: unknown;
@@ -109,6 +112,15 @@ export async function upsertSettlementAuthorizationRequest(input: {
   status: SettlementAdminRequestStatus;
   deduped: boolean;
 }> {
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(input.bankingDetailsId)) {
+    throw new Error("SETTLEMENT_BANKING_DETAILS_ID_INVALID");
+  }
+  if (
+    !Number.isSafeInteger(input.bankingDetailsUpdatedAtMs) ||
+    input.bankingDetailsUpdatedAtMs < 1
+  ) {
+    throw new Error("SETTLEMENT_BANKING_DETAILS_VERSION_INVALID");
+  }
   const requestId = settlementAdminRequestId(input.merchantId);
   const ref = settlementAdminRequestRef(input.merchantId);
   const visible = {
@@ -129,7 +141,9 @@ export async function upsertSettlementAuthorizationRequest(input: {
       current.storeName === visible.storeName &&
       current.bankName === visible.bankName &&
       current.maskedAccount === visible.maskedAccount &&
-      current.maskedAccountHolder === visible.maskedAccountHolder;
+      current.maskedAccountHolder === visible.maskedAccountHolder &&
+      current.bankingDetailsId === input.bankingDetailsId &&
+      current.bankingDetailsUpdatedAtMs === input.bankingDetailsUpdatedAtMs;
     result = settlementAuthorizationRequestDecision({
       existingStatus: current.status,
       sameVisibleDestination,
@@ -144,6 +158,8 @@ export async function upsertSettlementAuthorizationRequest(input: {
         type: SETTLEMENT_ADMIN_REQUEST_TYPE,
         status: result.nextStatus,
         merchantId: input.merchantId,
+        bankingDetailsId: input.bankingDetailsId,
+        bankingDetailsUpdatedAtMs: input.bankingDetailsUpdatedAtMs,
         ...visible,
         requestReasonCode: safeText(input.reasonCode, 80),
         requestedAt: now,

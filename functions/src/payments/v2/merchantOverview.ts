@@ -3,7 +3,10 @@ import { paystackProviderMode } from "../../config/environment";
 import { authorizeCallableMerchantOrBot } from "../../security/requestAuth";
 import { requireStoreId } from "../../stores/storeAccess";
 import { buyerSafePaymentsV2 } from "./buyerReadiness";
-import { settlementAdminRequestRef } from "./settlementAdminRequests";
+import {
+  maskBankAccount,
+  settlementAdminRequestRef,
+} from "./settlementAdminRequests";
 import {
   addWorkingDays,
   normalizePaystackSettlementStatus,
@@ -33,6 +36,7 @@ export function merchantVerificationJourney(input: {
   profile: Record<string, unknown>;
   request: Record<string, unknown>;
   hasSavedBankingDetails: boolean;
+  destinationMatchesRequest?: boolean;
   nowMs: number;
 }): { stage: MerchantVerificationStage; reason: string } {
   const profile = input.profile;
@@ -41,6 +45,13 @@ export function merchantVerificationJourney(input: {
     {}) as Record<string, unknown>;
   const validationState = String(profile.validationAttemptState ?? "");
   const reviewState = String(profile.bankReviewState ?? "");
+
+  if (!input.hasSavedBankingDetails) {
+    return { stage: "missing_information", reason: "bank_details_required" };
+  }
+  if (requestStatus && input.destinationMatchesRequest === false) {
+    return { stage: "ready_to_submit", reason: "bank_details_changed" };
+  }
 
   if (requestStatus === "changes_required") {
     return { stage: "changes_required", reason: "review_changes_required" };
@@ -89,9 +100,6 @@ export function merchantVerificationJourney(input: {
   ) {
     return { stage: "approved", reason: "ready" };
   }
-  if (!input.hasSavedBankingDetails) {
-    return { stage: "missing_information", reason: "bank_details_required" };
-  }
   if (input.hasSavedBankingDetails) {
     return { stage: "ready_to_submit", reason: "ready_to_request" };
   }
@@ -121,6 +129,14 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
       ]);
     const profileData = profile.data() ?? {};
     const requestData = request.data() ?? {};
+    const bankingDetailsDocument = bankingDetails.docs[0];
+    const bankingDetailsData = bankingDetailsDocument?.data() ?? {};
+    const bankingDetailsUpdatedAtMs =
+      bankingDetailsDocument?.updateTime?.toMillis() ?? 0;
+    const destinationMatchesRequest =
+      !request.exists ||
+      (requestData.bankingDetailsId === bankingDetailsDocument?.id &&
+        requestData.bankingDetailsUpdatedAtMs === bankingDetailsUpdatedAtMs);
     const pendingSettlement = (profileData.pendingSettlement ?? {}) as Record<
       string,
       unknown
@@ -193,6 +209,7 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
       profile: profileData,
       request: requestData,
       hasSavedBankingDetails: !bankingDetails.empty,
+      destinationMatchesRequest,
       nowMs: Date.now(),
     });
     return {
@@ -209,8 +226,14 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
         hasSavedBankingDetails: !bankingDetails.empty,
         requestedAtMs: timestampMillis(requestData.requestedAt),
         updatedAtMs: timestampMillis(requestData.updatedAt),
-        bankName: String(requestData.bankName ?? ""),
-        maskedAccount: String(requestData.maskedAccount ?? ""),
+        bankName: String(
+          destinationMatchesRequest
+            ? (requestData.bankName ?? "")
+            : (bankingDetailsData.bankName ?? ""),
+        ),
+        maskedAccount: destinationMatchesRequest
+          ? String(requestData.maskedAccount ?? "")
+          : maskBankAccount(bankingDetailsData.accountNumber),
       },
       profile: {
         status: String(profileData.status ?? "not_started"),

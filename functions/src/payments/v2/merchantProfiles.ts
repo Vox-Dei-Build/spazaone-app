@@ -135,6 +135,10 @@ export function settlementVerificationAuthorizationDecision(input: {
   expiresAtMs: unknown;
   remainingAttempts: unknown;
   nowMs: number;
+  bankingDetailsId?: unknown;
+  bankingDetailsUpdatedAtMs?: unknown;
+  expectedBankingDetailsId?: string;
+  expectedBankingDetailsUpdatedAtMs?: number;
 }): { allowed: boolean; reason: string } {
   const expiresAtMs = Number(input.expiresAtMs ?? 0);
   const remainingAttempts = Number(input.remainingAttempts ?? 0);
@@ -146,6 +150,17 @@ export function settlementVerificationAuthorizationDecision(input: {
   }
   if (!Number.isSafeInteger(remainingAttempts) || remainingAttempts < 1) {
     return { allowed: false, reason: "BANK_VALIDATION_PREAUTH_CONSUMED" };
+  }
+  if (
+    input.expectedBankingDetailsId !== undefined &&
+    (String(input.bankingDetailsId ?? "") !== input.expectedBankingDetailsId ||
+      Number(input.bankingDetailsUpdatedAtMs ?? 0) !==
+        input.expectedBankingDetailsUpdatedAtMs)
+  ) {
+    return {
+      allowed: false,
+      reason: "BANK_VALIDATION_PREAUTH_DESTINATION_CHANGED",
+    };
   }
   return { allowed: true, reason: "allowed" };
 }
@@ -376,6 +391,10 @@ function publicError(error: unknown): { status: number; message: string } {
       403,
       "The approved settlement-verification attempts were used. A new approval request was sent to Spaza One.",
     ],
+    BANK_VALIDATION_PREAUTH_DESTINATION_CHANGED: [
+      403,
+      "Your bank details changed after approval. A new settlement-verification request was sent to Spaza One.",
+    ],
     BANK_CARD_INPUT_REJECTED: [
       400,
       "Use bank account details for settlements. Card details are not accepted here.",
@@ -536,6 +555,8 @@ export const requestMerchantSettlementVerificationV1 = functions
     );
     const request = await upsertSettlementAuthorizationRequest({
       merchantId,
+      bankingDetailsId,
+      bankingDetailsUpdatedAtMs: banking.updateTime?.toMillis() ?? 0,
       storeName,
       bankName,
       accountNumber: account,
@@ -586,6 +607,7 @@ export const prepareMerchantSettlementProfileV2 = functions
         return;
       }
       const raw = banking.data() ?? {};
+      const bankingDetailsUpdatedAtMs = banking.updateTime?.toMillis() ?? 0;
       const account = accountNumber(raw.accountNumber);
       const requestedBankName = String(raw.bankName ?? "").trim();
       const submittedAccountName = String(raw.accountHolderName ?? "").trim();
@@ -685,10 +707,17 @@ export const prepareMerchantSettlementProfileV2 = functions
           expiresAtMs: initialAuthorization.expiresAtMs,
           remainingAttempts: initialAuthorization.remainingAttempts,
           nowMs: Date.now(),
+          bankingDetailsId: initialAuthorization.bankingDetailsId,
+          bankingDetailsUpdatedAtMs:
+            initialAuthorization.bankingDetailsUpdatedAtMs,
+          expectedBankingDetailsId: bankingDetailsId,
+          expectedBankingDetailsUpdatedAtMs: bankingDetailsUpdatedAtMs,
         });
       if (!initialAuthorizationDecision.allowed) {
         await upsertSettlementAuthorizationRequest({
           merchantId,
+          bankingDetailsId,
+          bankingDetailsUpdatedAtMs,
           storeName: businessName,
           bankName: requestedBankName,
           accountNumber: account,
@@ -819,6 +848,10 @@ export const prepareMerchantSettlementProfileV2 = functions
             expiresAtMs: authorization.expiresAtMs,
             remainingAttempts: authorization.remainingAttempts,
             nowMs,
+            bankingDetailsId: authorization.bankingDetailsId,
+            bankingDetailsUpdatedAtMs: authorization.bankingDetailsUpdatedAtMs,
+            expectedBankingDetailsId: bankingDetailsId,
+            expectedBankingDetailsUpdatedAtMs: bankingDetailsUpdatedAtMs,
           });
         if (!authorizationDecision.allowed) {
           throw new Error(authorizationDecision.reason);

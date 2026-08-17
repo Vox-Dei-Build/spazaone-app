@@ -345,6 +345,21 @@ async function applySettlementVerificationAuthorization(input: {
         "This settlement request is not in a state that allows that decision.",
       );
     }
+    const bankingDetailsId = String(requestData.bankingDetailsId ?? "").trim();
+    const bankingDetailsUpdatedAtMs = Number(
+      requestData.bankingDetailsUpdatedAtMs ?? 0,
+    );
+    if (
+      input.authorized &&
+      (!/^[A-Za-z0-9_-]{1,200}$/.test(bankingDetailsId) ||
+        !Number.isSafeInteger(bankingDetailsUpdatedAtMs) ||
+        bankingDetailsUpdatedAtMs < 1)
+    ) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The settlement request is not bound to the current banking details.",
+      );
+    }
 
     const now = FieldValue.serverTimestamp();
     tx.set(
@@ -360,6 +375,10 @@ async function applySettlementVerificationAuthorization(input: {
           authorizedBy: input.adminUid,
           authorizedAt: now,
           operationId: input.operationId,
+          bankingDetailsId: input.authorized ? bankingDetailsId : "",
+          bankingDetailsUpdatedAtMs: input.authorized
+            ? bankingDetailsUpdatedAtMs
+            : 0,
         },
         schemaVersion: 2,
         updatedAt: now,

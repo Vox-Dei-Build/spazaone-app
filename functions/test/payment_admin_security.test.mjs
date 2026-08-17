@@ -36,18 +36,10 @@ test("payment admin access requires every independent security control", () => {
     ["authenticated", false, "PAYMENT_ADMIN_AUTH_REQUIRED"],
     ["spazaAdmin", false, "PAYMENT_ADMIN_CLAIM_REQUIRED"],
     ["appCheckVerified", false, "PAYMENT_ADMIN_APP_CHECK_REQUIRED"],
-    [
-      "appCheckAlreadyConsumed",
-      true,
-      "PAYMENT_ADMIN_APP_CHECK_REPLAYED",
-    ],
+    ["appCheckAlreadyConsumed", true, "PAYMENT_ADMIN_APP_CHECK_REPLAYED"],
     ["emailVerified", false, "PAYMENT_ADMIN_EMAIL_NOT_ALLOWED"],
     ["email", "attacker@example.com", "PAYMENT_ADMIN_EMAIL_NOT_ALLOWED"],
-    [
-      "signInProvider",
-      "password",
-      "PAYMENT_ADMIN_GOOGLE_SIGN_IN_REQUIRED",
-    ],
+    ["signInProvider", "password", "PAYMENT_ADMIN_GOOGLE_SIGN_IN_REQUIRED"],
     ["origin", "https://lookalike.example", "PAYMENT_ADMIN_ORIGIN_NOT_ALLOWED"],
     ["authTimeSeconds", 100, "PAYMENT_ADMIN_RECENT_AUTH_REQUIRED"],
   ];
@@ -174,6 +166,13 @@ test("merchant authorization requests are deterministic and duplicate-safe", () 
     }).nextStatus,
     "authorization_required",
   );
+  assert.equal(
+    settlementAuthorizationRequestDecision({
+      existingStatus: "authorized",
+      sameVisibleDestination: false,
+    }).nextStatus,
+    "authorization_required",
+  );
 });
 
 test("merchant verification journey covers every persistent review state", () => {
@@ -205,7 +204,29 @@ test("merchant verification journey covers every persistent review state", () =>
     "ready_to_verify",
   );
   assert.equal(
-    journey({}, { validationAttemptState: "processing", validationAttemptLeaseUntilMs: nowMs + 1 }).stage,
+    merchantVerificationJourney({
+      request: { status: "authorized" },
+      profile: {
+        settlementVerificationAuthorization: {
+          state: "authorized",
+          expiresAtMs: nowMs + 1_000,
+          remainingAttempts: 2,
+        },
+      },
+      hasSavedBankingDetails: true,
+      destinationMatchesRequest: false,
+      nowMs,
+    }).stage,
+    "ready_to_submit",
+  );
+  assert.equal(
+    journey(
+      {},
+      {
+        validationAttemptState: "processing",
+        validationAttemptLeaseUntilMs: nowMs + 1,
+      },
+    ).stage,
     "submitting",
   );
   assert.equal(journey({ status: "pending_review" }).stage, "pending_review");
