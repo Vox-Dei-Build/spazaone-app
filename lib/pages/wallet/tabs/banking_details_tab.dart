@@ -8,6 +8,7 @@ import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/add_banking_details.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/widgets/private_region.dart';
+import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/services/payment_setup_service.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/support_util.dart';
@@ -107,6 +108,7 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
             ),
           ),
         );
+      await FCMService().requestPermissionIfNeeded(context);
     } on PaymentSetupException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -122,7 +124,10 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
     final merchantId = _merchantId;
     final details = await showDialog<BankAccountVerificationDetails>(
       context: context,
-      builder: (_) => const BankAccountVerificationDialog(),
+      builder: (_) => BankAccountVerificationDialog(
+        initialAccountType:
+            walletViewModel.accountType.text.trim().toLowerCase(),
+      ),
     );
     if (details == null || !mounted) return;
     if (merchantId != _merchantId) {
@@ -156,6 +161,9 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
             ),
           ),
         );
+      if (result['status'] != 'enabled') {
+        await FCMService().requestPermissionIfNeeded(context);
+      }
     } on PaymentSetupException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -511,7 +519,12 @@ class BankAccountVerificationDetails {
 /// The controller belongs to the dialog route so it is disposed only after
 /// the closing animation has removed every InputDecorator from the tree.
 class BankAccountVerificationDialog extends StatefulWidget {
-  const BankAccountVerificationDialog({super.key});
+  const BankAccountVerificationDialog({
+    super.key,
+    this.initialAccountType = 'personal',
+  });
+
+  final String initialAccountType;
 
   @override
   State<BankAccountVerificationDialog> createState() =>
@@ -524,6 +537,17 @@ class _BankAccountVerificationDialogState
   final _documentNumber = TextEditingController();
   String _accountType = 'personal';
   String _documentType = 'identityNumber';
+  bool _documentNumberVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _accountType =
+        widget.initialAccountType == 'business' ? 'business' : 'personal';
+    _documentType = _accountType == 'business'
+        ? 'businessRegistrationNumber'
+        : 'identityNumber';
+  }
 
   @override
   void dispose() {
@@ -615,7 +639,7 @@ class _BankAccountVerificationDialogState
                 TextFormField(
                   key: const ValueKey('bank-verification-document-number'),
                   controller: _documentNumber,
-                  obscureText: true,
+                  obscureText: !_documentNumberVisible,
                   enableSuggestions: false,
                   autocorrect: false,
                   textInputAction: TextInputAction.done,
@@ -633,6 +657,22 @@ class _BankAccountVerificationDialogState
                         'Sent once for validation. SpazaOne stores only a protected fingerprint.',
                     helperMaxLines: 3,
                     errorMaxLines: 2,
+                    suffixIcon: IconButton(
+                      key: const ValueKey(
+                        'bank-verification-document-visibility',
+                      ),
+                      tooltip: _documentNumberVisible
+                          ? 'Hide document number'
+                          : 'Show document number',
+                      onPressed: () => setState(
+                        () => _documentNumberVisible = !_documentNumberVisible,
+                      ),
+                      icon: Icon(
+                        _documentNumberVisible
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
                   ),
                 ),
               ],

@@ -408,6 +408,7 @@ class WalletViewModel extends ChangeNotifier {
         st,
         reason: 'saveBankingDetails failed',
       );
+      rethrow;
     } finally {
       isProcessing.value = false;
     }

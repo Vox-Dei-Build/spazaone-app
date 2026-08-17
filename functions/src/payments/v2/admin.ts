@@ -18,6 +18,7 @@ import {
 import { requirePaymentAdmin } from "./paymentAdminAuth";
 import {
   SETTLEMENT_ADMIN_REQUEST_TYPE,
+  settlementAdminRequestDetailProjection,
   settlementAdminRequestProjection,
   settlementAdminRequestRef,
 } from "./settlementAdminRequests";
@@ -505,6 +506,59 @@ export const listSettlementVerificationRequestsV1 =
         .filter((doc) => doc.get("type") === SETTLEMENT_ADMIN_REQUEST_TYPE)
         .map((doc) => settlementAdminRequestProjection(doc.id, doc.data())),
     };
+  });
+
+export const getSettlementVerificationRequestDetailV1 =
+  paymentAdminMutationRuntime.https.onCall(async (data, context) => {
+    requirePaymentAdmin(context);
+    const requestId = requireOperationId(data?.requestId);
+    const request = await db
+      .doc(`paymentAdministrationRequests/${requestId}`)
+      .get();
+    const requestData = request.data() ?? {};
+    if (!request.exists || requestData.type !== SETTLEMENT_ADMIN_REQUEST_TYPE) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "Settlement request not found.",
+      );
+    }
+    const merchantId = requireMerchantId(requestData.merchantId);
+    if (settlementAdminRequestRef(merchantId).id !== requestId) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Settlement request identity is invalid.",
+      );
+    }
+    const bankingDetailsId = String(requestData.bankingDetailsId ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{1,200}$/.test(bankingDetailsId)) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "This request is not bound to reviewable banking details.",
+      );
+    }
+    const banking = await db
+      .doc(`users/${merchantId}/bankingDetails/${bankingDetailsId}`)
+      .get();
+    if (!banking.exists) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The banking details are no longer available.",
+      );
+    }
+    try {
+      return settlementAdminRequestDetailProjection({
+        requestId,
+        request: requestData,
+        banking: banking.data() ?? {},
+        bankingDetailsId,
+        bankingDetailsUpdatedAtMs: banking.updateTime?.toMillis() ?? 0,
+      });
+    } catch (_) {
+      throw new functions.https.HttpsError(
+        "aborted",
+        "The banking details changed. Refresh the request before reviewing it.",
+      );
+    }
   });
 
 export const setGlobalPaymentConfigurationV2 =

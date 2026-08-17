@@ -31,7 +31,9 @@ import {
   settlementReviewOutcome,
   settlementVerificationDecision,
   settlementVerificationIdentity,
+  supportedSettlementBanks,
 } from "../lib/payments/v2/merchantProfiles.js";
+import { settlementReviewNotificationCopy } from "../lib/payments/v2/settlementNotifications.js";
 import { availableSupplierFunding } from "../lib/payments/v2/supplierFunding.js";
 import { commerceStatusForCj } from "../lib/payments/v2/supplierOrders.js";
 
@@ -70,6 +72,71 @@ test("settlement review distinguishes approval, changes and rejection", () => {
   assert.equal(settlementReviewOutcome({ approved: true }), "approve");
   assert.equal(settlementReviewOutcome({ approved: false }), "reject");
   assert.equal(settlementReviewOutcome({ outcome: "invalid" }), null);
+});
+
+test("supported settlement banks are verification-enabled, deduped and sorted", () => {
+  assert.deepEqual(
+    supportedSettlementBanks([
+      {
+        name: "Zulu Bank",
+        code: "123456",
+        enabled_for_verification: true,
+        supported_types: ["personal"],
+      },
+      {
+        name: "Alpha Bank",
+        code: "654321",
+        enabled_for_verification: true,
+        supported_types: ["personal"],
+      },
+      {
+        name: "Disabled Bank",
+        code: "111111",
+        enabled_for_verification: false,
+        supported_types: ["personal"],
+      },
+      {
+        name: "Bad Code",
+        code: "123",
+        enabled_for_verification: true,
+        supported_types: ["personal"],
+      },
+      { name: "Missing Types", code: "222222", enabled_for_verification: true },
+      {
+        name: "Alpha Duplicate",
+        code: "654321",
+        enabled_for_verification: true,
+        supported_types: ["personal", "business"],
+      },
+    ]),
+    [
+      {
+        name: "Alpha Duplicate",
+        branchCode: "654321",
+        supportedAccountTypes: ["personal", "business"],
+      },
+      {
+        name: "Zulu Bank",
+        branchCode: "123456",
+        supportedAccountTypes: ["personal"],
+      },
+    ],
+  );
+});
+
+test("settlement review notifications are actionable without exposing PII", () => {
+  const approved = settlementReviewNotificationCopy("approve");
+  const changes = settlementReviewNotificationCopy("changes_required");
+  const rejected = settlementReviewNotificationCopy("reject");
+  assert.match(approved.title, /verified/i);
+  assert.match(changes.body, /update/i);
+  assert.match(rejected.body, /SpazaOne/);
+  for (const copy of [approved, changes, rejected]) {
+    assert.doesNotMatch(
+      JSON.stringify(copy),
+      /account number|identity|passport/i,
+    );
+  }
 });
 
 test("calculates the launch collection fee in cents", () => {

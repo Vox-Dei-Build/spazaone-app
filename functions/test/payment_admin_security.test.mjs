@@ -5,6 +5,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { paymentAdminAccessDecision } from "../lib/payments/v2/paymentAdminAuth.js";
 import {
   maskBankAccount,
+  settlementAdminRequestDetailProjection,
   settlementAdminRequestId,
   settlementAdminRequestProjection,
   settlementAuthorizationRequestDecision,
@@ -125,6 +126,68 @@ test("settlement request projection never crosses internal identifiers or PII", 
 test("bank account masking exposes only the last four digits", () => {
   assert.equal(maskBankAccount("1234 5678 9012"), "•••• 9012");
   assert.equal(maskBankAccount("12"), "");
+});
+
+test("recent-auth detail projection reveals only banking fields needed for review", () => {
+  const detail = settlementAdminRequestDetailProjection({
+    requestId: "request_opaque",
+    request: {
+      type: "settlement_verification",
+      status: "pending_review",
+      storeName: "Corner Store",
+      bankName: "Example Bank",
+      maskedAccount: "•••• 6789",
+      maskedAccountHolder: "T•••• N••••",
+      requestedAt: Timestamp.fromMillis(1_000),
+      updatedAt: Timestamp.fromMillis(2_000),
+      bankingDetailsId: "banking-a",
+      bankingDetailsUpdatedAtMs: 3_000,
+      merchantId: "secret-merchant-id",
+      accountFingerprint: "a".repeat(64),
+    },
+    banking: {
+      bankName: "Example Bank",
+      accountNumber: "1234 56789",
+      accountHolderName: "Tsepo Example",
+      accountType: "Current / cheque",
+      branchCode: "632005",
+      documentNumber: "9001010000000",
+    },
+    bankingDetailsId: "banking-a",
+    bankingDetailsUpdatedAtMs: 3_000,
+  });
+  assert.equal(detail.account, "123456789");
+  assert.equal(detail.holder, "Tsepo Example");
+  assert.equal(detail.accountType, "Current / cheque");
+  assert.equal(detail.branchCode, "632005");
+  const serialized = JSON.stringify(detail);
+  assert.equal(serialized.includes("secret-merchant-id"), false);
+  assert.equal(serialized.includes("9001010000000"), false);
+  assert.equal(serialized.includes("a".repeat(64)), false);
+});
+
+test("detail projection fails closed when the reviewed bank version changed", () => {
+  assert.throws(
+    () =>
+      settlementAdminRequestDetailProjection({
+        requestId: "request_opaque",
+        request: {
+          type: "settlement_verification",
+          status: "pending_review",
+          bankingDetailsId: "banking-a",
+          bankingDetailsUpdatedAtMs: 3_000,
+        },
+        banking: {
+          accountNumber: "123456789",
+          accountHolderName: "Tsepo Example",
+          accountType: "Savings",
+          branchCode: "632005",
+        },
+        bankingDetailsId: "banking-a",
+        bankingDetailsUpdatedAtMs: 3_001,
+      }),
+    /VERSION_CHANGED/,
+  );
 });
 
 test("merchant authorization requests are deterministic and duplicate-safe", () => {

@@ -362,6 +362,12 @@ int customerNotificationTabIndex(Map<String, dynamic> data) {
       : 2;
 }
 
+@visibleForTesting
+bool isOnlinePaymentsNotificationRoute(Uri? uri) {
+  return uri?.path == WalletPage.id &&
+      uri?.queryParameters['destination'] == 'online_payments';
+}
+
 /// Routes a notification tap to the correct screen.
 ///
 /// Recognises the `route` data field. For the `/promotionsPage` family of
@@ -397,6 +403,15 @@ void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
         ),
       );
     }
+  }
+
+  if (isOnlinePaymentsNotificationRoute(uri)) {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => const WalletPage(initialTab: WalletInitialTab.withdraw),
+      ),
+    );
+    return;
   }
 
   // Strip query params before pushing — the routes table only knows about

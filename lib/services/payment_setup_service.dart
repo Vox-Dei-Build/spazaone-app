@@ -4,6 +4,30 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/config/function_endpoints.dart';
 import 'package:pasella/services/secure_function_client.dart';
 
+class SupportedSettlementBank {
+  const SupportedSettlementBank({
+    required this.name,
+    required this.branchCode,
+    required this.supportedAccountTypes,
+  });
+
+  final String name;
+  final String branchCode;
+  final List<String> supportedAccountTypes;
+
+  factory SupportedSettlementBank.fromMap(Map<String, dynamic> data) {
+    return SupportedSettlementBank(
+      name: data['name']?.toString().trim() ?? '',
+      branchCode: data['branchCode']?.toString().trim() ?? '',
+      supportedAccountTypes: List<String>.unmodifiable(
+        (data['supportedAccountTypes'] as List? ?? const <dynamic>[])
+            .map((value) => value.toString().trim().toLowerCase())
+            .where((value) => value == 'personal' || value == 'business'),
+      ),
+    );
+  }
+}
+
 class SettlementProfileSummary {
   const SettlementProfileSummary({
     required this.status,
@@ -270,6 +294,31 @@ class PaymentSetupException implements Exception {
 
 class PaymentSetupService {
   const PaymentSetupService._();
+
+  static Future<List<SupportedSettlementBank>>
+      supportedSettlementBanks() async {
+    try {
+      final response = await FirebaseFunctions.instance
+          .httpsCallable('listSupportedSettlementBanksV1')
+          .call();
+      final data = Map<String, dynamic>.from(response.data as Map);
+      return List<SupportedSettlementBank>.unmodifiable(
+        (data['banks'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((value) => SupportedSettlementBank.fromMap(
+                  Map<String, dynamic>.from(value),
+                ))
+            .where((bank) =>
+                bank.name.isNotEmpty &&
+                RegExp(r'^\d{6}$').hasMatch(bank.branchCode) &&
+                bank.supportedAccountTypes.isNotEmpty),
+      );
+    } on FirebaseFunctionsException catch (error) {
+      throw PaymentSetupException(
+        error.message ?? 'Supported banks are temporarily unavailable.',
+      );
+    }
+  }
 
   static Future<Map<String, dynamic>> requestSettlementVerification({
     required String merchantId,

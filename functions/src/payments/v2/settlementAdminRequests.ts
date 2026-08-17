@@ -206,3 +206,47 @@ export function settlementAdminRequestProjection(
     updatedAtMs: timestampMillis(input.updatedAt),
   };
 }
+
+/**
+ * Sensitive detail projection for one deliberately opened request. Callers
+ * must enforce the recent-auth admin gate before reading the banking record.
+ * Identity-document values and provider identifiers are never returned.
+ */
+export function settlementAdminRequestDetailProjection(input: {
+  requestId: string;
+  request: Record<string, unknown>;
+  banking: Record<string, unknown>;
+  bankingDetailsId: string;
+  bankingDetailsUpdatedAtMs: number;
+}): Record<string, unknown> {
+  const summary = settlementAdminRequestProjection(
+    input.requestId,
+    input.request,
+  );
+  if (
+    String(input.request.bankingDetailsId ?? "") !== input.bankingDetailsId ||
+    Number(input.request.bankingDetailsUpdatedAtMs ?? 0) !==
+      input.bankingDetailsUpdatedAtMs
+  ) {
+    throw new Error("SETTLEMENT_BANKING_DETAILS_VERSION_CHANGED");
+  }
+  const account = String(input.banking.accountNumber ?? "").replace(/\s/g, "");
+  const holder = safeText(input.banking.accountHolderName, 100);
+  const accountType = safeText(input.banking.accountType, 40);
+  const branchCode = String(input.banking.branchCode ?? "").replace(/\s/g, "");
+  if (
+    !/^\d{5,20}$/.test(account) ||
+    !holder ||
+    !accountType ||
+    !/^\d{6}$/.test(branchCode)
+  ) {
+    throw new Error("SETTLEMENT_BANKING_DETAILS_INVALID");
+  }
+  return {
+    ...summary,
+    account,
+    holder,
+    accountType,
+    branchCode,
+  };
+}

@@ -184,7 +184,12 @@ test("settlement approval queue is server-only and masks its public projection",
   assert.match(requests, /settlementAdminRequestProjection/);
   assert.match(requests, /maskedAccount/);
   assert.doesNotMatch(
-    requests.slice(requests.indexOf("return {", requests.indexOf("settlementAdminRequestProjection"))),
+    requests.slice(
+      requests.indexOf(
+        "return {",
+        requests.indexOf("settlementAdminRequestProjection"),
+      ),
+    ),
     /merchantId|accountFingerprint|requestedBy|paystackSubaccountCode/,
   );
   const rules = readFileSync(
@@ -232,10 +237,17 @@ test("billable settlement verification is app-attested and bank-only", () => {
   assert.match(endpoint, /assertBankAccountOnlyVerificationPayload/);
   assert.match(source, /settlementVerificationAuthorizationDecision/);
   assert.doesNotMatch(source, /settlement_profile_auto_approved/);
+  const authorizationCheck = source.indexOf(
+    "initialAuthorizationDecision",
+    start,
+  );
+  const bankLookup = source.indexOf(
+    "fetchSupportedSettlementBanks(secret)",
+    start,
+  );
   assert.ok(
-    source.indexOf("initialAuthorizationDecision") <
-      source.indexOf("https://api.paystack.co/bank"),
-    "admin preauthorization must be checked before every Paystack bank API call",
+    authorizationCheck > start && bankLookup > authorizationCheck,
+    "admin preauthorization must be checked before the provider lookup used by billable verification",
   );
   assert.match(source, /https:\/\/api\.paystack\.co\/bank\/validate/);
   assert.doesNotMatch(source, /decision\/bin|authorization\/verify|\/card\//);
@@ -261,7 +273,10 @@ test("merchant verification begins with an attested idempotent request", () => {
   assert.match(request, /six-digit branch code/);
   assert.match(request, /Enter a valid bank account number/);
   assert.match(request, /Enter the bank account holder name/);
-  assert.doesNotMatch(request, /documentNumber|PAYSTACK_SECRET_KEY|api\.paystack\.co/);
+  assert.doesNotMatch(
+    request,
+    /documentNumber|PAYSTACK_SECRET_KEY|api\.paystack\.co/,
+  );
 });
 
 test("merchant heartbeat records only an exact source commit", () => {
@@ -292,10 +307,7 @@ test("merchant heartbeat records only an exact source commit", () => {
     join(sourceRoot, "..", "..", "ios", "ci_scripts", "ci_post_clone.sh"),
     "utf8",
   );
-  assert.match(
-    xcodeCloudBootstrap,
-    /--dart-define=BUILD_COMMIT="\$CI_COMMIT"/,
-  );
+  assert.match(xcodeCloudBootstrap, /--dart-define=BUILD_COMMIT="\$CI_COMMIT"/);
   assert.match(
     xcodeCloudBootstrap,
     /flutter build ios --config-only --flavor production --release/,

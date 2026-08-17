@@ -54,6 +54,39 @@ void main() {
         find.byKey(const ValueKey('bank-verification-document-number')),
         '9001010000000',
       );
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey('bank-verification-document-number'),
+                ),
+                matching: find.byType(EditableText),
+              ),
+            )
+            .obscureText,
+        isTrue,
+      );
+      final visibilityControl = find.byKey(
+        const ValueKey('bank-verification-document-visibility'),
+      );
+      await tester.ensureVisible(visibilityControl);
+      await tester.pumpAndSettle();
+      await tester.tap(visibilityControl);
+      await tester.pump();
+      expect(
+        tester
+            .widget<EditableText>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey('bank-verification-document-number'),
+                ),
+                matching: find.byType(EditableText),
+              ),
+            )
+            .obscureText,
+        isFalse,
+      );
       await tester.ensureVisible(
         find.byKey(const ValueKey('submit-bank-account-verification')),
       );

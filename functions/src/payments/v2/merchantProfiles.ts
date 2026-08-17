@@ -12,6 +12,10 @@ import {
   settlementAdminRequestRef,
   upsertSettlementAuthorizationRequest,
 } from "./settlementAdminRequests";
+import {
+  deliverSettlementReviewNotification,
+  settlementReviewNotificationCopy,
+} from "./settlementNotifications";
 
 const SETTLEMENT_CAPABILITIES: PaymentPurpose[] = [
   "merchant_order",
@@ -188,6 +192,72 @@ const ZA_BANK_NAME_ALIASES: Readonly<Record<string, string>> = {
   firstnationalbank: "firstnationalbank",
 };
 
+type PaystackSettlementBank = {
+  name?: unknown;
+  code?: unknown;
+  enabled_for_verification?: unknown;
+  supported_types?: unknown;
+};
+
+export type SupportedSettlementBank = {
+  name: string;
+  branchCode: string;
+  supportedAccountTypes: AccountType[];
+};
+
+export function supportedSettlementBanks(
+  input: unknown,
+): SupportedSettlementBank[] {
+  if (!Array.isArray(input)) return [];
+  const byBranchCode = new Map<string, SupportedSettlementBank>();
+  for (const raw of input as PaystackSettlementBank[]) {
+    const name = String(raw?.name ?? "")
+      .trim()
+      .slice(0, 100);
+    const branchCode = String(raw?.code ?? "").replace(/\s/g, "");
+    const supportedAccountTypes = Array.isArray(raw?.supported_types)
+      ? raw.supported_types
+          .map((value) => String(value).trim())
+          .filter(
+            (value): value is AccountType =>
+              value === "personal" || value === "business",
+          )
+      : [];
+    if (
+      !name ||
+      !/^\d{6}$/.test(branchCode) ||
+      supportedAccountTypes.length === 0 ||
+      raw?.enabled_for_verification === false
+    ) {
+      continue;
+    }
+    byBranchCode.set(branchCode, {
+      name,
+      branchCode,
+      supportedAccountTypes: [...new Set(supportedAccountTypes)],
+    });
+  }
+  return [...byBranchCode.values()].sort((left, right) =>
+    left.name.localeCompare(right.name, "en-ZA"),
+  );
+}
+
+async function fetchSupportedSettlementBanks(
+  secret: string,
+): Promise<SupportedSettlementBank[]> {
+  const response = await axios.get("https://api.paystack.co/bank", {
+    headers: { Authorization: `Bearer ${secret}` },
+    params: {
+      country: "south africa",
+      currency: "ZAR",
+      enabled_for_verification: true,
+      perPage: 100,
+    },
+    timeout: 15_000,
+  });
+  return supportedSettlementBanks(response.data?.data);
+}
+
 export function normalizedBankName(value: unknown): string {
   const normalized = String(value ?? "")
     .trim()
@@ -195,6 +265,33 @@ export function normalizedBankName(value: unknown): string {
     .replace(/[^a-z0-9]/g, "");
   return ZA_BANK_NAME_ALIASES[normalized] ?? normalized;
 }
+
+/**
+ * Returns only the safe bank-name/universal-branch-code projection used by
+ * the merchant form. The provider secret and all other provider metadata stay
+ * server-side.
+ */
+export const listSupportedSettlementBanksV1 = functions
+  .runWith({
+    secrets: ["PAYSTACK_SECRET_KEY"],
+    enforceAppCheck: true,
+  })
+  .https.onCall(async (_data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Sign in is required.",
+      );
+    }
+    const banks = await fetchSupportedSettlementBanks(paystackSecret());
+    if (banks.length === 0) {
+      throw new functions.https.HttpsError(
+        "unavailable",
+        "Supported banks are temporarily unavailable.",
+      );
+    }
+    return { banks };
+  });
 
 function accountNumber(value: unknown): string {
   const account = String(value ?? "").replace(/\s+/g, "");
@@ -343,6 +440,10 @@ function publicError(error: unknown): { status: number; message: string } {
   const known: Record<string, [number, string]> = {
     BANK_ACCOUNT_INVALID: [400, "Enter a valid bank account number."],
     BANK_ACCOUNT_TYPE_INVALID: [400, "Choose personal or business account."],
+    BANK_ACCOUNT_TYPE_NOT_SUPPORTED: [
+      409,
+      "That bank does not support the selected account type for verification.",
+    ],
     BANK_DOCUMENT_TYPE_INVALID: [
       400,
       "Choose an identity document that matches the account type.",
@@ -728,34 +829,25 @@ export const prepareMerchantSettlementProfileV2 = functions
         throw new Error(initialAuthorizationDecision.reason);
       }
 
-      const banksResponse = await axios.get("https://api.paystack.co/bank", {
-        headers: { Authorization: `Bearer ${secret}` },
-        params: {
-          country: "south africa",
-          currency: "ZAR",
-          enabled_for_verification: true,
-          perPage: 200,
-        },
-        timeout: 15_000,
-      });
-      const banks = Array.isArray(banksResponse.data?.data)
-        ? banksResponse.data.data
-        : [];
+      const banks = await fetchSupportedSettlementBanks(secret);
       const requestedBranchCode = String(raw.branchCode ?? "").replace(
         /\s/g,
         "",
       );
-      const bank = banks.find((candidate: any) => {
-        const candidateCode = String(candidate?.code ?? "").replace(/\s/g, "");
+      const bank = banks.find((candidate) => {
+        const candidateCode = candidate.branchCode;
         return (
           (requestedBranchCode && candidateCode === requestedBranchCode) ||
-          normalizedBankName(candidate?.name) ===
+          normalizedBankName(candidate.name) ===
             normalizedBankName(requestedBankName)
         );
       });
-      const bankCode = String(bank?.code ?? "").trim();
-      if (!bankCode || bank?.enabled_for_verification === false) {
+      const bankCode = String(bank?.branchCode ?? "").trim();
+      if (!bankCode) {
         throw new Error("BANK_NOT_SUPPORTED");
+      }
+      if (!bank?.supportedAccountTypes.includes(identity.accountType)) {
+        throw new Error("BANK_ACCOUNT_TYPE_NOT_SUPPORTED");
       }
       const fingerprint = accountFingerprint(secret, bankCode, account);
       const attemptFingerprint = sha256([fingerprint, documentFingerprint]);
@@ -1213,6 +1305,9 @@ async function applySettlementProfileReview(input: {
   const administrationAuditRef = db.doc(
     `paymentAdministrationAudit/${auditId}`,
   );
+  const notificationId = stableDocumentId("payment_verification_notification", [
+    auditId,
+  ]);
   const priorAudit = await administrationAuditRef.get();
   if (priorAudit.exists) {
     const prior = priorAudit.data() ?? {};
@@ -1487,6 +1582,35 @@ async function applySettlementProfileReview(input: {
       reason,
       createdAt: now,
       schemaVersion: 2,
+    });
+    const notificationCopy = settlementReviewNotificationCopy(input.outcome);
+    tx.set(
+      db.doc(`users/${merchantId}/notifications/${notificationId}`),
+      {
+        notificationId,
+        type: "PAYMENT_VERIFICATION",
+        outcome: input.outcome,
+        title: notificationCopy.title,
+        body: notificationCopy.body,
+        route: "/walletPage?destination=online_payments",
+        read: false,
+        idempotencyKey: notificationId,
+        source: "settlementReview",
+        pushDeliveryState: "pending",
+        createdAt: now,
+        schemaVersion: 1,
+      },
+      { merge: true },
+    );
+  });
+  await deliverSettlementReviewNotification({
+    merchantId,
+    notificationId,
+    outcome: input.outcome,
+  }).catch((error) => {
+    console.error("[payments-v2] settlement review notification queued", {
+      notificationId,
+      code: error instanceof Error ? error.name : "unknown",
     });
   });
   return {

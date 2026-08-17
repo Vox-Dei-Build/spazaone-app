@@ -38,6 +38,7 @@ export {
 export { expireOwnedInventoryReservations } from "./payments/v2/inventoryReservations";
 export { createOwnedOrderPaymentV2 } from "./payments/v2/ownedOrders";
 export {
+  listSupportedSettlementBanksV1,
   prepareMerchantSettlementProfileV2,
   requestMerchantSettlementVerificationV1,
   reviewMerchantSettlementProfileV2,
