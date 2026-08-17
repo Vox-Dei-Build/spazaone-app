@@ -3,6 +3,7 @@ import { paystackProviderMode } from "../../config/environment";
 import { authorizeCallableMerchantOrBot } from "../../security/requestAuth";
 import { requireStoreId } from "../../stores/storeAccess";
 import { buyerSafePaymentsV2 } from "./buyerReadiness";
+import { settlementAdminRequestRef } from "./settlementAdminRequests";
 import {
   addWorkingDays,
   normalizePaystackSettlementStatus,
@@ -15,6 +16,88 @@ function timestampMillis(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export type MerchantVerificationStage =
+  | "not_started"
+  | "missing_information"
+  | "ready_to_submit"
+  | "submitted"
+  | "ready_to_verify"
+  | "submitting"
+  | "pending_review"
+  | "approved"
+  | "changes_required"
+  | "rejected"
+  | "blocked";
+
+export function merchantVerificationJourney(input: {
+  profile: Record<string, unknown>;
+  request: Record<string, unknown>;
+  hasSavedBankingDetails: boolean;
+  nowMs: number;
+}): { stage: MerchantVerificationStage; reason: string } {
+  const profile = input.profile;
+  const requestStatus = String(input.request.status ?? "");
+  const authorization = (profile.settlementVerificationAuthorization ??
+    {}) as Record<string, unknown>;
+  const validationState = String(profile.validationAttemptState ?? "");
+  const reviewState = String(profile.bankReviewState ?? "");
+
+  if (requestStatus === "changes_required") {
+    return { stage: "changes_required", reason: "review_changes_required" };
+  }
+  if (requestStatus === "rejected") {
+    return { stage: "rejected", reason: "review_rejected" };
+  }
+  if (requestStatus === "revoked") {
+    return { stage: "blocked", reason: "authorization_revoked" };
+  }
+  if (
+    validationState === "provider_outcome_unknown" ||
+    reviewState === "provider_outcome_unknown" ||
+    reviewState.startsWith("blocked_") ||
+    reviewState === "invalid_pending_destination"
+  ) {
+    return { stage: "blocked", reason: "support_review_required" };
+  }
+  if (
+    validationState === "processing" &&
+    Number(profile.validationAttemptLeaseUntilMs ?? 0) > input.nowMs
+  ) {
+    return { stage: "submitting", reason: "bank_check_processing" };
+  }
+  if (
+    requestStatus === "pending_review" ||
+    profile.status === "pending_review"
+  ) {
+    return { stage: "pending_review", reason: "final_review_pending" };
+  }
+  if (requestStatus === "authorization_required") {
+    return { stage: "submitted", reason: "authorization_review_pending" };
+  }
+  if (requestStatus === "authorized") {
+    const activeAuthorization =
+      authorization.state === "authorized" &&
+      Number(authorization.expiresAtMs ?? 0) >= input.nowMs &&
+      Number(authorization.remainingAttempts ?? 0) > 0;
+    return activeAuthorization
+      ? { stage: "ready_to_verify", reason: "authorization_ready" }
+      : { stage: "blocked", reason: "authorization_expired" };
+  }
+  if (
+    requestStatus === "approved" ||
+    profile.bankVerificationStatus === "approved"
+  ) {
+    return { stage: "approved", reason: "ready" };
+  }
+  if (!input.hasSavedBankingDetails) {
+    return { stage: "missing_information", reason: "bank_details_required" };
+  }
+  if (input.hasSavedBankingDetails) {
+    return { stage: "ready_to_submit", reason: "ready_to_request" };
+  }
+  return { stage: "not_started", reason: "not_started" };
+}
+
 export const getMerchantPaymentOverviewV2 = functions.https.onCall(
   async (data, context) => {
     const merchantId = requireStoreId(data?.merchantId);
@@ -24,16 +107,20 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
         "Access denied.",
       );
     }
-    const [profile, settlements, paymentsV2] = await Promise.all([
-      db.doc(`merchantPaymentProfiles/${merchantId}`).get(),
-      db
-        .collection("settlements")
-        .where("merchantId", "==", merchantId)
-        .limit(50)
-        .get(),
-      buyerSafePaymentsV2(merchantId),
-    ]);
+    const [profile, request, bankingDetails, settlements, paymentsV2] =
+      await Promise.all([
+        db.doc(`merchantPaymentProfiles/${merchantId}`).get(),
+        settlementAdminRequestRef(merchantId).get(),
+        db.collection(`users/${merchantId}/bankingDetails`).limit(1).get(),
+        db
+          .collection("settlements")
+          .where("merchantId", "==", merchantId)
+          .limit(50)
+          .get(),
+        buyerSafePaymentsV2(merchantId),
+      ]);
     const profileData = profile.data() ?? {};
+    const requestData = request.data() ?? {};
     const pendingSettlement = (profileData.pendingSettlement ?? {}) as Record<
       string,
       unknown
@@ -102,6 +189,12 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
           0,
         ),
     };
+    const verificationJourney = merchantVerificationJourney({
+      profile: profileData,
+      request: requestData,
+      hasSavedBankingDetails: !bankingDetails.empty,
+      nowMs: Date.now(),
+    });
     return {
       merchantId,
       // Backward-compatible 4.8.0 alias. New clients must use paymentsV2.
@@ -110,6 +203,15 @@ export const getMerchantPaymentOverviewV2 = functions.https.onCall(
         reason: paymentsV2.ownedOrders.reason,
       },
       paymentsV2,
+      verification: {
+        ...verificationJourney,
+        requestStatus: String(requestData.status ?? ""),
+        hasSavedBankingDetails: !bankingDetails.empty,
+        requestedAtMs: timestampMillis(requestData.requestedAt),
+        updatedAtMs: timestampMillis(requestData.updatedAt),
+        bankName: String(requestData.bankName ?? ""),
+        maskedAccount: String(requestData.maskedAccount ?? ""),
+      },
       profile: {
         status: String(profileData.status ?? "not_started"),
         bankVerificationStatus: String(

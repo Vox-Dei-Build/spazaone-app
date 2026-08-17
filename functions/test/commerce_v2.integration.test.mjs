@@ -225,7 +225,10 @@ before(async () => {
       paystackSubaccountCode: "ACCT_EMULATORV2",
       capabilities: { supplier_order: true },
     }),
-    db.doc("users/seller-v2").set({ name: "Seller V2" }),
+    db.doc("users/seller-v2").set({
+      name: "Seller V2",
+      buildNumber: 88,
+    }),
     db.doc("users/seller-v2/customers/customer-v2").set({
       name: "Buyer V2",
       number: "0820000000",

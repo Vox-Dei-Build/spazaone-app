@@ -257,6 +257,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Admin approval requests contain internal workflow references. The
+    // browser portal receives a deliberately masked projection from callable
+    // Functions and never reads this collection directly.
+    match /paymentAdministrationRequests/{document=**} {
+      allow read, write: if false;
+    }
+
     match /merchantCommerceSettings/{document=**} {
       allow read, write: if false;
     }

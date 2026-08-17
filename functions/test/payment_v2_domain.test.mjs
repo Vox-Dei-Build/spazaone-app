@@ -27,6 +27,7 @@ import {
   settlementVerificationAuthorizationDecision,
   settlementDestinationRetirementDecision,
   settlementProfileAction,
+  settlementReviewOutcome,
   settlementVerificationDecision,
   settlementVerificationIdentity,
 } from "../lib/payments/v2/merchantProfiles.js";
@@ -56,6 +57,18 @@ test("payment-request delivery review accepts only the two accountable outcomes"
     () => requirePaymentRequestReviewAction("retry_blindly"),
     /valid payment-request review outcome/,
   );
+});
+
+test("settlement review distinguishes approval, changes and rejection", () => {
+  assert.equal(settlementReviewOutcome({ outcome: "approve" }), "approve");
+  assert.equal(
+    settlementReviewOutcome({ outcome: "changes_required" }),
+    "changes_required",
+  );
+  assert.equal(settlementReviewOutcome({ outcome: "reject" }), "reject");
+  assert.equal(settlementReviewOutcome({ approved: true }), "approve");
+  assert.equal(settlementReviewOutcome({ approved: false }), "reject");
+  assert.equal(settlementReviewOutcome({ outcome: "invalid" }), null);
 });
 
 test("calculates the launch collection fee in cents", () => {

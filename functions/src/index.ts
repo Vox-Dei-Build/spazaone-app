@@ -39,7 +39,9 @@ export { expireOwnedInventoryReservations } from "./payments/v2/inventoryReserva
 export { createOwnedOrderPaymentV2 } from "./payments/v2/ownedOrders";
 export {
   prepareMerchantSettlementProfileV2,
+  requestMerchantSettlementVerificationV1,
   reviewMerchantSettlementProfileV2,
+  reviewSettlementVerificationRequestV1,
 } from "./payments/v2/merchantProfiles";
 export { getMerchantPaymentOverviewV2 } from "./payments/v2/merchantOverview";
 export {
