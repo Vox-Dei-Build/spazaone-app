@@ -280,4 +280,13 @@ test("merchant heartbeat records only an exact source commit", () => {
     pipeline.match(/--dart-define=BUILD_COMMIT="\$CM_COMMIT"/g)?.length,
     2,
   );
+
+  const xcodeCloudBootstrap = readFileSync(
+    join(sourceRoot, "..", "..", "ios", "ci_scripts", "ci_post_clone.sh"),
+    "utf8",
+  );
+  assert.match(
+    xcodeCloudBootstrap,
+    /--dart-define=BUILD_COMMIT="\$CI_COMMIT"/,
+  );
 });

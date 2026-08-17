@@ -50,6 +50,7 @@ flutter pub get
 # produces behaviorally aligned with the canonical Codemagic build instead of
 # silently compiling the stable V1 catalogue aliases.
 flutter build ios --config-only --release \
+  --dart-define=BUILD_COMMIT="$CI_COMMIT" \
   --dart-define=DROPSHIP_CATALOG_V2=true \
   --dart-define=USE_FIREBASE_EMULATORS=false
 
