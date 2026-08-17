@@ -10,12 +10,12 @@ const IOS_APP_ID = "1:716158514645:ios:17eba128d70a92a7e5795c";
 const RELEASE_CONDITIONS = [
   {
     name: "spazaone_480_android_build_88",
-    expression: `app.id == '${ANDROID_APP_ID}' && app.build == ${RELEASE_BUILD}`,
+    expression: `app.id == '${ANDROID_APP_ID}' && app.build == '${RELEASE_BUILD}'`,
     tagColor: "BLUE",
   },
   {
     name: "spazaone_480_ios_build_88",
-    expression: `app.id == '${IOS_APP_ID}' && app.build == ${RELEASE_BUILD}`,
+    expression: `app.id == '${IOS_APP_ID}' && app.build == '${RELEASE_BUILD}'`,
     tagColor: "INDIGO",
   },
 ];
