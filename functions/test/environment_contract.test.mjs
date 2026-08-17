@@ -272,6 +272,13 @@ test("merchant heartbeat records only an exact source commit", () => {
   assert.match(heartbeat, /\^\[a-f0-9\]\{40\}\$/);
   assert.match(heartbeat, /appCommitSha: commitSha/);
 
+  const appBoot = readFileSync(
+    join(sourceRoot, "..", "..", "lib", "main.dart"),
+    "utf8",
+  );
+  assert.match(appBoot, /merchantHeartbeatBuildChanged/);
+  assert.match(appBoot, /keyPrefix}_commit/);
+
   const pipeline = readFileSync(
     join(sourceRoot, "..", "..", "codemagic.yaml"),
     "utf8",
