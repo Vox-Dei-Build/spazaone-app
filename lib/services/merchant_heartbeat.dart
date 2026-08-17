@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pasella/config/build_provenance.dart';
 
 class MerchantHeartbeat {
   MerchantHeartbeat._();
@@ -23,17 +24,18 @@ class MerchantHeartbeat {
     final build = int.tryParse(info.buildNumber) ?? 0;
     final platform = Platform.isAndroid ? 'android' : 'ios';
 
-    final callable = FirebaseFunctions.instance.httpsCallable('heartbeatMerchantApp');
+    final callable =
+        FirebaseFunctions.instance.httpsCallable('heartbeatMerchantApp');
 
     // Optional: add a short timeout to avoid blocking UI too long
-    await callable
-        .call({
-          'merchantId': merchantId,
-          'appVersion': appVersion,
-          'buildNumber': build,
-          'platform': platform,
-        })
-        .timeout(const Duration(seconds: 8));
+    final payload = <String, Object>{
+      'merchantId': merchantId,
+      'appVersion': appVersion,
+      'buildNumber': build,
+      'platform': platform,
+      if (BuildProvenance.hasCommitSha)
+        'commitSha': BuildProvenance.commitSha.toLowerCase(),
+    };
+    await callable.call(payload).timeout(const Duration(seconds: 8));
   }
 }
-

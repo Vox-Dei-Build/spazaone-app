@@ -263,3 +263,21 @@ test("merchant verification begins with an attested idempotent request", () => {
   assert.match(request, /Enter the bank account holder name/);
   assert.doesNotMatch(request, /documentNumber|PAYSTACK_SECRET_KEY|api\.paystack\.co/);
 });
+
+test("merchant heartbeat records only an exact source commit", () => {
+  const heartbeat = readFileSync(
+    join(sourceRoot, "utils/heartbeatMerchantApp.ts"),
+    "utf8",
+  );
+  assert.match(heartbeat, /\^\[a-f0-9\]\{40\}\$/);
+  assert.match(heartbeat, /appCommitSha: commitSha/);
+
+  const pipeline = readFileSync(
+    join(sourceRoot, "..", "..", "codemagic.yaml"),
+    "utf8",
+  );
+  assert.equal(
+    pipeline.match(/--dart-define=BUILD_COMMIT="\$CM_COMMIT"/g)?.length,
+    2,
+  );
+});
