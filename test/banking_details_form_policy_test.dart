@@ -19,4 +19,22 @@ void main() {
     expect(bank.branchCode, '632005');
     expect(bank.supportedAccountTypes, ['personal', 'business']);
   });
+
+  test('banking form catalogue is available without a network call', () async {
+    final banks = await PaymentSetupService.supportedSettlementBanks();
+
+    expect(banks, hasLength(17));
+    expect(
+      banks.singleWhere((bank) => bank.name == 'FNB').branchCode,
+      '250655',
+    );
+    expect(
+      banks.singleWhere((bank) => bank.name == 'Capitec').supportedAccountTypes,
+      ['personal'],
+    );
+    expect(
+      banks.every((bank) => RegExp(r'^\d{6}$').hasMatch(bank.branchCode)),
+      isTrue,
+    );
+  });
 }
