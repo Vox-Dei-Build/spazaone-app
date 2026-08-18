@@ -302,17 +302,27 @@ class PaymentSetupService {
           .httpsCallable('listSupportedSettlementBanksV1')
           .call();
       final data = Map<String, dynamic>.from(response.data as Map);
-      return List<SupportedSettlementBank>.unmodifiable(
+      final banks = List<SupportedSettlementBank>.unmodifiable(
         (data['banks'] as List? ?? const <dynamic>[])
             .whereType<Map>()
-            .map((value) => SupportedSettlementBank.fromMap(
-                  Map<String, dynamic>.from(value),
-                ))
-            .where((bank) =>
-                bank.name.isNotEmpty &&
-                RegExp(r'^\d{6}$').hasMatch(bank.branchCode) &&
-                bank.supportedAccountTypes.isNotEmpty),
+            .map(
+              (value) => SupportedSettlementBank.fromMap(
+                Map<String, dynamic>.from(value),
+              ),
+            )
+            .where(
+              (bank) =>
+                  bank.name.isNotEmpty &&
+                  RegExp(r'^\d{6}$').hasMatch(bank.branchCode) &&
+                  bank.supportedAccountTypes.isNotEmpty,
+            ),
       );
+      if (banks.isEmpty) {
+        throw const PaymentSetupException(
+          'Supported banks are temporarily unavailable.',
+        );
+      }
+      return banks;
     } on FirebaseFunctionsException catch (error) {
       throw PaymentSetupException(
         error.message ?? 'Supported banks are temporarily unavailable.',

@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { prepareProductionRemoteConfig } from "../scripts/prepare-production-remote-config.mjs";
+import {
+  prepareProductionRemoteConfig,
+  RELEASE_BUILD,
+  RELEASE_VERSION,
+} from "../scripts/prepare-production-remote-config.mjs";
 
-test("build 88 presentation flags preserve production defaults and config", () => {
+test("current release presentation flags preserve production defaults and config", () => {
   const source = {
     parameters: {
       FEATURE_MULTI_STORE_OPERATORS_ENABLED: {
@@ -54,21 +58,23 @@ test("build 88 presentation flags preserve production defaults and config", () =
   );
   assert.equal(
     flags.FEATURE_ONLINE_SALES_ENABLED.conditionalValues
-      .spazaone_480_android_build_88.value,
+      [`spazaone_${RELEASE_VERSION.replaceAll(".", "")}_android_build_${RELEASE_BUILD}`]
+      .value,
     "true",
   );
   assert.equal(
     flags.FEATURE_ONLINE_SALES_ENABLED.conditionalValues
-      .spazaone_480_ios_build_88.value,
+      [`spazaone_${RELEASE_VERSION.replaceAll(".", "")}_ios_build_${RELEASE_BUILD}`]
+      .value,
     "true",
   );
   assert.match(
     candidate.conditions[0].expression,
-    /app\.build\.exactlyMatches\(\['88'\]\)/,
+    new RegExp(`app\\.build\\.exactlyMatches\\(\\['${RELEASE_BUILD}'\\]\\)`),
   );
   assert.match(
     candidate.conditions[1].expression,
-    /app\.build\.exactlyMatches\(\['88'\]\)/,
+    new RegExp(`app\\.build\\.exactlyMatches\\(\\['${RELEASE_BUILD}'\\]\\)`),
   );
 });
 

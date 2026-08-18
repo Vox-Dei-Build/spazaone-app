@@ -2,7 +2,10 @@ import axios from "axios";
 import { createHash, createHmac, randomUUID } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackSecret } from "../../config/environment";
+import {
+  paystackReadOnlySecret,
+  paystackSecret,
+} from "../../config/environment";
 import { authenticateFirebaseRequest } from "../../security/requestAuth";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
 import { PaymentPurpose, stableDocumentId } from "./domain";
@@ -283,14 +286,23 @@ export const listSupportedSettlementBanksV1 = functions
         "Sign in is required.",
       );
     }
-    const banks = await fetchSupportedSettlementBanks(paystackSecret());
-    if (banks.length === 0) {
-      throw new functions.https.HttpsError(
-        "unavailable",
-        "Supported banks are temporarily unavailable.",
+    try {
+      const banks = await fetchSupportedSettlementBanks(
+        paystackReadOnlySecret(),
       );
+      if (banks.length > 0) return { banks };
+    } catch (error) {
+      functions.logger.error("Supported bank catalogue fetch failed", {
+        error:
+          error instanceof Error
+            ? error.message.slice(0, 120)
+            : "unknown_error",
+      });
     }
-    return { banks };
+    throw new functions.https.HttpsError(
+      "unavailable",
+      "Supported banks are temporarily unavailable.",
+    );
   });
 
 function accountNumber(value: unknown): string {
