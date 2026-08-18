@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 
 import {
   assertProjectMatchesEnvironment,
+  paystackAccountPaymentCanaryEnabled,
+  paystackCanaryIntentBindingValid,
+  paystackPaymentProviderMode,
+  paystackPaymentSecret,
   paystackProviderMode,
   paystackReadOnlySecret,
   paystackSecret,
@@ -75,16 +79,136 @@ test("production payment kill switch keeps the governed verification lane availa
       PAYSTACK_SECRET_KEY: "sk_live_read-only-catalogue",
     },
     () => {
-      assert.equal(
-        paystackReadOnlySecret(),
-        "sk_live_read-only-catalogue",
-      );
+      assert.equal(paystackReadOnlySecret(), "sk_live_read-only-catalogue");
       assert.equal(
         paystackSettlementVerificationSecret(),
         "sk_live_read-only-catalogue",
       );
       assert.throws(paystackSecret, /PAYSTACK_PROVIDER_DISABLED/);
     },
+  );
+});
+
+test("production account-payment canary is exact and leaves the global kill switch on", () => {
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      PAYSTACK_PROVIDER_MODE: "disabled",
+      PAYSTACK_SECRET_KEY: "sk_live_account-payment-canary",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_ENABLED: "true",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_MERCHANT_ID: "merchant_canary",
+    },
+    () => {
+      const canary = {
+        merchantId: "merchant_canary",
+        purpose: "account_settlement",
+      };
+      assert.equal(paystackProviderMode(), "disabled");
+      assert.equal(paystackAccountPaymentCanaryEnabled(canary), true);
+      assert.equal(paystackPaymentProviderMode(canary), "live");
+      assert.equal(
+        paystackPaymentSecret(canary),
+        "sk_live_account-payment-canary",
+      );
+      assert.throws(paystackSecret, /PAYSTACK_PROVIDER_DISABLED/);
+
+      for (const denied of [
+        { merchantId: "merchant_other", purpose: "account_settlement" },
+        { merchantId: "merchant_canary", purpose: "repayment_installment" },
+        { merchantId: "merchant_canary", purpose: "merchant_order" },
+        { merchantId: "merchant_canary", purpose: "supplier_order" },
+        { merchantId: "merchant_canary", purpose: "campaign_credit" },
+      ]) {
+        assert.equal(paystackAccountPaymentCanaryEnabled(denied), false);
+        assert.equal(paystackPaymentProviderMode(denied), "disabled");
+        assert.throws(
+          () => paystackPaymentSecret(denied),
+          /PAYSTACK_PROVIDER_DISABLED/,
+        );
+      }
+    },
+  );
+});
+
+test("disabled-provider webhook requires the exact immutable canary binding", () => {
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      PAYSTACK_PROVIDER_MODE: "disabled",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_ENABLED: "true",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_MERCHANT_ID: "merchant_canary",
+    },
+    () => {
+      const binding = {
+        metadataMerchantId: "merchant_canary",
+        metadataPurpose: "account_settlement",
+        intentMerchantId: "merchant_canary",
+        intentPurpose: "account_settlement",
+        intentProviderMode: "live",
+        intentActivationScope: "account_payment_canary",
+      };
+      assert.equal(paystackCanaryIntentBindingValid(binding), true);
+      for (const override of [
+        { metadataMerchantId: "merchant_other" },
+        { metadataPurpose: "merchant_order" },
+        { intentMerchantId: "merchant_other" },
+        { intentPurpose: "repayment_installment" },
+        { intentProviderMode: "test" },
+        { intentActivationScope: "global" },
+      ]) {
+        assert.equal(
+          paystackCanaryIntentBindingValid({ ...binding, ...override }),
+          false,
+        );
+      }
+    },
+  );
+});
+
+test("live webhook gates the canary before any payment or quarantine mutation", () => {
+  const source = readFileSync(
+    join(sourceRoot, "payments/paystack/verifyPaystackTransaction.ts"),
+    "utf8",
+  );
+  const gate = source.indexOf("!paystackCanaryIntentBindingValid");
+  const currencyQuarantine = source.indexOf(
+    'isQuarantinableV2Charge(transaction, "PROVIDER_CURRENCY_MISMATCH")',
+  );
+  const paymentDispatch = source.indexOf(
+    "applyVerifiedAccountSettlementV2(",
+    currencyQuarantine,
+  );
+  assert.ok(gate > 0);
+  assert.ok(currencyQuarantine > gate);
+  assert.ok(paymentDispatch > currencyQuarantine);
+});
+
+test("account-payment canary fails closed outside production or with a malformed merchant ID", () => {
+  const context = {
+    merchantId: "merchant_canary",
+    purpose: "account_settlement",
+  };
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "development",
+      SPAZAONE_FIREBASE_PROJECT_ID: "spazaone-dev",
+      PAYSTACK_PROVIDER_MODE: "test",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_ENABLED: "true",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_MERCHANT_ID: "merchant_canary",
+    },
+    () => assert.equal(paystackAccountPaymentCanaryEnabled(context), false),
+  );
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      PAYSTACK_PROVIDER_MODE: "disabled",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_ENABLED: "true",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_MERCHANT_ID: "merchant canary,*",
+    },
+    () => assert.equal(paystackAccountPaymentCanaryEnabled(context), false),
   );
 });
 
@@ -240,7 +364,10 @@ test("settlement detail is a recent-auth read without App Check token consumptio
   const start = admin.indexOf(
     "export const getSettlementVerificationRequestDetailV1",
   );
-  const end = admin.indexOf("export const setGlobalPaymentConfigurationV2", start);
+  const end = admin.indexOf(
+    "export const setGlobalPaymentConfigurationV2",
+    start,
+  );
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const detail = admin.slice(start, end);
@@ -352,15 +479,15 @@ test("settlement verification provider authority is isolated from payment flows"
   );
   assert.doesNotMatch(profiles, /paystackSecret\(\)/);
 
-  for (const relativePath of [
-    "payments/v2/campaignTopup.ts",
-    "payments/v2/ownedOrders.ts",
-    "payments/v2/accountSettlements.ts",
-    "payments/v2/supplierOrders.ts",
-    "payments/v2/refunds.ts",
+  for (const [relativePath, accessor] of [
+    ["payments/v2/campaignTopup.ts", /paystackSecret\(\)/],
+    ["payments/v2/ownedOrders.ts", /paystackSecret\(\)/],
+    ["payments/v2/accountSettlements.ts", /paystackPaymentSecret\(/],
+    ["payments/v2/supplierOrders.ts", /paystackSecret\(\)/],
+    ["payments/v2/refunds.ts", /paystackPaymentSecret\(/],
   ]) {
     const source = readFileSync(join(sourceRoot, relativePath), "utf8");
-    assert.match(source, /paystackSecret\(\)/, relativePath);
+    assert.match(source, accessor, relativePath);
     assert.doesNotMatch(
       source,
       /paystackSettlementVerificationSecret/,

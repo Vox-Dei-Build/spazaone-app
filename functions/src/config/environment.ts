@@ -3,6 +3,13 @@ import * as functions from "firebase-functions";
 export type SpazaEnvironment = "local" | "development" | "production";
 export type ProviderMode = "disabled" | "stub" | "test" | "live";
 
+export const PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE = "account_payment_canary";
+
+export type PaystackPaymentContext = {
+  merchantId: string;
+  purpose: string;
+};
+
 export const API_CONTRACT_VERSION = "2026-08-12";
 export const FIRESTORE_SCHEMA_VERSION = 2;
 
@@ -96,6 +103,88 @@ function assertPaystackSecretMatchesEnvironment(secret: string): void {
   if (environment === "production" && !secret.startsWith("sk_live_")) {
     throw new Error("PAYSTACK_LIVE_KEY_REQUIRED");
   }
+}
+
+/**
+ * Narrow production canary for merchant account-settlement links.
+ *
+ * This deliberately supports one exact merchant ID and one hard-coded payment
+ * purpose. The separate boolean makes an accidentally populated merchant ID
+ * inert, while production-only enforcement prevents this escape hatch from
+ * weakening development or local environment boundaries.
+ */
+export function paystackAccountPaymentCanaryEnabled(
+  input: PaystackPaymentContext,
+): boolean {
+  if (resolveEnvironment() !== "production") return false;
+  if (
+    value("PAYSTACK_ACCOUNT_PAYMENT_CANARY_ENABLED").toLowerCase() !== "true"
+  ) {
+    return false;
+  }
+  const configuredMerchantId = value(
+    "PAYSTACK_ACCOUNT_PAYMENT_CANARY_MERCHANT_ID",
+  );
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(configuredMerchantId)) return false;
+  return (
+    input.purpose === "account_settlement" &&
+    input.merchantId === configuredMerchantId
+  );
+}
+
+/** Verifies the immutable intent binding before a disabled-mode webhook runs. */
+export function paystackCanaryIntentBindingValid(input: {
+  metadataMerchantId: unknown;
+  metadataPurpose: unknown;
+  intentMerchantId: unknown;
+  intentPurpose: unknown;
+  intentProviderMode: unknown;
+  intentActivationScope: unknown;
+}): boolean {
+  const merchantId = String(input.metadataMerchantId ?? "").trim();
+  const purpose = String(input.metadataPurpose ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    paystackAccountPaymentCanaryEnabled({ merchantId, purpose }) &&
+    String(input.intentMerchantId ?? "") === merchantId &&
+    String(input.intentPurpose ?? "") === purpose &&
+    String(input.intentProviderMode ?? "") === "live" &&
+    String(input.intentActivationScope ?? "") ===
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE
+  );
+}
+
+/** Effective provider mode for a newly initialized payment intent. */
+export function paystackPaymentProviderMode(
+  input: PaystackPaymentContext,
+): ProviderMode {
+  const mode = paystackProviderMode();
+  if (mode === "disabled" && paystackAccountPaymentCanaryEnabled(input)) {
+    return "live";
+  }
+  return mode;
+}
+
+/**
+ * Fund-moving credential accessor for the global payment lane or the exact
+ * account-payment canary. Read-only and settlement-verification endpoints use
+ * their own accessors and are not affected by this gate.
+ */
+export function paystackPaymentSecret(input: PaystackPaymentContext): string {
+  const secret = configuredPaystackSecret();
+  const mode = paystackPaymentProviderMode(input);
+  if (mode === "disabled" || mode === "stub") {
+    throw new Error("PAYSTACK_PROVIDER_DISABLED");
+  }
+  assertPaystackSecretMatchesEnvironment(secret);
+  if (mode === "test" && !secret.startsWith("sk_test_")) {
+    throw new Error("PAYSTACK_TEST_KEY_REQUIRED");
+  }
+  if (mode === "live" && !secret.startsWith("sk_live_")) {
+    throw new Error("PAYSTACK_LIVE_KEY_REQUIRED");
+  }
+  return secret;
 }
 
 /**

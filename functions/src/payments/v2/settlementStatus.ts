@@ -1,7 +1,13 @@
 import axios from "axios";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackProviderMode, paystackSecret } from "../../config/environment";
+import {
+  paystackAccountPaymentCanaryEnabled,
+  paystackCanaryIntentBindingValid,
+  paystackPaymentSecret,
+  paystackProviderMode,
+  paystackSecret,
+} from "../../config/environment";
 import { assertCallableStoreAccess } from "../../stores/storeAccess";
 
 export type NormalizedSettlementStatus =
@@ -98,13 +104,70 @@ async function reconcileSettlementDocuments(input?: {
       testOnly: candidates.length,
     };
   }
-  if (mode !== "live" || candidates.length === 0) {
+  if (candidates.length === 0 || !["disabled", "live"].includes(mode)) {
     return { checked: candidates.length, matched: 0, testOnly: 0 };
   }
 
-  const secret = paystackSecret();
-  const bySubaccount = new Map<string, typeof candidates>();
-  for (const doc of candidates) {
+  let eligibleCandidates = candidates;
+  if (mode === "disabled") {
+    const eligibility = await Promise.all(
+      candidates.map(async (doc) => {
+        const merchantId = String(doc.get("merchantId") ?? "").trim();
+        const merchantIsCanary = paystackAccountPaymentCanaryEnabled({
+          merchantId,
+          purpose: "account_settlement",
+        });
+        if (!merchantIsCanary) {
+          return { doc, merchantId, purpose: "", eligible: false };
+        }
+        let purpose = String(doc.get("purpose") ?? "").trim();
+        let intentMerchantId = merchantId;
+        let providerMode = String(doc.get("providerMode") ?? "").trim();
+        let activationScope = String(doc.get("activationScope") ?? "").trim();
+        if (!purpose || !providerMode || !activationScope) {
+          const intentId = String(doc.get("intentId") ?? "").trim();
+          if (intentId) {
+            const intent = await db.doc(`paymentIntents/${intentId}`).get();
+            purpose = String(intent.get("purpose") ?? "").trim();
+            intentMerchantId = String(intent.get("merchantId") ?? "").trim();
+            providerMode = String(intent.get("providerMode") ?? "").trim();
+            activationScope = String(
+              intent.get("activationScope") ?? "",
+            ).trim();
+          }
+        }
+        return {
+          doc,
+          merchantId,
+          purpose,
+          eligible: paystackCanaryIntentBindingValid({
+            metadataMerchantId: merchantId,
+            metadataPurpose: purpose,
+            intentMerchantId,
+            intentPurpose: purpose,
+            intentProviderMode: providerMode,
+            intentActivationScope: activationScope,
+          }),
+        };
+      }),
+    );
+    eligibleCandidates = eligibility
+      .filter((candidate) => candidate.eligible)
+      .map((candidate) => candidate.doc);
+  }
+  if (eligibleCandidates.length === 0) {
+    return { checked: candidates.length, matched: 0, testOnly: 0 };
+  }
+
+  const secret =
+    mode === "live"
+      ? paystackSecret()
+      : paystackPaymentSecret({
+          merchantId: String(eligibleCandidates[0].get("merchantId") ?? ""),
+          purpose: "account_settlement",
+        });
+  const bySubaccount = new Map<string, typeof eligibleCandidates>();
+  for (const doc of eligibleCandidates) {
     const code = String(doc.get("subaccountCode") ?? "").trim();
     if (!/^ACCT_[A-Za-z0-9]+$/.test(code)) continue;
     bySubaccount.set(code, [...(bySubaccount.get(code) ?? []), doc]);
