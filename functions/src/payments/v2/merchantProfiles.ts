@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
 import {
   paystackReadOnlySecret,
-  paystackSecret,
+  paystackSettlementVerificationSecret,
 } from "../../config/environment";
 import { authenticateFirebaseRequest } from "../../security/requestAuth";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
@@ -737,7 +737,7 @@ export const prepareMerchantSettlementProfileV2 = functions
       profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
       const existing = await profileRef.get();
       const existingData = existing.data() ?? {};
-      const secret = paystackSecret();
+      const secret = paystackSettlementVerificationSecret();
       const documentFingerprint = protectedIdentityFingerprint(
         secret,
         identity,
@@ -1454,7 +1454,7 @@ async function applySettlementProfileReview(input: {
       );
     }
   }
-  const secret = paystackSecret();
+  const secret = paystackSettlementVerificationSecret();
   try {
     if (
       approved &&

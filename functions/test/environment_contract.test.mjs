@@ -9,6 +9,7 @@ import {
   paystackProviderMode,
   paystackReadOnlySecret,
   paystackSecret,
+  paystackSettlementVerificationSecret,
   resolveEnvironment,
 } from "../lib/config/environment.js";
 
@@ -65,7 +66,7 @@ test("development requires a test Paystack key", () => {
   );
 });
 
-test("production disabled mode permits read-only Paystack catalogues only", () => {
+test("production payment kill switch keeps the governed verification lane available", () => {
   withEnvironment(
     {
       SPAZAONE_ENVIRONMENT: "production",
@@ -76,6 +77,10 @@ test("production disabled mode permits read-only Paystack catalogues only", () =
     () => {
       assert.equal(
         paystackReadOnlySecret(),
+        "sk_live_read-only-catalogue",
+      );
+      assert.equal(
+        paystackSettlementVerificationSecret(),
         "sk_live_read-only-catalogue",
       );
       assert.throws(paystackSecret, /PAYSTACK_PROVIDER_DISABLED/);
@@ -93,6 +98,27 @@ test("production read-only Paystack access rejects a test key", () => {
     },
     () => {
       assert.throws(paystackReadOnlySecret, /PAYSTACK_LIVE_KEY_REQUIRED/);
+      assert.throws(
+        paystackSettlementVerificationSecret,
+        /PAYSTACK_LIVE_KEY_REQUIRED/,
+      );
+    },
+  );
+});
+
+test("settlement verification cannot weaken the development key boundary", () => {
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "development",
+      SPAZAONE_FIREBASE_PROJECT_ID: "spazaone-dev",
+      PAYSTACK_PROVIDER_MODE: "test",
+      PAYSTACK_SECRET_KEY: "sk_live_wrong-environment",
+    },
+    () => {
+      assert.throws(
+        paystackSettlementVerificationSecret,
+        /PAYSTACK_TEST_KEY_REQUIRED/,
+      );
     },
   );
 });
@@ -301,6 +327,46 @@ test("billable settlement verification is app-attested and bank-only", () => {
   );
   assert.match(source, /https:\/\/api\.paystack\.co\/bank\/validate/);
   assert.doesNotMatch(source, /decision\/bin|authorization\/verify|\/card\//);
+});
+
+test("settlement verification provider authority is isolated from payment flows", () => {
+  const profiles = readFileSync(
+    join(sourceRoot, "payments/v2/merchantProfiles.ts"),
+    "utf8",
+  );
+  const prepareStart = profiles.indexOf(
+    "export const prepareMerchantSettlementProfileV2",
+  );
+  const reviewStart = profiles.indexOf(
+    "async function applySettlementProfileReview",
+  );
+  assert.notEqual(prepareStart, -1);
+  assert.notEqual(reviewStart, -1);
+  assert.match(
+    profiles.slice(prepareStart, reviewStart),
+    /paystackSettlementVerificationSecret\(\)/,
+  );
+  assert.match(
+    profiles.slice(reviewStart),
+    /paystackSettlementVerificationSecret\(\)/,
+  );
+  assert.doesNotMatch(profiles, /paystackSecret\(\)/);
+
+  for (const relativePath of [
+    "payments/v2/campaignTopup.ts",
+    "payments/v2/ownedOrders.ts",
+    "payments/v2/accountSettlements.ts",
+    "payments/v2/supplierOrders.ts",
+    "payments/v2/refunds.ts",
+  ]) {
+    const source = readFileSync(join(sourceRoot, relativePath), "utf8");
+    assert.match(source, /paystackSecret\(\)/, relativePath);
+    assert.doesNotMatch(
+      source,
+      /paystackSettlementVerificationSecret/,
+      relativePath,
+    );
+  }
 });
 
 test("merchant verification begins with an attested idempotent request", () => {
