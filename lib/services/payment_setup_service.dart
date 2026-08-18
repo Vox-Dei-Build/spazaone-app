@@ -295,39 +295,101 @@ class PaymentSetupException implements Exception {
 class PaymentSetupService {
   const PaymentSetupService._();
 
+  /// Paystack's South Africa verification catalogue, captured for the app so
+  /// opening the banking form never depends on a network request. The server
+  /// re-fetches the provider catalogue before verification, so this list can
+  /// guide data entry without granting settlement authority.
+  static const List<SupportedSettlementBank> _supportedBankCatalogue = [
+    SupportedSettlementBank(
+      name: 'Absa',
+      branchCode: '632005',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Access Bank',
+      branchCode: '410506',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'African Bank',
+      branchCode: '430000',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'African Business Bank',
+      branchCode: '584000',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Albaraka Bank',
+      branchCode: '800000',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Bank Zero',
+      branchCode: '888000',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Bidvest Bank',
+      branchCode: '462005',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Capitec',
+      branchCode: '470010',
+      supportedAccountTypes: ['personal'],
+    ),
+    SupportedSettlementBank(
+      name: 'Discovery Bank',
+      branchCode: '679000',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'FNB',
+      branchCode: '250655',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'GoTyme Bank',
+      branchCode: '678910',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Investec',
+      branchCode: '580105',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Nedbank',
+      branchCode: '198765',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'OM Bank',
+      branchCode: '352000',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Sasfin Bank',
+      branchCode: '683000',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Standard Bank',
+      branchCode: '051001',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+    SupportedSettlementBank(
+      name: 'Standard Chartered Bank',
+      branchCode: '730020',
+      supportedAccountTypes: ['personal', 'business'],
+    ),
+  ];
+
   static Future<List<SupportedSettlementBank>>
       supportedSettlementBanks() async {
-    try {
-      final response = await FirebaseFunctions.instance
-          .httpsCallable('listSupportedSettlementBanksV1')
-          .call();
-      final data = Map<String, dynamic>.from(response.data as Map);
-      final banks = List<SupportedSettlementBank>.unmodifiable(
-        (data['banks'] as List? ?? const <dynamic>[])
-            .whereType<Map>()
-            .map(
-              (value) => SupportedSettlementBank.fromMap(
-                Map<String, dynamic>.from(value),
-              ),
-            )
-            .where(
-              (bank) =>
-                  bank.name.isNotEmpty &&
-                  RegExp(r'^\d{6}$').hasMatch(bank.branchCode) &&
-                  bank.supportedAccountTypes.isNotEmpty,
-            ),
-      );
-      if (banks.isEmpty) {
-        throw const PaymentSetupException(
-          'Supported banks are temporarily unavailable.',
-        );
-      }
-      return banks;
-    } on FirebaseFunctionsException catch (error) {
-      throw PaymentSetupException(
-        error.message ?? 'Supported banks are temporarily unavailable.',
-      );
-    }
+    return _supportedBankCatalogue;
   }
 
   static Future<Map<String, dynamic>> requestSettlementVerification({
