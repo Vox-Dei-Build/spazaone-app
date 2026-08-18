@@ -534,6 +534,7 @@ export const getSettlementVerificationRequestDetailV1 =
       throw new functions.https.HttpsError(
         "failed-precondition",
         "This request is not bound to reviewable banking details.",
+        { reason: "MERCHANT_RESUBMISSION_REQUIRED" },
       );
     }
     const banking = await db

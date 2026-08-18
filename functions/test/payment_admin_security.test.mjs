@@ -105,11 +105,13 @@ test("settlement request projection never crosses internal identifiers or PII", 
     "maskedAccountHolder",
     "requestId",
     "requestedAtMs",
+    "requiresMerchantResubmission",
     "status",
     "storeName",
     "type",
     "updatedAtMs",
   ]);
+  assert.equal(projection.requiresMerchantResubmission, true);
   const serialized = JSON.stringify(projection);
   for (const forbidden of [
     "secret-merchant-id",
@@ -121,6 +123,16 @@ test("settlement request projection never crosses internal identifiers or PII", 
   ]) {
     assert.equal(serialized.includes(forbidden), false);
   }
+});
+
+test("secure banking bindings make settlement requests reviewable", () => {
+  const projection = settlementAdminRequestProjection("request_bound", {
+    type: "settlement_verification",
+    status: "authorization_required",
+    bankingDetailsId: "banking-a",
+    bankingDetailsUpdatedAtMs: 3_000,
+  });
+  assert.equal(projection.requiresMerchantResubmission, false);
 });
 
 test("bank account masking exposes only the last four digits", () => {
@@ -208,6 +220,17 @@ test("merchant authorization requests are deterministic and duplicate-safe", () 
       nextStatus: "authorization_required",
       createOrRefresh: false,
       deduped: true,
+    },
+  );
+  assert.deepEqual(
+    settlementAuthorizationRequestDecision({
+      existingStatus: "authorization_required",
+      sameVisibleDestination: false,
+    }),
+    {
+      nextStatus: "authorization_required",
+      createOrRefresh: true,
+      deduped: false,
     },
   );
   assert.deepEqual(

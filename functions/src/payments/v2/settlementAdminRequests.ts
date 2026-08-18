@@ -194,10 +194,19 @@ export function settlementAdminRequestProjection(
   ) {
     throw new Error("SETTLEMENT_ADMIN_REQUEST_INVALID");
   }
+  const bankingDetailsId = String(input.bankingDetailsId ?? "").trim();
+  const bankingDetailsUpdatedAtMs = Number(
+    input.bankingDetailsUpdatedAtMs ?? 0,
+  );
+  const requiresMerchantResubmission =
+    !/^[A-Za-z0-9_-]{1,200}$/.test(bankingDetailsId) ||
+    !Number.isSafeInteger(bankingDetailsUpdatedAtMs) ||
+    bankingDetailsUpdatedAtMs < 1;
   return {
     requestId,
     type: SETTLEMENT_ADMIN_REQUEST_TYPE,
     status,
+    requiresMerchantResubmission,
     storeName: safeText(input.storeName, 100),
     bankName: safeText(input.bankName, 100),
     maskedAccount: safeText(input.maskedAccount, 30),

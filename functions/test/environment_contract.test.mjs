@@ -188,6 +188,7 @@ test("settlement detail is a recent-auth read without App Check token consumptio
 
   assert.match(detail, /paymentAdminReadRuntime\.https\.onCall/);
   assert.match(detail, /requirePaymentAdmin\(context\)/);
+  assert.match(detail, /MERCHANT_RESUBMISSION_REQUIRED/);
   assert.doesNotMatch(detail, /requireRecentAuth:\s*false/);
   assert.doesNotMatch(detail, /paymentAdminMutationRuntime/);
 });
