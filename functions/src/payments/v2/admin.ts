@@ -509,7 +509,7 @@ export const listSettlementVerificationRequestsV1 =
   });
 
 export const getSettlementVerificationRequestDetailV1 =
-  paymentAdminMutationRuntime.https.onCall(async (data, context) => {
+  paymentAdminReadRuntime.https.onCall(async (data, context) => {
     requirePaymentAdmin(context);
     const requestId = requireOperationId(data?.requestId);
     const request = await db
