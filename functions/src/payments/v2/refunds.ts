@@ -1,7 +1,11 @@
 import axios from "axios";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackSecret } from "../../config/environment";
+import {
+  paystackCanaryIntentBindingValid,
+  paystackPaymentSecret,
+  paystackProviderMode,
+} from "../../config/environment";
 import {
   campaignBalanceRef,
   campaignOperationRef,
@@ -22,6 +26,29 @@ function requireId(value: unknown, field: string): string {
   const id = String(value ?? "").trim();
   if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) throw new Error(`${field}_INVALID`);
   return id;
+}
+
+function paymentSecretForIntent(
+  intent: FirebaseFirestore.DocumentSnapshot,
+): string {
+  const paymentContext = {
+    merchantId: requireId(intent.get("merchantId"), "MERCHANT_ID"),
+    purpose: String(intent.get("purpose") ?? ""),
+  };
+  if (
+    paystackProviderMode() === "disabled" &&
+    !paystackCanaryIntentBindingValid({
+      metadataMerchantId: paymentContext.merchantId,
+      metadataPurpose: paymentContext.purpose,
+      intentMerchantId: intent.get("merchantId"),
+      intentPurpose: intent.get("purpose"),
+      intentProviderMode: intent.get("providerMode"),
+      intentActivationScope: intent.get("activationScope"),
+    })
+  ) {
+    throw new Error("PAYSTACK_PROVIDER_DISABLED");
+  }
+  return paystackPaymentSecret(paymentContext);
 }
 
 function positiveQuantity(value: unknown): number {
@@ -310,7 +337,7 @@ export async function executePaystackRefundV2(
     "refund_amount",
   );
   const marker = `Spaza One refund ${refundCaseId}`;
-  const secret = paystackSecret();
+  const secret = paymentSecretForIntent(intent);
   try {
     const existing = await axios.get("https://api.paystack.co/refund", {
       headers: { Authorization: `Bearer ${secret}` },
@@ -391,6 +418,9 @@ export async function reconcilePaystackRefundV2(
   const refundCase = await caseRef.get();
   if (!refundCase.exists) throw new Error("REFUND_CASE_NOT_FOUND");
   const data = refundCase.data() ?? {};
+  const intentId = requireId(data.intentId, "INTENT_ID");
+  const intent = await db.doc(`paymentIntents/${intentId}`).get();
+  if (!intent.exists) throw new Error("INTENT_NOT_FOUND");
   const providerRefundId = requireId(
     data.providerRefundId,
     "PROVIDER_REFUND_ID",
@@ -398,7 +428,9 @@ export async function reconcilePaystackRefundV2(
   const response = await axios.get(
     `https://api.paystack.co/refund/${encodeURIComponent(providerRefundId)}`,
     {
-      headers: { Authorization: `Bearer ${paystackSecret()}` },
+      headers: {
+        Authorization: `Bearer ${paymentSecretForIntent(intent)}`,
+      },
       timeout: 15_000,
     },
   );

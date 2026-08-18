@@ -2,11 +2,60 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  customerPaymentRequestFeatureEnabled,
   selectCustomerPaymentRequestMode,
   paymentRequestCooldownEndsAtMs,
   verifyPaymentRequestWebhookSignature,
 } from "../lib/payments/v2/customerPaymentRequests.js";
 import { createHmac } from "node:crypto";
+
+function withEnvironment(values, run) {
+  const previous = new Map();
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test("customer payment requests open only for the exact production canary", () => {
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      PAYSTACK_PROVIDER_MODE: "disabled",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_ENABLED: "true",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_MERCHANT_ID: "merchant_canary",
+      CUSTOMER_PAYMENT_REQUESTS_ENABLED: "false",
+    },
+    () => {
+      assert.equal(
+        customerPaymentRequestFeatureEnabled({}, "merchant_canary"),
+        true,
+      );
+      assert.equal(
+        customerPaymentRequestFeatureEnabled({}, "merchant_other"),
+        false,
+      );
+      process.env.CUSTOMER_PAYMENT_REQUESTS_ENABLED = "true";
+      assert.equal(
+        customerPaymentRequestFeatureEnabled(
+          { customerPaymentRequestsEnabled: true },
+          "merchant_other",
+        ),
+        true,
+      );
+    },
+  );
+});
 
 test("routes online WhatsApp, reminder WhatsApp and definitive SMS separately", () => {
   assert.equal(

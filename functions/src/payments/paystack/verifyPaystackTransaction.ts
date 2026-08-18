@@ -7,6 +7,10 @@ import * as path from "path";
 import * as dotenv from "dotenv";
 import { createHash } from "crypto";
 import {
+  paystackCanaryIntentBindingValid,
+  paystackProviderMode,
+} from "../../config/environment";
+import {
   centsFromRands,
   normalizePaystackSecret,
   verifyPaystackSignature,
@@ -152,6 +156,37 @@ export const verifyPaystackTransaction = functions
         res.status(400).json({ error: "Transaction not successful" });
         return;
       }
+
+      // Security boundary: never trust metadata from the webhook request.
+      // Paystack's independently verified transaction is the source of truth.
+      const metadata = transaction.metadata ?? {};
+      if (paystackProviderMode() === "disabled") {
+        const intentId = String(metadata.intentId ?? "").trim();
+        const intent = /^pi_[a-f0-9]{64}$/.test(intentId)
+          ? await db.doc(`paymentIntents/${intentId}`).get()
+          : null;
+        if (
+          !intent?.exists ||
+          !paystackCanaryIntentBindingValid({
+            metadataMerchantId: metadata.merchantId,
+            metadataPurpose: metadata.purpose,
+            intentMerchantId: intent.get("merchantId"),
+            intentPurpose: intent.get("purpose"),
+            intentProviderMode: intent.get("providerMode"),
+            intentActivationScope: intent.get("activationScope"),
+          })
+        ) {
+          console.error(
+            "[paystack] blocked verified charge outside disabled-provider canary",
+            {
+              purpose: String(metadata.purpose ?? "unknown"),
+              hasBoundIntent: intent?.exists === true,
+            },
+          );
+          res.status(409).json({ error: "Payment provider unavailable" });
+          return;
+        }
+      }
       if (String(transaction.currency ?? "").toUpperCase() !== "ZAR") {
         if (
           isQuarantinableV2Charge(transaction, "PROVIDER_CURRENCY_MISMATCH")
@@ -175,9 +210,6 @@ export const verifyPaystackTransaction = functions
         return;
       }
 
-      // Security boundary: never trust metadata from the webhook request.
-      // Paystack's independently verified transaction is the source of truth.
-      const metadata = transaction.metadata ?? {};
       try {
         if (
           String(metadata.purpose ?? "").toLowerCase() === "campaign_credit"

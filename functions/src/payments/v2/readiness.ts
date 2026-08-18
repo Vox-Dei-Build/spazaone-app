@@ -1,4 +1,5 @@
 import { db } from "../../config/main";
+import { paystackAccountPaymentCanaryEnabled } from "../../config/environment";
 import {
   isPaymentPurpose,
   MerchantPaymentStatus,
@@ -29,18 +30,25 @@ function envEnabled(value: unknown): boolean {
 
 export function resolvePaymentReadiness(input: {
   masterEnabled: boolean;
+  accountPaymentCanaryEnabled?: boolean;
   emergencySuspended?: boolean;
   globalCapabilities: CapabilityMap;
   merchantStatus: MerchantPaymentStatus;
   merchantCapabilities: CapabilityMap;
   purpose: PaymentPurpose;
 }): PaymentReadiness {
-  if (!input.masterEnabled)
+  const accountPaymentCanaryEnabled =
+    input.accountPaymentCanaryEnabled === true &&
+    input.purpose === "account_settlement";
+  if (!input.masterEnabled && !accountPaymentCanaryEnabled)
     return { enabled: false, reason: "master_disabled" };
   if (input.emergencySuspended === true) {
     return { enabled: false, reason: "global_suspended" };
   }
-  if (input.globalCapabilities[input.purpose] !== true) {
+  if (
+    input.globalCapabilities[input.purpose] !== true &&
+    !accountPaymentCanaryEnabled
+  ) {
     return { enabled: false, reason: "capability_disabled" };
   }
   // Campaign Credits are purchased from Spaza One and never settle to a
@@ -81,6 +89,7 @@ export async function paymentReadiness(input: {
   const merchantData = merchant.data() ?? {};
   return resolvePaymentReadiness({
     masterEnabled: envEnabled(process.env.PAYMENTS_V2_MASTER_ENABLED),
+    accountPaymentCanaryEnabled: paystackAccountPaymentCanaryEnabled(input),
     emergencySuspended: globalData.emergencySuspended === true,
     globalCapabilities:
       (globalData.capabilities as CapabilityMap | undefined) ?? {},

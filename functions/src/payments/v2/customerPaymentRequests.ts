@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import twilio from "twilio/lib/index";
 import { db, functions } from "../../config/main";
+import { paystackAccountPaymentCanaryEnabled } from "../../config/environment";
 import { appendTruthSurfaceMessage } from "../../notifications/unreadCounts";
 import {
   authenticateFirebaseRequest,
@@ -135,12 +136,19 @@ function reservationRef(id: string) {
   );
 }
 
-function featureEnabled(config: FirebaseFirestore.DocumentData): boolean {
+export function customerPaymentRequestFeatureEnabled(
+  config: FirebaseFirestore.DocumentData,
+  merchantId: string,
+): boolean {
   return (
-    String(process.env.CUSTOMER_PAYMENT_REQUESTS_ENABLED ?? "")
+    (String(process.env.CUSTOMER_PAYMENT_REQUESTS_ENABLED ?? "")
       .trim()
       .toLowerCase() === "true" &&
-    config.customerPaymentRequestsEnabled === true
+      config.customerPaymentRequestsEnabled === true) ||
+    paystackAccountPaymentCanaryEnabled({
+      merchantId,
+      purpose: "account_settlement",
+    })
   );
 }
 
@@ -314,8 +322,9 @@ async function buildQuote(
     : null;
   const lastRequestStatus = String(lastRequest?.get("status") ?? "");
   let reason: RequestQuote["reason"] = "ready";
-  if (!featureEnabled(config.data() ?? {})) reason = "temporarily_unavailable";
-  else if (outstandingAmountMinor <= 0) reason = "settled";
+  if (!customerPaymentRequestFeatureEnabled(config.data() ?? {}, merchantId)) {
+    reason = "temporarily_unavailable";
+  } else if (outstandingAmountMinor <= 0) reason = "settled";
   else if (!deliveryPhone) reason = "phone_missing";
   else if (cooldownEndsAtMs > Date.now()) reason = "cooldown_active";
   else if (

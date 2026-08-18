@@ -300,6 +300,45 @@ test("readiness requires every independent gate", () => {
   );
 });
 
+test("account-payment canary bypasses only rollout gates, not safety gates", () => {
+  const base = {
+    masterEnabled: false,
+    accountPaymentCanaryEnabled: true,
+    globalCapabilities: { account_settlement: false },
+    merchantStatus: "enabled",
+    merchantCapabilities: { account_settlement: true },
+    purpose: "account_settlement",
+  };
+  assert.deepEqual(resolvePaymentReadiness(base), {
+    enabled: true,
+    reason: "ready",
+  });
+  assert.equal(
+    resolvePaymentReadiness({ ...base, emergencySuspended: true }).reason,
+    "global_suspended",
+  );
+  assert.equal(
+    resolvePaymentReadiness({ ...base, merchantStatus: "suspended" }).reason,
+    "merchant_not_enabled",
+  );
+  assert.equal(
+    resolvePaymentReadiness({
+      ...base,
+      merchantCapabilities: { account_settlement: false },
+    }).reason,
+    "merchant_capability_disabled",
+  );
+  assert.equal(
+    resolvePaymentReadiness({
+      ...base,
+      purpose: "repayment_installment",
+      globalCapabilities: { repayment_installment: false },
+      merchantCapabilities: { repayment_installment: true },
+    }).reason,
+    "master_disabled",
+  );
+});
+
 test("campaign credits do not require a settlement subaccount", () => {
   const base = {
     masterEnabled: true,

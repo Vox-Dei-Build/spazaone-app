@@ -2,7 +2,12 @@ import axios from "axios";
 import { createHash } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackProviderMode, paystackSecret } from "../../config/environment";
+import {
+  PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE,
+  paystackAccountPaymentCanaryEnabled,
+  paystackPaymentProviderMode,
+  paystackPaymentSecret,
+} from "../../config/environment";
 import {
   deliverCommerceOrderNotificationOutbox,
   enqueueCommerceOrderNotification,
@@ -185,6 +190,16 @@ export const createAccountSettlementLinkV2 = functions
         : "account_settlement";
       const readiness = await paymentReadiness({ merchantId, purpose });
       if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+      const providerMode = paystackPaymentProviderMode({
+        merchantId,
+        purpose,
+      });
+      const activationScope = paystackAccountPaymentCanaryEnabled({
+        merchantId,
+        purpose,
+      })
+        ? PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE
+        : "global";
       const channel = accountChannel(req.body?.channel);
       const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
       const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
@@ -340,6 +355,8 @@ export const createAccountSettlementLinkV2 = functions
             accountName: String(profileData.resolvedAccountName ?? ""),
             accountLast4: String(profileData.accountLast4 ?? ""),
           },
+          providerMode,
+          activationScope,
           initializationState: "processing",
           initializationClaimId: claimId,
           initializationLeaseUntilMs: Date.now() + 45_000,
@@ -390,7 +407,12 @@ export const createAccountSettlementLinkV2 = functions
             },
           },
           {
-            headers: { Authorization: `Bearer ${paystackSecret()}` },
+            headers: {
+              Authorization: `Bearer ${paystackPaymentSecret({
+                merchantId,
+                purpose,
+              })}`,
+            },
             timeout: 15_000,
           },
         );
@@ -628,6 +650,13 @@ export async function applyVerifiedAccountSettlementV2(
       providerFeeMinor,
     });
     const customerData = customer.data() ?? {};
+    const providerMode = String(
+      intentData.providerMode ??
+        paystackPaymentProviderMode({ merchantId, purpose }),
+    );
+    if (!(["test", "live"] as string[]).includes(providerMode)) {
+      throw new Error("PAYSTACK_PROVIDER_DISABLED");
+    }
     const transactionData = {
       type: "Payment",
       amount: amountMinor / 100,
@@ -639,8 +668,8 @@ export async function applyVerifiedAccountSettlementV2(
       paymentIntentId: intentId,
       paymentReference: reference,
       provider: "paystack",
-      providerMode: paystackProviderMode(),
-      testOnly: paystackProviderMode() === "test",
+      providerMode,
+      testOnly: providerMode === "test",
       providerReference: reference,
       schemaVersion: 2,
     };
@@ -656,6 +685,10 @@ export async function applyVerifiedAccountSettlementV2(
       merchantId,
       customerId,
       provider: "paystack",
+      purpose,
+      providerMode,
+      testOnly: providerMode === "test",
+      activationScope: String(intentData.activationScope ?? "global"),
       subaccountCode: String(intentData.paystackSubaccountCode ?? ""),
       destination: intentData.settlementDestination ?? {},
       grossAmountMinor: amountMinor,
