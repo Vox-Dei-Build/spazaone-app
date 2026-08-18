@@ -176,6 +176,22 @@ test("payment admin commands share the fail-closed portal policy", () => {
   );
 });
 
+test("settlement detail is a recent-auth read without App Check token consumption", () => {
+  const admin = readFileSync(join(sourceRoot, "payments/v2/admin.ts"), "utf8");
+  const start = admin.indexOf(
+    "export const getSettlementVerificationRequestDetailV1",
+  );
+  const end = admin.indexOf("export const setGlobalPaymentConfigurationV2", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const detail = admin.slice(start, end);
+
+  assert.match(detail, /paymentAdminReadRuntime\.https\.onCall/);
+  assert.match(detail, /requirePaymentAdmin\(context\)/);
+  assert.doesNotMatch(detail, /requireRecentAuth:\s*false/);
+  assert.doesNotMatch(detail, /paymentAdminMutationRuntime/);
+});
+
 test("settlement approval queue is server-only and masks its public projection", () => {
   const requests = readFileSync(
     join(sourceRoot, "payments/v2/settlementAdminRequests.ts"),
