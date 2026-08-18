@@ -246,11 +246,13 @@ class WalletHubMenu extends StatelessWidget {
     if (overviewHasError || overview == null) {
       return 'Setup status unavailable';
     }
-    if (overview!.enabled) return 'Ready';
-    if (overview!.profile.bankVerificationStatus == 'pending_review') {
-      return 'Being checked';
-    }
-    return 'Not set up';
+    return switch (overview!.verification.stage) {
+      'approved' => 'Ready',
+      'submitted' || 'pending_review' || 'submitting' => 'In review',
+      'ready_to_verify' || 'changes_required' || 'rejected' => 'Action needed',
+      'blocked' => 'Paused',
+      _ => overview!.enabled ? 'Ready' : 'Not set up',
+    };
   }
 
   @override
@@ -705,12 +707,18 @@ class _WalletPageState extends State<WalletPage> {
     );
   }
 
-  void _openOnlinePayments() {
-    Navigator.of(context).push(
+  Future<void> _openOnlinePayments() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const WalletOnlinePaymentsPage(),
       ),
     );
+    if (!mounted) return;
+    setState(() {
+      _overviewFuture = PaymentSetupService.overview(
+        StoreSession.instance.storeId,
+      );
+    });
   }
 
   Future<void> _openAddMoney({List<String>? channels}) async {
@@ -761,7 +769,7 @@ class _WalletPageState extends State<WalletPage> {
               showCosts: FeatureFlags.enablePricingInfo,
               onAddMoney: () => unawaited(_openAddMoneyFromHub()),
               onBalance: _openBalance,
-              onOnlinePayments: _openOnlinePayments,
+              onOnlinePayments: () => unawaited(_openOnlinePayments()),
               onCosts: () => _openInfo(InfoView.info),
             ),
           ),
@@ -1036,13 +1044,28 @@ class WalletOnlinePaymentsPage extends StatefulWidget {
       _WalletOnlinePaymentsPageState();
 }
 
-class _WalletOnlinePaymentsPageState extends State<WalletOnlinePaymentsPage> {
+class _WalletOnlinePaymentsPageState extends State<WalletOnlinePaymentsPage>
+    with WidgetsBindingObserver {
   late Future<MerchantPaymentOverview> _overview;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(_refresh);
+    }
   }
 
   void _refresh() {

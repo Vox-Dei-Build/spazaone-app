@@ -301,6 +301,7 @@ test("Payments V2 truth is server-only for owners, operators and admins", async 
     "paymentConfiguration/global",
     "paymentSecurityBudgets/settlement_bank_validation_2026-08-13",
     "paymentAdministrationAudit/auditA",
+    "paymentAdministrationRequests/requestA",
     "merchantCommerceSettings/storeA",
     "campaignCreditPurchases/purchaseA",
     "campaignCreditRecoveryCases/recoveryA",

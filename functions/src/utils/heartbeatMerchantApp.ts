@@ -7,6 +7,7 @@
  * @param {string} data.appVersion   - semantic version, e.g. "1.14.3"
  * @param {number} data.buildNumber  - monotonically increasing build
  * @param {"android"|"ios"} data.platform
+ * @param {string=} data.commitSha   - immutable source commit from CI
  * @returns {Promise<{ok:true, ts:number}>}
  */
 
@@ -36,6 +37,9 @@ export const heartbeatMerchantApp = functions.https.onCall(
 
     // 3) Validate input
     const { merchantId, appVersion, buildNumber, platform } = data || {};
+    const commitSha = String(data?.commitSha ?? "")
+      .trim()
+      .toLowerCase();
     if (
       !merchantId ||
       typeof appVersion !== "string" ||
@@ -45,6 +49,12 @@ export const heartbeatMerchantApp = functions.https.onCall(
       throw new functions.https.HttpsError(
         "invalid-argument",
         "Missing/invalid fields.",
+      );
+    }
+    if (commitSha && !/^[a-f0-9]{40}$/.test(commitSha)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Invalid build provenance.",
       );
     }
 
@@ -58,6 +68,7 @@ export const heartbeatMerchantApp = functions.https.onCall(
         appVersion,
         buildNumber,
         platform,
+        ...(commitSha ? { appCommitSha: commitSha } : {}),
         lastHeartbeatAt: now,
       },
       { merge: true },

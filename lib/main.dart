@@ -10,6 +10,7 @@ import 'package:flutter_app_badger_plus/flutter_app_badger_plus.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
+import 'package:pasella/config/build_provenance.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/config/firebase_options.dart';
 import 'package:pasella/config/firebase_environment.dart';
@@ -361,6 +362,12 @@ int customerNotificationTabIndex(Map<String, dynamic> data) {
       : 2;
 }
 
+@visibleForTesting
+bool isOnlinePaymentsNotificationRoute(Uri? uri) {
+  return uri?.path == WalletPage.id &&
+      uri?.queryParameters['destination'] == 'online_payments';
+}
+
 /// Routes a notification tap to the correct screen.
 ///
 /// Recognises the `route` data field. For the `/promotionsPage` family of
@@ -396,6 +403,15 @@ void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
         ),
       );
     }
+  }
+
+  if (isOnlinePaymentsNotificationRoute(uri)) {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => const WalletPage(initialTab: WalletInitialTab.withdraw),
+      ),
+    );
+    return;
   }
 
   // Strip query params before pushing — the routes table only knows about
@@ -438,6 +454,9 @@ Future<void> setupMerchantHeartbeatBootHook() async {
   final info = await PackageInfo.fromPlatform();
   final currentVersion = info.version;
   final currentBuild = int.tryParse(info.buildNumber) ?? 0;
+  final currentCommit = BuildProvenance.hasCommitSha
+      ? BuildProvenance.commitSha.toLowerCase()
+      : '';
   final platform = defaultTargetPlatform.name;
   final inFlightStores = <String>{};
 
@@ -450,11 +469,19 @@ Future<void> setupMerchantHeartbeatBootHook() async {
     final keyPrefix = 'hb_${user.uid}_${storeId}_$platform';
     final lastVersion = box.get('${keyPrefix}_version') as String?;
     final lastBuild = box.get('${keyPrefix}_build') as int?;
+    final lastCommit = box.get('${keyPrefix}_commit') as String?;
     final lastAt = box.get('${keyPrefix}_last_ms') as int?;
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final stale = lastAt == null || (nowMs - lastAt) > 24 * 60 * 60 * 1000;
-    final changed = lastVersion != currentVersion || lastBuild != currentBuild;
+    final changed = merchantHeartbeatBuildChanged(
+      lastVersion: lastVersion,
+      lastBuild: lastBuild,
+      lastCommit: lastCommit,
+      currentVersion: currentVersion,
+      currentBuild: currentBuild,
+      currentCommit: currentCommit,
+    );
 
     try {
       if (stale || changed) {
@@ -463,6 +490,9 @@ Future<void> setupMerchantHeartbeatBootHook() async {
         );
         await box.put('${keyPrefix}_version', currentVersion);
         await box.put('${keyPrefix}_build', currentBuild);
+        if (currentCommit.isNotEmpty) {
+          await box.put('${keyPrefix}_commit', currentCommit);
+        }
         await box.put('${keyPrefix}_last_ms', nowMs);
       }
     } catch (error, stack) {

@@ -4,6 +4,30 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/config/function_endpoints.dart';
 import 'package:pasella/services/secure_function_client.dart';
 
+class SupportedSettlementBank {
+  const SupportedSettlementBank({
+    required this.name,
+    required this.branchCode,
+    required this.supportedAccountTypes,
+  });
+
+  final String name;
+  final String branchCode;
+  final List<String> supportedAccountTypes;
+
+  factory SupportedSettlementBank.fromMap(Map<String, dynamic> data) {
+    return SupportedSettlementBank(
+      name: data['name']?.toString().trim() ?? '',
+      branchCode: data['branchCode']?.toString().trim() ?? '',
+      supportedAccountTypes: List<String>.unmodifiable(
+        (data['supportedAccountTypes'] as List? ?? const <dynamic>[])
+            .map((value) => value.toString().trim().toLowerCase())
+            .where((value) => value == 'personal' || value == 'business'),
+      ),
+    );
+  }
+}
+
 class SettlementProfileSummary {
   const SettlementProfileSummary({
     required this.status,
@@ -18,6 +42,60 @@ class SettlementProfileSummary {
   final String bankName;
   final String resolvedAccountName;
   final String maskedAccount;
+}
+
+class MerchantVerificationJourney {
+  const MerchantVerificationJourney({
+    required this.stage,
+    required this.reason,
+    this.requestStatus = '',
+    this.hasSavedBankingDetails = false,
+    this.requestedAtMs = 0,
+    this.updatedAtMs = 0,
+    this.bankName = '',
+    this.maskedAccount = '',
+  });
+
+  final String stage;
+  final String reason;
+  final String requestStatus;
+  final bool hasSavedBankingDetails;
+  final int requestedAtMs;
+  final int updatedAtMs;
+  final String bankName;
+  final String maskedAccount;
+
+  bool get awaitingAuthorization => stage == 'submitted';
+  bool get readyToVerify => stage == 'ready_to_verify';
+  bool get awaitingFinalReview => stage == 'pending_review';
+  bool get needsMerchantAction => const {
+        'missing_information',
+        'ready_to_submit',
+        'ready_to_verify',
+        'changes_required',
+        'rejected',
+      }.contains(stage);
+
+  factory MerchantVerificationJourney.fromMap(
+    Map<String, dynamic> data, {
+    required SettlementProfileSummary profile,
+  }) {
+    final fallbackStage = profile.bankVerificationStatus == 'approved'
+        ? 'approved'
+        : profile.bankVerificationStatus == 'pending_review'
+            ? 'pending_review'
+            : 'not_started';
+    return MerchantVerificationJourney(
+      stage: data['stage']?.toString() ?? fallbackStage,
+      reason: data['reason']?.toString() ?? fallbackStage,
+      requestStatus: data['requestStatus']?.toString() ?? '',
+      hasSavedBankingDetails: data['hasSavedBankingDetails'] == true,
+      requestedAtMs: (data['requestedAtMs'] as num? ?? 0).toInt(),
+      updatedAtMs: (data['updatedAtMs'] as num? ?? 0).toInt(),
+      bankName: data['bankName']?.toString() ?? '',
+      maskedAccount: data['maskedAccount']?.toString() ?? '',
+    );
+  }
 }
 
 class MerchantSettlement {
@@ -129,6 +207,10 @@ class MerchantPaymentOverview {
     required this.paymentsV2,
     required this.profile,
     required this.settlements,
+    this.verification = const MerchantVerificationJourney(
+      stage: 'not_started',
+      reason: 'not_started',
+    ),
     this.settlementCurrency = 'ZAR',
     this.outstandingSettlementMinor = 0,
     this.testOnlySettlementMinor = 0,
@@ -136,6 +218,7 @@ class MerchantPaymentOverview {
 
   final MerchantPaymentsV2 paymentsV2;
   final SettlementProfileSummary profile;
+  final MerchantVerificationJourney verification;
   final List<MerchantSettlement> settlements;
   final String settlementCurrency;
   final int outstandingSettlementMinor;
@@ -151,6 +234,8 @@ class MerchantPaymentOverview {
     final paymentsData =
         Map<String, dynamic>.from(data['paymentsV2'] as Map? ?? {});
     final profile = Map<String, dynamic>.from(data['profile'] as Map? ?? {});
+    final verification =
+        Map<String, dynamic>.from(data['verification'] as Map? ?? {});
     final totals = Map<String, dynamic>.from(data['totals'] as Map? ?? {});
     final settlements = (data['settlements'] as List? ?? const [])
         .whereType<Map>()
@@ -173,18 +258,23 @@ class MerchantPaymentOverview {
           ),
         )
         .toList();
+    final profileSummary = SettlementProfileSummary(
+      status: profile['status']?.toString() ?? 'not_started',
+      bankVerificationStatus:
+          profile['bankVerificationStatus']?.toString() ?? 'not_started',
+      bankName: profile['bankName']?.toString() ?? '',
+      resolvedAccountName: profile['resolvedAccountName']?.toString() ?? '',
+      maskedAccount: profile['maskedAccount']?.toString() ?? '',
+    );
     return MerchantPaymentOverview(
       paymentsV2: MerchantPaymentsV2.fromMap(
         paymentsData,
         legacyReadiness: readiness,
       ),
-      profile: SettlementProfileSummary(
-        status: profile['status']?.toString() ?? 'not_started',
-        bankVerificationStatus:
-            profile['bankVerificationStatus']?.toString() ?? 'not_started',
-        bankName: profile['bankName']?.toString() ?? '',
-        resolvedAccountName: profile['resolvedAccountName']?.toString() ?? '',
-        maskedAccount: profile['maskedAccount']?.toString() ?? '',
+      profile: profileSummary,
+      verification: MerchantVerificationJourney.fromMap(
+        verification,
+        profile: profileSummary,
       ),
       settlements: settlements,
       settlementCurrency: totals['currency']?.toString() ?? 'ZAR',
@@ -204,6 +294,50 @@ class PaymentSetupException implements Exception {
 
 class PaymentSetupService {
   const PaymentSetupService._();
+
+  static Future<List<SupportedSettlementBank>>
+      supportedSettlementBanks() async {
+    try {
+      final response = await FirebaseFunctions.instance
+          .httpsCallable('listSupportedSettlementBanksV1')
+          .call();
+      final data = Map<String, dynamic>.from(response.data as Map);
+      return List<SupportedSettlementBank>.unmodifiable(
+        (data['banks'] as List? ?? const <dynamic>[])
+            .whereType<Map>()
+            .map((value) => SupportedSettlementBank.fromMap(
+                  Map<String, dynamic>.from(value),
+                ))
+            .where((bank) =>
+                bank.name.isNotEmpty &&
+                RegExp(r'^\d{6}$').hasMatch(bank.branchCode) &&
+                bank.supportedAccountTypes.isNotEmpty),
+      );
+    } on FirebaseFunctionsException catch (error) {
+      throw PaymentSetupException(
+        error.message ?? 'Supported banks are temporarily unavailable.',
+      );
+    }
+  }
+
+  static Future<Map<String, dynamic>> requestSettlementVerification({
+    required String merchantId,
+    required String bankingDetailsId,
+  }) async {
+    try {
+      final response = await FirebaseFunctions.instance
+          .httpsCallable('requestMerchantSettlementVerificationV1')
+          .call({
+        'merchantId': merchantId,
+        'bankingDetailsId': bankingDetailsId,
+      });
+      return Map<String, dynamic>.from(response.data as Map);
+    } on FirebaseFunctionsException catch (error) {
+      throw PaymentSetupException(
+        error.message ?? 'The verification request could not be submitted.',
+      );
+    }
+  }
 
   static Future<Map<String, dynamic>> prepareSettlementProfile({
     required String merchantId,

@@ -139,9 +139,84 @@ test("payment-request review is an admin and App Check protected command", () =>
   );
   assert.notEqual(start, -1);
   const command = source.slice(start, start + 1_800);
-  assert.match(command, /requireAdmin\(context\)/);
-  assert.match(command, /if \(!context\.app\)/);
+  assert.match(command, /requirePaymentAdmin\(context\)/);
   assert.match(command, /paymentAdministrationAudit/);
+});
+
+test("payment admin commands share the fail-closed portal policy", () => {
+  const policy = readFileSync(
+    join(sourceRoot, "payments/v2/paymentAdminAuth.ts"),
+    "utf8",
+  );
+  assert.match(policy, /spazaAdmin/);
+  assert.match(policy, /appCheckVerified/);
+  assert.match(policy, /appCheckAlreadyConsumed/);
+  assert.match(policy, /emailVerified/);
+  assert.match(policy, /signInProvider/);
+  assert.match(policy, /allowedEmails/);
+  assert.match(policy, /allowedOrigins/);
+  assert.match(policy, /PAYMENT_ADMIN_RECENT_AUTH_REQUIRED/);
+
+  const admin = readFileSync(join(sourceRoot, "payments/v2/admin.ts"), "utf8");
+  assert.doesNotMatch(admin, /function requireAdmin\(/);
+  assert.match(admin, /requirePaymentAdmin\(context\)/);
+  assert.match(admin, /consumeAppCheckToken:\s*true/);
+
+  const profiles = readFileSync(
+    join(sourceRoot, "payments/v2/merchantProfiles.ts"),
+    "utf8",
+  );
+  const reviewStart = profiles.indexOf(
+    "export const reviewMerchantSettlementProfileV2",
+  );
+  assert.notEqual(reviewStart, -1);
+  assert.match(
+    profiles.slice(reviewStart, reviewStart + 900),
+    /requirePaymentAdmin\(context\)/,
+  );
+});
+
+test("settlement approval queue is server-only and masks its public projection", () => {
+  const requests = readFileSync(
+    join(sourceRoot, "payments/v2/settlementAdminRequests.ts"),
+    "utf8",
+  );
+  assert.match(requests, /settlementAdminRequestProjection/);
+  assert.match(requests, /maskedAccount/);
+  assert.doesNotMatch(
+    requests.slice(
+      requests.indexOf(
+        "return {",
+        requests.indexOf("settlementAdminRequestProjection"),
+      ),
+    ),
+    /merchantId|accountFingerprint|requestedBy|paystackSubaccountCode/,
+  );
+  const rules = readFileSync(
+    join(sourceRoot, "..", "..", "firestore.rules"),
+    "utf8",
+  );
+  assert.match(
+    rules,
+    /match \/paymentAdministrationRequests\/\{document=\*\*\}[\s\S]*?allow read, write: if false;/,
+  );
+});
+
+test("merchant settlement responses do not expose account fingerprints", () => {
+  const profiles = readFileSync(
+    join(sourceRoot, "payments/v2/merchantProfiles.ts"),
+    "utf8",
+  );
+  const summaryStart = profiles.indexOf("function profileSummary");
+  assert.notEqual(summaryStart, -1);
+  const returnStart = profiles.indexOf("return {", summaryStart);
+  const returnEnd = profiles.indexOf("\n  };", returnStart);
+  assert.notEqual(returnStart, -1);
+  assert.notEqual(returnEnd, -1);
+  assert.doesNotMatch(
+    profiles.slice(returnStart, returnEnd),
+    /accountFingerprint|paystackSubaccountCode|merchantId:/,
+  );
 });
 
 test("billable settlement verification is app-attested and bank-only", () => {
@@ -162,11 +237,97 @@ test("billable settlement verification is app-attested and bank-only", () => {
   assert.match(endpoint, /assertBankAccountOnlyVerificationPayload/);
   assert.match(source, /settlementVerificationAuthorizationDecision/);
   assert.doesNotMatch(source, /settlement_profile_auto_approved/);
+  const authorizationCheck = source.indexOf(
+    "initialAuthorizationDecision",
+    start,
+  );
+  const bankLookup = source.indexOf(
+    "fetchSupportedSettlementBanks(secret)",
+    start,
+  );
   assert.ok(
-    source.indexOf("initialAuthorizationDecision") <
-      source.indexOf("https://api.paystack.co/bank"),
-    "admin preauthorization must be checked before every Paystack bank API call",
+    authorizationCheck > start && bankLookup > authorizationCheck,
+    "admin preauthorization must be checked before the provider lookup used by billable verification",
   );
   assert.match(source, /https:\/\/api\.paystack\.co\/bank\/validate/);
   assert.doesNotMatch(source, /decision\/bin|authorization\/verify|\/card\//);
+});
+
+test("merchant verification begins with an attested idempotent request", () => {
+  const source = readFileSync(
+    join(sourceRoot, "payments/v2/merchantProfiles.ts"),
+    "utf8",
+  );
+  const start = source.indexOf(
+    "export const requestMerchantSettlementVerificationV1",
+  );
+  assert.notEqual(start, -1);
+  const request = source.slice(
+    start,
+    source.indexOf("export const prepareMerchantSettlementProfileV2", start),
+  );
+  assert.match(request, /enforceAppCheck:\s*true/);
+  assert.match(request, /assertStoreAccess/);
+  assert.match(request, /upsertSettlementAuthorizationRequest/);
+  assert.match(request, /Enter the bank name/);
+  assert.match(request, /six-digit branch code/);
+  assert.match(request, /Enter a valid bank account number/);
+  assert.match(request, /Enter the bank account holder name/);
+  assert.doesNotMatch(
+    request,
+    /documentNumber|PAYSTACK_SECRET_KEY|api\.paystack\.co/,
+  );
+});
+
+test("merchant heartbeat records only an exact source commit", () => {
+  const heartbeat = readFileSync(
+    join(sourceRoot, "utils/heartbeatMerchantApp.ts"),
+    "utf8",
+  );
+  assert.match(heartbeat, /\^\[a-f0-9\]\{40\}\$/);
+  assert.match(heartbeat, /appCommitSha: commitSha/);
+
+  const appBoot = readFileSync(
+    join(sourceRoot, "..", "..", "lib", "main.dart"),
+    "utf8",
+  );
+  assert.match(appBoot, /merchantHeartbeatBuildChanged/);
+  assert.match(appBoot, /keyPrefix}_commit/);
+
+  const pipeline = readFileSync(
+    join(sourceRoot, "..", "..", "codemagic.yaml"),
+    "utf8",
+  );
+  assert.equal(
+    pipeline.match(/--dart-define=BUILD_COMMIT="\$CM_COMMIT"/g)?.length,
+    2,
+  );
+
+  const xcodeCloudBootstrap = readFileSync(
+    join(sourceRoot, "..", "..", "ios", "ci_scripts", "ci_post_clone.sh"),
+    "utf8",
+  );
+  assert.match(xcodeCloudBootstrap, /--dart-define=BUILD_COMMIT="\$CI_COMMIT"/);
+  assert.match(
+    xcodeCloudBootstrap,
+    /flutter build ios --config-only --flavor production --release/,
+  );
+
+  const defaultXcodeScheme = readFileSync(
+    join(
+      sourceRoot,
+      "..",
+      "..",
+      "ios",
+      "Runner.xcodeproj",
+      "xcshareddata",
+      "xcschemes",
+      "Runner.xcscheme",
+    ),
+    "utf8",
+  );
+  assert.match(
+    defaultXcodeScheme,
+    /<ArchiveAction\s+buildConfiguration = "Release-production"/,
+  );
 });

@@ -27,4 +27,17 @@ void main() {
       2,
     );
   });
+
+  test('verification notifications deep-link to Online payments', () {
+    expect(
+      isOnlinePaymentsNotificationRoute(
+        Uri.parse('/walletPage?destination=online_payments'),
+      ),
+      isTrue,
+    );
+    expect(
+      isOnlinePaymentsNotificationRoute(Uri.parse('/walletPage')),
+      isFalse,
+    );
+  });
 }

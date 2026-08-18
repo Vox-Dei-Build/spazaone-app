@@ -13,6 +13,7 @@ MerchantPaymentOverview overview({
   List<MerchantSettlement> settlements = const [],
   int outstandingMinor = 0,
   int testOnlyMinor = 0,
+  String? verificationStage,
 }) =>
     MerchantPaymentOverview(
       paymentsV2: MerchantPaymentsV2(
@@ -31,6 +32,17 @@ MerchantPaymentOverview overview({
         bankVerificationStatus: bankStatus,
         bankName: bankName,
         resolvedAccountName: accountName,
+        maskedAccount: maskedAccount,
+      ),
+      verification: MerchantVerificationJourney(
+        stage: verificationStage ??
+            (bankStatus == 'pending_review'
+                ? 'pending_review'
+                : ready
+                    ? 'approved'
+                    : 'ready_to_submit'),
+        reason: 'test',
+        bankName: bankName,
         maskedAccount: maskedAccount,
       ),
       settlements: settlements,
@@ -62,11 +74,11 @@ void main() {
     await pumpSection(tester, overview(), onSetup: () => tapped = true);
     expect(
       find.text(
-        'Add your bank account so customers can pay online and you can receive your money.',
+        'Request verification for your bank account so online-sale payouts go to the right place.',
       ),
       findsOneWidget,
     );
-    await tester.tap(find.text('Set up bank account'));
+    await tester.tap(find.text('Start verification'));
     expect(tapped, isTrue);
   });
 
@@ -83,7 +95,7 @@ void main() {
         accountName: 'Sensitive Account Holder',
       ),
     );
-    expect(find.text('We’re checking your bank details'), findsOneWidget);
+    expect(find.text('Bank details submitted'), findsOneWidget);
     expect(find.text('Example Bank · •••• 1234'), findsOneWidget);
     expect(find.text('Sensitive Account Holder'), findsNothing);
   });
