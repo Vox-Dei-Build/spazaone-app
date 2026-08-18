@@ -101,12 +101,30 @@ function assertPaystackSecretMatchesEnvironment(secret: string): void {
 /**
  * Provider credential for read-only catalogue requests.
  *
- * The production payment kill switch blocks charges, validation and other
- * financial mutations. It must not break safe provider metadata needed to
- * complete a merchant's setup form. This accessor remains environment-bound
- * and must never be used for a financial operation.
+ * The production payment kill switch blocks charges and other fund-moving
+ * operations. It must not break safe provider metadata needed to complete a
+ * merchant's setup form. This accessor remains environment-bound and must
+ * never be used for a financial operation.
  */
 export function paystackReadOnlySecret(): string {
+  const secret = configuredPaystackSecret();
+  assertPaystackSecretMatchesEnvironment(secret);
+  return secret;
+}
+
+/**
+ * Provider credential for the separately governed settlement-verification
+ * lane.
+ *
+ * These endpoints may validate a preauthorized bank account and stage or
+ * activate its Paystack subaccount, but they never create a charge or move
+ * funds. They remain protected by merchant access, App Check, an operations
+ * authorization, attempt budgets, final operations review and the Firestore
+ * settlement-verification suspension switch. The broader
+ * PAYSTACK_PROVIDER_MODE kill switch therefore stays authoritative for every
+ * payment, top-up, settlement, supplier-order and refund flow.
+ */
+export function paystackSettlementVerificationSecret(): string {
   const secret = configuredPaystackSecret();
   assertPaystackSecretMatchesEnvironment(secret);
   return secret;
