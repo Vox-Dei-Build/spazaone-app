@@ -78,17 +78,47 @@ export function paystackProviderMode(): ProviderMode {
   return mode;
 }
 
-export function paystackSecret(): string {
+function configuredPaystackSecret(): string {
   const secret =
     value("PAYSTACK_SECRET_KEY") ||
     value("PAYSTACK_TEST_SECRET_KEY") ||
     (functions.config().paystack?.secret as string | undefined) ||
     "";
   if (!secret) throw new Error("PAYSTACK_SECRET_MISSING");
+  return secret;
+}
+
+function assertPaystackSecretMatchesEnvironment(secret: string): void {
+  const environment = resolveEnvironment();
+  if (environment === "development" && !secret.startsWith("sk_test_")) {
+    throw new Error("PAYSTACK_TEST_KEY_REQUIRED");
+  }
+  if (environment === "production" && !secret.startsWith("sk_live_")) {
+    throw new Error("PAYSTACK_LIVE_KEY_REQUIRED");
+  }
+}
+
+/**
+ * Provider credential for read-only catalogue requests.
+ *
+ * The production payment kill switch blocks charges, validation and other
+ * financial mutations. It must not break safe provider metadata needed to
+ * complete a merchant's setup form. This accessor remains environment-bound
+ * and must never be used for a financial operation.
+ */
+export function paystackReadOnlySecret(): string {
+  const secret = configuredPaystackSecret();
+  assertPaystackSecretMatchesEnvironment(secret);
+  return secret;
+}
+
+export function paystackSecret(): string {
+  const secret = configuredPaystackSecret();
   const mode = paystackProviderMode();
   if (mode === "disabled" || mode === "stub") {
     throw new Error("PAYSTACK_PROVIDER_DISABLED");
   }
+  assertPaystackSecretMatchesEnvironment(secret);
   if (mode === "test" && !secret.startsWith("sk_test_")) {
     throw new Error("PAYSTACK_TEST_KEY_REQUIRED");
   }

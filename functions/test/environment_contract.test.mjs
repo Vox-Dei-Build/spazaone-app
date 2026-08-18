@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertProjectMatchesEnvironment,
   paystackProviderMode,
+  paystackReadOnlySecret,
   paystackSecret,
   resolveEnvironment,
 } from "../lib/config/environment.js";
@@ -60,6 +61,38 @@ test("development requires a test Paystack key", () => {
     },
     () => {
       assert.throws(paystackSecret, /PAYSTACK_TEST_KEY_REQUIRED/);
+    },
+  );
+});
+
+test("production disabled mode permits read-only Paystack catalogues only", () => {
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      PAYSTACK_PROVIDER_MODE: "disabled",
+      PAYSTACK_SECRET_KEY: "sk_live_read-only-catalogue",
+    },
+    () => {
+      assert.equal(
+        paystackReadOnlySecret(),
+        "sk_live_read-only-catalogue",
+      );
+      assert.throws(paystackSecret, /PAYSTACK_PROVIDER_DISABLED/);
+    },
+  );
+});
+
+test("production read-only Paystack access rejects a test key", () => {
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      PAYSTACK_PROVIDER_MODE: "disabled",
+      PAYSTACK_SECRET_KEY: "sk_test_wrong-environment",
+    },
+    () => {
+      assert.throws(paystackReadOnlySecret, /PAYSTACK_LIVE_KEY_REQUIRED/);
     },
   );
 });

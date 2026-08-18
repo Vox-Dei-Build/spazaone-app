@@ -2,21 +2,35 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const RELEASE_BUILD = 88;
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+const pubspec = fs.readFileSync(path.join(repositoryRoot, "pubspec.yaml"), "utf8");
+const releaseVersionMatch = pubspec.match(
+  /^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$/m,
+);
+if (!releaseVersionMatch) {
+  throw new Error("pubspec.yaml must declare version x.y.z+build.");
+}
+export const RELEASE_VERSION = releaseVersionMatch[1];
+export const RELEASE_BUILD = Number(releaseVersionMatch[2]);
+const RELEASE_SLUG = RELEASE_VERSION.replaceAll(".", "");
 const ANDROID_APP_ID = "1:716158514645:android:a4f2b4756aafcebbe5795c";
 const IOS_APP_ID = "1:716158514645:ios:17eba128d70a92a7e5795c";
 
 const RELEASE_CONDITIONS = [
   {
-    name: "spazaone_480_android_build_88",
+    name: `spazaone_${RELEASE_SLUG}_android_build_${RELEASE_BUILD}`,
     expression:
       `app.id == '${ANDROID_APP_ID}' && ` +
       `app.build.exactlyMatches(['${RELEASE_BUILD}'])`,
     tagColor: "BLUE",
   },
   {
-    name: "spazaone_480_ios_build_88",
+    name: `spazaone_${RELEASE_SLUG}_ios_build_${RELEASE_BUILD}`,
     expression:
       `app.id == '${IOS_APP_ID}' && ` +
       `app.build.exactlyMatches(['${RELEASE_BUILD}'])`,
@@ -115,7 +129,8 @@ export function prepareProductionRemoteConfig(template) {
         ),
       },
       description:
-        "Enabled only for Spaza One 4.8.0+88 internal/release QA. " +
+        `Enabled for Spaza One ${RELEASE_VERSION}+${RELEASE_BUILD} and ` +
+        "previously prepared internal/release QA builds. " +
         "Server payment authority remains independently fail-closed.",
       valueType: "BOOLEAN",
     };
@@ -124,7 +139,8 @@ export function prepareProductionRemoteConfig(template) {
   candidate.version = {
     ...(candidate.version ?? {}),
     description:
-      "Spaza One 4.8.0+88 build-scoped presentation gates; payments remain server-dark",
+      `Spaza One ${RELEASE_VERSION}+${RELEASE_BUILD} build-scoped ` +
+      "presentation gates; payments remain server-dark",
   };
   return candidate;
 }
@@ -140,6 +156,7 @@ function main() {
     `${JSON.stringify({
       status: "prepared",
       output: args.output,
+      releaseVersion: RELEASE_VERSION,
       releaseBuild: RELEASE_BUILD,
       conditions: RELEASE_CONDITIONS.map(({ name }) => name),
       presentationFlags: RELEASE_PRESENTATION_FLAGS,
