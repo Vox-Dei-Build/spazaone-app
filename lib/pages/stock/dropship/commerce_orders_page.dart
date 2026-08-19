@@ -647,9 +647,12 @@ class _OrderDetailsState extends State<_OrderDetails> {
         }
         secondaryActions.add(_OrderOverflowAction.cancel);
       case 'paid':
-        if (order.supplierId != 'cj_dropshipping') {
+        if (order.supplierId != 'cj_dropshipping' ||
+            order.paymentMethod == 'manual') {
           addPrimary(
-            'Submit for fulfilment',
+            order.supplierId == 'cj_dropshipping'
+                ? 'Record supplier order'
+                : 'Submit for fulfilment',
             Icons.outbox_outlined,
             _fulfill,
           );
@@ -754,7 +757,26 @@ class _SupplierOperationsPanel extends StatelessWidget {
         subtitle: const Text('Internal delivery and margin details'),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
-          if (isCj && order.status == 'paid') ...[
+          if (isCj &&
+              order.status == 'paid' &&
+              order.paymentMethod == 'manual') ...[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Place the supplier order manually',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Use the supplier details below to place and pay for the order. '
+                'Then tap Record supplier order and save its order number.',
+              ),
+            ),
+            const SizedBox(height: 12),
+          ] else if (isCj && order.status == 'paid') ...[
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(

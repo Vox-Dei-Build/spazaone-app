@@ -143,6 +143,20 @@ function publicError(error: unknown): { status: number; message: string } {
       403,
       "This payment request is not linked to that customer account.",
     ],
+    REPAYMENT_PLAN_AMOUNT_INVALID: [
+      400,
+      "Check the plan total and installment amount.",
+    ],
+    REPAYMENT_CADENCE_INVALID: [400, "Choose a repayment frequency."],
+    REPAYMENT_START_INVALID: [400, "Choose a future first payment date."],
+    REPAYMENT_PLAN_ALREADY_ACTIVE: [
+      409,
+      "This customer already has an active repayment plan.",
+    ],
+    REPAYMENT_PLAN_IDEMPOTENCY_MISMATCH: [
+      409,
+      "That repayment plan request has changed. Start again.",
+    ],
   };
   const mapped = known[code];
   return mapped
@@ -198,6 +212,9 @@ export const createAccountSettlementLinkV2 = functions
         purpose,
       });
       const channel = accountChannel(req.body?.channel);
+      if (!(readiness.channels ?? []).includes(channel)) {
+        throw new Error("ACCOUNT_CHANNEL_INVALID");
+      }
       const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
       const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
       const paymentRequestRef = paymentRequestId
@@ -654,6 +671,34 @@ export async function applyVerifiedAccountSettlementV2(
     if (!(["test", "live"] as string[]).includes(providerMode)) {
       throw new Error("PAYSTACK_PROVIDER_DISABLED");
     }
+    let planRemainingAfter: number | null = null;
+    let nextPlanDueAt: Timestamp | null = null;
+    if (planRef && plan) {
+      const remainingBefore = requirePositiveMinorUnits(
+        plan.get("remainingAmountMinor"),
+        "plan_remaining",
+      );
+      if (amountMinor > remainingBefore) {
+        throw new Error("REPAYMENT_INSTALLMENT_EXCEEDS_REMAINING");
+      }
+      planRemainingAfter = remainingBefore - amountMinor;
+      if (planRemainingAfter > 0) {
+        const cadenceDays = Number(plan.get("cadenceDays"));
+        const currentDueAt = plan.get("nextDueAt") as Timestamp | undefined;
+        if (
+          !Number.isSafeInteger(cadenceDays) ||
+          cadenceDays < 1 ||
+          cadenceDays > 366 ||
+          !currentDueAt
+        ) {
+          throw new Error("REPAYMENT_PLAN_SCHEDULE_INVALID");
+        }
+        nextPlanDueAt = Timestamp.fromMillis(
+          Math.max(currentDueAt.toMillis(), Date.now()) +
+            cadenceDays * 24 * 60 * 60 * 1000,
+        );
+      }
+    }
     const transactionData = {
       type: "Payment",
       amount: amountMinor / 100,
@@ -673,7 +718,14 @@ export async function applyVerifiedAccountSettlementV2(
     tx.create(ledgerRef, transactionData);
     tx.set(
       customerRef,
-      { lastTransaction: transactionData, updatedAt: now },
+      {
+        lastTransaction: transactionData,
+        updatedAt: now,
+        ...(planRemainingAfter === 0 &&
+        String(customerData.activeRepaymentPlanId ?? "") === repaymentPlanId
+          ? { activeRepaymentPlanId: FieldValue.delete() }
+          : {}),
+      },
       { merge: true },
     );
     tx.create(settlementRef, {
@@ -699,22 +751,15 @@ export async function applyVerifiedAccountSettlementV2(
       updatedAt: now,
     });
     if (planRef && plan) {
-      const remainingBefore = requirePositiveMinorUnits(
-        plan.get("remainingAmountMinor"),
-        "plan_remaining",
-      );
-      if (amountMinor > remainingBefore) {
-        throw new Error("REPAYMENT_INSTALLMENT_EXCEEDS_REMAINING");
-      }
-      const remainingAfter = remainingBefore - amountMinor;
       tx.update(planRef, {
         paidAmountMinor: FieldValue.increment(amountMinor),
-        remainingAmountMinor: remainingAfter,
+        remainingAmountMinor: planRemainingAfter,
         completedInstallments: FieldValue.increment(1),
-        status: remainingAfter === 0 ? "completed" : "active",
+        status: planRemainingAfter === 0 ? "completed" : "active",
+        ...(nextPlanDueAt ? { nextDueAt: nextPlanDueAt } : {}),
         lastPaymentIntentId: intentId,
         updatedAt: now,
-        ...(remainingAfter === 0 ? { completedAt: now } : {}),
+        ...(planRemainingAfter === 0 ? { completedAt: now } : {}),
       });
     }
     tx.update(intentRef, {
@@ -874,9 +919,8 @@ export const createRepaymentPlanV2 = functions
       });
       if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
       const customerId = id(req.body?.customerId, "CUSTOMER_ID");
-      const customer = await db
-        .doc(`users/${merchantId}/customers/${customerId}`)
-        .get();
+      const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
+      const customer = await customerRef.get();
       if (!customer.exists) throw new Error("CUSTOMER_NOT_FOUND");
       const outstanding = accountOutstandingMinor(
         (customer.data() ?? {}).balance,
@@ -912,17 +956,52 @@ export const createRepaymentPlanV2 = functions
       const planRef = db.doc(`repaymentPlans/${planId}`);
       let deduped = false;
       await db.runTransaction(async (tx) => {
-        const existing = await tx.get(planRef);
+        const [existing, currentCustomer] = await Promise.all([
+          tx.get(planRef),
+          tx.get(customerRef),
+        ]);
         if (existing.exists) {
           if (
             existing.get("merchantId") !== merchantId ||
             existing.get("customerId") !== customerId ||
-            Number(existing.get("totalAmountMinor")) !== totalAmountMinor
+            Number(existing.get("totalAmountMinor")) !== totalAmountMinor ||
+            Number(existing.get("installmentAmountMinor")) !==
+              installmentAmountMinor ||
+            String(existing.get("cadence") ?? "") !== cadence ||
+            Number(
+              (
+                existing.get("startAt") as Timestamp | undefined
+              )?.toMillis?.() ?? 0,
+            ) !== startAtMs
           ) {
             throw new Error("REPAYMENT_PLAN_IDEMPOTENCY_MISMATCH");
           }
           deduped = true;
+          tx.set(
+            customerRef,
+            {
+              activeRepaymentPlanId: planId,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
           return;
+        }
+        const activePlanId = String(
+          currentCustomer.get("activeRepaymentPlanId") ?? "",
+        ).trim();
+        if (activePlanId && activePlanId !== planId) {
+          const activePlan = await tx.get(
+            db.doc(`repaymentPlans/${id(activePlanId, "PLAN_ID")}`),
+          );
+          if (
+            activePlan.exists &&
+            activePlan.get("merchantId") === merchantId &&
+            activePlan.get("customerId") === customerId &&
+            activePlan.get("status") === "active"
+          ) {
+            throw new Error("REPAYMENT_PLAN_ALREADY_ACTIVE");
+          }
         }
         const now = FieldValue.serverTimestamp();
         tx.create(planRef, {
@@ -948,6 +1027,11 @@ export const createRepaymentPlanV2 = functions
           createdAt: now,
           updatedAt: now,
         });
+        tx.set(
+          customerRef,
+          { activeRepaymentPlanId: planId, updatedAt: now },
+          { merge: true },
+        );
       });
       res.status(200).json({
         planId,

@@ -1,15 +1,24 @@
 import { db } from "../../config/main";
-import { paystackPaymentCanaryEnabled } from "../../config/environment";
+import {
+  paystackPaymentCanaryEnabled,
+  resolveEnvironment,
+} from "../../config/environment";
 import {
   isPaymentPurpose,
   MerchantPaymentStatus,
   PaymentPurpose,
 } from "./domain";
+import {
+  configuredPaystackChannels,
+  paymentChannelsForPurpose,
+  PaystackPaymentChannel,
+} from "./paymentChannels";
 
 type CapabilityMap = Partial<Record<PaymentPurpose, boolean>>;
 
 export type PaymentReadiness = {
   enabled: boolean;
+  channels?: PaystackPaymentChannel[];
   reason:
     | "ready"
     | "master_disabled"
@@ -85,7 +94,7 @@ export async function paymentReadiness(input: {
   ]);
   const globalData = global.data() ?? {};
   const merchantData = merchant.data() ?? {};
-  return resolvePaymentReadiness({
+  const readiness = resolvePaymentReadiness({
     masterEnabled: envEnabled(process.env.PAYMENTS_V2_MASTER_ENABLED),
     paymentCanaryEnabled: paystackPaymentCanaryEnabled(input),
     emergencySuspended: globalData.emergencySuspended === true,
@@ -98,4 +107,14 @@ export async function paymentReadiness(input: {
       (merchantData.capabilities as CapabilityMap | undefined) ?? {},
     purpose: input.purpose,
   });
+  const channels = readiness.enabled
+    ? paymentChannelsForPurpose(
+        input.purpose,
+        configuredPaystackChannels({
+          environment: resolveEnvironment(),
+          configured: globalData.paystackChannels,
+        }),
+      )
+    : [];
+  return { ...readiness, channels };
 }

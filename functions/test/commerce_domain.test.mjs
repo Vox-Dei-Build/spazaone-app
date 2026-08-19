@@ -4,6 +4,7 @@ import {
   canManuallyConfirmCommerceRefund,
   paymentStatusAfterAction,
   priceCommerceOrder,
+  priceManualSupplierOrder,
   supplierFundingPublicFailure,
   targetStatusForAction,
 } from "../lib/commerce/domain.js";
@@ -69,7 +70,7 @@ test("supplier funding failures are buyer-safe and confirm no charge", () => {
   assert.equal(supplierFundingPublicFailure("CJ_OUT_OF_STOCK"), null);
 });
 
-test("hosted supplier checkout quotes quantity and profitable channels before payment", () => {
+test("supplier checkout offers merchant-arranged Cash/EFT and no online collection", () => {
   const html = checkoutPage({
     listingId: "listing-1",
     title: "Solar Lamp",
@@ -77,14 +78,17 @@ test("hosted supplier checkout quotes quantity and profitable channels before pa
     image: "",
     sellPriceMinor: 10_000,
     shippingNotes: "",
-    digitalPaymentsEnabled: true,
+    digitalPaymentsEnabled: false,
   });
   assert.match(html, /id="quantity"/);
   assert.match(html, /preparePublicCommerceCheckout/);
   assert.match(html, /paymentOptions/);
   assert.match(html, /name='paymentChannel'/);
-  assert.match(html, /Capitec Pay/);
-  assert.match(html, /Scan to Pay/);
+  assert.match(html, /Cash with shop/);
+  assert.match(html, /EFT directly to shop/);
+  assert.match(html, /online payments are coming soon/i);
+  assert.doesNotMatch(html, /Pay securely/);
+  assert.doesNotMatch(html, /Capitec Pay|Scan to Pay/);
 });
 
 test("server pricing ignores a tampered client total", () => {
@@ -111,6 +115,23 @@ test("manual order pricing snapshots zero provider fee", () => {
   assert.equal(priced.feeMinor, 0);
   assert.equal(priced.marginMinor, 4_000);
   assert.equal(priced.amountDueMinor, 14_000);
+});
+
+test("manual supplier pricing treats the live landed quote as the total cost", () => {
+  const priced = priceManualSupplierOrder({
+    landedCostMinor: 10_000,
+    unitMarkupMinor: 2_000,
+    quantity: 2,
+  });
+  assert.deepEqual(priced, {
+    currency: "ZAR",
+    quantity: 2,
+    baseCostMinor: 10_000,
+    sellPriceMinor: 14_000,
+    feeMinor: 0,
+    marginMinor: 4_000,
+    amountDueMinor: 14_000,
+  });
 });
 
 test("pricing rejects unsupported quantities and loss-making listings", () => {

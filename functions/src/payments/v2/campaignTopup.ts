@@ -22,7 +22,12 @@ import {
 } from "./financialCore";
 import { paymentReadiness } from "./readiness";
 
-export const CAMPAIGN_TOPUP_CHANNELS = ["eft", "capitec_pay", "qr"] as const;
+export const CAMPAIGN_TOPUP_CHANNELS = [
+  "card",
+  "eft",
+  "capitec_pay",
+  "qr",
+] as const;
 export type CampaignTopupChannel = (typeof CAMPAIGN_TOPUP_CHANNELS)[number];
 
 type FeePolicy = {
@@ -34,6 +39,12 @@ type FeePolicy = {
 
 const MAX_CREDIT_MINOR = 10_000_000;
 const FEE_POLICIES: Record<CampaignTopupChannel, FeePolicy> = {
+  card: {
+    rateBpsExVat: 290,
+    flatMinorExVat: 100,
+    flatWaiverBelowMinor: 1000,
+    vatBps: 1500,
+  },
   eft: {
     rateBpsExVat: 200,
     flatMinorExVat: 0,
@@ -66,10 +77,9 @@ function ceilRational(numerator: number, denominator: number): number {
 }
 
 /**
- * Current South African public Paystack tariff, calculated in cents only.
- * Card top-ups are deliberately excluded: a hosted card checkout cannot know
- * whether the eventual card is local (2.9%) or international (3.1%) before
- * charging, so it cannot promise an exact pass-through quote.
+ * Current South African local-card and alternative-payment tariff, calculated
+ * in cents only. The internal release exposes Card only; the verified provider
+ * fee remains authoritative for reconciliation after payment.
  */
 export function campaignTopupProviderFeeMinor(input: {
   grossAmountMinor: number;
@@ -216,6 +226,9 @@ async function authenticatedQuote(req: functions.https.Request, res: any) {
   const channel = String(req.body?.channel ?? "").trim();
   if (!isCampaignTopupChannel(channel))
     throw new Error("TOPUP_CHANNEL_INVALID");
+  if (!(readiness.channels ?? []).includes(channel)) {
+    throw new Error("TOPUP_CHANNEL_INVALID");
+  }
   return {
     uid,
     merchantId,

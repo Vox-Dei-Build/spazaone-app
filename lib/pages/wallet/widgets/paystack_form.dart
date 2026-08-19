@@ -14,7 +14,7 @@ import 'package:pasella/shared/widgets/custom_app_bar.dart';
 class PaystackFormScreen extends StatefulWidget {
   const PaystackFormScreen({
     super.key,
-    this.allowedChannels = const <String>['eft', 'capitec_pay', 'qr'],
+    this.allowedChannels = const <String>['card'],
     this.merchantId,
   });
 
@@ -31,7 +31,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
   String get currentUserId =>
       widget.merchantId ?? StoreSession.instance.storeId;
   bool isLoading = false;
-  CampaignTopupChannel selectedChannel = CampaignTopupChannel.eft;
+  CampaignTopupChannel selectedChannel = CampaignTopupChannel.card;
 
   List<CampaignTopupChannel> get _availableChannels {
     final allowed = widget.allowedChannels.toSet();
@@ -39,7 +39,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         .where((channel) => allowed.contains(channel.wireName))
         .toList(growable: false);
     return channels.isEmpty
-        ? const <CampaignTopupChannel>[CampaignTopupChannel.eft]
+        ? const <CampaignTopupChannel>[CampaignTopupChannel.card]
         : channels;
   }
 

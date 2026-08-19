@@ -1379,6 +1379,27 @@ export const getCustomerPaymentRequestContextV1BotHttp = functions
         merchantId,
         purpose: "account_settlement",
       });
+      const activePlanId = String(
+        customer.get("activeRepaymentPlanId") ?? "",
+      ).trim();
+      const activePlan = activePlanId
+        ? await db
+            .doc(`repaymentPlans/${requestId(activePlanId, "PLAN_ID")}`)
+            .get()
+        : null;
+      const activePlanData =
+        activePlan?.exists &&
+        activePlan.get("merchantId") === merchantId &&
+        activePlan.get("customerId") === customerId &&
+        activePlan.get("status") === "active"
+          ? activePlan.data()
+          : null;
+      const remainingAmountMinor = Number(
+        activePlanData?.remainingAmountMinor ?? 0,
+      );
+      const installmentAmountMinor = Number(
+        activePlanData?.installmentAmountMinor ?? 0,
+      );
       res.status(200).json({
         schemaVersion: 1,
         merchantId,
@@ -1389,7 +1410,31 @@ export const getCustomerPaymentRequestContextV1BotHttp = functions
         ),
         ready: readiness.enabled,
         reason: readiness.reason,
-        channels: readiness.enabled ? ["card", "eft", "capitec_pay", "qr"] : [],
+        channels: readiness.enabled ? (readiness.channels ?? []) : [],
+        repaymentPlan:
+          activePlanData &&
+          Number.isSafeInteger(remainingAmountMinor) &&
+          remainingAmountMinor > 0 &&
+          Number.isSafeInteger(installmentAmountMinor) &&
+          installmentAmountMinor > 0
+            ? {
+                planId: activePlanId,
+                remainingAmountMinor,
+                installmentAmountMinor,
+                nextInstallmentAmountMinor: Math.min(
+                  remainingAmountMinor,
+                  installmentAmountMinor,
+                ),
+                cadence: String(activePlanData.cadence ?? ""),
+                nextDueAtMs: Number(
+                  (
+                    activePlanData.nextDueAt as
+                      | { toMillis?: () => number }
+                      | undefined
+                  )?.toMillis?.() ?? 0,
+                ),
+              }
+            : null,
       });
     } catch (error) {
       const response = publicError(error);

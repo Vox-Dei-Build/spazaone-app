@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createRequire } from "node:module";
 import admin from "firebase-admin";
-import { createCommerceOrder } from "../lib/commerce/payment.js";
+import {
+  createCommerceOrder,
+  getCommerceOrderStatus,
+} from "../lib/commerce/payment.js";
 import { prepareCommerceCheckout } from "../lib/commerce/prepareCommerceCheckout.js";
 
 const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "");
@@ -18,6 +21,8 @@ const axios = requireModule("axios");
 const originalAdapter = axios.defaults.adapter;
 const db = admin.firestore();
 const botToken = "emulator-commerce-v2-bot";
+let paystackInitializeCalls = 0;
+let supplierFundingCalls = 0;
 
 function responseRecorder() {
   return {
@@ -168,9 +173,11 @@ function installProviderFakes() {
       });
     }
     if (url === "/shopping/pay/getBalance") {
+      supplierFundingCalls += 1;
       return ok(config, { result: true, data: { amount: "1000.00" } });
     }
     if (url.includes("paystack.co/transaction/initialize")) {
+      paystackInitializeCalls += 1;
       const input =
         typeof config.data === "string" ? JSON.parse(config.data) : config.data;
       return ok(config, {
@@ -229,6 +236,13 @@ before(async () => {
       name: "Seller V2",
       buildNumber: 88,
     }),
+    db.doc("users/seller-v2/bankingDetails/primary").set({
+      bankName: "Capitec Bank",
+      accountHolderName: "Seller V2",
+      accountNumber: "1234567890",
+      accountType: "Savings",
+      branchCode: "470010",
+    }),
     db.doc("users/seller-v2/customers/customer-v2").set({
       name: "Buyer V2",
       number: "0820000000",
@@ -278,42 +292,40 @@ after(async () => {
   await clear();
 });
 
-test("supplier preparation quotes quantity and exposes only profitable channels", async () => {
+test("supplier preparation quotes quantity and offers merchant Cash/EFT", async () => {
   const prepared = await prepare({ quantity: 5 });
   assert.equal(prepared.statusCode, 200);
   assert.equal(prepared.body.status, "ready");
   assert.equal(prepared.body.quantity, 5);
   assert.equal(prepared.body.maxQuantity, 20);
-  assert.deepEqual(prepared.body.paymentOptions, [
-    "card",
-    "eft",
-    "capitec_pay",
-    "qr",
-  ]);
+  assert.deepEqual(prepared.body.paymentOptions, ["cash", "eft"]);
+  assert.equal(prepared.body.onlinePaymentStatus, "coming_soon");
 
   const tight = await prepare({ listingId: "listing-tight-margin" });
   assert.equal(tight.body.status, "ready");
-  assert.deepEqual(tight.body.paymentOptions, ["eft", "capitec_pay"]);
+  assert.deepEqual(tight.body.paymentOptions, ["cash", "eft"]);
 });
 
-test("supplier quantity and capability gates fail closed before initialization", async () => {
+test("supplier quantity and manual-payment setup gates fail closed", async () => {
   const overCap = await prepare({ quantity: 21 });
   assert.equal(overCap.body.status, "unavailable");
   assert.equal(overCap.body.reason, "quantity_invalid");
 
-  await db.doc("merchantPaymentProfiles/seller-v2").update({
-    "capabilities.supplier_order": false,
+  await db.doc("users/seller-v2").update({
+    paymentOptions: { cash: false, eft: false },
   });
   const disabled = await prepare();
   assert.equal(disabled.body.status, "unavailable");
-  assert.equal(disabled.body.reason, "online_payment_not_ready");
+  assert.equal(disabled.body.reason, "payment_setup_required");
   assert.equal((await db.collection("commerceOrders").get()).empty, true);
-  await db.doc("merchantPaymentProfiles/seller-v2").update({
-    "capabilities.supplier_order": true,
+  await db.doc("users/seller-v2").update({
+    paymentOptions: { cash: true, eft: true },
   });
 });
 
-test("one prepared supplier checkout creates one funded Paystack intent", async () => {
+test("one prepared supplier checkout creates one manual EFT order only", async () => {
+  paystackInitializeCalls = 0;
+  supplierFundingCalls = 0;
   const prepared = await prepare({ quantity: 5 });
   assert.equal(prepared.body.status, "ready");
   const body = {
@@ -324,7 +336,7 @@ test("one prepared supplier checkout creates one funded Paystack intent", async 
     checkoutAttemptId: "supplier-v2-attempt",
     preparationId: prepared.body.preparationId,
     quantity: 5,
-    paymentChannel: "eft",
+    paymentOption: "eft",
     buyer: {
       name: "Buyer V2",
       phone: "0820000000",
@@ -335,10 +347,30 @@ test("one prepared supplier checkout creates one funded Paystack intent", async 
   const first = responseRecorder();
   await createCommerceOrder(botRequest(body), first);
   assert.equal(first.statusCode, 200);
-  assert.equal(first.body.paymentMethod, "paystack");
+  assert.equal(first.body.paymentMethod, "manual");
+  assert.match(first.body.confirmationUrl, /order=/);
+  assert.equal(first.body.paymentInstructions.method, "eft");
+  assert.equal(first.body.paymentInstructions.bankName, "Capitec Bank");
+  assert.equal(first.body.paymentInstructions.accountNumber, "1234567890");
+
+  const confirmation = new URL(first.body.confirmationUrl);
+  const publicStatus = responseRecorder();
+  await getCommerceOrderStatus(
+    {
+      method: "GET",
+      query: {
+        order: confirmation.searchParams.get("order"),
+        token: confirmation.searchParams.get("token"),
+      },
+    },
+    publicStatus,
+  );
+  assert.equal(publicStatus.statusCode, 200);
+  assert.equal(publicStatus.body.paymentMethod, "manual");
+  assert.equal(publicStatus.body.paymentInstructions.method, "eft");
   assert.equal(
-    first.body.authorizationUrl,
-    "https://paystack.test/supplier-v2",
+    publicStatus.body.paymentInstructions.accountNumber,
+    "1234567890",
   );
 
   const replay = responseRecorder();
@@ -351,12 +383,16 @@ test("one prepared supplier checkout creates one funded Paystack intent", async 
   assert.equal(orders.size, 1);
   assert.equal(orders.docs[0].get("quantity"), 5);
   assert.equal(orders.docs[0].get("requestedPaymentChannel"), "eft");
-  assert.equal(orders.docs[0].get("paymentStatus"), "pending");
+  assert.equal(orders.docs[0].get("paymentMethod"), "manual");
+  assert.equal(
+    orders.docs[0].get("paymentStatus"),
+    "awaiting_manual_confirmation",
+  );
+  assert.equal(orders.docs[0].get("fulfilmentMode"), "seller_manual_cj_order");
   const intents = await db.collection("paymentIntents").get();
-  assert.equal(intents.size, 1);
-  assert.equal(intents.docs[0].get("purpose"), "supplier_order");
-  assert.equal(intents.docs[0].get("selectedChannel"), "eft");
+  assert.equal(intents.size, 0);
   const reservations = await db.collection("supplierFundingReservations").get();
-  assert.equal(reservations.size, 1);
-  assert.equal(reservations.docs[0].get("status"), "active");
+  assert.equal(reservations.size, 0);
+  assert.equal(paystackInitializeCalls, 0);
+  assert.equal(supplierFundingCalls, 0);
 });

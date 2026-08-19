@@ -118,6 +118,37 @@ export function priceCommerceOrder(input: {
   };
 }
 
+/** Prices a live-quoted supplier order without an online collection fee. */
+export function priceManualSupplierOrder(input: {
+  landedCostMinor: unknown;
+  unitMarkupMinor: unknown;
+  quantity: unknown;
+}): CommercePriceSnapshot {
+  const baseCostMinor = requireMinorUnits(input.landedCostMinor, "landed_cost");
+  const unitMarkupMinor = requireMinorUnits(
+    input.unitMarkupMinor,
+    "unit_markup",
+  );
+  const quantity = Number(input.quantity);
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 20) {
+    throw new Error("QUANTITY_INVALID");
+  }
+  if (baseCostMinor <= 0 || unitMarkupMinor <= 0) {
+    throw new Error("SUPPLIER_PRICE_INVALID");
+  }
+  const marginMinor = unitMarkupMinor * quantity;
+  const sellPriceMinor = baseCostMinor + marginMinor;
+  return {
+    currency: "ZAR",
+    quantity,
+    baseCostMinor,
+    sellPriceMinor,
+    feeMinor: 0,
+    marginMinor,
+    amountDueMinor: sellPriceMinor,
+  };
+}
+
 export function targetStatusForAction(
   currentStatus: unknown,
   actionValue: unknown,

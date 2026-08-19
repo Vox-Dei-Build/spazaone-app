@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/pages/transactions/widgets/customer_payment_request_panel.dart';
 import 'package:pasella/services/customer_payment_request_service.dart';
+import 'package:pasella/services/repayment_plan_service.dart';
 import 'package:pasella/utils/feature_flags.dart';
 
 class _FakeGateway implements CustomerPaymentRequestGateway {
@@ -68,6 +69,38 @@ class _FailingGateway implements CustomerPaymentRequestGateway {
       throw UnimplementedError();
 }
 
+class _FakeRepaymentPlanGateway implements RepaymentPlanGateway {
+  Map<String, Object?>? created;
+
+  @override
+  Future<RepaymentPlanCreateResult> create({
+    required String merchantId,
+    required String customerId,
+    required int totalAmountMinor,
+    required int installmentAmountMinor,
+    required String cadence,
+    required int startAtMs,
+    required String idempotencyKey,
+  }) async {
+    created = {
+      'merchantId': merchantId,
+      'customerId': customerId,
+      'totalAmountMinor': totalAmountMinor,
+      'installmentAmountMinor': installmentAmountMinor,
+      'cadence': cadence,
+      'startAtMs': startAtMs,
+      'idempotencyKey': idempotencyKey,
+    };
+    return RepaymentPlanCreateResult(
+      planId: 'rp_test',
+      totalAmountMinor: totalAmountMinor,
+      installmentAmountMinor: installmentAmountMinor,
+      cadence: cadence,
+      deduped: false,
+    );
+  }
+}
+
 CustomerPaymentRequestOverview _overview({
   bool canRequest = true,
   String reason = 'ready',
@@ -103,6 +136,7 @@ Widget _app({
   CustomerPaymentRequestGateway? gateway,
   bool isOwing = true,
   double textScale = 1,
+  RepaymentPlanGateway? repaymentPlanGateway,
 }) {
   return MaterialApp(
     builder: (context, child) => MediaQuery(
@@ -121,6 +155,7 @@ Widget _app({
         onSetUpOnlinePayments: () {},
         merchantId: 'merchant',
         service: gateway ?? _FakeGateway(overview),
+        repaymentPlanService: repaymentPlanGateway,
       ),
     ),
   );
@@ -220,6 +255,36 @@ void main() {
     await tester.tap(find.text('Request payment'));
     await tester.pumpAndSettle();
     expect(find.text('Send request'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('creates a repayment plan from the customer account',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final plans = _FakeRepaymentPlanGateway();
+    await tester.pumpWidget(
+      _app(overview: _overview(), repaymentPlanGateway: plans),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Set repayment plan'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('repayment-plan-installment')),
+      '25',
+    );
+    await tester.tap(find.byKey(const Key('repayment-plan-create')));
+    await tester.pumpAndSettle();
+
+    expect(plans.created?['merchantId'], 'merchant');
+    expect(plans.created?['customerId'], 'customer');
+    expect(plans.created?['totalAmountMinor'], 12345);
+    expect(plans.created?['installmentAmountMinor'], 2500);
+    expect(plans.created?['cadence'], 'weekly');
+    expect(find.textContaining('Repayment plan created'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

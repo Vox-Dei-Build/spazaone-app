@@ -5,13 +5,15 @@ import { db, functions } from "../config/main";
 import { verifyBotRequest } from "../security/requestAuth";
 import { merchantBotFeatureDecision } from "../ecommerce/merchantBotFeatureAccess";
 import { CjLandedQuote, quoteCjVariant } from "./cjClient";
-import { priceCommerceOrder, requireMinorUnits } from "./domain";
-import { merchantManualPaymentOptions } from "./manualPaymentInstructions";
 import {
-  profitableSupplierChannels,
-  supplierPaymentEconomics,
-} from "../payments/v2/supplierOrders";
-import { paymentReadiness } from "../payments/v2/readiness";
+  priceCommerceOrder,
+  priceManualSupplierOrder,
+  requireMinorUnits,
+} from "./domain";
+import {
+  merchantManualPaymentOptions,
+  merchantSupplierPaymentOptions,
+} from "./manualPaymentInstructions";
 
 const PREPARATION_TTL_MS = 15 * 60 * 1000;
 
@@ -505,6 +507,7 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
 async function quoteListing(
   listing: FirebaseFirestore.DocumentData,
   quantity: number,
+  manualPaymentOptions: readonly string[] = [],
 ): Promise<{
   amountDueMinor: number;
   quote: CjLandedQuote | null;
@@ -527,24 +530,17 @@ async function quoteListing(
     ? quote.landedCostMinor +
       requireMinorUnits(listing.markupMinor, "markup") * quantity
     : requireMinorUnits(listing.sellPriceMinor, "sellPrice");
-  const paymentOptions = quote
-    ? profitableSupplierChannels({
-        landedCostMinor: quote.landedCostMinor,
-        markupMinor: requireMinorUnits(listing.markupMinor, "markup"),
-        quantity,
-      })
-    : [];
+  const paymentOptions = quote ? [...manualPaymentOptions] : [];
   if (quote && paymentOptions.length === 0) {
-    throw new Error("SUPPLIER_MARGIN_BELOW_SAFETY");
+    throw new Error("PAYMENT_SETUP_REQUIRED");
   }
   let amountDueMinor: number;
   if (quote) {
-    amountDueMinor = supplierPaymentEconomics({
+    amountDueMinor = priceManualSupplierOrder({
       landedCostMinor: quote.landedCostMinor,
-      markupMinor: requireMinorUnits(listing.markupMinor, "markup"),
+      unitMarkupMinor: requireMinorUnits(listing.markupMinor, "markup"),
       quantity,
-      channel: paymentOptions[0] as "card" | "eft" | "capitec_pay" | "qr",
-    }).customerTotalMinor;
+    }).amountDueMinor;
   } else {
     amountDueMinor = priceCommerceOrder({
       baseCostMinor,
@@ -610,20 +606,20 @@ export const preparePublicCommerceCheckout = functions
           .json({ status: "unavailable", reason: "product_unavailable" });
         return;
       }
-      const readiness = await paymentReadiness({
-        merchantId: safeId(source.sellerId, "MERCHANT"),
-        purpose: "supplier_order",
-      });
-      if (!readiness.enabled) {
+      const manualPayment = await merchantSupplierPaymentOptions(
+        safeId(source.sellerId, "MERCHANT"),
+      );
+      if (manualPayment.paymentOptions.length === 0) {
         res.status(409).json({
           status: "unavailable",
-          reason: "online_payment_not_ready",
+          reason: "payment_setup_required",
         });
         return;
       }
       const quoted = await quoteListing(
         { ...source, preparedPostalCode: postalCode },
         quantity,
+        manualPayment.paymentOptions,
       );
       res.status(200).json({
         status: "ready",
@@ -632,6 +628,7 @@ export const preparePublicCommerceCheckout = functions
         maxQuantity: quoted.quote ? Math.min(20, quoted.quote.stock) : 1,
         deliveryEstimate: quoted.deliveryEstimate,
         paymentOptions: quoted.paymentOptions,
+        onlinePaymentStatus: "coming_soon",
         quoteVerifiedAt: quoted.quote?.verifiedAt ?? null,
       });
     } catch (error) {
@@ -689,10 +686,11 @@ export const prepareCommerceCheckout = functions
           .json({ status: "unavailable", reason: "quantity_invalid" });
         return;
       }
-      const [customer, listing, payment] = await Promise.all([
+      const [customer, listing, payment, supplierPayment] = await Promise.all([
         db.doc(`users/${merchantId}/customers/${customerId}`).get(),
         db.doc(`commerceListings/${listingId}`).get(),
         merchantManualPaymentOptions(merchantId),
+        merchantSupplierPaymentOptions(merchantId),
       ]);
       if (
         !customer.exists ||
@@ -707,13 +705,10 @@ export const prepareCommerceCheckout = functions
       }
       const isSupplier =
         String(listing.data()?.supplierId ?? "") === "cj_dropshipping";
-      const onlineReadiness = isSupplier
-        ? await paymentReadiness({ merchantId, purpose: "supplier_order" })
-        : null;
-      if (isSupplier && onlineReadiness?.enabled !== true) {
+      if (isSupplier && supplierPayment.paymentOptions.length === 0) {
         res.status(200).json({
           status: "unavailable",
-          reason: "online_payment_not_ready",
+          reason: "payment_setup_required",
         });
         return;
       }
@@ -751,7 +746,11 @@ export const prepareCommerceCheckout = functions
         ...(listing.data() ?? {}),
         preparedPostalCode: resolved.address.postalCode,
       };
-      const quoted = await quoteListing(source, quantity);
+      const quoted = await quoteListing(
+        source,
+        quantity,
+        isSupplier ? supplierPayment.paymentOptions : [],
+      );
       const paymentOptions = isSupplier
         ? quoted.paymentOptions
         : payment.paymentOptions;
@@ -778,6 +777,7 @@ export const prepareCommerceCheckout = functions
         maxQuantity: quoted.quote ? Math.min(20, quoted.quote.stock) : 1,
         deliveryEstimate: quoted.deliveryEstimate,
         paymentOptions,
+        onlinePaymentStatus: isSupplier ? "coming_soon" : null,
         quoteVerifiedAt: quoted.quote?.verifiedAt ?? null,
         quoteReservation,
         status: "ready",
@@ -796,6 +796,7 @@ export const prepareCommerceCheckout = functions
         maxQuantity: quoted.quote ? Math.min(20, quoted.quote.stock) : 1,
         deliveryEstimate: quoted.deliveryEstimate,
         paymentOptions,
+        onlinePaymentStatus: isSupplier ? "coming_soon" : null,
       });
     } catch (error) {
       console.error("prepareCommerceCheckout failed", {

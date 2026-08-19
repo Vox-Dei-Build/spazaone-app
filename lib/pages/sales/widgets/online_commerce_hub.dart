@@ -44,6 +44,24 @@ EffectiveCommerceCapability effectiveCommerceCapability({
   );
 }
 
+bool onlineCommerceSetupRequired({
+  required MerchantPaymentsV2 payments,
+  required bool ownedClientEnabled,
+  required bool supplierClientEnabled,
+}) {
+  final owned = effectiveCommerceCapability(
+    clientEnabled: ownedClientEnabled,
+    server: payments.ownedOrders,
+  );
+  final supplier = effectiveCommerceCapability(
+    clientEnabled: supplierClientEnabled,
+    server: payments.supplierOrders,
+  );
+  final supplierManualReady =
+      supplierClientEnabled && !payments.supplierOrdersRequireOnlinePayment;
+  return !owned.ready && !supplier.ready && !supplierManualReady;
+}
+
 typedef MerchantOverviewLoader = Future<MerchantPaymentOverview> Function(
   String merchantId,
 );
@@ -109,15 +127,11 @@ class _OnlineCommerceHubState extends State<OnlineCommerceHub> {
         var setupRequired = false;
         if (snapshot.hasData) {
           final payments = snapshot.data!.paymentsV2;
-          final owned = effectiveCommerceCapability(
-            clientEnabled: FeatureFlags.enableOwnedOrderPayments,
-            server: payments.ownedOrders,
+          setupRequired = onlineCommerceSetupRequired(
+            payments: payments,
+            ownedClientEnabled: FeatureFlags.enableOwnedOrderPayments,
+            supplierClientEnabled: FeatureFlags.enableSupplierOrderPayments,
           );
-          final supplier = effectiveCommerceCapability(
-            clientEnabled: FeatureFlags.enableSupplierOrderPayments,
-            server: payments.supplierOrders,
-          );
-          setupRequired = !owned.ready && !supplier.ready;
         }
 
         return CombinedOnlineOrders(
