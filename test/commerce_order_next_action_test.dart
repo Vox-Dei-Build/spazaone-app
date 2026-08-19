@@ -94,17 +94,20 @@ void main() {
     expect(find.text('Cancel order'), findsOneWidget);
   });
 
-  testWidgets('paid supplier order shows automatic fulfilment ownership',
+  testWidgets('paid manual supplier order shows merchant fulfilment ownership',
       (tester) async {
     await _open(tester, 'paid');
 
-    expect(find.text('Place delivery order'), findsNothing);
+    expect(find.text('Record supplier order'), findsOneWidget);
     await tester.ensureVisible(find.text('Fulfilment operations'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Fulfilment operations'));
     await tester.pumpAndSettle();
-    expect(find.text('Automatic fulfilment pending'), findsOneWidget);
-    expect(find.textContaining('recheck supplier cost'), findsOneWidget);
+    expect(find.text('Place the supplier order manually'), findsOneWidget);
+    expect(
+      find.textContaining('Then tap Record supplier order'),
+      findsOneWidget,
+    );
     expect(find.textContaining('CJdropshipping'), findsNothing);
     expect(find.text('Copy all order details'), findsOneWidget);
     expect(

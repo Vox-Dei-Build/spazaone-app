@@ -19,7 +19,7 @@ export type BuyerPaymentsV2 = {
   accountPayments: BuyerPaymentCapability;
   supplierOrders: BuyerPaymentCapability;
   manualTransferForOwnedOrders: boolean;
-  supplierOrdersRequireOnlinePayment: true;
+  supplierOrdersRequireOnlinePayment: boolean;
 };
 
 function safeCapability(
@@ -45,16 +45,12 @@ export function buildBuyerPaymentsV2(input: {
 }): BuyerPaymentsV2 {
   return {
     schemaVersion: 2,
-    campaignCredits: safeCapability(input.campaignCredits, [
-      "eft",
-      "capitec_pay",
-      "qr",
-    ]),
+    campaignCredits: safeCapability(input.campaignCredits, ["card"]),
     ownedOrders: safeCapability(input.ownedOrders),
     accountPayments: safeCapability(input.accountPayments),
     supplierOrders: safeCapability(input.supplierOrders),
     manualTransferForOwnedOrders: !input.ownedOrders.enabled,
-    supplierOrdersRequireOnlinePayment: true,
+    supplierOrdersRequireOnlinePayment: false,
   };
 }
 

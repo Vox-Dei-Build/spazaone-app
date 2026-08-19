@@ -1,7 +1,5 @@
 import { db, functions } from "../config/main";
 import { commerceApiUrls } from "./payment";
-import { commercePaymentsEnabled } from "./readiness";
-import { ensureMerchantOrderingLink } from "../ecommerce/getMerchantOrderingLink";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -60,12 +58,33 @@ function statusPage(input: {
     <div class="eyebrow">Order received</div>
     <h1>Thank you for your order request</h1>
     <p class="muted" id="statusText">Spaza One is checking the latest order status.</p>
+    <div class="quote" id="paymentInstructions" style="text-align:left">
+      <div class="eyebrow">Pay the shop directly</div>
+      <div id="paymentInstructionLines"></div>
+    </div>
     <p>Order <span class="ref">${escapeHtml(input.orderId.slice(0, 8).toUpperCase())}</span></p>
   </section>`;
   const script = `<script>
     const config=${config};
     const statusText=document.getElementById('statusText');
+    const instructionBox=document.getElementById('paymentInstructions');
+    const instructionLines=document.getElementById('paymentInstructionLines');
     let checks=0;
+    function showManualInstructions(instructions){
+      if(!instructions||typeof instructions!=='object')return;
+      const rows=instructions.method==='eft'
+        ? [
+            ['Bank',instructions.bankName],
+            ['Account holder',instructions.accountHolderName],
+            ['Account number',instructions.accountNumber],
+            ['Account type',instructions.accountType],
+            ['Branch code',instructions.branchCode],
+            ['Reference',instructions.reference],
+          ]
+        : [['Payment',instructions.message]];
+      instructionLines.replaceChildren(...rows.filter(([,value])=>String(value||'').trim()).map(([label,value])=>{const row=document.createElement('p');const strong=document.createElement('strong');strong.textContent=label+': ';row.append(strong,document.createTextNode(String(value)));return row;}));
+      if(instructionLines.childElementCount)instructionBox.style.display='block';
+    }
     async function check(){
       checks++;
       try{
@@ -75,7 +94,8 @@ function statusPage(input: {
         const response=await fetch(url);
         const result=await response.json();
         if(response.ok&&result.paymentMethod==='manual'&&result.paymentStatus==='awaiting_manual_confirmation'){
-          statusText.textContent='Your request was sent to the seller. They will contact you to arrange payment and confirm the order.';
+          showManualInstructions(result.paymentInstructions);
+          statusText.textContent=result.paymentInstructions?.method==='eft'?'Use the exact EFT details below. The shop confirms receipt before fulfilment.':'Your request was sent to the shop. They will contact you to arrange cash payment and confirm the order.';
           return;
         }
         if(response.ok&&result.paymentStatus==='paid'){
@@ -93,22 +113,6 @@ function statusPage(input: {
     check();
   </script>`;
   return pageShell("Spaza One order", content, script);
-}
-
-function checkoutUnavailablePage(orderingUrl = ""): string {
-  const action = orderingUrl
-    ? `<p><a href="${escapeHtml(orderingUrl)}" style="display:block;border-radius:13px;background:#106c55;color:#fff;text-decoration:none;font-weight:800;padding:15px">Continue on WhatsApp</a></p>`
-    : "";
-  return pageShell(
-    "Order on WhatsApp · Spaza One",
-    `<section class="card status">
-      <div class="icon">💬</div>
-      <div class="eyebrow">Spaza One</div>
-      <h1>Order through WhatsApp</h1>
-      <p class="muted">This shop currently takes orders through its Spaza One WhatsApp ordering link.</p>
-      ${action}
-    </section>`,
-  );
 }
 
 export function checkoutPage(input: {
@@ -138,12 +142,9 @@ export function checkoutPage(input: {
   const emailLabel = input.digitalPaymentsEnabled
     ? "Email for payment receipt"
     : "Email (optional)";
-  const actionLabel = input.digitalPaymentsEnabled
-    ? "Calculate delivery & pay securely"
-    : "Calculate delivery & send order request";
-  const paymentNotice = input.digitalPaymentsEnabled
-    ? "Spaza One verifies live supplier and delivery pricing. Card details are entered only on Paystack."
-    : "No online payment is collected. The seller will contact you to arrange payment and confirm your order.";
+  const actionLabel = "Calculate delivery & send order request";
+  const paymentNotice =
+    "Choose Cash or EFT with the shop. Supplier online payments are coming soon; Spaza One will not collect money for this order.";
   const content = `<section class="card product">${image}<div>
       <div class="eyebrow">Spaza One supplier product</div>
       <h1 class="title">${escapeHtml(input.title)}</h1>
@@ -181,7 +182,7 @@ export function checkoutPage(input: {
     const channels=document.getElementById('channels');
     const value=id=>document.getElementById(id).value.trim();
     const attempt=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random());
-    const channelLabels={card:'Card',eft:'Instant EFT',capitec_pay:'Capitec Pay',qr:'Scan to Pay'};
+    const channelLabels={cash:'Cash with shop',eft:'EFT directly to shop'};
     let quoted=null;
     const deliveryAddress=()=>({line1:value('line1'),line2:value('line2'),suburb:value('suburb'),city:value('city'),province:value('province'),postalCode:value('postalCode'),country:'ZA'});
     const resetQuote=()=>{quoted=null;quoteBox.style.display='none';channels.replaceChildren();button.textContent=${safeJson(actionLabel)};};
@@ -193,27 +194,27 @@ export function checkoutPage(input: {
         if(!quoted){
           const response=await fetch(config.prepareUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listingId:config.listingId,quantity,deliveryAddress:deliveryAddress()})});
           const result=await response.json();
-          if(!response.ok||result.status!=='ready')throw new Error(result.reason==='quantity_unavailable'?'That quantity is not available right now.':result.reason==='payment_unavailable'?'No secure payment method leaves enough margin for this order.':'Live delivery pricing is unavailable right now.');
-          if(!Array.isArray(result.paymentOptions)||result.paymentOptions.length===0)throw new Error('No secure payment method is available for this order.');
+          if(!response.ok||result.status!=='ready')throw new Error(result.reason==='quantity_unavailable'?'That quantity is not available right now.':result.reason==='payment_setup_required'?'This shop has not enabled Cash or EFT for supplier orders.':'Live delivery pricing is unavailable right now.');
+          if(!Array.isArray(result.paymentOptions)||result.paymentOptions.length===0)throw new Error('No merchant-arranged payment option is available for this order.');
           quoted=result;
           document.getElementById('quantity').max=String(result.maxQuantity||20);
           quoteTotal.textContent='R '+(Number(result.amountDueMinor)/100).toFixed(2);
           quoteDelivery.textContent='Estimated delivery '+result.deliveryEstimate.minDays+'–'+result.deliveryEstimate.maxDays+' days. Choose how to pay:';
           channels.replaceChildren(...result.paymentOptions.map((channel,index)=>{const row=document.createElement('div');row.className='channel';const radio=document.createElement('input');radio.type='radio';radio.name='paymentChannel';radio.id='channel-'+channel;radio.value=channel;radio.required=true;radio.checked=index===0;const label=document.createElement('label');label.htmlFor=radio.id;label.textContent=channelLabels[channel]||channel;row.append(radio,label);return row;}));
           quoteBox.style.display='block';
-          button.disabled=false;button.textContent='Pay R '+(Number(result.amountDueMinor)/100).toFixed(2)+' securely';quoteBox.scrollIntoView({behavior:'smooth',block:'center'});return;
+          button.disabled=false;button.textContent='Send order request for R '+(Number(result.amountDueMinor)/100).toFixed(2);quoteBox.scrollIntoView({behavior:'smooth',block:'center'});return;
         }
         const paymentChannel=form.querySelector('input[name=paymentChannel]:checked')?.value;
-        if(!paymentChannel||!quoted.paymentOptions.includes(paymentChannel))throw new Error('Choose a secure payment method.');
-        button.textContent='Opening secure payment…';
-        const body={listingId:config.listingId,checkoutAttemptId:attempt,buyer:{name:value('name'),email:value('email'),phone:value('phone')},deliveryAddress:deliveryAddress(),quantity,paymentChannel};
+        if(!paymentChannel||!quoted.paymentOptions.includes(paymentChannel))throw new Error('Choose Cash or EFT.');
+        button.textContent='Sending order request…';
+        const body={listingId:config.listingId,checkoutAttemptId:attempt,buyer:{name:value('name'),email:value('email'),phone:value('phone')},deliveryAddress:deliveryAddress(),quantity,paymentOption:paymentChannel};
         const response=await fetch(config.createUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         const result=await response.json();
         if(!response.ok)throw new Error(result.error||'Order could not be submitted.');
         const next=result.authorizationUrl||result.confirmationUrl;
         if(!next)throw new Error('Order could not be submitted.');
         window.location.assign(next);
-      }catch(error){errorBox.textContent=error.message||'Order could not be submitted.';errorBox.style.display='block';button.disabled=false;button.textContent=quoted?'Pay securely':${safeJson(actionLabel)};errorBox.scrollIntoView({behavior:'smooth',block:'center'});}
+      }catch(error){errorBox.textContent=error.message||'Order could not be submitted.';errorBox.style.display='block';button.disabled=false;button.textContent=quoted?'Send order request':${safeJson(actionLabel)};errorBox.scrollIntoView({behavior:'smooth',block:'center'});}
     });
   </script>`;
   return pageShell(`${input.title} · Spaza One`, content, script);
@@ -263,28 +264,7 @@ export const commerceCheckout = functions.https.onRequest(async (req, res) => {
       );
     return;
   }
-  const digitalPaymentsEnabled = commercePaymentsEnabled(
-    String(data.sellerId ?? ""),
-  );
-  if (!digitalPaymentsEnabled) {
-    try {
-      const ordering = await ensureMerchantOrderingLink(
-        String(data.sellerId ?? ""),
-      );
-      const url = new URL(ordering.orderingUrl);
-      url.searchParams.set(
-        "text",
-        `shop ${ordering.code}\nproduct ${listingId}`,
-      );
-      res.redirect(302, url.toString());
-    } catch (error) {
-      console.error("commerceCheckout WhatsApp redirect failed", {
-        message: error instanceof Error ? error.message : "error",
-      });
-      res.status(200).send(checkoutUnavailablePage());
-    }
-    return;
-  }
+  const digitalPaymentsEnabled = false;
   const images = Array.isArray(data.images) ? data.images : [];
   res.status(200).send(
     checkoutPage({

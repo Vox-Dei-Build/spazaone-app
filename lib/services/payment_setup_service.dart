@@ -161,6 +161,7 @@ class MerchantPaymentsV2 {
     required this.ownedOrders,
     required this.accountPayments,
     required this.supplierOrders,
+    this.supplierOrdersRequireOnlinePayment = true,
   });
 
   final int schemaVersion;
@@ -168,6 +169,7 @@ class MerchantPaymentsV2 {
   final MerchantPaymentCapability ownedOrders;
   final MerchantPaymentCapability accountPayments;
   final MerchantPaymentCapability supplierOrders;
+  final bool supplierOrdersRequireOnlinePayment;
 
   factory MerchantPaymentsV2.fromMap(
     Map<String, dynamic> data, {
@@ -198,6 +200,8 @@ class MerchantPaymentsV2 {
       supplierOrders: data['supplierOrders'] is Map
           ? capability('supplierOrders')
           : MerchantPaymentCapability.unavailable,
+      supplierOrdersRequireOnlinePayment:
+          data['supplierOrdersRequireOnlinePayment'] != false,
     );
   }
 }

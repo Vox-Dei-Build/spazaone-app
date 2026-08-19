@@ -16,16 +16,18 @@ class PaystackInitResult {
       this.quote});
 }
 
-enum CampaignTopupChannel { eft, capitecPay, qr }
+enum CampaignTopupChannel { card, eft, capitecPay, qr }
 
 extension CampaignTopupChannelWire on CampaignTopupChannel {
   String get wireName => switch (this) {
+        CampaignTopupChannel.card => 'card',
         CampaignTopupChannel.eft => 'eft',
         CampaignTopupChannel.capitecPay => 'capitec_pay',
         CampaignTopupChannel.qr => 'qr',
       };
 
   String get label => switch (this) {
+        CampaignTopupChannel.card => 'Card',
         CampaignTopupChannel.eft => 'Ozow (Instant EFT)',
         CampaignTopupChannel.capitecPay => 'Capitec Pay',
         CampaignTopupChannel.qr => 'Scan to Pay QR',
@@ -106,6 +108,7 @@ class PaystackService {
 
   static CampaignTopupChannel _channelFromWire(String value) {
     return switch (value) {
+      'card' => CampaignTopupChannel.card,
       'eft' => CampaignTopupChannel.eft,
       'capitec_pay' => CampaignTopupChannel.capitecPay,
       'qr' => CampaignTopupChannel.qr,

@@ -385,14 +385,10 @@ test("buyer-safe readiness exposes channels only for ready capabilities", () => 
   });
 
   assert.equal(payments.schemaVersion, 2);
-  assert.deepEqual(payments.campaignCredits.channels, [
-    "eft",
-    "capitec_pay",
-    "qr",
-  ]);
+  assert.deepEqual(payments.campaignCredits.channels, ["card"]);
   assert.deepEqual(payments.ownedOrders.channels, []);
   assert.equal(payments.manualTransferForOwnedOrders, true);
-  assert.equal(payments.supplierOrdersRequireOnlinePayment, true);
+  assert.equal(payments.supplierOrdersRequireOnlinePayment, false);
 });
 
 test("production payment channels fail closed until Paystack approves pay-by-bank", () => {
@@ -401,7 +397,7 @@ test("production payment channels fail closed until Paystack approves pay-by-ban
       environment: "production",
       configured: undefined,
     }),
-    ["card", "qr"],
+    ["card"],
   );
   assert.deepEqual(
     paymentChannelsForPurpose(
@@ -411,7 +407,7 @@ test("production payment channels fail closed until Paystack approves pay-by-ban
         configured: undefined,
       }),
     ),
-    ["qr"],
+    ["card"],
   );
   assert.deepEqual(
     configuredPaystackChannels({
@@ -442,7 +438,7 @@ test("buyer-safe readiness never re-adds a provider-disabled channel", () => {
     supplierOrders: ready,
   });
 
-  assert.deepEqual(payments.campaignCredits.channels, ["qr"]);
+  assert.deepEqual(payments.campaignCredits.channels, ["card"]);
   assert.deepEqual(payments.ownedOrders.channels, ["card", "qr"]);
   assert.deepEqual(payments.accountPayments.channels, ["card", "qr"]);
   assert.deepEqual(payments.supplierOrders.channels, ["card", "qr"]);

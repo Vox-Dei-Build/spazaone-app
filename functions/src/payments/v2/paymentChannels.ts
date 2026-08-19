@@ -11,7 +11,6 @@ export type PaystackPaymentChannel = (typeof PAYSTACK_PAYMENT_CHANNELS)[number];
 
 const PRODUCTION_SAFE_DEFAULT_CHANNELS: readonly PaystackPaymentChannel[] = [
   "card",
-  "qr",
 ];
 
 function isPaymentChannel(value: unknown): value is PaystackPaymentChannel {
@@ -22,9 +21,9 @@ function isPaymentChannel(value: unknown): value is PaystackPaymentChannel {
  * Resolve provider-approved channels from the global payment configuration.
  *
  * EFT and Capitec Pay require a separate Paystack approval in South Africa.
- * A missing production configuration therefore fails closed to the two
- * channels that do not depend on that approval. Development and local test
- * environments retain every channel so provider sandboxes can exercise them.
+ * A missing production configuration therefore fails closed to Card, which
+ * does not depend on either approval. Development and local test environments
+ * retain every channel so provider sandboxes can exercise them.
  */
 export function configuredPaystackChannels(input: {
   environment: string;
@@ -47,12 +46,8 @@ export function configuredPaystackChannels(input: {
 }
 
 export function paymentChannelsForPurpose(
-  purpose: PaymentPurpose,
+  _purpose: PaymentPurpose,
   channels: readonly PaystackPaymentChannel[],
 ): PaystackPaymentChannel[] {
-  // Card campaign top-ups are intentionally unsupported because the hosted
-  // flow cannot quote the exact local/international card fee in advance.
-  return channels.filter(
-    (channel) => purpose !== "campaign_credit" || channel !== "card",
-  );
+  return [...channels];
 }

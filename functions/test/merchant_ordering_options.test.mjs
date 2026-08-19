@@ -191,7 +191,7 @@ test("old merchant builds receive legacy bot options only", () => {
         channels: ["card"],
       },
       manualTransferForOwnedOrders: false,
-      supplierOrdersRequireOnlinePayment: true,
+      supplierOrdersRequireOnlinePayment: false,
     },
   });
 

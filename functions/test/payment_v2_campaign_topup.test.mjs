@@ -80,11 +80,20 @@ test("QR applies the public local tariff and waives R1 below R10", () => {
   );
 });
 
-test("card top-ups fail closed because local versus international is unknown", () => {
-  assert.throws(
-    () => quoteCampaignTopup({ creditAmountMinor: 10_000, channel: "card" }),
-    /TOPUP_CHANNEL_INVALID/,
+test("card top-ups use the local-card tariff for the internal canary", () => {
+  assert.equal(
+    campaignTopupProviderFeeMinor({
+      grossAmountMinor: 10_000,
+      channel: "card",
+    }),
+    449,
   );
+  const quote = quoteCampaignTopup({
+    creditAmountMinor: 10_000,
+    channel: "card",
+  });
+  assert.equal(quote.channel, "card");
+  assert.equal(quote.totalChargeMinor - quote.providerFeeMinor, 10_000);
 });
 
 test("top-up status celebrates only after the webhook business projection exists", () => {

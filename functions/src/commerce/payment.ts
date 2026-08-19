@@ -7,6 +7,7 @@ import { db, functions } from "../config/main";
 import { commerceCheckoutUrl } from "./checkoutUrl";
 import { notifyCommerceOrder } from "./notifications";
 import {
+  priceManualSupplierOrder,
   priceCommerceOrder,
   requireMinorUnits,
   supplierFundingPublicFailure,
@@ -27,14 +28,10 @@ import {
   reserveCheckoutQuote,
 } from "./prepareCommerceCheckout";
 import {
-  initializeSupplierOrderPaymentV2,
-  supplierPaymentEconomics,
-} from "../payments/v2/supplierOrders";
-import { paymentReadiness } from "../payments/v2/readiness";
-import {
-  isOwnedOrderChannel,
-  OwnedOrderChannel,
-} from "../payments/v2/ownedOrders";
+  MerchantBanking,
+  merchantSupplierPaymentOptions,
+  SupplierManualPaymentOption,
+} from "./manualPaymentInstructions";
 
 type VerifiedPaystackTransaction = {
   reference?: unknown;
@@ -183,6 +180,44 @@ function requireSupplierQuantity(value: unknown): number {
     throw new Error("QUANTITY_INVALID");
   }
   return quantity;
+}
+
+function supplierManualPaymentChoice(
+  value: unknown,
+): SupplierManualPaymentOption {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "cash") return "cash";
+  if (normalized === "eft" || normalized === "manual_eft") return "eft";
+  throw new Error("PAYMENT_OPTION_REQUIRED");
+}
+
+function supplierManualPaymentInstructions(input: {
+  option: SupplierManualPaymentOption;
+  banking: MerchantBanking | null;
+  reference: string;
+}): Record<string, unknown> {
+  if (input.option === "cash") {
+    return {
+      method: "cash",
+      reference: input.reference,
+      message:
+        "The shop will contact you to arrange cash payment before fulfilment.",
+    };
+  }
+  if (!input.banking) throw new Error("PAYMENT_OPTION_UNAVAILABLE");
+  return {
+    method: "eft",
+    reference: input.reference,
+    bankName: input.banking.bankName,
+    accountHolderName: input.banking.accountHolderName,
+    accountNumber: input.banking.accountNumber,
+    accountType: input.banking.accountType,
+    branchCode: input.banking.branchCode,
+    message:
+      "Pay the shop directly by EFT using the exact order reference. The shop confirms receipt before fulfilment.",
+  };
 }
 
 async function requireBoundBotCustomer(args: {
@@ -487,7 +522,7 @@ function commerceOrderReturnUrl(
   return callback.toString();
 }
 
-/** Public endpoint that creates an order and initializes its own payment. */
+/** Public endpoint that creates a merchant-arranged supplier order. */
 export const createCommerceOrder = functions
   .runWith({
     secrets: ["CJ_API_KEY", "PASELLA_BOT_TOKEN", "PAYSTACK_SECRET_KEY"],
@@ -507,15 +542,15 @@ export const createCommerceOrder = functions
     try {
       const whatsappBotOrder =
         req.body?.orderChannel === "whatsapp" && verifyBotRequest(req);
-      // Supplier orders are online-only on every channel, including direct
-      // WhatsApp. App manual Transfer/Add Payment remains a separate workflow.
-      const digitalPaymentsEnabled = true;
-      const paymentMethod: "paystack" | "manual" = "paystack";
+      // Release scope: supplier orders are arranged directly between buyer
+      // and seller by Cash or EFT. Online supplier payment remains disabled
+      // until the platform can fund CJ and delay seller payout safely.
+      const digitalPaymentsEnabled = false;
+      const paymentMethod: "paystack" | "manual" = "manual";
       const quantity = requireSupplierQuantity(req.body?.quantity);
-      const paymentChannel = String(req.body?.paymentChannel ?? "").trim();
-      if (!isOwnedOrderChannel(paymentChannel)) {
-        throw new Error("PAYMENT_OPTION_REQUIRED");
-      }
+      const paymentChannel = supplierManualPaymentChoice(
+        req.body?.paymentOption ?? req.body?.paymentChannel,
+      );
       const listingId = clean(req.body?.listingId, "LISTING", 128);
       const buyer = parseBuyer(req.body?.buyer, digitalPaymentsEnabled);
       const expectedSellerId = whatsappBotOrder
@@ -593,66 +628,28 @@ export const createCommerceOrder = functions
           .doc(`commerceOrders/${existingOrderId}`)
           .get();
         assertReusableOrderIdentity(existingOrder.data(), reuseIdentity);
-        if (existingOrder.data()?.paymentMethod === "manual") {
-          await deliverOrderCreatedOutbox(existingOrderId).catch((error) => {
-            console.error("[commerce] order outbox retry failed", error);
-          });
-          const existingToken = String(attemptData.checkoutToken ?? "");
-          if (!existingToken) {
-            res.status(409).json({
-              error: "Order request is still being prepared. Please try again.",
-            });
-            return;
-          }
-          res.status(200).json({
-            orderId: existingOrderId,
-            paymentMethod: "manual",
-            confirmationUrl: commerceOrderReturnUrl(
-              listingId,
-              existingOrderId,
-              existingToken,
-            ),
-            amountDueMinor: Number(existingOrder.data()?.amountDueMinor ?? 0),
-            reference: existingOrderId.slice(0, 8).toUpperCase(),
-            paymentInstructions:
-              existingOrder.data()?.paymentInstructions ?? null,
-            reused: true,
-          });
-          return;
-        }
-        const authorizationUrl = String(
-          existingOrder.data()?.payment?.authorizationUrl ?? "",
-        );
-        if (!authorizationUrl) {
-          const existingToken = String(attemptData.checkoutToken ?? "");
-          if (!existingToken)
-            throw new Error("CHECKOUT_ATTEMPT_IDENTITY_INVALID");
-          const initialized = await initializeSupplierOrderPaymentV2({
-            orderId: existingOrderId,
-            email: buyer.email,
-            callbackUrl: commerceOrderReturnUrl(
-              listingId,
-              existingOrderId,
-              existingToken,
-            ),
-            channel: paymentChannel,
-          });
-          res.status(200).json({
-            orderId: existingOrderId,
-            paymentMethod: "paystack",
-            amountDueMinor: Number(existingOrder.data()?.amountDueMinor ?? 0),
-            reference: existingOrderId.slice(0, 8).toUpperCase(),
-            authorizationUrl: initialized.authorizationUrl,
-            reused: true,
+        await deliverOrderCreatedOutbox(existingOrderId).catch((error) => {
+          console.error("[commerce] order outbox retry failed", error);
+        });
+        const existingToken = String(attemptData.checkoutToken ?? "");
+        if (!existingToken) {
+          res.status(409).json({
+            error: "Order request is still being prepared. Please try again.",
           });
           return;
         }
         res.status(200).json({
           orderId: existingOrderId,
-          paymentMethod: "paystack",
+          paymentMethod: "manual",
+          confirmationUrl: commerceOrderReturnUrl(
+            listingId,
+            existingOrderId,
+            existingToken,
+          ),
           amountDueMinor: Number(existingOrder.data()?.amountDueMinor ?? 0),
           reference: existingOrderId.slice(0, 8).toUpperCase(),
-          authorizationUrl,
+          paymentInstructions:
+            existingOrder.data()?.paymentInstructions ?? null,
           reused: true,
         });
         return;
@@ -660,7 +657,7 @@ export const createCommerceOrder = functions
 
       const candidateOrderRef = db.collection("commerceOrders").doc();
       const checkoutToken = randomBytes(32).toString("hex");
-      const paymentInstructions = null;
+      let paymentInstructions: Record<string, unknown> | null = null;
 
       if (preparationRef) {
         const expiresAt = preparationData?.expiresAt as
@@ -688,16 +685,19 @@ export const createCommerceOrder = functions
       ) {
         throw new Error("LISTING_UNAVAILABLE");
       }
-      if (digitalPaymentsEnabled) {
-        if (String(listingData.supplierId ?? "") !== "cj_dropshipping") {
-          throw new Error("LISTING_UNAVAILABLE");
-        }
-        const readiness = await paymentReadiness({
-          merchantId: clean(listingData.sellerId, "SELLER", 128),
-          purpose: "supplier_order",
-        });
-        if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+      if (String(listingData.supplierId ?? "") !== "cj_dropshipping") {
+        throw new Error("LISTING_UNAVAILABLE");
       }
+      const sellerId = clean(listingData.sellerId, "SELLER", 128);
+      const manualPayment = await merchantSupplierPaymentOptions(sellerId);
+      if (!manualPayment.paymentOptions.includes(paymentChannel)) {
+        throw new Error("PAYMENT_OPTION_UNAVAILABLE");
+      }
+      paymentInstructions = supplierManualPaymentInstructions({
+        option: paymentChannel,
+        banking: manualPayment.banking,
+        reference: candidateOrderRef.id.slice(0, 8).toUpperCase(),
+      });
       let externalQuoteReservation: CheckoutQuoteReservation | null = null;
       if (String(listingData.supplierId ?? "") === "cj_dropshipping") {
         const productId = clean(
@@ -825,27 +825,12 @@ export const createCommerceOrder = functions
           ? cjQuote.landedCostMinor +
             requireMinorUnits(source.markupMinor, "markup") * quantity
           : source.sellPriceMinor;
-        const supplierEconomics =
-          digitalPaymentsEnabled && cjQuote
-            ? supplierPaymentEconomics({
-                landedCostMinor: cjQuote.landedCostMinor,
-                markupMinor: requireMinorUnits(source.markupMinor, "markup"),
-                quantity,
-                channel: paymentChannel as OwnedOrderChannel,
-              })
-            : null;
-        const pricing = supplierEconomics
-          ? {
-              currency: "ZAR" as const,
+        const pricing = cjQuote
+          ? priceManualSupplierOrder({
+              landedCostMinor: cjQuote.landedCostMinor,
+              unitMarkupMinor: requireMinorUnits(source.markupMinor, "markup"),
               quantity,
-              baseCostMinor: supplierEconomics.landedCostMinor,
-              sellPriceMinor:
-                supplierEconomics.landedCostMinor +
-                supplierEconomics.markupMinor,
-              feeMinor: supplierEconomics.collectionFeeMinor,
-              marginMinor: supplierEconomics.markupMinor,
-              amountDueMinor: supplierEconomics.customerTotalMinor,
-            }
+            })
           : priceCommerceOrder({
               baseCostMinor,
               sellPriceMinor,
@@ -923,18 +908,17 @@ export const createCommerceOrder = functions
           markupMinor: cjQuote
             ? requireMinorUnits(source.markupMinor, "markup")
             : pricing.marginMinor,
-          collectionFeeMinor: supplierEconomics?.collectionFeeMinor ?? 0,
-          safetyMarginMinor: supplierEconomics?.safetyMarginMinor ?? 0,
-          ...(supplierEconomics ? { money: supplierEconomics.money } : {}),
+          collectionFeeMinor: 0,
+          safetyMarginMinor: 0,
           ...supplierSnapshot,
-          fulfilmentMode: String(
-            source.fulfilmentMode ?? "manual_supplier_order",
-          ),
+          // The release path is deliberately merchant-controlled. Never copy
+          // a stale automatic-CJ mode from an older listing into a new order.
+          fulfilmentMode: "seller_manual_cj_order",
           paymentMethod,
           requestedPaymentChannel: paymentChannel,
           orderChannel: whatsappBotOrder ? "whatsapp" : "web",
           customerId: whatsappBotOrder ? botCustomerId : null,
-          buyerPaymentPreference: whatsappBotOrder ? paymentChannel : null,
+          buyerPaymentPreference: paymentChannel,
           shippingNotes: String(source.shippingNotes ?? ""),
           status: "pending_payment",
           paymentStatus: digitalPaymentsEnabled
@@ -945,7 +929,10 @@ export const createCommerceOrder = functions
             ? { provider: "paystack" }
             : {
                 provider: "manual",
-                collectionMode: "seller_arranged",
+                collectionMode:
+                  paymentChannel === "cash"
+                    ? "seller_arranged_cash"
+                    : "seller_bank_transfer",
               },
           paymentInstructions,
           checkoutTokenHash: hashToken(checkoutToken),
@@ -998,61 +985,26 @@ export const createCommerceOrder = functions
       if (!reserved.created) {
         const existing = await orderRef.get();
         assertReusableOrderIdentity(existing.data(), reuseIdentity);
-        if (existing.data()?.paymentMethod === "manual") {
-          await deliverOrderCreatedOutbox(orderRef.id).catch((error) => {
-            console.error("[commerce] order outbox retry failed", error);
-          });
-          if (!reserved.checkoutToken) {
-            res.status(409).json({
-              error: "Order request is still being prepared. Please try again.",
-            });
-            return;
-          }
-          res.status(200).json({
-            orderId: orderRef.id,
-            paymentMethod: "manual",
-            confirmationUrl: commerceOrderReturnUrl(
-              listingId,
-              orderRef.id,
-              reserved.checkoutToken,
-            ),
-            amountDueMinor: Number(existing.data()?.amountDueMinor ?? 0),
-            reference: orderRef.id.slice(0, 8).toUpperCase(),
-            paymentInstructions: existing.data()?.paymentInstructions ?? null,
-            reused: true,
-          });
-          return;
-        }
-        const authorizationUrl = String(
-          existing.data()?.payment?.authorizationUrl ?? "",
-        );
-        if (!authorizationUrl) {
-          const initialized = await initializeSupplierOrderPaymentV2({
-            orderId: orderRef.id,
-            email: buyer.email,
-            callbackUrl: commerceOrderReturnUrl(
-              listingId,
-              orderRef.id,
-              reserved.checkoutToken,
-            ),
-            channel: paymentChannel,
-          });
-          res.status(200).json({
-            orderId: orderRef.id,
-            paymentMethod: "paystack",
-            amountDueMinor: Number(existing.data()?.amountDueMinor ?? 0),
-            reference: orderRef.id.slice(0, 8).toUpperCase(),
-            authorizationUrl: initialized.authorizationUrl,
-            reused: true,
+        await deliverOrderCreatedOutbox(orderRef.id).catch((error) => {
+          console.error("[commerce] order outbox retry failed", error);
+        });
+        if (!reserved.checkoutToken) {
+          res.status(409).json({
+            error: "Order request is still being prepared. Please try again.",
           });
           return;
         }
         res.status(200).json({
           orderId: orderRef.id,
-          paymentMethod: "paystack",
+          paymentMethod: "manual",
+          confirmationUrl: commerceOrderReturnUrl(
+            listingId,
+            orderRef.id,
+            reserved.checkoutToken,
+          ),
           amountDueMinor: Number(existing.data()?.amountDueMinor ?? 0),
           reference: orderRef.id.slice(0, 8).toUpperCase(),
-          authorizationUrl,
+          paymentInstructions: existing.data()?.paymentInstructions ?? null,
           reused: true,
         });
         return;
@@ -1065,32 +1017,16 @@ export const createCommerceOrder = functions
         orderRef.id,
         reserved.checkoutToken,
       );
-      if (!digitalPaymentsEnabled) {
-        await deliverOrderCreatedOutbox(orderRef.id).catch((error) => {
-          console.error("[commerce] order request outbox failed", error);
-        });
-        res.status(200).json({
-          orderId: orderRef.id,
-          paymentMethod: "manual",
-          confirmationUrl: returnUrl,
-          amountDueMinor: Number(orderData.amountDueMinor ?? 0),
-          reference: orderRef.id.slice(0, 8).toUpperCase(),
-          paymentInstructions: orderData.paymentInstructions ?? null,
-        });
-        return;
-      }
-      const initialized = await initializeSupplierOrderPaymentV2({
-        orderId: orderRef.id,
-        email: buyer.email,
-        callbackUrl: returnUrl,
-        channel: paymentChannel,
+      await deliverOrderCreatedOutbox(orderRef.id).catch((error) => {
+        console.error("[commerce] order request outbox failed", error);
       });
       res.status(200).json({
         orderId: orderRef.id,
-        paymentMethod: "paystack",
+        paymentMethod: "manual",
+        confirmationUrl: returnUrl,
         amountDueMinor: Number(orderData.amountDueMinor ?? 0),
         reference: orderRef.id.slice(0, 8).toUpperCase(),
-        authorizationUrl: initialized.authorizationUrl,
+        paymentInstructions: orderData.paymentInstructions ?? null,
       });
     } catch (error) {
       logCommerceError("createCommerceOrder failed", error);
@@ -1299,11 +1235,16 @@ export const getCommerceOrderStatus = functions.https.onRequest(
         return;
       }
       const data = order.data() ?? {};
+      res.set("Cache-Control", "private, no-store, max-age=0");
       res.status(200).json({
         orderId,
         status: String(data.status ?? "pending_payment"),
         paymentStatus: String(data.paymentStatus ?? "pending"),
         paymentMethod: String(data.paymentMethod ?? "paystack"),
+        paymentInstructions:
+          data.paymentMethod === "manual"
+            ? (data.paymentInstructions ?? null)
+            : null,
         reference: orderId.slice(0, 8).toUpperCase(),
       });
     } catch (_) {
