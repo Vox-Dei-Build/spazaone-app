@@ -300,10 +300,10 @@ test("readiness requires every independent gate", () => {
   );
 });
 
-test("account-payment canary bypasses only rollout gates, not safety gates", () => {
+test("merchant payment canary bypasses only rollout gates, not safety gates", () => {
   const base = {
     masterEnabled: false,
-    accountPaymentCanaryEnabled: true,
+    paymentCanaryEnabled: true,
     globalCapabilities: { account_settlement: false },
     merchantStatus: "enabled",
     merchantCapabilities: { account_settlement: true },
@@ -328,15 +328,21 @@ test("account-payment canary bypasses only rollout gates, not safety gates", () 
     }).reason,
     "merchant_capability_disabled",
   );
-  assert.equal(
-    resolvePaymentReadiness({
-      ...base,
-      purpose: "repayment_installment",
-      globalCapabilities: { repayment_installment: false },
-      merchantCapabilities: { repayment_installment: true },
-    }).reason,
-    "master_disabled",
-  );
+  for (const purpose of [
+    "merchant_order",
+    "supplier_order",
+    "repayment_installment",
+  ]) {
+    assert.deepEqual(
+      resolvePaymentReadiness({
+        ...base,
+        purpose,
+        globalCapabilities: { [purpose]: false },
+        merchantCapabilities: { [purpose]: true },
+      }),
+      { enabled: true, reason: "ready" },
+    );
+  }
 });
 
 test("campaign credits do not require a settlement subaccount", () => {

@@ -8,6 +8,9 @@ import {
   assertProjectMatchesEnvironment,
   paystackAccountPaymentCanaryEnabled,
   paystackCanaryIntentBindingValid,
+  paystackMerchantPaymentCanaryEnabled,
+  paystackPaymentActivationScope,
+  paystackPaymentCanaryEnabled,
   paystackPaymentProviderMode,
   paystackPaymentSecret,
   paystackProviderMode,
@@ -121,6 +124,66 @@ test("production account-payment canary is exact and leaves the global kill swit
         { merchantId: "merchant_canary", purpose: "campaign_credit" },
       ]) {
         assert.equal(paystackAccountPaymentCanaryEnabled(denied), false);
+        assert.equal(paystackPaymentProviderMode(denied), "disabled");
+        assert.throws(
+          () => paystackPaymentSecret(denied),
+          /PAYSTACK_PROVIDER_DISABLED/,
+        );
+      }
+    },
+  );
+});
+
+test("production merchant canary opens every supported purpose for one exact merchant", () => {
+  withEnvironment(
+    {
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      PAYSTACK_PROVIDER_MODE: "disabled",
+      PAYSTACK_SECRET_KEY: "sk_live_merchant-payment-canary",
+      PAYSTACK_ACCOUNT_PAYMENT_CANARY_ENABLED: "false",
+      PAYSTACK_MERCHANT_PAYMENT_CANARY_ENABLED: "true",
+      PAYSTACK_MERCHANT_PAYMENT_CANARY_MERCHANT_ID: "merchant_canary",
+    },
+    () => {
+      for (const purpose of [
+        "campaign_credit",
+        "merchant_order",
+        "supplier_order",
+        "account_settlement",
+        "repayment_installment",
+      ]) {
+        const context = { merchantId: "merchant_canary", purpose };
+        assert.equal(paystackMerchantPaymentCanaryEnabled(context), true);
+        assert.equal(paystackPaymentCanaryEnabled(context), true);
+        assert.equal(paystackPaymentProviderMode(context), "live");
+        assert.equal(
+          paystackPaymentActivationScope(context),
+          "merchant_payment_canary",
+        );
+        assert.equal(
+          paystackPaymentSecret(context),
+          "sk_live_merchant-payment-canary",
+        );
+        assert.equal(
+          paystackCanaryIntentBindingValid({
+            metadataMerchantId: "merchant_canary",
+            metadataPurpose: purpose,
+            intentMerchantId: "merchant_canary",
+            intentPurpose: purpose,
+            intentProviderMode: "live",
+            intentActivationScope: "merchant_payment_canary",
+          }),
+          true,
+        );
+      }
+
+      for (const denied of [
+        { merchantId: "merchant_other", purpose: "merchant_order" },
+        { merchantId: "merchant_canary", purpose: "sale" },
+        { merchantId: "merchant_canary", purpose: "topup" },
+      ]) {
+        assert.equal(paystackMerchantPaymentCanaryEnabled(denied), false);
         assert.equal(paystackPaymentProviderMode(denied), "disabled");
         assert.throws(
           () => paystackPaymentSecret(denied),
@@ -480,10 +543,10 @@ test("settlement verification provider authority is isolated from payment flows"
   assert.doesNotMatch(profiles, /paystackSecret\(\)/);
 
   for (const [relativePath, accessor] of [
-    ["payments/v2/campaignTopup.ts", /paystackSecret\(\)/],
-    ["payments/v2/ownedOrders.ts", /paystackSecret\(\)/],
+    ["payments/v2/campaignTopup.ts", /paystackPaymentSecret\(/],
+    ["payments/v2/ownedOrders.ts", /paystackPaymentSecret\(/],
     ["payments/v2/accountSettlements.ts", /paystackPaymentSecret\(/],
-    ["payments/v2/supplierOrders.ts", /paystackSecret\(\)/],
+    ["payments/v2/supplierOrders.ts", /paystackPaymentSecret\(/],
     ["payments/v2/refunds.ts", /paystackPaymentSecret\(/],
   ]) {
     const source = readFileSync(join(sourceRoot, relativePath), "utf8");

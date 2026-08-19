@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import twilio from "twilio/lib/index";
 import { db, functions } from "../../config/main";
-import { paystackAccountPaymentCanaryEnabled } from "../../config/environment";
+import { paystackPaymentCanaryEnabled } from "../../config/environment";
 import { appendTruthSurfaceMessage } from "../../notifications/unreadCounts";
 import {
   authenticateFirebaseRequest,
@@ -145,7 +145,7 @@ export function customerPaymentRequestFeatureEnabled(
       .trim()
       .toLowerCase() === "true" &&
       config.customerPaymentRequestsEnabled === true) ||
-    paystackAccountPaymentCanaryEnabled({
+    paystackPaymentCanaryEnabled({
       merchantId,
       purpose: "account_settlement",
     })

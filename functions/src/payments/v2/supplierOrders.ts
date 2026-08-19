@@ -2,7 +2,11 @@ import axios from "axios";
 import { createHash } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackProviderMode, paystackSecret } from "../../config/environment";
+import {
+  paystackPaymentActivationScope,
+  paystackPaymentProviderMode,
+  paystackPaymentSecret,
+} from "../../config/environment";
 import {
   confirmCjOrder,
   createCjDropshipOrder,
@@ -210,6 +214,9 @@ export async function initializeSupplierOrderPaymentV2(input: {
     purpose: "supplier_order",
   });
   if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+  const paymentContext = { merchantId: sellerId, purpose: "supplier_order" };
+  const providerMode = paystackPaymentProviderMode(paymentContext);
+  const activationScope = paystackPaymentActivationScope(paymentContext);
   const profile = await db.doc(`merchantPaymentProfiles/${sellerId}`).get();
   const profileData = profile.data() ?? {};
   const subaccountCode = String(profileData.paystackSubaccountCode ?? "");
@@ -305,6 +312,8 @@ export async function initializeSupplierOrderPaymentV2(input: {
         accountName: String(profileData.resolvedAccountName ?? ""),
         accountLast4: String(profileData.accountLast4 ?? ""),
       },
+      providerMode,
+      activationScope,
       supplierFundingReservationId: funding.reservationId,
       updatedAt: now,
     });
@@ -361,7 +370,9 @@ export async function initializeSupplierOrderPaymentV2(input: {
         },
       },
       {
-        headers: { Authorization: `Bearer ${paystackSecret()}` },
+        headers: {
+          Authorization: `Bearer ${paystackPaymentSecret(paymentContext)}`,
+        },
         timeout: 15_000,
       },
     );
@@ -1159,8 +1170,10 @@ export async function applyVerifiedSupplierPaymentV2(
       merchantId: String(orderData.sellerId),
       orderId,
       provider: "paystack",
-      providerMode: paystackProviderMode(),
-      testOnly: paystackProviderMode() === "test",
+      purpose: "supplier_order",
+      providerMode: String(intentData.providerMode ?? "disabled"),
+      testOnly: String(intentData.providerMode ?? "") === "test",
+      activationScope: String(intentData.activationScope ?? "global"),
       providerReference: reference,
       subaccountCode: String(intentData.paystackSubaccountCode ?? ""),
       destination: intentData.settlementDestination ?? {},

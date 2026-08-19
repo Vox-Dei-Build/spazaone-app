@@ -2,7 +2,11 @@ import axios from "axios";
 import { FieldValue } from "firebase-admin/firestore";
 import { createHash } from "crypto";
 import { db, functions } from "../../config/main";
-import { paystackSecret } from "../../config/environment";
+import {
+  paystackPaymentActivationScope,
+  paystackPaymentProviderMode,
+  paystackPaymentSecret,
+} from "../../config/environment";
 import { authenticateFirebaseRequest } from "../../security/requestAuth";
 import { assertStoreAccess, requireStoreId } from "../../stores/storeAccess";
 import {
@@ -356,6 +360,12 @@ export const createCampaignTopupV2 = functions
         return;
       }
       const wallet = await resolveCampaignWallet(prepared.merchantId);
+      const paymentContext = {
+        merchantId: prepared.merchantId,
+        purpose: "campaign_credit",
+      };
+      const providerMode = paystackPaymentProviderMode(paymentContext);
+      const activationScope = paystackPaymentActivationScope(paymentContext);
       const money = buildMoneySnapshot({
         grossAmountMinor: prepared.quote.totalChargeMinor,
         platformFeeMinor: 0,
@@ -405,6 +415,8 @@ export const createCampaignTopupV2 = functions
           campaignWalletStoreId: wallet.walletStoreId,
           campaignWalletShared: wallet.shared,
           feePolicy: prepared.quote.feePolicy,
+          providerMode,
+          activationScope,
           updatedAt: FieldValue.serverTimestamp(),
         });
         return { initialized: false, authorizationUrl: "", reference };
@@ -447,7 +459,9 @@ export const createCampaignTopupV2 = functions
             },
           },
           {
-            headers: { Authorization: `Bearer ${paystackSecret()}` },
+            headers: {
+              Authorization: `Bearer ${paystackPaymentSecret(paymentContext)}`,
+            },
             timeout: 15_000,
           },
         );

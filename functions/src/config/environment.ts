@@ -4,6 +4,15 @@ export type SpazaEnvironment = "local" | "development" | "production";
 export type ProviderMode = "disabled" | "stub" | "test" | "live";
 
 export const PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE = "account_payment_canary";
+export const PAYSTACK_MERCHANT_PAYMENT_CANARY_SCOPE = "merchant_payment_canary";
+
+const PAYSTACK_MERCHANT_PAYMENT_CANARY_PURPOSES = new Set([
+  "campaign_credit",
+  "merchant_order",
+  "supplier_order",
+  "account_settlement",
+  "repayment_installment",
+]);
 
 export type PaystackPaymentContext = {
   merchantId: string;
@@ -132,6 +141,56 @@ export function paystackAccountPaymentCanaryEnabled(
   );
 }
 
+/**
+ * Production-only, exact-merchant canary for every supported payment purpose.
+ *
+ * This is deliberately separate from the global provider and Payments V2
+ * switches. Enabling it cannot make another merchant ready, and the normal
+ * emergency suspension, merchant status and per-merchant capability checks
+ * remain authoritative.
+ */
+export function paystackMerchantPaymentCanaryEnabled(
+  input: PaystackPaymentContext,
+): boolean {
+  if (resolveEnvironment() !== "production") return false;
+  if (
+    value("PAYSTACK_MERCHANT_PAYMENT_CANARY_ENABLED").toLowerCase() !== "true"
+  ) {
+    return false;
+  }
+  const configuredMerchantId = value(
+    "PAYSTACK_MERCHANT_PAYMENT_CANARY_MERCHANT_ID",
+  );
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(configuredMerchantId)) return false;
+  return (
+    input.merchantId === configuredMerchantId &&
+    PAYSTACK_MERCHANT_PAYMENT_CANARY_PURPOSES.has(input.purpose)
+  );
+}
+
+/** Any narrow production payment canary that applies to this exact context. */
+export function paystackPaymentCanaryEnabled(
+  input: PaystackPaymentContext,
+): boolean {
+  return (
+    paystackMerchantPaymentCanaryEnabled(input) ||
+    paystackAccountPaymentCanaryEnabled(input)
+  );
+}
+
+/** Immutable scope recorded on the intent before provider initialization. */
+export function paystackPaymentActivationScope(
+  input: PaystackPaymentContext,
+): string {
+  if (paystackMerchantPaymentCanaryEnabled(input)) {
+    return PAYSTACK_MERCHANT_PAYMENT_CANARY_SCOPE;
+  }
+  if (paystackAccountPaymentCanaryEnabled(input)) {
+    return PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE;
+  }
+  return "global";
+}
+
 /** Verifies the immutable intent binding before a disabled-mode webhook runs. */
 export function paystackCanaryIntentBindingValid(input: {
   metadataMerchantId: unknown;
@@ -145,13 +204,16 @@ export function paystackCanaryIntentBindingValid(input: {
   const purpose = String(input.metadataPurpose ?? "")
     .trim()
     .toLowerCase();
+  const activationScope = paystackPaymentActivationScope({
+    merchantId,
+    purpose,
+  });
   return (
-    paystackAccountPaymentCanaryEnabled({ merchantId, purpose }) &&
+    activationScope !== "global" &&
     String(input.intentMerchantId ?? "") === merchantId &&
     String(input.intentPurpose ?? "") === purpose &&
     String(input.intentProviderMode ?? "") === "live" &&
-    String(input.intentActivationScope ?? "") ===
-      PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE
+    String(input.intentActivationScope ?? "") === activationScope
   );
 }
 
@@ -160,7 +222,7 @@ export function paystackPaymentProviderMode(
   input: PaystackPaymentContext,
 ): ProviderMode {
   const mode = paystackProviderMode();
-  if (mode === "disabled" && paystackAccountPaymentCanaryEnabled(input)) {
+  if (mode === "disabled" && paystackPaymentCanaryEnabled(input)) {
     return "live";
   }
   return mode;

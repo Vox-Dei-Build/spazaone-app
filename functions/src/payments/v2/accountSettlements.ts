@@ -3,8 +3,7 @@ import { createHash } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
 import {
-  PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE,
-  paystackAccountPaymentCanaryEnabled,
+  paystackPaymentActivationScope,
   paystackPaymentProviderMode,
   paystackPaymentSecret,
 } from "../../config/environment";
@@ -194,12 +193,10 @@ export const createAccountSettlementLinkV2 = functions
         merchantId,
         purpose,
       });
-      const activationScope = paystackAccountPaymentCanaryEnabled({
+      const activationScope = paystackPaymentActivationScope({
         merchantId,
         purpose,
-      })
-        ? PAYSTACK_ACCOUNT_PAYMENT_CANARY_SCOPE
-        : "global";
+      });
       const channel = accountChannel(req.body?.channel);
       const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
       const profileRef = db.doc(`merchantPaymentProfiles/${merchantId}`);
