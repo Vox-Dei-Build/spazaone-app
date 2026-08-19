@@ -1,16 +1,15 @@
 import { PaymentReadiness, paymentReadiness } from "./readiness";
+import {
+  PAYSTACK_PAYMENT_CHANNELS,
+  PaystackPaymentChannel,
+} from "./paymentChannels";
 
-export const BUYER_PAYMENT_CHANNELS = [
-  "card",
-  "eft",
-  "capitec_pay",
-  "qr",
-] as const;
+export const BUYER_PAYMENT_CHANNELS = PAYSTACK_PAYMENT_CHANNELS;
 
 export type BuyerPaymentCapability = {
   ready: boolean;
   reason: PaymentReadiness["reason"];
-  channels: Array<(typeof BUYER_PAYMENT_CHANNELS)[number]>;
+  channels: PaystackPaymentChannel[];
 };
 
 export type BuyerPaymentsV2 = {
@@ -25,14 +24,16 @@ export type BuyerPaymentsV2 = {
 
 function safeCapability(
   value: PaymentReadiness,
-  channels: Array<(typeof BUYER_PAYMENT_CHANNELS)[number]> = [
-    ...BUYER_PAYMENT_CHANNELS,
-  ],
+  channels: PaystackPaymentChannel[] = [...BUYER_PAYMENT_CHANNELS],
 ): BuyerPaymentCapability {
+  const allowed = new Set(channels);
+  const providerChannels = value.channels ?? channels;
   return {
     ready: value.enabled,
     reason: value.reason,
-    channels: value.enabled ? channels : [],
+    channels: value.enabled
+      ? providerChannels.filter((channel) => allowed.has(channel))
+      : [],
   };
 }
 

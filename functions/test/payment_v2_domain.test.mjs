@@ -16,6 +16,10 @@ import {
 import { resolvePaymentReadiness } from "../lib/payments/v2/readiness.js";
 import { buildBuyerPaymentsV2 } from "../lib/payments/v2/buyerReadiness.js";
 import {
+  configuredPaystackChannels,
+  paymentChannelsForPurpose,
+} from "../lib/payments/v2/paymentChannels.js";
+import {
   requireAdminAdjustmentMinor,
   requirePaymentRequestReviewAction,
 } from "../lib/payments/v2/admin.js";
@@ -389,6 +393,59 @@ test("buyer-safe readiness exposes channels only for ready capabilities", () => 
   assert.deepEqual(payments.ownedOrders.channels, []);
   assert.equal(payments.manualTransferForOwnedOrders, true);
   assert.equal(payments.supplierOrdersRequireOnlinePayment, true);
+});
+
+test("production payment channels fail closed until Paystack approves pay-by-bank", () => {
+  assert.deepEqual(
+    configuredPaystackChannels({
+      environment: "production",
+      configured: undefined,
+    }),
+    ["card", "qr"],
+  );
+  assert.deepEqual(
+    paymentChannelsForPurpose(
+      "campaign_credit",
+      configuredPaystackChannels({
+        environment: "production",
+        configured: undefined,
+      }),
+    ),
+    ["qr"],
+  );
+  assert.deepEqual(
+    configuredPaystackChannels({
+      environment: "production",
+      configured: { card: true, eft: true, capitec_pay: false, qr: true },
+    }),
+    ["card", "eft", "qr"],
+  );
+  assert.deepEqual(
+    configuredPaystackChannels({
+      environment: "development",
+      configured: undefined,
+    }),
+    ["card", "eft", "capitec_pay", "qr"],
+  );
+});
+
+test("buyer-safe readiness never re-adds a provider-disabled channel", () => {
+  const ready = {
+    enabled: true,
+    reason: "ready",
+    channels: ["card", "qr"],
+  };
+  const payments = buildBuyerPaymentsV2({
+    campaignCredits: ready,
+    ownedOrders: ready,
+    accountPayments: ready,
+    supplierOrders: ready,
+  });
+
+  assert.deepEqual(payments.campaignCredits.channels, ["qr"]);
+  assert.deepEqual(payments.ownedOrders.channels, ["card", "qr"]);
+  assert.deepEqual(payments.accountPayments.channels, ["card", "qr"]);
+  assert.deepEqual(payments.supplierOrders.channels, ["card", "qr"]);
 });
 
 test("South African settlement verification always requires admin review", () => {

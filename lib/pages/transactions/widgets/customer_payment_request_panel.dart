@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/pages/transactions/widgets/repayment_plan_sheet.dart';
 import 'package:pasella/services/customer_payment_request_service.dart';
+import 'package:pasella/services/repayment_plan_service.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -20,6 +22,7 @@ class CustomerPaymentRequestPanel extends StatefulWidget {
     required this.onSetUpOnlinePayments,
     this.merchantId,
     this.service,
+    this.repaymentPlanService,
   });
 
   final String customerId;
@@ -30,6 +33,7 @@ class CustomerPaymentRequestPanel extends StatefulWidget {
   final VoidCallback onSetUpOnlinePayments;
   final String? merchantId;
   final CustomerPaymentRequestGateway? service;
+  final RepaymentPlanGateway? repaymentPlanService;
 
   @override
   State<CustomerPaymentRequestPanel> createState() =>
@@ -40,10 +44,13 @@ class _CustomerPaymentRequestPanelState
     extends State<CustomerPaymentRequestPanel> {
   late final CustomerPaymentRequestGateway _service =
       widget.service ?? CustomerPaymentRequestService();
+  late final RepaymentPlanGateway _repaymentPlanService =
+      widget.repaymentPlanService ?? RepaymentPlanService();
   CustomerPaymentRequestOverview? _overview;
   String? _error;
   bool _loading = false;
   bool _sending = false;
+  bool _creatingPlan = false;
   String? _activeStatus;
   String? _idempotencyKey;
 
@@ -157,6 +164,30 @@ class _CustomerPaymentRequestPanelState
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
+          if (!phoneMissing && overview?.onlinePaymentsReady == true) ...[
+            SizedBox(height: SizeConfig.heightMultiplier * 0.8),
+            OutlinedButton.icon(
+              key: const Key('customer-create-repayment-plan-button'),
+              onPressed: _creatingPlan ? null : _createRepaymentPlan,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF29295B),
+                minimumSize: Size.fromHeight(
+                  SizeConfig.heightMultiplier * 5.8,
+                ),
+                side: const BorderSide(color: Color(0xFF29295B)),
+              ),
+              icon: _creatingPlan
+                  ? SizedBox.square(
+                      dimension: SizeConfig.imageSizeMultiplier * 4,
+                      child: const CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.calendar_month_outlined),
+              label: Text(
+                _creatingPlan ? 'Creating plan…' : 'Set repayment plan',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
           if (statusText != null) ...[
             SizedBox(height: SizeConfig.heightMultiplier * 0.7),
             Text(
@@ -290,6 +321,49 @@ class _CustomerPaymentRequestPanelState
       showSnackbar(context, error.toString(), Colors.red);
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _createRepaymentPlan() async {
+    final overview = _overview;
+    if (overview == null || !overview.onlinePaymentsReady) return;
+    final draft = await showModalBottomSheet<RepaymentPlanDraft>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => RepaymentPlanSheet(
+        customerName: widget.customerName,
+        outstandingAmountMinor: overview.outstandingAmountMinor,
+      ),
+    );
+    if (draft == null || !mounted) return;
+    setState(() => _creatingPlan = true);
+    try {
+      final result = await _repaymentPlanService.create(
+        merchantId: _merchantId,
+        customerId: widget.customerId,
+        totalAmountMinor: draft.totalAmountMinor,
+        installmentAmountMinor: draft.installmentAmountMinor,
+        cadence: draft.cadence,
+        startAtMs: draft.startAtMs,
+        idempotencyKey:
+            'plan_${widget.customerId}_${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (!mounted) return;
+      showSnackbar(
+        context,
+        'Repayment plan created: ${CurrencyUtil.format(result.installmentAmountMinor / 100)} per payment.',
+        const Color(0xFF168B3F),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showSnackbar(context, error.toString(), Colors.red);
+    } finally {
+      if (mounted) setState(() => _creatingPlan = false);
     }
   }
 

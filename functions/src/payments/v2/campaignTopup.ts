@@ -216,6 +216,9 @@ async function authenticatedQuote(req: functions.https.Request, res: any) {
   const channel = String(req.body?.channel ?? "").trim();
   if (!isCampaignTopupChannel(channel))
     throw new Error("TOPUP_CHANNEL_INVALID");
+  if (!(readiness.channels ?? []).includes(channel)) {
+    throw new Error("TOPUP_CHANNEL_INVALID");
+  }
   return {
     uid,
     merchantId,

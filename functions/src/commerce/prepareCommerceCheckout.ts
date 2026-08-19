@@ -505,6 +505,7 @@ async function resolveDelivery(input: Record<string, unknown>): Promise<{
 async function quoteListing(
   listing: FirebaseFirestore.DocumentData,
   quantity: number,
+  allowedPaymentChannels?: readonly string[],
 ): Promise<{
   amountDueMinor: number;
   quote: CjLandedQuote | null;
@@ -532,7 +533,10 @@ async function quoteListing(
         landedCostMinor: quote.landedCostMinor,
         markupMinor: requireMinorUnits(listing.markupMinor, "markup"),
         quantity,
-      })
+      }).filter(
+        (channel) =>
+          !allowedPaymentChannels || allowedPaymentChannels.includes(channel),
+      )
     : [];
   if (quote && paymentOptions.length === 0) {
     throw new Error("SUPPLIER_MARGIN_BELOW_SAFETY");
@@ -624,6 +628,7 @@ export const preparePublicCommerceCheckout = functions
       const quoted = await quoteListing(
         { ...source, preparedPostalCode: postalCode },
         quantity,
+        readiness.channels,
       );
       res.status(200).json({
         status: "ready",
@@ -751,7 +756,11 @@ export const prepareCommerceCheckout = functions
         ...(listing.data() ?? {}),
         preparedPostalCode: resolved.address.postalCode,
       };
-      const quoted = await quoteListing(source, quantity);
+      const quoted = await quoteListing(
+        source,
+        quantity,
+        onlineReadiness?.channels,
+      );
       const paymentOptions = isSupplier
         ? quoted.paymentOptions
         : payment.paymentOptions;

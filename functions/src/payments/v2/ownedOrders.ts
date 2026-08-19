@@ -163,6 +163,9 @@ export const createOwnedOrderPaymentV2 = functions
       const channel = String(req.body?.channel ?? "").trim();
       if (!isOwnedOrderChannel(channel))
         throw new Error("ORDER_CHANNEL_INVALID");
+      if (!(readiness.channels ?? []).includes(channel)) {
+        throw new Error("ORDER_CHANNEL_INVALID");
+      }
       const [sale, profile] = await Promise.all([
         db.doc(`users/${merchantId}/sales/${orderId}`).get(),
         db.doc(`merchantPaymentProfiles/${merchantId}`).get(),

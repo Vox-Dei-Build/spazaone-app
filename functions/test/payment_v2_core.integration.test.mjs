@@ -952,6 +952,120 @@ test("account settlement projects one verified payment and one refund reversal",
   assert.equal(reversal.get("amountMinor"), 4_000);
 });
 
+test("repayment installments advance and complete the active plan exactly once", async () => {
+  const merchantId = "merchant-repayment";
+  const customerId = "customer-repayment";
+  const planId = "repayment-plan-1";
+  const firstDueAtMs = Date.now() + 24 * 60 * 60 * 1000;
+  const customerRef = db.doc(`users/${merchantId}/customers/${customerId}`);
+  const planRef = db.doc(`repaymentPlans/${planId}`);
+  await customerRef.set({
+    name: "Repayment Customer",
+    number: "",
+    balance: -100,
+    activeRepaymentPlanId: planId,
+  });
+  await planRef.set({
+    planId,
+    merchantId,
+    customerId,
+    totalAmountMinor: 5_000,
+    paidAmountMinor: 0,
+    remainingAmountMinor: 5_000,
+    installmentAmountMinor: 4_000,
+    cadence: "weekly",
+    cadenceDays: 7,
+    nextDueAt: admin.firestore.Timestamp.fromMillis(firstDueAtMs),
+    completedInstallments: 0,
+    status: "active",
+  });
+
+  async function applyInstallment(sequence, amountMinor) {
+    const created = await createPaymentIntentV2({
+      merchantId,
+      purpose: "repayment_installment",
+      idempotencyKey: `repayment-payment-${sequence}`,
+      expectedAmountMinor: amountMinor,
+      businessBinding: { type: "repayment_installment", id: planId },
+      money: buildMoneySnapshot({
+        grossAmountMinor: amountMinor,
+        platformFeeMinor: 0,
+        providerFeeMinor: 0,
+      }),
+    });
+    const reference = `p2-repayment-${sequence}`;
+    await db.doc(`paymentIntents/${created.intentId}`).update({
+      status: "initialized",
+      previousStatus: "created",
+      providerReference: reference,
+      selectedChannel: "qr",
+      customerId,
+      repaymentPlanId: planId,
+      paymentRequestId: null,
+      providerMode: "test",
+      paystackSubaccountCode: "ACCT_repaymentmerchant",
+      settlementDestination: {
+        bankName: "Test Bank",
+        accountName: "Merchant",
+        accountLast4: "9876",
+      },
+    });
+    const transaction = {
+      id: 990000 + sequence,
+      status: "success",
+      reference,
+      amount: amountMinor,
+      fees: 0,
+      currency: "ZAR",
+      channel: "qr",
+      metadata: {
+        purpose: "repayment_installment",
+        intentId: created.intentId,
+        merchantId,
+        customerId,
+        repaymentPlanId: planId,
+        paymentRequestId: null,
+        selectedChannel: "qr",
+      },
+    };
+    const rawBody = Buffer.from(
+      JSON.stringify({ event: "charge.success", data: transaction }),
+    );
+    const applied = await applyVerifiedAccountSettlementV2(
+      transaction,
+      rawBody,
+    );
+    assert.equal(applied.deduped, false);
+    assert.equal(
+      (await applyVerifiedAccountSettlementV2(transaction, rawBody)).deduped,
+      true,
+    );
+  }
+
+  await applyInstallment(1, 4_000);
+  const activePlan = await planRef.get();
+  assert.equal(activePlan.get("remainingAmountMinor"), 1_000);
+  assert.equal(activePlan.get("paidAmountMinor"), 4_000);
+  assert.equal(activePlan.get("completedInstallments"), 1);
+  assert.equal(activePlan.get("status"), "active");
+  assert.equal(
+    activePlan.get("nextDueAt").toMillis(),
+    firstDueAtMs + 7 * 24 * 60 * 60 * 1000,
+  );
+  assert.equal((await customerRef.get()).get("activeRepaymentPlanId"), planId);
+
+  await applyInstallment(2, 1_000);
+  const completedPlan = await planRef.get();
+  assert.equal(completedPlan.get("remainingAmountMinor"), 0);
+  assert.equal(completedPlan.get("paidAmountMinor"), 5_000);
+  assert.equal(completedPlan.get("completedInstallments"), 2);
+  assert.equal(completedPlan.get("status"), "completed");
+  assert.equal(
+    (await customerRef.get()).get("activeRepaymentPlanId"),
+    undefined,
+  );
+});
+
 test("supplier payment creates exactly one queued CJ fulfilment", async () => {
   const merchantId = "merchant-supplier";
   const orderId = "supplier-order-1";

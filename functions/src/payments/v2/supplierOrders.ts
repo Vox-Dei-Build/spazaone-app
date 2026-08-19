@@ -214,6 +214,9 @@ export async function initializeSupplierOrderPaymentV2(input: {
     purpose: "supplier_order",
   });
   if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+  if (!(readiness.channels ?? []).includes(channel)) {
+    throw new Error("ORDER_CHANNEL_INVALID");
+  }
   const paymentContext = { merchantId: sellerId, purpose: "supplier_order" };
   const providerMode = paystackPaymentProviderMode(paymentContext);
   const activationScope = paystackPaymentActivationScope(paymentContext);
