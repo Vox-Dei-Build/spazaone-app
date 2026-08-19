@@ -111,7 +111,7 @@ export const updateDropshipListing = functions
           baseCostMinor: listing?.baseCostMinor,
           markupMinor: data?.markupMinor,
           state: data?.state,
-          digitalPaymentsEnabled: commercePaymentsEnabled(),
+          digitalPaymentsEnabled: commercePaymentsEnabled(storeId),
         });
       } catch (error) {
         const code = error instanceof Error ? error.message : "";

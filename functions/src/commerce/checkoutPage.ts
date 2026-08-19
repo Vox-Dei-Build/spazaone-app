@@ -263,7 +263,10 @@ export const commerceCheckout = functions.https.onRequest(async (req, res) => {
       );
     return;
   }
-  if (!commercePaymentsEnabled()) {
+  const digitalPaymentsEnabled = commercePaymentsEnabled(
+    String(data.sellerId ?? ""),
+  );
+  if (!digitalPaymentsEnabled) {
     try {
       const ordering = await ensureMerchantOrderingLink(
         String(data.sellerId ?? ""),
@@ -291,7 +294,7 @@ export const commerceCheckout = functions.https.onRequest(async (req, res) => {
       image: String(images[0] ?? ""),
       sellPriceMinor: Number(data.sellPriceMinor ?? 0),
       shippingNotes: String(data.shippingNotes ?? ""),
-      digitalPaymentsEnabled: commercePaymentsEnabled(),
+      digitalPaymentsEnabled,
     }),
   );
 });

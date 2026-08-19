@@ -2,8 +2,8 @@ import axios from "axios";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
 import {
-  paystackAccountPaymentCanaryEnabled,
   paystackCanaryIntentBindingValid,
+  paystackPaymentCanaryEnabled,
   paystackPaymentSecret,
   paystackProviderMode,
   paystackSecret,
@@ -109,17 +109,11 @@ async function reconcileSettlementDocuments(input?: {
   }
 
   let eligibleCandidates = candidates;
+  const canaryPurposes = new Map<string, string>();
   if (mode === "disabled") {
     const eligibility = await Promise.all(
       candidates.map(async (doc) => {
         const merchantId = String(doc.get("merchantId") ?? "").trim();
-        const merchantIsCanary = paystackAccountPaymentCanaryEnabled({
-          merchantId,
-          purpose: "account_settlement",
-        });
-        if (!merchantIsCanary) {
-          return { doc, merchantId, purpose: "", eligible: false };
-        }
         let purpose = String(doc.get("purpose") ?? "").trim();
         let intentMerchantId = merchantId;
         let providerMode = String(doc.get("providerMode") ?? "").trim();
@@ -135,6 +129,9 @@ async function reconcileSettlementDocuments(input?: {
               intent.get("activationScope") ?? "",
             ).trim();
           }
+        }
+        if (!paystackPaymentCanaryEnabled({ merchantId, purpose })) {
+          return { doc, merchantId, purpose, eligible: false };
         }
         return {
           doc,
@@ -152,7 +149,13 @@ async function reconcileSettlementDocuments(input?: {
       }),
     );
     eligibleCandidates = eligibility
-      .filter((candidate) => candidate.eligible)
+      .filter((candidate) => {
+        if (candidate.eligible) {
+          canaryPurposes.set(candidate.doc.id, candidate.purpose);
+          return true;
+        }
+        return false;
+      })
       .map((candidate) => candidate.doc);
   }
   if (eligibleCandidates.length === 0) {
@@ -164,7 +167,9 @@ async function reconcileSettlementDocuments(input?: {
       ? paystackSecret()
       : paystackPaymentSecret({
           merchantId: String(eligibleCandidates[0].get("merchantId") ?? ""),
-          purpose: "account_settlement",
+          purpose:
+            canaryPurposes.get(eligibleCandidates[0].id) ??
+            String(eligibleCandidates[0].get("purpose") ?? ""),
         });
   const bySubaccount = new Map<string, typeof eligibleCandidates>();
   for (const doc of eligibleCandidates) {

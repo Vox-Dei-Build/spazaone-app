@@ -2,7 +2,11 @@ import axios from "axios";
 import { createHash } from "crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
-import { paystackProviderMode, paystackSecret } from "../../config/environment";
+import {
+  paystackPaymentActivationScope,
+  paystackPaymentProviderMode,
+  paystackPaymentSecret,
+} from "../../config/environment";
 import {
   commerceNotificationDocumentId,
   deliverCommerceOrderNotificationOutbox,
@@ -141,6 +145,9 @@ export const createOwnedOrderPaymentV2 = functions
         purpose: "merchant_order",
       });
       if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+      const paymentContext = { merchantId, purpose: "merchant_order" };
+      const providerMode = paystackPaymentProviderMode(paymentContext);
+      const activationScope = paystackPaymentActivationScope(paymentContext);
       const orderId = String(req.body?.orderId ?? "").trim();
       if (!/^[A-Za-z0-9_-]{1,200}$/.test(orderId)) {
         res.status(400).json({ error: "A valid order is required." });
@@ -279,6 +286,8 @@ export const createOwnedOrderPaymentV2 = functions
             accountName: String(profileData.resolvedAccountName ?? ""),
             accountLast4: String(profileData.accountLast4 ?? ""),
           },
+          providerMode,
+          activationScope,
           updatedAt: now,
         });
         tx.update(reservationRef, {
@@ -333,7 +342,9 @@ export const createOwnedOrderPaymentV2 = functions
             },
           },
           {
-            headers: { Authorization: `Bearer ${paystackSecret()}` },
+            headers: {
+              Authorization: `Bearer ${paystackPaymentSecret(paymentContext)}`,
+            },
             timeout: 15_000,
           },
         );
@@ -602,8 +613,10 @@ export async function applyVerifiedOwnedOrderPaymentV2(
       merchantId,
       orderId,
       provider: "paystack",
-      providerMode: paystackProviderMode(),
-      testOnly: paystackProviderMode() === "test",
+      purpose: "merchant_order",
+      providerMode: String(intentData.providerMode ?? "disabled"),
+      testOnly: String(intentData.providerMode ?? "") === "test",
+      activationScope: String(intentData.activationScope ?? "global"),
       providerReference: reference,
       subaccountCode: String(intentData.paystackSubaccountCode ?? ""),
       destination: intentData.settlementDestination ?? {},

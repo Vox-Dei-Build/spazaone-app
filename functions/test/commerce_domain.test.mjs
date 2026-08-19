@@ -28,6 +28,33 @@ test("digital payment activation fails closed", () => {
   }
 });
 
+test("supplier checkout opens only for the exact production merchant canary", () => {
+  const names = [
+    "SPAZAONE_ENVIRONMENT",
+    "SPAZAONE_FIREBASE_PROJECT_ID",
+    "COMMERCE_PAYMENTS_ENABLED",
+    "PAYSTACK_MERCHANT_PAYMENT_CANARY_ENABLED",
+    "PAYSTACK_MERCHANT_PAYMENT_CANARY_MERCHANT_ID",
+  ];
+  const previous = new Map(names.map((name) => [name, process.env[name]]));
+  try {
+    process.env.SPAZAONE_ENVIRONMENT = "production";
+    process.env.SPAZAONE_FIREBASE_PROJECT_ID = "pasella-ledger";
+    process.env.COMMERCE_PAYMENTS_ENABLED = "false";
+    process.env.PAYSTACK_MERCHANT_PAYMENT_CANARY_ENABLED = "true";
+    process.env.PAYSTACK_MERCHANT_PAYMENT_CANARY_MERCHANT_ID =
+      "merchant_canary";
+    assert.equal(commercePaymentsEnabled("merchant_canary"), true);
+    assert.equal(commercePaymentsEnabled("merchant_other"), false);
+    assert.equal(commercePaymentsEnabled(), false);
+  } finally {
+    for (const [name, value] of previous) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
 test("supplier funding failures are buyer-safe and confirm no charge", () => {
   const unavailable = supplierFundingPublicFailure("CJ_BALANCE_INSUFFICIENT");
   assert.deepEqual(unavailable, {

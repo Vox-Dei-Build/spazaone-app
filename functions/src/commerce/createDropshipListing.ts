@@ -131,7 +131,7 @@ export const createDropshipListing = functions
       priceCommerceOrder({
         baseCostMinor,
         sellPriceMinor,
-        paymentFeeMinor: commercePaymentsEnabled() ? undefined : 0,
+        paymentFeeMinor: commercePaymentsEnabled(storeId) ? undefined : 0,
       });
     } catch (_) {
       throw new functions.https.HttpsError(
@@ -246,6 +246,6 @@ export const createDropshipListing = functions
       listingId: listingRef.id,
       sellerProductId: sellerProductRef.id,
       checkoutUrl,
-      digitalPaymentsEnabled: commercePaymentsEnabled(),
+      digitalPaymentsEnabled: commercePaymentsEnabled(storeId),
     };
   });

@@ -131,7 +131,9 @@ export const searchCjSupplierCatalog = catalogRuntime.https.onCall(
           ? result.totalPages
           : Math.min(13, result.totalPages),
         catalogueRefreshing,
-        digitalPaymentsEnabled: commercePaymentsEnabled(),
+        digitalPaymentsEnabled: commercePaymentsEnabled(
+          String(input.storeId ?? ""),
+        ),
       };
     } catch (error) {
       console.error("searchCjSupplierCatalog failed", error);
