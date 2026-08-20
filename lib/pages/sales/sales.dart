@@ -216,8 +216,9 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                             viewModel: salesVM,
                             header: [
                               WorkspaceContextHeader(
-                                title: 'Recorded sales',
-                                subtitle: 'Cash sales recorded in SpazaOne',
+                                title: 'Sales & stock',
+                                subtitle:
+                                    'Compare sales with money spent restocking',
                                 action: FilledButton.icon(
                                   key: const ValueKey('record-sale-action'),
                                   onPressed: () =>

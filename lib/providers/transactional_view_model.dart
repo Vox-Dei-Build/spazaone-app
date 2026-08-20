@@ -20,6 +20,7 @@ class TransactionViewModel extends ChangeNotifier {
   final FirebaseFirestore firestore = FirebaseFirestore.instance;
   final String userId = StoreSession.instance.storeId;
   final TextEditingController amountController = TextEditingController();
+  final TextEditingController stockAmountController = TextEditingController();
   final TextEditingController remarksController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
   DateTime selectedDate = DateTime.now();
@@ -69,6 +70,7 @@ class TransactionViewModel extends ChangeNotifier {
   /// the first time [markPristine] is called. Used by [isDirty] so the
   /// shared `TransactionFormScaffold` can prompt before discarding work.
   String? _pristineAmount;
+  String? _pristineStockAmount;
   String? _pristineRemarks;
   Map<String, int>? _pristineProducts;
   DateTime? _pristineSelectedDate;
@@ -81,6 +83,7 @@ class TransactionViewModel extends ChangeNotifier {
   void markPristine({bool force = false}) {
     if (!force && _pristineAmount != null) return;
     _pristineAmount = amountController.text;
+    _pristineStockAmount = stockAmountController.text;
     _pristineRemarks = remarksController.text;
     _pristineProducts = Map<String, int>.from(selectedProducts);
     _pristineSelectedDate = selectedDate;
@@ -93,6 +96,7 @@ class TransactionViewModel extends ChangeNotifier {
   bool get isDirty {
     if (_pristineAmount == null) return false;
     if (amountController.text != _pristineAmount) return true;
+    if (stockAmountController.text != _pristineStockAmount) return true;
     if (remarksController.text != _pristineRemarks) return true;
     if (selectedDate != _pristineSelectedDate) return true;
     if (salesSelectedDate != _pristineSalesSelectedDate) return true;
@@ -114,6 +118,7 @@ class TransactionViewModel extends ChangeNotifier {
       markPristine();
     });
     amountController.addListener(notifyListeners);
+    stockAmountController.addListener(notifyListeners);
     remarksController.addListener(notifyListeners);
   }
 
@@ -492,6 +497,7 @@ class TransactionViewModel extends ChangeNotifier {
 
   void resetForm() {
     amountController.clear();
+    stockAmountController.clear();
     remarksController.clear();
     selectedProducts.clear();
     salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(DateTime.now());
@@ -527,6 +533,7 @@ class TransactionViewModel extends ChangeNotifier {
     // teardown.
     _disposed = true;
     amountController.dispose();
+    stockAmountController.dispose();
     remarksController.dispose();
     searchController.dispose();
     super.dispose();

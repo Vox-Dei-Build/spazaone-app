@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
+import 'package:pasella/pages/sales/widgets/stock_amount_field.dart';
 import 'package:pasella/pages/transactions/widgets/product_selection.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/forms/date_row.dart';
@@ -66,7 +67,7 @@ class AddSale extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Record one day-end revenue total, or itemize a sale with products when you want stock and profit detail.',
+                    'Record your day-end sales total and any amount spent restocking. Add products only when you need item-level stock and profit detail.',
                     style: TextStyle(height: 1.3),
                   ),
                 ),
@@ -87,6 +88,9 @@ class AddSale extends StatelessWidget {
                     }
                     return null;
                   },
+                ),
+                StockAmountField(
+                  controller: transactionViewModel.stockAmountController,
                 ),
                 DateRow(
                   label: 'Date of Sale',

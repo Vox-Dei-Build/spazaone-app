@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/transaction_util.dart';
@@ -28,6 +29,8 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
   Widget build(BuildContext context) {
     // Metrics
     final sales = widget.viewModel.totalSales;
+    final stockAmount = widget.viewModel.totalStockAmount;
+    final difference = sales - stockAmount;
     final cost = widget.viewModel.totalCost;
     final profit = widget.viewModel.totalProfit;
     final count = widget.viewModel.totalNumberOfSales;
@@ -46,8 +49,16 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
         borderRadius: BorderRadius.circular(18),
       ),
       child: InkWell(
-        onTap: () =>
-            _showFullStats(context, sales, cost, profit, count, marginPct),
+        onTap: () => _showFullStats(
+          context,
+          sales,
+          stockAmount,
+          difference,
+          cost,
+          profit,
+          count,
+          marginPct,
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
           child: Column(
@@ -74,7 +85,7 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Recorded sales',
+                          'Sales & stock',
                           style: Theme.of(context)
                               .textTheme
                               .titleSmall
@@ -104,39 +115,59 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
-                'Total sales',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                CurrencyUtil.format(sales),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: const Color(0xFF30345F),
-                      fontWeight: FontWeight.w900,
-                    ),
-              ),
-              const SizedBox(height: 14),
               Row(
                 children: [
                   Expanded(
                     child: _OpenMetric(
-                      label: 'Profit',
-                      value: CurrencyUtil.format(profit),
+                      label: 'Sales',
+                      value: CurrencyUtil.format(sales),
+                      valueColor: kPrimaryColor,
+                      backgroundColor: kPrimaryColor.withValues(alpha: 0.08),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: _OpenMetric(
-                      label: 'Recorded sales',
-                      value: count.toString(),
+                      label: 'Stock bought',
+                      value: CurrencyUtil.format(stockAmount),
+                      valueColor: Colors.orange.shade800,
+                      backgroundColor: Colors.orange.withValues(alpha: 0.09),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Text(
+                    'Difference',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    CurrencyUtil.format(difference),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF30345F),
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '$count ${count == 1 ? 'entry' : 'entries'}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Cash view • difference is not profit',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
               ),
             ],
           ),
@@ -148,6 +179,8 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
   void _showFullStats(
     BuildContext context,
     num sales,
+    num stockAmount,
+    num difference,
     num cost,
     num profit,
     int count,
@@ -217,21 +250,35 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                 childAspectRatio: 2.4, // denser
                 children: [
                   _StatChip(
-                    title: 'Revenue Recorded',
+                    title: 'Sales',
                     value: CurrencyUtil.format(toDouble(sales)),
                     icon: Icons.point_of_sale,
                     fg: const Color(0xFF0B5FFF),
                     bg: const Color(0x160B5FFF),
                   ),
                   _StatChip(
-                    title: 'Total Cost',
+                    title: 'Stock Bought',
+                    value: CurrencyUtil.format(toDouble(stockAmount)),
+                    icon: Icons.inventory_2_outlined,
+                    fg: const Color(0xFFC45D08),
+                    bg: const Color(0x16F57C00),
+                  ),
+                  _StatChip(
+                    title: 'Difference',
+                    value: CurrencyUtil.format(toDouble(difference)),
+                    icon: Icons.compare_arrows_rounded,
+                    fg: const Color(0xFF30345F),
+                    bg: const Color(0x1630345F),
+                  ),
+                  _StatChip(
+                    title: 'Itemized Product Cost',
                     value: CurrencyUtil.format(toDouble(cost)),
                     icon: Icons.inventory_2_outlined,
                     fg: const Color(0xFFD14343),
                     bg: const Color(0x16D14343),
                   ),
                   _StatChip(
-                    title: 'Total Profit',
+                    title: 'Itemized Product Profit',
                     value: CurrencyUtil.format(toDouble(profit)),
                     icon: Icons.trending_up_rounded,
                     fg: const Color(0xFF2E7D32),
@@ -254,6 +301,13 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
                     ),
                 ],
               ),
+              SizedBox(height: SizeConfig.heightMultiplier * 1.2),
+              Text(
+                'Difference compares sales with stock purchases. It is not profit because stock bought today may be sold later.',
+                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                    ),
+              ),
             ],
           ),
         );
@@ -268,30 +322,40 @@ class _SalesStatsCardState extends State<SalesStatsCard> {
   ) {
     String fmt(DateTime d) => DateFormat.yMMMd().format(d);
     if (startDate != null && endDate != null) {
-      return 'Sales: ${fmt(startDate)} — ${fmt(endDate)}';
+      return 'Sales & stock: ${fmt(startDate)} — ${fmt(endDate)}';
     }
     if (selectedDay != null) {
       final now = DateTime.now();
       final same = now.year == selectedDay.year &&
           now.month == selectedDay.month &&
           now.day == selectedDay.day;
-      return same ? "Today's Sales" : 'Sales: ${fmt(selectedDay)}';
+      return same
+          ? "Today's sales & stock"
+          : 'Sales & stock: ${fmt(selectedDay)}';
     }
     return 'Sales Overview';
   }
 }
 
 class _OpenMetric extends StatelessWidget {
-  const _OpenMetric({required this.label, required this.value});
+  const _OpenMetric({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.backgroundColor,
+  });
 
   final String label;
   final String value;
+  final Color? valueColor;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          color: backgroundColor ??
+              Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -309,6 +373,7 @@ class _OpenMetric extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: valueColor,
                     fontWeight: FontWeight.w800,
                   ),
             ),

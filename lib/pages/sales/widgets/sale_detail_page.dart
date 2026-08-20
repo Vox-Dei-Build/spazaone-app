@@ -117,7 +117,7 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                     children: [
                       ListTile(
                         title: Text(
-                          'Amount',
+                          'Sales amount',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: SizeConfig.textMultiplier * 2,
@@ -127,6 +127,21 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                           CurrencyUtil.format(sale.amount),
                           style: TextStyle(
                               fontSize: SizeConfig.textMultiplier * 1.8),
+                        ),
+                      ),
+                      ListTile(
+                        title: Text(
+                          'Stock amount',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: SizeConfig.textMultiplier * 2,
+                          ),
+                        ),
+                        subtitle: Text(
+                          CurrencyUtil.format(sale.stockAmount),
+                          style: TextStyle(
+                            fontSize: SizeConfig.textMultiplier * 1.8,
+                          ),
                         ),
                       ),
                       ListTile(
