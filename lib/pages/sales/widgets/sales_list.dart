@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/sales/widgets/sale_detail_page.dart';
@@ -69,10 +70,13 @@ class _SalesListState extends State<SalesList> {
 
         return ListView.builder(
           padding: EdgeInsets.only(bottom: widget.bottomPadding), // <- KEY
-          itemCount: widget.header.length + data.length,
+          itemCount: widget.header.length + 1 + data.length,
           itemBuilder: (context, index) {
             if (index < widget.header.length) return widget.header[index];
-            final sale = data[index - widget.header.length];
+            if (index == widget.header.length) {
+              return const _SalesColumnHeader();
+            }
+            final sale = data[index - widget.header.length - 1];
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: Material(
@@ -81,37 +85,8 @@ class _SalesListState extends State<SalesList> {
                     .surfaceContainerHighest
                     .withValues(alpha: .42),
                 borderRadius: BorderRadius.circular(16),
-                child: ListTile(
-                  minVerticalPadding: 12,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  leading: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer
-                          .withValues(alpha: .45),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.receipt_long_outlined, size: 20),
-                  ),
-                  title: Text(
-                    DateFormat('dd MMM yyyy').format(sale.dateAdded),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(DateFormat('HH:mm').format(sale.dateAdded)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        CurrencyUtil.format(sale.amount),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.chevron_right_rounded),
-                    ],
-                  ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
                   onTap: () async {
                     final changed = await Navigator.of(context).push(
                       MaterialPageRoute(
@@ -122,8 +97,75 @@ class _SalesListState extends State<SalesList> {
                       viewModel.updateSelectedDate(DateTime.now());
                     }
                   },
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer
+                                .withValues(alpha: .45),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.receipt_long_outlined,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 7,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                DateFormat('dd MMM').format(sale.dateAdded),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Text(
+                                DateFormat('HH:mm').format(sale.dateAdded),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          flex: 6,
+                          child: _SaleAmountValue(
+                            semanticsLabel: 'Sales amount',
+                            value: CurrencyUtil.format(sale.amount),
+                            color: kPrimaryColor,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          flex: 6,
+                          child: _SaleAmountValue(
+                            semanticsLabel: 'Stock amount',
+                            value: CurrencyUtil.format(sale.stockAmount),
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          size: 20,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -178,6 +220,68 @@ class _SalesListState extends State<SalesList> {
             growable: false,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SalesColumnHeader extends StatelessWidget {
+  const _SalesColumnHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(68, 10, 34, 2),
+      child: Row(
+        children: [
+          Expanded(flex: 7, child: Text('DATE', style: style)),
+          const SizedBox(width: 6),
+          Expanded(flex: 6, child: Text('SALES', style: style)),
+          const SizedBox(width: 6),
+          Expanded(
+            flex: 6,
+            child: Text(
+              'STOCK BOUGHT',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SaleAmountValue extends StatelessWidget {
+  const _SaleAmountValue({
+    required this.semanticsLabel,
+    required this.value,
+    required this.color,
+  });
+
+  final String semanticsLabel;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$semanticsLabel $value',
+      excludeSemantics: true,
+      child: Text(
+        value,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.left,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
       ),
     );
   }

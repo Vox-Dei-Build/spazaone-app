@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class Sale {
   final String id;
   final double amount;
+  final double stockAmount;
   final String type;
   final Map<String, int> products; // Product ID -> Qty
   final DateTime dateAdded;
@@ -11,6 +12,7 @@ class Sale {
   Sale({
     required this.id,
     required this.amount,
+    this.stockAmount = 0.0,
     required this.type,
     required this.products,
     required this.dateAdded,
@@ -72,12 +74,47 @@ class Sale {
     return Sale(
       id: documentId,
       amount: _asDouble(data['amount']),
+      stockAmount: _asDouble(data['stockAmount']),
       type: (data['type'] ?? 'Unknown').toString(),
       products: _asProducts(data['products']),
       dateAdded: _asDate(data['dateAdded']),
       remarks: (data['remarks'] == null || data['remarks'] == '')
           ? null
           : data['remarks'].toString(),
+    );
+  }
+}
+
+/// Period totals for the merchant-entered daily sales and stock-purchase
+/// amounts. This intentionally does not label the difference as profit.
+class SalesStockTotals {
+  const SalesStockTotals({
+    required this.salesAmount,
+    required this.stockAmount,
+    required this.entryCount,
+  });
+
+  final double salesAmount;
+  final double stockAmount;
+  final int entryCount;
+
+  double get difference => salesAmount - stockAmount;
+
+  factory SalesStockTotals.fromSales(Iterable<Sale> sales) {
+    var salesAmount = 0.0;
+    var stockAmount = 0.0;
+    var entryCount = 0;
+
+    for (final sale in sales) {
+      salesAmount += sale.amount;
+      stockAmount += sale.stockAmount;
+      entryCount++;
+    }
+
+    return SalesStockTotals(
+      salesAmount: salesAmount,
+      stockAmount: stockAmount,
+      entryCount: entryCount,
     );
   }
 }

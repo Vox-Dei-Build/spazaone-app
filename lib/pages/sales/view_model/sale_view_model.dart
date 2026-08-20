@@ -25,6 +25,7 @@ class SalesViewModel extends TransactionViewModel {
   // before the first Firestore fetch resolved.
   bool _hasEmitted = false;
   double totalSales = 0.0;
+  double totalStockAmount = 0.0;
   double totalCost = 0.0;
   double totalProfit = 0.0;
   int totalNumberOfSales = 0;
@@ -264,8 +265,22 @@ class SalesViewModel extends TransactionViewModel {
         return;
       }
 
+      final stockAmountEntered = _parseStockAmount();
+      if (stockAmountEntered == null) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          showSnackbar(
+            context,
+            'Please check the stock amount entered.',
+            Colors.red,
+          );
+        });
+        setLoading(false);
+        return;
+      }
+
       final salesData = {
         'amount': amountEntered,
+        'stockAmount': stockAmountEntered,
         'type': 'Cash',
         'dateAdded': Timestamp.fromDate(
           DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
@@ -297,6 +312,7 @@ class SalesViewModel extends TransactionViewModel {
       currentSale = Sale(
         id: docRef.id,
         amount: amountEntered,
+        stockAmount: stockAmountEntered,
         type: 'Cash',
         products: selectedProducts,
         dateAdded: DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
@@ -394,6 +410,8 @@ class SalesViewModel extends TransactionViewModel {
     try {
       // Preload the amount for editing
       amountController.text = sale.amount.toString();
+      stockAmountController.text =
+          sale.stockAmount == 0 ? '' : sale.stockAmount.toString();
 
       // Preload the sale date for editing
       salesSelectedDate = DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded);
@@ -450,9 +468,20 @@ class SalesViewModel extends TransactionViewModel {
     }
 
     try {
+      final updatedStockAmount = _parseStockAmount();
+      if (updatedStockAmount == null) {
+        showSnackbar(
+          context,
+          'Please check the stock amount entered.',
+          Colors.red,
+        );
+        return;
+      }
+
       // Prepare the sale update data
       final salesData = {
         'amount': updatedAmount,
+        'stockAmount': updatedStockAmount,
         'products': updatedProducts,
         'dateAdded': Timestamp.fromDate(
           DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
@@ -675,12 +704,10 @@ class SalesViewModel extends TransactionViewModel {
   }
 
   void _calculateSalesStats(List<Sale> sales) {
-    double totalSalesAmount = 0.0;
+    final salesStockTotals = SalesStockTotals.fromSales(sales);
     double totalCostAmount = 0.0;
-    int totalSalesCount = sales.length;
 
     for (var sale in sales) {
-      totalSalesAmount += sale.amount;
       for (var entry in sale.products.entries) {
         final product = products.firstWhere(
           (p) => p.id == entry.key,
@@ -690,12 +717,24 @@ class SalesViewModel extends TransactionViewModel {
       }
     }
 
-    totalSales = totalSalesAmount;
+    totalSales = salesStockTotals.salesAmount;
+    totalStockAmount = salesStockTotals.stockAmount;
     totalCost = totalCostAmount;
-    totalProfit = totalSalesAmount - totalCostAmount;
-    totalNumberOfSales = totalSalesCount;
+    totalProfit = salesStockTotals.salesAmount - totalCostAmount;
+    totalNumberOfSales = salesStockTotals.entryCount;
 
     notifyListeners();
+  }
+
+  /// Parses the optional amount spent buying stock. Empty values are stored
+  /// as zero so sales created before this field existed remain equivalent.
+  /// A null result means the user supplied an invalid or negative value.
+  double? _parseStockAmount() {
+    final input = stockAmountController.text.trim();
+    if (input.isEmpty) return 0.0;
+    final value = double.tryParse(input);
+    if (value == null || value < 0) return null;
+    return value;
   }
 
   @override
