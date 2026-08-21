@@ -45,7 +45,10 @@ export function buildBuyerPaymentsV2(input: {
 }): BuyerPaymentsV2 {
   return {
     schemaVersion: 2,
-    campaignCredits: safeCapability(input.campaignCredits, ["card"]),
+    // The global payment configuration is the source of truth for channels
+    // Paystack has approved for this business. Preserve that allowlist for
+    // campaign top-ups instead of silently reducing it to Card.
+    campaignCredits: safeCapability(input.campaignCredits),
     ownedOrders: safeCapability(input.ownedOrders),
     accountPayments: safeCapability(input.accountPayments),
     supplierOrders: safeCapability(input.supplierOrders),

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/services/payment_setup_service.dart';
 
 void main() {
@@ -61,5 +62,25 @@ void main() {
     expect(overview.paymentsV2.accountPayments.ready, isFalse);
     expect(overview.paymentsV2.supplierOrders.ready, isFalse);
     expect(overview.verification.stage, 'not_started');
+  });
+
+  test('campaign top-up methods are the server and client intersection', () {
+    const capability = MerchantPaymentCapability(
+      ready: true,
+      reason: 'ready',
+      channels: ['qr', 'unknown_future_channel', 'card', 'qr'],
+    );
+
+    expect(supportedCampaignTopupChannels(capability), ['card', 'qr']);
+  });
+
+  test('campaign top-up methods fail closed for a disabled capability', () {
+    const capability = MerchantPaymentCapability(
+      ready: false,
+      reason: 'capability_disabled',
+      channels: ['card', 'eft'],
+    );
+
+    expect(supportedCampaignTopupChannels(capability), isEmpty);
   });
 }

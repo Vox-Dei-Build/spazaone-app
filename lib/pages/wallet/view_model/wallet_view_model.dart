@@ -6,7 +6,6 @@ import 'package:pasella/services/store_session.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/wallet/banking_detail_model.dart';
-import 'package:pasella/pages/wallet/widgets/paystack_form.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
@@ -442,15 +441,6 @@ class WalletViewModel extends ChangeNotifier {
       if (!context.mounted) return;
       showSnackbar(context, 'Could not move funds.', Colors.red);
     }
-  }
-
-  /// Open the Paystack Form screen
-  void openPaystackForm(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const PaystackFormScreen(),
-      ),
-    );
   }
 
   Future<void> _sendWhatsAppMessage(

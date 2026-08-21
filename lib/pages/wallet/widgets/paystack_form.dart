@@ -14,7 +14,7 @@ import 'package:pasella/shared/widgets/custom_app_bar.dart';
 class PaystackFormScreen extends StatefulWidget {
   const PaystackFormScreen({
     super.key,
-    this.allowedChannels = const <String>['card'],
+    required this.allowedChannels,
     this.merchantId,
   });
 
@@ -31,22 +31,20 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
   String get currentUserId =>
       widget.merchantId ?? StoreSession.instance.storeId;
   bool isLoading = false;
-  CampaignTopupChannel selectedChannel = CampaignTopupChannel.card;
+  CampaignTopupChannel? selectedChannel;
 
   List<CampaignTopupChannel> get _availableChannels {
     final allowed = widget.allowedChannels.toSet();
     final channels = CampaignTopupChannel.values
         .where((channel) => allowed.contains(channel.wireName))
         .toList(growable: false);
-    return channels.isEmpty
-        ? const <CampaignTopupChannel>[CampaignTopupChannel.card]
-        : channels;
+    return channels;
   }
 
   @override
   void initState() {
     super.initState();
-    selectedChannel = _availableChannels.first;
+    selectedChannel = _availableChannels.firstOrNull;
   }
 
   @override
@@ -59,6 +57,16 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
   /// Start Paystack TOP-UP transaction (purpose = 'topup')
   Future<void> _startTransaction() async {
     final messenger = ScaffoldMessenger.of(context);
+    final channel = selectedChannel;
+
+    if (channel == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Adding money is temporarily unavailable.'),
+        ),
+      );
+      return;
+    }
 
     if (amountController.text.trim().isEmpty ||
         emailController.text.trim().isEmpty) {
@@ -90,7 +98,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
     setState(() => isLoading = true);
 
     final amountBucket = amountBucketZAR(amount);
-    final method = 'paystack_${selectedChannel.wireName}';
+    final method = 'paystack_${channel.wireName}';
     await TelemetryService.instance.capture(
       WalletTopupStarted(amountBucket: amountBucket, method: method),
     );
@@ -99,7 +107,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
       final quote = await PaystackService.quoteCampaignCreditV2(
         merchantId: currentUserId,
         creditAmountMinor: creditAmountMinor,
-        channel: selectedChannel,
+        channel: channel,
       );
       if (!mounted) return;
       final confirmed = await showModalBottomSheet<bool>(
@@ -108,7 +116,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         showDragHandle: true,
         builder: (context) => CampaignTopupConfirmationSheet(
           quote: quote,
-          paymentMethod: selectedChannel.label,
+          paymentMethod: channel.label,
         ),
       );
       if (confirmed != true) {
@@ -119,7 +127,7 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
         merchantId: currentUserId,
         creditAmountMinor: creditAmountMinor,
         email: emailController.text.trim(),
-        channel: selectedChannel,
+        channel: channel,
         idempotencyKey:
             'topup:$currentUserId:${DateTime.now().microsecondsSinceEpoch}',
       );
@@ -251,33 +259,48 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
                         : null,
                   ),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<CampaignTopupChannel>(
-                    value: selectedChannel,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'How would you like to pay? *',
-                      prefixIcon: Icon(Icons.account_balance_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _availableChannels
-                        .map(
-                          (channel) => DropdownMenuItem(
-                            value: channel,
-                            child: Text(
-                              channel.label,
-                              overflow: TextOverflow.ellipsis,
+                  if (_availableChannels.isEmpty)
+                    const DecoratedBox(
+                      key: ValueKey('topup-channels-unavailable'),
+                      decoration: BoxDecoration(
+                        color: Color(0xFFFFF3E0),
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'Adding money is temporarily unavailable.',
+                        ),
+                      ),
+                    )
+                  else
+                    DropdownButtonFormField<CampaignTopupChannel>(
+                      value: selectedChannel,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'How would you like to pay? *',
+                        prefixIcon: Icon(Icons.account_balance_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _availableChannels
+                          .map(
+                            (channel) => DropdownMenuItem(
+                              value: channel,
+                              child: Text(
+                                channel.label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: isLoading
-                        ? null
-                        : (channel) {
-                            if (channel != null) {
-                              setState(() => selectedChannel = channel);
-                            }
-                          },
-                  ),
+                          )
+                          .toList(),
+                      onChanged: isLoading
+                          ? null
+                          : (channel) {
+                              if (channel != null) {
+                                setState(() => selectedChannel = channel);
+                              }
+                            },
+                    ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: emailController,
@@ -294,8 +317,9 @@ class _PaystackFormScreenState extends State<PaystackFormScreen> {
                   ),
                   const SizedBox(height: 24),
                   FilledButton(
-                    onPressed:
-                        isLoading ? null : () => unawaited(_startTransaction()),
+                    onPressed: isLoading || selectedChannel == null
+                        ? null
+                        : () => unawaited(_startTransaction()),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(52),
                     ),
