@@ -14,7 +14,12 @@ void main() {
       tester.view.resetViewInsets();
     });
     await tester.pumpWidget(
-      const MaterialApp(home: PaystackFormScreen(merchantId: 'merchant-1')),
+      const MaterialApp(
+        home: PaystackFormScreen(
+          merchantId: 'merchant-1',
+          allowedChannels: ['card'],
+        ),
+      ),
     );
     await tester.pump();
     expect(find.text('Add to SpazaOne balance'), findsOneWidget);
@@ -23,6 +28,49 @@ void main() {
     expect(find.text('Continue'), findsOneWidget);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('shows exactly the server-approved payment methods', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: PaystackFormScreen(
+          merchantId: 'merchant-1',
+          allowedChannels: ['card', 'capitec_pay'],
+        ),
+      ),
+    );
+
+    expect(find.text('Card'), findsOneWidget);
+    expect(find.text('Ozow (Instant EFT)'), findsNothing);
+    expect(find.text('Scan to Pay QR'), findsNothing);
+    await tester.tap(find.text('Card'));
+    await tester.pumpAndSettle();
+    expect(find.text('Capitec Pay'), findsOneWidget);
+    expect(find.text('Ozow (Instant EFT)'), findsNothing);
+    expect(find.text('Scan to Pay QR'), findsNothing);
+  });
+
+  testWidgets('fails closed when the server approves no payment method', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: PaystackFormScreen(
+          merchantId: 'merchant-1',
+          allowedChannels: <String>[],
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('topup-channels-unavailable')),
+      findsOneWidget,
+    );
+    expect(find.text('Card'), findsNothing);
+    final button = tester.widget<FilledButton>(find.byType(FilledButton));
+    expect(button.onPressed, isNull);
   });
 
   testWidgets('confirmation sheet shows exact receipt values and actions', (

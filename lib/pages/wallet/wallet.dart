@@ -36,6 +36,22 @@ WalletInitialDestination walletInitialDestination(WalletInitialTab tab) =>
       WalletInitialTab.account => WalletInitialDestination.money,
     };
 
+/// Intersects server-advertised Campaign Credit channels with the payment
+/// methods this app build knows how to render. An unavailable capability or
+/// an empty/unknown server list always fails closed.
+@visibleForTesting
+List<String> supportedCampaignTopupChannels(
+  MerchantPaymentCapability capability,
+) {
+  if (!capability.ready) return const <String>[];
+  final advertised = capability.channels.map((value) => value.trim()).toSet();
+  return List<String>.unmodifiable(
+    CampaignTopupChannel.values
+        .map((channel) => channel.wireName)
+        .where(advertised.contains),
+  );
+}
+
 /// Visual summary for the balances merchants use most.
 class BillingBalancePanel extends StatelessWidget {
   const BillingBalancePanel({
@@ -601,6 +617,7 @@ class _WalletPageState extends State<WalletPage> {
   final WalletViewModel walletVM = WalletViewModel();
   late Future<MerchantPaymentOverview> _overviewFuture;
   bool _handledInitialDestination = false;
+  bool _openingTopup = false;
   String? _pendingIntentId;
 
   @override
@@ -721,23 +738,59 @@ class _WalletPageState extends State<WalletPage> {
     });
   }
 
-  Future<void> _openAddMoney({List<String>? channels}) async {
-    await Navigator.of(context).push<CampaignTopupStatus>(
-      MaterialPageRoute(
-        builder: (_) => PaystackFormScreen(
-          allowedChannels: channels ?? const ['eft', 'capitec_pay', 'qr'],
+  Future<void> _openAddMoney() async {
+    if (_openingTopup) return;
+    if (!FeatureFlags.enableTopUpPaystack) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Adding money is temporarily unavailable.'),
         ),
-      ),
-    );
-    if (!mounted) return;
-    setState(() {
-      _pendingIntentId = CampaignTopupPendingStore.read(
-        StoreSession.instance.storeId,
       );
-      _overviewFuture = PaymentSetupService.overview(
-        StoreSession.instance.storeId,
+      return;
+    }
+
+    setState(() => _openingTopup = true);
+    try {
+      final merchantId = StoreSession.instance.storeId;
+      final overview = await PaymentSetupService.overview(merchantId);
+      if (!mounted) return;
+      final channels = supportedCampaignTopupChannels(
+        overview.paymentsV2.campaignCredits,
       );
-    });
+      setState(() => _overviewFuture = Future.value(overview));
+      if (channels.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Adding money is temporarily unavailable.'),
+          ),
+        );
+        return;
+      }
+
+      await Navigator.of(context).push<CampaignTopupStatus>(
+        MaterialPageRoute(
+          builder: (_) => PaystackFormScreen(
+            allowedChannels: channels,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _pendingIntentId = CampaignTopupPendingStore.read(merchantId);
+        _overviewFuture = PaymentSetupService.overview(merchantId);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not check available payment methods. Please try again.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _openingTopup = false);
+    }
   }
 
   Future<void> _openAddMoneyFromHub() async {
