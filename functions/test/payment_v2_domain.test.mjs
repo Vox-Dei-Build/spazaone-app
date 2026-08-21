@@ -385,7 +385,12 @@ test("buyer-safe readiness exposes channels only for ready capabilities", () => 
   });
 
   assert.equal(payments.schemaVersion, 2);
-  assert.deepEqual(payments.campaignCredits.channels, ["card"]);
+  assert.deepEqual(payments.campaignCredits.channels, [
+    "card",
+    "eft",
+    "capitec_pay",
+    "qr",
+  ]);
   assert.deepEqual(payments.ownedOrders.channels, []);
   assert.equal(payments.manualTransferForOwnedOrders, true);
   assert.equal(payments.supplierOrdersRequireOnlinePayment, false);
@@ -438,7 +443,7 @@ test("buyer-safe readiness never re-adds a provider-disabled channel", () => {
     supplierOrders: ready,
   });
 
-  assert.deepEqual(payments.campaignCredits.channels, ["card"]);
+  assert.deepEqual(payments.campaignCredits.channels, ["card", "qr"]);
   assert.deepEqual(payments.ownedOrders.channels, ["card", "qr"]);
   assert.deepEqual(payments.accountPayments.channels, ["card", "qr"]);
   assert.deepEqual(payments.supplierOrders.channels, ["card", "qr"]);
