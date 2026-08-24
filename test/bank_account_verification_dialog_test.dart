@@ -220,4 +220,25 @@ void main() {
     expect(find.textContaining('Do not retry'), findsOneWidget);
     expect(find.text('Continue verification'), findsNothing);
   });
+
+  testWidgets('account-holder mismatch gives the merchant a precise correction',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MerchantVerificationJourneyCard(
+            journey: MerchantVerificationJourney(
+              stage: 'blocked',
+              reason: 'bank_account_holder_mismatch',
+            ),
+            isSubmitting: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Account holder name does not match'), findsOneWidget);
+    expect(find.textContaining('exact bank-record name'), findsOneWidget);
+    expect(find.text('Continue verification'), findsNothing);
+  });
 }

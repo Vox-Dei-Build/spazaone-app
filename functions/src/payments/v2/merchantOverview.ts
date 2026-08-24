@@ -99,11 +99,17 @@ export function merchantVerificationJourney(input: {
     ) {
       return { stage: "blocked", reason: "daily_validation_limit_reached" };
     }
-    if (validationFailureCode === "BANK_ACCOUNT_NOT_VALIDATED") {
-      return {
-        stage: "blocked",
-        reason: "provider_could_not_validate_account",
-      };
+    const providerFailureReasons: Record<string, string> = {
+      BANK_ACCOUNT_NOT_VALIDATED: "provider_could_not_validate_account",
+      BANK_PROVIDER_REJECTED: "provider_rejected_bank_check",
+      BANK_ACCOUNT_NOT_VERIFIED: "provider_could_not_verify_account",
+      BANK_ACCOUNT_CLOSED: "bank_account_closed",
+      BANK_ACCOUNT_CREDITS_UNAVAILABLE: "bank_account_cannot_receive_credits",
+      BANK_ACCOUNT_HOLDER_MISMATCH: "bank_account_holder_mismatch",
+    };
+    const providerFailureReason = providerFailureReasons[validationFailureCode];
+    if (providerFailureReason) {
+      return { stage: "blocked", reason: providerFailureReason };
     }
     if (
       validationFailureCode === "BANK_VALIDATION_PLATFORM_LIMIT" ||

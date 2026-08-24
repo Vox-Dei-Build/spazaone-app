@@ -61,6 +61,29 @@ type VerificationFlags = {
   accountOpenForMoreThanThreeMonths: boolean;
 };
 
+export type SettlementVerificationFailureCode =
+  | "BANK_PROVIDER_REJECTED"
+  | "BANK_ACCOUNT_NOT_VERIFIED"
+  | "BANK_ACCOUNT_CLOSED"
+  | "BANK_ACCOUNT_CREDITS_UNAVAILABLE"
+  | "BANK_ACCOUNT_HOLDER_MISMATCH";
+
+export function settlementVerificationFailureCode(input: {
+  providerAccepted: boolean;
+  flags: VerificationFlags;
+}): SettlementVerificationFailureCode | null {
+  if (!input.providerAccepted) return "BANK_PROVIDER_REJECTED";
+  if (!input.flags.verified) return "BANK_ACCOUNT_NOT_VERIFIED";
+  if (!input.flags.accountOpen) return "BANK_ACCOUNT_CLOSED";
+  if (!input.flags.accountAcceptsCredits) {
+    return "BANK_ACCOUNT_CREDITS_UNAVAILABLE";
+  }
+  if (!input.flags.accountHolderMatch) {
+    return "BANK_ACCOUNT_HOLDER_MISMATCH";
+  }
+  return null;
+}
+
 export function assertBankAccountOnlyVerificationPayload(
   payload: unknown,
 ): void {
@@ -472,6 +495,26 @@ function publicError(error: unknown): { status: number; message: string } {
       409,
       "Paystack could not validate this account for settlements.",
     ],
+    BANK_PROVIDER_REJECTED: [
+      409,
+      "Paystack could not accept this bank check. Contact support before retrying.",
+    ],
+    BANK_ACCOUNT_NOT_VERIFIED: [
+      409,
+      "Paystack could not verify the submitted bank account details.",
+    ],
+    BANK_ACCOUNT_CLOSED: [
+      409,
+      "Paystack reports that this bank account is not open.",
+    ],
+    BANK_ACCOUNT_CREDITS_UNAVAILABLE: [
+      409,
+      "Paystack reports that this bank account cannot receive credits.",
+    ],
+    BANK_ACCOUNT_HOLDER_MISMATCH: [
+      409,
+      "The account holder name does not match Paystack's bank record.",
+    ],
     BANK_VALIDATION_RATE_LIMITED: [
       429,
       "Too many verification attempts. Try again later or contact support.",
@@ -675,10 +718,14 @@ export const requestMerchantSettlementVerificationV1 = functions
       accountNumber: account,
       maskedAccountHolder: maskedAccountHolderName(accountHolder),
       reasonCode: "MERCHANT_REQUESTED",
+      automaticInitialAuthorization: {
+        requestedBy: context.auth.uid,
+      },
     });
     return {
       status: request.status,
       deduped: request.deduped,
+      automaticallyAuthorized: request.automaticallyAuthorized,
     };
   });
 
@@ -1097,9 +1144,12 @@ export const prepareMerchantSettlementProfileV2 = functions
         accountOpenForMoreThanThreeMonths:
           validated.accountOpenForMoreThanThreeMonths === true,
       };
-      const decision = settlementVerificationDecision(flags);
-      if (validateResponse.data?.status !== true || !decision.eligible) {
-        throw new Error("BANK_ACCOUNT_NOT_VALIDATED");
+      const failureCode = settlementVerificationFailureCode({
+        providerAccepted: validateResponse.data?.status === true,
+        flags,
+      });
+      if (failureCode) {
+        throw new Error(failureCode);
       }
 
       providerStage = "creating_subaccount";
