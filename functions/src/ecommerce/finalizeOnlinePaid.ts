@@ -22,7 +22,7 @@ import { consumeOwnedInventoryReservation } from "../payments/v2/inventoryReserv
  * @throws {Error} If the sale document is not found.
  * @return {Promise<void>} Resolves once the transaction completes successfully.
  */
-async function finalizeInventoryOnce(
+export async function finalizeInventoryOnce(
   merchantId: string,
   orderId: string,
   customerId: string,

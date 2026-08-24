@@ -75,19 +75,19 @@ programme.
 
 ## Operations ownership
 
-| Condition | System state | Owner | Required action |
-| --- | --- | --- | --- |
-| Paystack initialized but no charge | `initialized` | Customer/support | Customer can retry the same hosted URL until expiry. No ledger change is allowed. |
-| Charge confirmed and inventory committed | `paid` | Merchant | Prepare and fulfil the owned-stock order. |
-| Charge confirmed but reservation unavailable | `refund_pending` | Operations | The durable refund worker submits/reconciles the provider refund. Stock is not guessed. |
-| Supplier charge confirmed | fulfilment `queued` | Operations automation | Re-quote CJ, verify route/price/balance, create and pay the CJ order. |
-| CJ is authoritatively absent after a deterministic pre-create failure | `refund_pending` | Operations automation | Request the Paystack refund and keep it pending until provider confirmation. |
-| CJ create/pay result is ambiguous or an order may exist | `operations_review` | Operations | Do not retry payment or promise a refund. Query CJ, delete only a confirmed unpaid `CREATED`/`IN_CART` order where allowed, then choose one accountable recovery. |
-| CJ is confirmed unpaid after a payment-call failure | fulfilment `retry` | Operations automation | Retry only payment for the same CJ order; never create or pay a second order blindly. |
-| Refund is pending/processing | `refund_pending` | Operations/support | Explain that the provider is processing it; never say refunded. |
-| Refund needs attention/fails | `provider_failed` or provider status | Operations | Resolve with Paystack and re-run reconciliation. Do not locally complete it. |
-| Reconciliation mismatch | run `mismatch` | Engineering + finance | Globally suspend payments and account for every cent before resuming. |
-| Settlement destination changes | merchant `pending_review` | Admin + finance | New online initialization is suspended. Reconcile pending settlements, approve the exact new fingerprint, activate it and retire the old subaccount only when safe. Existing intents retain their immutable destination snapshot. |
+| Condition                                                             | System state                         | Owner                 | Required action                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------- | ------------------------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Paystack initialized but no charge                                    | `initialized`                        | Customer/support      | Customer can retry the same hosted URL until expiry. After 15 minutes, the ten-minute monitor creates one durable operations incident. No ledger change is allowed.                                                               |
+| Charge confirmed and inventory committed                              | `paid`                               | Merchant              | Prepare and fulfil the owned-stock order.                                                                                                                                                                                         |
+| Charge confirmed but reservation unavailable                          | `refund_pending`                     | Operations            | The durable refund worker submits/reconciles the provider refund. Stock is not guessed.                                                                                                                                           |
+| Supplier charge confirmed                                             | fulfilment `queued`                  | Operations automation | Re-quote CJ, verify route/price/balance, create and pay the CJ order.                                                                                                                                                             |
+| CJ is authoritatively absent after a deterministic pre-create failure | `refund_pending`                     | Operations automation | Request the Paystack refund and keep it pending until provider confirmation.                                                                                                                                                      |
+| CJ create/pay result is ambiguous or an order may exist               | `operations_review`                  | Operations            | Do not retry payment or promise a refund. Query CJ, delete only a confirmed unpaid `CREATED`/`IN_CART` order where allowed, then choose one accountable recovery.                                                                 |
+| CJ is confirmed unpaid after a payment-call failure                   | fulfilment `retry`                   | Operations automation | Retry only payment for the same CJ order; never create or pay a second order blindly.                                                                                                                                             |
+| Refund is pending/processing                                          | `refund_pending`                     | Operations/support    | Explain that the provider is processing it; never say refunded.                                                                                                                                                                   |
+| Refund needs attention/fails                                          | `provider_failed` or provider status | Operations            | Resolve with Paystack and re-run reconciliation. Do not locally complete it.                                                                                                                                                      |
+| Reconciliation mismatch                                               | run `mismatch`                       | Engineering + finance | Globally suspend payments and account for every cent before resuming.                                                                                                                                                             |
+| Settlement destination changes                                        | merchant `pending_review`            | Admin + finance       | New online initialization is suspended. Reconcile pending settlements, approve the exact new fingerprint, activate it and retire the old subaccount only when safe. Existing intents retain their immutable destination snapshot. |
 
 ## Merchant Payment Setup
 
@@ -148,6 +148,13 @@ The daily job checks the immutable intent and fee snapshot against provider
 amount/reference, applied provider events, settlement amounts, refund totals,
 the business projection, inventory reservation, and supplier fulfilment. A
 run with any mismatch is not a successful checkpoint.
+
+The separate `monitorStalePaymentIntentsV2` job runs every ten minutes. An
+intent left `initialized` for 15 minutes creates one deterministic, PII-free
+Payment Operations incident and push attempt. The monitor never calls the
+provider, retries checkout, applies a provider event, credits a wallet or marks
+an order paid. It resolves the incident only after the canonical intent leaves
+`initialized`; recovery remains an explicit, audited operation.
 
 The admin-only `reconcilePaymentsV2OnDemand` callable uses the same runner as
 the daily job. It requires a unique `operationId` and audit reason and writes a

@@ -31,6 +31,20 @@ service firebase.storage {
       allow write: if isStoreMember(storeId);
     }
 
+    // Stock invoices contain private merchant records. Access is evaluated on
+    // every read and write; the app stores this path on the sale document and
+    // never creates a public download URL.
+    match /stock_invoices/{storeId}/{saleId}/{fileName} {
+      allow read: if isStoreMember(storeId);
+      allow write: if isStoreMember(storeId) && (
+        request.resource == null ||
+        (
+          request.resource.size <= 5 * 1024 * 1024 &&
+          request.resource.contentType.matches('image/(jpeg|png)')
+        )
+      );
+    }
+
     // Compatibility for the previous unscoped template-media path. Remove
     // after the minimum supported app build includes store-scoped uploads.
     match /whatsapp_media/{legacyFileName} {

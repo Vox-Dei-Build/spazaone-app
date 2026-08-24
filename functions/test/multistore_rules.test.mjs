@@ -302,6 +302,8 @@ test("Payments V2 truth is server-only for owners, operators and admins", async 
     "paymentSecurityBudgets/settlement_bank_validation_2026-08-13",
     "paymentAdministrationAudit/auditA",
     "paymentAdministrationRequests/requestA",
+    "paymentOperationsNotifications/notificationA",
+    "paymentMonitoringIncidents/incidentA",
     "merchantCommerceSettings/storeA",
     "campaignCreditPurchases/purchaseA",
     "campaignCreditRecoveryCases/recoveryA",
@@ -506,5 +508,48 @@ test("storage writes are store scoped while product reads stay public", async ()
   );
   await assertSucceeds(
     uploadString(ref(operatorStorage, "whatsapp_media/legacy.jpg"), "media"),
+  );
+});
+
+test("stock invoice images are private and store scoped", async () => {
+  const operatorStorage = env.authenticatedContext("operator1").storage();
+  const ownInvoice = ref(
+    operatorStorage,
+    "stock_invoices/storeA/sale1/invoice.jpg",
+  );
+  await assertSucceeds(
+    uploadString(ownInvoice, "private invoice", "raw", {
+      contentType: "image/jpeg",
+    }),
+  );
+  await assertSucceeds(getBytes(ownInvoice));
+
+  await assertFails(
+    uploadString(
+      ref(operatorStorage, "stock_invoices/storeB/sale1/invoice.jpg"),
+      "cross-store invoice",
+      "raw",
+      { contentType: "image/jpeg" },
+    ),
+  );
+  await assertFails(
+    getBytes(
+      ref(operatorStorage, "stock_invoices/storeB/sale1/invoice.jpg"),
+    ),
+  );
+
+  const publicStorage = env.unauthenticatedContext().storage();
+  await assertFails(
+    getBytes(
+      ref(publicStorage, "stock_invoices/storeA/sale1/invoice.jpg"),
+    ),
+  );
+  await assertFails(
+    uploadString(
+      ref(operatorStorage, "stock_invoices/storeA/sale1/invoice.txt"),
+      "not an image",
+      "raw",
+      { contentType: "text/plain" },
+    ),
   );
 });

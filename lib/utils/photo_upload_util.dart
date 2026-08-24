@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -5,14 +6,34 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pasella/utils/permission_helper.dart';
 
+export 'package:pasella/utils/permission_helper.dart'
+    show PhotoPermissionPurpose;
+
+enum _PhotoRecoveryAction { cancel, gallery, settings }
+
 class PhotoUploadUtil {
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  PhotoUploadUtil({ImagePicker? picker, FirebaseStorage? storage})
+      : _picker = picker ?? ImagePicker(),
+        _providedStorage = storage;
+
+  final ImagePicker _picker;
+  final FirebaseStorage? _providedStorage;
+  FirebaseStorage get _storage => _providedStorage ?? FirebaseStorage.instance;
+
+  @visibleForTesting
+  static const preserveExifOnCompression = false;
 
   Future<File?> pickImage(ImageSource source) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: source);
+    if (Platform.isAndroid) {
+      final lost = await _picker.retrieveLostData();
+      if (lost.exception != null) throw lost.exception!;
+      final recovered = lost.files?.firstOrNull;
+      if (recovered != null) return File(recovered.path);
+    }
+    final picked = await _picker.pickImage(source: source);
     return picked != null ? File(picked.path) : null;
   }
 
@@ -46,7 +67,7 @@ class PhotoUploadUtil {
       targetPath,
       quality: 75,
       format: format,
-      keepExif: true,
+      keepExif: preserveExifOnCompression,
     );
     return result != null ? File(result.path) : null;
   }
@@ -86,20 +107,20 @@ class PhotoUploadUtil {
     }
   }
 
-  Future<bool?> showCameraOrGalleryPicker(BuildContext context) async {
-    return showDialog<bool>(
+  Future<ImageSource?> showCameraOrGalleryPicker(BuildContext context) async {
+    return showDialog<ImageSource>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Select an option'),
+        title: const Text('Add a photo'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(context, ImageSource.camera),
                 child: const Text('Camera')),
             const SizedBox(height: 16),
             ElevatedButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(context, ImageSource.gallery),
                 child: const Text('Gallery')),
           ],
         ),
@@ -108,9 +129,12 @@ class PhotoUploadUtil {
   }
 
   Future<void> handleImagePick(
-      BuildContext context, Function(File?) onImagePicked) async {
-    final isCamera = await showCameraOrGalleryPicker(context);
-    if (isCamera == null) return;
+    BuildContext context,
+    FutureOr<void> Function(File?) onImagePicked, {
+    PhotoPermissionPurpose purpose = PhotoPermissionPurpose.product,
+  }) async {
+    var source = await showCameraOrGalleryPicker(context);
+    if (source == null) return;
 
     // Permission strategy by source + platform:
     //
@@ -137,28 +161,187 @@ class PhotoUploadUtil {
     //     → request Permission.photos. Maps to the Photos framework
     //       and requires NSPhotoLibraryUsageDescription in Info.plist.
     //       iOS Photo Library permission cannot be skipped.
-    final bool granted;
-    if (isCamera) {
-      granted = await PermissionHelper.requestCamera(context);
+    PermissionRequestOutcome permission;
+    if (source == ImageSource.camera) {
+      permission = await PermissionHelper.requestCameraAccess(
+        context,
+        purpose: purpose,
+      );
     } else if (Platform.isAndroid) {
-      granted = true; // Photo Picker handles gallery auth implicitly.
+      permission = PermissionRequestOutcome.granted;
     } else {
-      granted = await PermissionHelper.requestPhotos(context);
+      permission = await PermissionHelper.requestPhotoLibraryAccess(
+        context,
+        purpose: purpose,
+      );
     }
 
-    if (!granted) {
-      onImagePicked(null);
-      return;
+    if (permission != PermissionRequestOutcome.granted) {
+      if (!context.mounted) {
+        await onImagePicked(null);
+        return;
+      }
+      final recovery = await _showPermissionRecovery(
+        context,
+        source: source,
+        outcome: permission,
+      );
+      if (recovery == _PhotoRecoveryAction.settings) {
+        await PermissionHelper.openSettings();
+        await onImagePicked(null);
+        return;
+      }
+      if (recovery != _PhotoRecoveryAction.gallery) {
+        await onImagePicked(null);
+        return;
+      }
+      source = ImageSource.gallery;
     }
 
-    final source = isCamera ? ImageSource.camera : ImageSource.gallery;
-    final picked = await pickImage(source);
+    File? picked;
+    try {
+      picked = await pickImage(source);
+    } on PlatformException catch (error) {
+      if (!context.mounted) {
+        await onImagePicked(null);
+        return;
+      }
+      final recovery = await _showPickerFailure(
+        context,
+        source: source,
+        code: error.code,
+      );
+      if (source == ImageSource.camera &&
+          recovery == _PhotoRecoveryAction.gallery) {
+        try {
+          picked = await pickImage(ImageSource.gallery);
+        } on PlatformException catch (galleryError) {
+          if (context.mounted) {
+            _showGalleryError(context, galleryError.code);
+          }
+        }
+      }
+    } catch (_) {
+      if (context.mounted) {
+        await _showPickerFailure(
+          context,
+          source: source,
+          code: 'unavailable',
+        );
+      }
+    }
     if (picked == null) {
-      onImagePicked(null);
+      await onImagePicked(null);
       return;
     }
 
-    final compressed = await compressImage(picked);
-    onImagePicked(compressed);
+    try {
+      final compressed = await compressImage(picked);
+      if (compressed == null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'That image format could not be prepared. Try another photo.',
+            ),
+          ),
+        );
+      }
+      await onImagePicked(compressed);
+    } on PlatformException {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The photo could not be prepared. Try Gallery or another image.',
+            ),
+          ),
+        );
+      }
+      await onImagePicked(null);
+    }
+  }
+
+  @visibleForTesting
+  static String pickerFailureMessage(ImageSource source, String code) {
+    if (source == ImageSource.camera) {
+      return 'SpazaOne could not open the camera. Check that a camera app is available, or use Gallery instead.';
+    }
+    return 'SpazaOne could not open Gallery. Check photo access and try again.';
+  }
+
+  Future<_PhotoRecoveryAction?> _showPermissionRecovery(
+    BuildContext context, {
+    required ImageSource source,
+    required PermissionRequestOutcome outcome,
+  }) {
+    final permanentlyDenied =
+        outcome == PermissionRequestOutcome.permanentlyDenied ||
+            outcome == PermissionRequestOutcome.restricted;
+    final isCamera = source == ImageSource.camera;
+    return showDialog<_PhotoRecoveryAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isCamera ? 'Camera access needed' : 'Photo access needed'),
+        content: Text(
+          permanentlyDenied
+              ? '${isCamera ? 'Camera' : 'Photo library'} access is turned off for SpazaOne. Open app settings to allow it, or use Gallery when available.'
+              : '${isCamera ? 'Camera' : 'Photo library'} permission was not allowed. You can try again later or use Gallery instead.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, _PhotoRecoveryAction.cancel),
+            child: const Text('Cancel'),
+          ),
+          if (isCamera)
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, _PhotoRecoveryAction.gallery),
+              child: const Text('Use Gallery'),
+            ),
+          if (permanentlyDenied)
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, _PhotoRecoveryAction.settings),
+              child: const Text('Open settings'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<_PhotoRecoveryAction?> _showPickerFailure(
+    BuildContext context, {
+    required ImageSource source,
+    required String code,
+  }) {
+    return showDialog<_PhotoRecoveryAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(source == ImageSource.camera
+            ? 'Camera unavailable'
+            : 'Gallery unavailable'),
+        content: Text(pickerFailureMessage(source, code)),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, _PhotoRecoveryAction.cancel),
+            child: const Text('Close'),
+          ),
+          if (source == ImageSource.camera)
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, _PhotoRecoveryAction.gallery),
+              child: const Text('Use Gallery'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showGalleryError(BuildContext context, String code) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(pickerFailureMessage(ImageSource.gallery, code))),
+    );
   }
 }

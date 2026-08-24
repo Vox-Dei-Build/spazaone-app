@@ -32,6 +32,7 @@ export type ProviderEventInput = {
   reference: string;
   rawBody: Buffer;
   intentId?: string;
+  ingestionSource?: "webhook" | "admin_provider_verify";
 };
 
 function requireId(value: unknown, field: string): string {
@@ -142,10 +143,16 @@ export async function recordProviderEventV2(
     const existing = await tx.get(eventRef);
     if (existing.exists) {
       const data = existing.data() ?? {};
+      const existingIngestionSource = String(data.ingestionSource ?? "");
+      const requestedIngestionSource = String(input.ingestionSource ?? "");
       if (
         String(data.payloadDigest ?? "") !== digest ||
         String(data.reference ?? "") !== reference ||
-        String(data.eventType ?? "") !== eventType
+        String(data.eventType ?? "") !== eventType ||
+        (existingIngestionSource &&
+          existingIngestionSource !== requestedIngestionSource) ||
+        (!existingIngestionSource &&
+          requestedIngestionSource === "admin_provider_verify")
       ) {
         throw new Error("PROVIDER_EVENT_COLLISION");
       }
@@ -161,6 +168,7 @@ export async function recordProviderEventV2(
       payloadDigest: digest,
       payloadSizeBytes: input.rawBody.byteLength,
       intentId: String(input.intentId ?? "").trim() || null,
+      ingestionSource: input.ingestionSource ?? null,
       processingState: "received",
       attemptCount: 0,
       schemaVersion: 2,

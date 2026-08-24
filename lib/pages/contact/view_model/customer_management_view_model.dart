@@ -265,7 +265,7 @@ class CustomerManagementViewModel extends ChangeNotifier {
         _profileImage = pickedImage;
         notifyListeners(); // 🔥 Ensure UI updates
       }
-    });
+    }, purpose: PhotoPermissionPurpose.customer);
   }
 
   Future<void> _evictProfileImageCache(String? url) async {

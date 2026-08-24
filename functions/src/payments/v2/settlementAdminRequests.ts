@@ -1,6 +1,12 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "../../config/main";
 import { stableDocumentId } from "./domain";
+import {
+  PAYMENT_OPERATIONS_NOTIFICATION_TYPE,
+  PAYMENT_OPERATIONS_WORKSPACE_URL,
+  settlementOperationsNotificationCopy,
+  settlementOperationsNotificationId,
+} from "./settlementOperationsNotifications";
 
 export const SETTLEMENT_ADMIN_REQUEST_TYPE = "settlement_verification";
 
@@ -151,6 +157,18 @@ export async function upsertSettlementAuthorizationRequest(input: {
     });
     if (!result.createOrRefresh) return;
     const now = FieldValue.serverTimestamp();
+    const currentSequence = Number(current.authorizationRequestSequence ?? 0);
+    const authorizationRequestSequence =
+      (Number.isSafeInteger(currentSequence) && currentSequence >= 0
+        ? currentSequence
+        : 0) + 1;
+    const notificationId = settlementOperationsNotificationId({
+      requestId,
+      bankingDetailsId: input.bankingDetailsId,
+      bankingDetailsUpdatedAtMs: input.bankingDetailsUpdatedAtMs,
+      sequence: authorizationRequestSequence,
+    });
+    const notificationCopy = settlementOperationsNotificationCopy();
     tx.set(
       ref,
       {
@@ -162,12 +180,26 @@ export async function upsertSettlementAuthorizationRequest(input: {
         bankingDetailsUpdatedAtMs: input.bankingDetailsUpdatedAtMs,
         ...visible,
         requestReasonCode: safeText(input.reasonCode, 80),
+        authorizationRequestSequence,
         requestedAt: now,
         updatedAt: now,
         schemaVersion: 1,
       },
       { merge: true },
     );
+    tx.create(db.doc(`paymentOperationsNotifications/${notificationId}`), {
+      notificationId,
+      requestId,
+      type: PAYMENT_OPERATIONS_NOTIFICATION_TYPE,
+      title: notificationCopy.title,
+      body: notificationCopy.body,
+      route: PAYMENT_OPERATIONS_WORKSPACE_URL,
+      source: "settlementAuthorizationRequest",
+      pushDeliveryState: "pending",
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: 1,
+    });
   });
   return { requestId, status: result.nextStatus, deduped: result.deduped };
 }

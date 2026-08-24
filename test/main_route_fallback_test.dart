@@ -40,4 +40,29 @@ void main() {
       isFalse,
     );
   });
+
+  test('operations alerts open only the authenticated workspace origin', () {
+    const data = {'notificationType': 'payment_operations'};
+    expect(
+      isPaymentOperationsWorkspaceNotification(
+        Uri.parse('https://workspace.spazaone.com/'),
+        data,
+      ),
+      isTrue,
+    );
+    expect(
+      isPaymentOperationsWorkspaceNotification(
+        Uri.parse('https://workspace.spazaone.example/'),
+        data,
+      ),
+      isFalse,
+    );
+    expect(
+      isPaymentOperationsWorkspaceNotification(
+        Uri.parse('http://workspace.spazaone.com/'),
+        data,
+      ),
+      isFalse,
+    );
+  });
 }
