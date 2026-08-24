@@ -97,14 +97,19 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
       await _loadBankingDetails();
       if (!mounted) return;
       final alreadySubmitted = result['deduped'] == true;
+      final readyForBankCheck = result['status'] == 'authorized';
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
             content: Text(
-              alreadySubmitted
-                  ? 'Your verification request is already in review.'
-                  : 'Verification request sent. You can leave this screen while it is reviewed.',
+              readyForBankCheck
+                  ? alreadySubmitted
+                      ? 'Your secure bank check is already ready.'
+                      : 'Your secure bank check is ready. Continue verification.'
+                  : alreadySubmitted
+                      ? 'Your verification request is already with support.'
+                      : 'Verification request sent to support for review.',
             ),
           ),
         );
@@ -347,7 +352,7 @@ class MerchantVerificationJourneyCard extends StatelessWidget {
             ? 'Verify the changed bank account'
             : 'Ready to request verification';
         body =
-            'We’ll first review your request. When it is ready, you’ll confirm the account owner and identity or business registration details for a secure bank check.';
+            'We’ll open the secure bank check immediately when the built-in safety limits allow it. You’ll confirm the account owner and matching identity or business registration details.';
         icon = Icons.fact_check_outlined;
         actionLabel = 'Request verification';
         action = onRequest;
@@ -410,6 +415,26 @@ class MerchantVerificationJourneyCard extends StatelessWidget {
             title = 'Bank details could not be validated';
             body =
                 'The secure bank check could not validate the submitted details. Your saved banking details are unchanged. Do not retry; support must review the bank, branch code, account type, account holder and matching identity document type.';
+          case 'provider_rejected_bank_check':
+            title = 'Bank check needs support';
+            body =
+                'Paystack could not accept the bank check. Your saved banking details are unchanged. Contact support before retrying.';
+          case 'provider_could_not_verify_account':
+            title = 'Bank account could not be verified';
+            body =
+                'Paystack could not verify the submitted account details. Check the bank, account number and account type, then contact support before retrying.';
+          case 'bank_account_closed':
+            title = 'Bank account is not open';
+            body =
+                'Paystack reports that this account is not open. Use an open payout account or contact your bank before requesting another check.';
+          case 'bank_account_cannot_receive_credits':
+            title = 'Bank account cannot receive payouts';
+            body =
+                'Paystack reports that this account cannot receive credits. Use an account that accepts deposits or contact your bank.';
+          case 'bank_account_holder_mismatch':
+            title = 'Account holder name does not match';
+            body =
+                'The saved account holder name does not match the bank record returned by Paystack. Update it to the exact bank-record name before requesting another check.';
           case 'platform_security_suspension':
             title = 'Bank checks are securely paused';
             body =

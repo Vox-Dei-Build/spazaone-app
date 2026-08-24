@@ -5,10 +5,12 @@ import { Timestamp } from "firebase-admin/firestore";
 
 import { paymentAdminAccessDecision } from "../lib/payments/v2/paymentAdminAuth.js";
 import {
+  automaticSettlementAuthorizationDecision,
   maskBankAccount,
   settlementAdminRequestDetailProjection,
   settlementAdminRequestId,
   settlementAdminRequestProjection,
+  settlementAuthorizationOpenDecision,
   settlementAuthorizationRequestDecision,
 } from "../lib/payments/v2/settlementAdminRequests.js";
 import { merchantVerificationJourney } from "../lib/payments/v2/merchantOverview.js";
@@ -284,6 +286,140 @@ test("merchant authorization requests are deterministic and duplicate-safe", () 
   );
 });
 
+test("only a merchant's first guarded bank check is auto-authorized", () => {
+  assert.deepEqual(
+    automaticSettlementAuthorizationDecision({
+      requestStatus: "authorization_required",
+      authorizationState: "",
+      validationAttemptState: "",
+      validationLifetimeAttemptCount: 0,
+    }),
+    { allowed: true, reason: "automatic_initial_authorization" },
+  );
+  assert.equal(
+    automaticSettlementAuthorizationDecision({
+      requestStatus: "authorized",
+      authorizationState: "consumed",
+      validationAttemptState: "failed",
+      validationLifetimeAttemptCount: 1,
+    }).reason,
+    "provider_attempt_requires_review",
+  );
+  assert.equal(
+    automaticSettlementAuthorizationDecision({
+      requestStatus: "revoked",
+      authorizationState: "revoked",
+      validationAttemptState: "",
+      validationLifetimeAttemptCount: 0,
+    }).reason,
+    "authorization_revoked",
+  );
+  assert.equal(
+    automaticSettlementAuthorizationDecision({
+      requestStatus: "pending_review",
+      authorizationState: "authorized",
+      validationAttemptState: "completed",
+      validationLifetimeAttemptCount: 0,
+    }).reason,
+    "request_requires_review",
+  );
+  assert.equal(
+    automaticSettlementAuthorizationDecision({
+      requestStatus: "authorization_required",
+      authorizationState: "",
+      validationAttemptState: "provider_outcome_unknown",
+      validationLifetimeAttemptCount: 0,
+    }).reason,
+    "provider_attempt_requires_review",
+  );
+});
+
+test("automatic authorization opens initial checks and queues only exceptions", () => {
+  assert.deepEqual(
+    settlementAuthorizationOpenDecision({
+      automaticRequested: true,
+      activeAuthorization: false,
+      existingAutomaticAuthorization: false,
+      automaticEligible: true,
+      existingStatus: "authorization_required",
+      sameVisibleDestination: true,
+    }),
+    {
+      nextStatus: "authorized",
+      createOrRefresh: true,
+      deduped: false,
+      automaticallyAuthorized: true,
+    },
+  );
+  assert.deepEqual(
+    settlementAuthorizationOpenDecision({
+      automaticRequested: true,
+      activeAuthorization: true,
+      existingAutomaticAuthorization: true,
+      automaticEligible: false,
+      existingStatus: "authorized",
+      sameVisibleDestination: true,
+    }),
+    {
+      nextStatus: "authorized",
+      createOrRefresh: false,
+      deduped: true,
+      automaticallyAuthorized: true,
+    },
+  );
+  assert.deepEqual(
+    settlementAuthorizationOpenDecision({
+      automaticRequested: true,
+      activeAuthorization: false,
+      existingAutomaticAuthorization: false,
+      automaticEligible: false,
+      existingStatus: "authorized",
+      sameVisibleDestination: true,
+    }),
+    {
+      nextStatus: "authorization_required",
+      createOrRefresh: true,
+      deduped: false,
+      automaticallyAuthorized: false,
+    },
+    "an expired or consumed repeat attempt is visible to support",
+  );
+  assert.deepEqual(
+    settlementAuthorizationOpenDecision({
+      automaticRequested: true,
+      activeAuthorization: false,
+      existingAutomaticAuthorization: false,
+      automaticEligible: false,
+      existingStatus: "pending_review",
+      sameVisibleDestination: true,
+    }),
+    {
+      nextStatus: "pending_review",
+      createOrRefresh: false,
+      deduped: true,
+      automaticallyAuthorized: false,
+    },
+    "a duplicate tap cannot reopen final review",
+  );
+  assert.deepEqual(
+    settlementAuthorizationOpenDecision({
+      automaticRequested: true,
+      activeAuthorization: false,
+      existingAutomaticAuthorization: false,
+      automaticEligible: false,
+      existingStatus: "approved",
+      sameVisibleDestination: false,
+    }),
+    {
+      nextStatus: "authorization_required",
+      createOrRefresh: true,
+      deduped: false,
+      automaticallyAuthorized: false,
+    },
+    "a changed approved destination must return to support review",
+  );
+});
+
 test("operations request alerts are deterministic, admin-only and PII-free", () => {
   const input = {
     requestId: "request-opaque",
@@ -382,6 +518,21 @@ test("merchant verification journey covers every persistent review state", () =>
       },
     ),
     { stage: "blocked", reason: "provider_could_not_validate_account" },
+  );
+  assert.deepEqual(
+    journey(
+      { status: "authorized" },
+      {
+        settlementVerificationAuthorization: {
+          state: "authorized",
+          expiresAtMs: nowMs + 1_000,
+          remainingAttempts: 1,
+        },
+        validationAttemptState: "failed",
+        validationAttemptFailureCode: "BANK_ACCOUNT_HOLDER_MISMATCH",
+      },
+    ),
+    { stage: "blocked", reason: "bank_account_holder_mismatch" },
   );
   assert.deepEqual(
     journey(

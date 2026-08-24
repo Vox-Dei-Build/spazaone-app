@@ -30,6 +30,7 @@ import {
   protectedIdentityFingerprint,
   settlementVerificationBudgetDecision,
   settlementVerificationAuthorizationDecision,
+  settlementVerificationFailureCode,
   settlementDestinationRetirementDecision,
   settlementProfileAction,
   settlementReviewOutcome,
@@ -474,7 +475,7 @@ test("South African settlement verification always requires admin review", () =>
   );
 });
 
-test("settlement verification requires a live admin authorization budget", () => {
+test("settlement verification requires a live bounded authorization", () => {
   const nowMs = Date.now();
   assert.deepEqual(
     settlementVerificationAuthorizationDecision({
@@ -524,6 +525,58 @@ test("settlement verification requires a live admin authorization budget", () =>
       expectedBankingDetailsUpdatedAtMs: 101,
     }).reason,
     "BANK_VALIDATION_PREAUTH_DESTINATION_CHANGED",
+  );
+});
+
+test("settlement verification records the exact safe Paystack failure flag", () => {
+  const clean = {
+    verified: true,
+    accountOpen: true,
+    accountAcceptsCredits: true,
+    accountHolderMatch: true,
+    accountOpenForMoreThanThreeMonths: true,
+  };
+  assert.equal(
+    settlementVerificationFailureCode({
+      providerAccepted: true,
+      flags: clean,
+    }),
+    null,
+  );
+  assert.equal(
+    settlementVerificationFailureCode({
+      providerAccepted: false,
+      flags: clean,
+    }),
+    "BANK_PROVIDER_REJECTED",
+  );
+  assert.equal(
+    settlementVerificationFailureCode({
+      providerAccepted: true,
+      flags: { ...clean, verified: false },
+    }),
+    "BANK_ACCOUNT_NOT_VERIFIED",
+  );
+  assert.equal(
+    settlementVerificationFailureCode({
+      providerAccepted: true,
+      flags: { ...clean, accountOpen: false },
+    }),
+    "BANK_ACCOUNT_CLOSED",
+  );
+  assert.equal(
+    settlementVerificationFailureCode({
+      providerAccepted: true,
+      flags: { ...clean, accountAcceptsCredits: false },
+    }),
+    "BANK_ACCOUNT_CREDITS_UNAVAILABLE",
+  );
+  assert.equal(
+    settlementVerificationFailureCode({
+      providerAccepted: true,
+      flags: { ...clean, accountHolderMatch: false },
+    }),
+    "BANK_ACCOUNT_HOLDER_MISMATCH",
   );
 });
 

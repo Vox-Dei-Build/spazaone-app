@@ -18,6 +18,8 @@ import {
 import { requirePaymentAdmin } from "./paymentAdminAuth";
 import {
   SETTLEMENT_ADMIN_REQUEST_TYPE,
+  SETTLEMENT_VERIFICATION_AUTHORIZATION_ATTEMPTS,
+  SETTLEMENT_VERIFICATION_AUTHORIZATION_TTL_MS,
   settlementAdminRequestDetailProjection,
   settlementAdminRequestProjection,
   settlementAdminRequestRef,
@@ -43,9 +45,6 @@ function requireMerchantId(value: unknown): string {
 }
 
 const MAX_ADMIN_ADJUSTMENT_MINOR = 10_000_000;
-const SETTLEMENT_VERIFICATION_AUTHORIZATION_TTL_MS = 24 * 60 * 60 * 1000;
-const SETTLEMENT_VERIFICATION_AUTHORIZATION_ATTEMPTS = 2;
-
 export function requireAdminAdjustmentMinor(value: unknown): number {
   const amount = Number(value);
   if (
