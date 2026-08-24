@@ -81,6 +81,23 @@ class RunPromotionLauncher {
     if (!passed) return;
     if (!context.mounted) return;
 
+    if (!viewModel.messagingPricingAvailable) {
+      final pricingAvailable = await viewModel.initializePricing();
+      if (!context.mounted) return;
+      if (!pricingAvailable) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Messaging prices are temporarily unavailable. No promotion '
+              'was created or sent. Check your connection and try again.',
+            ),
+            duration: Duration(seconds: 6),
+          ),
+        );
+        return;
+      }
+    }
+
     final product = initialProduct ??
         await ProductPickerSheet.show(context, whatsappOnly: true);
     if (!context.mounted || product == null) return;

@@ -82,6 +82,14 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
     });
 
     await vm.loadInitialData();
+    if (!vm.messagingPricingAvailable) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _retrying = false;
+      });
+      return;
+    }
     final template = await vm.ensureProductPromotionTemplate(retry: retry);
     if (!mounted) return;
     _template = template;
@@ -119,6 +127,16 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
 
   void _continueToReview() {
     final vm = context.read<PromotionsViewModel>();
+    if (!vm.messagingPricingAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Messaging prices are temporarily unavailable. Try again before continuing.',
+          ),
+        ),
+      );
+      return;
+    }
     if (vm.selectedCustomerIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose at least one customer.')),
@@ -170,6 +188,16 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
 
   Future<void> _saveAndSend() async {
     final vm = context.read<PromotionsViewModel>();
+    if (!vm.messagingPricingAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Messaging prices are temporarily unavailable. No promotion was created or sent.',
+          ),
+        ),
+      );
+      return;
+    }
     final templateId = _template?['id'] as String?;
     if (templateId == null || !templateStatusOf(_template!).isUsable) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -255,6 +283,17 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
   }
 
   Widget _buildReadyOrStatus(PromotionsViewModel vm) {
+    if (!vm.messagingPricingAvailable) {
+      return _TemplateStatusView(
+        icon: Icons.cloud_off_outlined,
+        title: 'Messaging pricing unavailable',
+        body: 'No promotion can be priced or sent until the secure rates '
+            'load. Check your connection and try again.',
+        actionLabel: 'Retry pricing',
+        busy: _retrying || vm.pricingLoading,
+        onAction: () => _prepare(retry: true),
+      );
+    }
     final template = _template;
     if (template == null) {
       return _TemplateStatusView(
@@ -321,6 +360,7 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
     final template = _template;
     if (_loading ||
         _result != null ||
+        !vm.messagingPricingAvailable ||
         template == null ||
         !templateStatusOf(template).isUsable) {
       return null;

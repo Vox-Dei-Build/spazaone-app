@@ -150,6 +150,24 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   void nextStep() async {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
 
+    if (!vm.messagingPricingAvailable) {
+      setState(() => calculating = true);
+      final pricingAvailable = await vm.initializePricing();
+      if (!mounted) return;
+      setState(() => calculating = false);
+      if (!pricingAvailable) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Messaging prices are temporarily unavailable. Try again '
+              'before continuing.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     // Step 1 validation is shown inline via canProceed/UI hints — no SnackBar.
 
     if (currentStep == RunPromotionStep.templateAndDetails) {
@@ -247,6 +265,16 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
   // ────────────────────────────────────────
   Future<void> _savePromotion() async {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
+    if (!vm.messagingPricingAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Messaging prices are temporarily unavailable. No promotion was created.',
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => sending = true);
     final promoId = await vm.savePromotion(
       templateId: selectedTemplateId!,
@@ -370,8 +398,9 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     final vm = Provider.of<PromotionsViewModel>(context, listen: false);
 
     if (!isLastStep) {
-      final step1Valid =
-          selectedTemplateId != null && (sendWhatsApp || sendSMS);
+      final step1Valid = selectedTemplateId != null &&
+          (sendWhatsApp || sendSMS) &&
+          vm.messagingPricingAvailable;
       final step2Valid = vm.selectedCustomerIds.isNotEmpty;
       final canProceed = currentStep == RunPromotionStep.templateAndDetails
           ? step1Valid
@@ -444,25 +473,37 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
     final vm = Provider.of<PromotionsViewModel>(context);
     switch (currentStep) {
       case RunPromotionStep.templateAndDetails:
-        return TemplateAndDetailsStep(
-          templates: vm.templates,
-          shopName: vm.shopName,
-          selectedTemplateId: selectedTemplateId,
-          sendWhatsApp: sendWhatsApp,
-          sendSMS: sendSMS,
-          whatsappPrice: vm.whatsappPrice,
-          smsPricePerSegment: vm.smsPricePerSegment,
-          onTemplateChanged: (val) {
-            setState(() {
-              selectedTemplateId = val;
-              if (val != null) vm.selectTemplate(val);
-            });
-          },
-          onWhatsAppChanged: (val) => setState(() => sendWhatsApp = val),
-          onSMSChanged: (val) => setState(() => sendSMS = val),
-          onCreateTemplate: _openCreateTemplate,
-          linkedProduct: linkedProduct,
-          onLinkedProductChanged: (p) => setState(() => linkedProduct = p),
+        return Column(
+          children: [
+            if (!vm.messagingPricingAvailable)
+              _MessagingPricingUnavailableBanner(
+                loading: vm.pricingLoading,
+                onRetry: () => vm.initializePricing(),
+              ),
+            Expanded(
+              child: TemplateAndDetailsStep(
+                templates: vm.templates,
+                shopName: vm.shopName,
+                selectedTemplateId: selectedTemplateId,
+                sendWhatsApp: sendWhatsApp,
+                sendSMS: sendSMS,
+                whatsappPrice: vm.whatsappPrice,
+                smsPricePerSegment: vm.smsPricePerSegment,
+                onTemplateChanged: (val) {
+                  setState(() {
+                    selectedTemplateId = val;
+                    if (val != null) vm.selectTemplate(val);
+                  });
+                },
+                onWhatsAppChanged: (val) => setState(() => sendWhatsApp = val),
+                onSMSChanged: (val) => setState(() => sendSMS = val),
+                onCreateTemplate: _openCreateTemplate,
+                linkedProduct: linkedProduct,
+                onLinkedProductChanged: (p) =>
+                    setState(() => linkedProduct = p),
+              ),
+            ),
+          ],
         );
 
       case RunPromotionStep.customerSelection:
@@ -569,6 +610,48 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
                       ],
                     ),
                   ),
+      ),
+    );
+  }
+}
+
+class _MessagingPricingUnavailableBanner extends StatelessWidget {
+  const _MessagingPricingUnavailableBanner({
+    required this.loading,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('promotion-pricing-unavailable'),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(4, 4, 4, 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, color: colors.onErrorContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Messaging prices are temporarily unavailable. Promotions '
+              'cannot be priced or sent until the secure rates load.',
+              style: TextStyle(color: colors.onErrorContainer),
+            ),
+          ),
+          TextButton(
+            onPressed: loading ? null : onRetry,
+            child: Text(loading ? 'Loading…' : 'Retry'),
+          ),
+        ],
       ),
     );
   }
