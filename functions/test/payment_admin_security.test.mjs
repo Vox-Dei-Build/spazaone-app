@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { Timestamp } from "firebase-admin/firestore";
 
@@ -11,6 +12,11 @@ import {
   settlementAuthorizationRequestDecision,
 } from "../lib/payments/v2/settlementAdminRequests.js";
 import { merchantVerificationJourney } from "../lib/payments/v2/merchantOverview.js";
+import {
+  paymentOperationsRecipientEmails,
+  settlementOperationsNotificationCopy,
+  settlementOperationsNotificationId,
+} from "../lib/payments/v2/settlementOperationsNotifications.js";
 
 const secureAdminRequest = {
   authenticated: true,
@@ -80,6 +86,23 @@ test("read-only queue listing can outlive the mutation reauth window", () => {
     }),
     { allowed: true },
   );
+});
+
+test("campaign recovery callable is admin-only and accepts no money binding", () => {
+  const source = readFileSync(
+    new URL("../src/payments/v2/campaignTopupRecovery.ts", import.meta.url),
+    "utf8",
+  );
+  const callable = source.slice(
+    source.indexOf("export const recoverCampaignTopupV2OnDemand"),
+  );
+  assert.match(callable, /requirePaymentAdmin\(context\)/);
+  assert.match(callable, /enforceAppCheck: true/);
+  assert.match(callable, /consumeAppCheckToken: true/);
+  assert.match(callable, /intentId: data\?\.intentId/);
+  assert.match(callable, /operationId: data\?\.operationId/);
+  assert.match(callable, /reason: data\?\.reason/);
+  assert.doesNotMatch(callable, /data\?\.(merchantId|reference|amount)/);
 });
 
 test("settlement request projection never crosses internal identifiers or PII", () => {
@@ -261,6 +284,47 @@ test("merchant authorization requests are deterministic and duplicate-safe", () 
   );
 });
 
+test("operations request alerts are deterministic, admin-only and PII-free", () => {
+  const input = {
+    requestId: "request-opaque",
+    bankingDetailsId: "banking-version-opaque",
+    bankingDetailsUpdatedAtMs: 1_000,
+    sequence: 1,
+  };
+  assert.equal(
+    settlementOperationsNotificationId(input),
+    settlementOperationsNotificationId(input),
+  );
+  assert.notEqual(
+    settlementOperationsNotificationId(input),
+    settlementOperationsNotificationId({ ...input, sequence: 2 }),
+  );
+  assert.deepEqual(
+    paymentOperationsRecipientEmails(
+      " Ops@example.com,ops@example.com,not-an-email ",
+    ),
+    ["ops@example.com"],
+  );
+  const copy = settlementOperationsNotificationCopy();
+  assert.match(copy.body, /merchant requested bank verification/i);
+  assert.match(copy.body, /Payment Operations workspace/);
+  assert.doesNotMatch(
+    JSON.stringify(copy),
+    /account|branch|identity|provider|reviewer/i,
+  );
+
+  const source = readFileSync(
+    new URL(
+      "../src/payments/v2/settlementOperationsNotifications.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(source, /PAYMENT_ADMIN_ALLOWED_EMAILS/);
+  assert.match(source, /admin\.auth\(\)\.getUserByEmail/);
+  assert.doesNotMatch(source, /readStoreNotificationTokens/);
+});
+
 test("merchant verification journey covers every persistent review state", () => {
   const nowMs = 10_000;
   const journey = (request, profile = {}, hasSavedBankingDetails = true) =>
@@ -288,6 +352,64 @@ test("merchant verification journey covers every persistent review state", () =>
       },
     ).stage,
     "ready_to_verify",
+  );
+  assert.deepEqual(
+    journey(
+      { status: "authorized" },
+      {
+        settlementVerificationAuthorization: {
+          state: "consumed",
+          expiresAtMs: nowMs + 1_000,
+          remainingAttempts: 0,
+        },
+        validationAttemptState: "failed",
+        validationAttemptFailureCode: "BANK_ACCOUNT_NOT_VALIDATED",
+      },
+    ),
+    { stage: "blocked", reason: "approved_attempts_consumed" },
+  );
+  assert.deepEqual(
+    journey(
+      { status: "authorized" },
+      {
+        settlementVerificationAuthorization: {
+          state: "authorized",
+          expiresAtMs: nowMs + 1_000,
+          remainingAttempts: 1,
+        },
+        validationAttemptState: "failed",
+        validationAttemptFailureCode: "BANK_ACCOUNT_NOT_VALIDATED",
+      },
+    ),
+    { stage: "blocked", reason: "provider_could_not_validate_account" },
+  );
+  assert.deepEqual(
+    journey(
+      { status: "authorized" },
+      {
+        settlementVerificationAuthorization: {
+          state: "authorized",
+          expiresAtMs: nowMs + 1_000,
+          remainingAttempts: 1,
+        },
+        validationAttemptFailureCode: "BANK_VALIDATION_DAILY_LIMIT",
+      },
+    ),
+    { stage: "blocked", reason: "daily_validation_limit_reached" },
+  );
+  assert.deepEqual(
+    journey(
+      { status: "authorized" },
+      {
+        settlementVerificationAuthorization: {
+          state: "authorized",
+          expiresAtMs: nowMs + 1_000,
+          remainingAttempts: 1,
+        },
+        validationAttemptFailureCode: "BANK_VALIDATION_SUSPENDED",
+      },
+    ),
+    { stage: "blocked", reason: "platform_security_suspension" },
   );
   assert.equal(
     merchantVerificationJourney({

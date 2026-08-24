@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
 
 void main() {
   test('Remote Config platform failures are recoverable', () {
@@ -11,6 +12,15 @@ void main() {
     );
 
     expect(CrashService.instance.isRecoverableForTesting(error), isTrue);
+  });
+
+  test('messaging pricing unavailability is recorded as non-fatal', () {
+    expect(
+      CrashService.instance.isRecoverableForTesting(
+        const MessagingPricingUnavailable(),
+      ),
+      isTrue,
+    );
   });
 
   test('RenderFlex overflow is recorded as non-fatal', () {

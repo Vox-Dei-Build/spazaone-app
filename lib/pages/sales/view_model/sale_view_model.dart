@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
+import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/analytics_event.dart';
@@ -12,6 +15,7 @@ import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
+import 'package:pasella/services/stock_invoice_attachment_service.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -33,7 +37,14 @@ class SalesViewModel extends TransactionViewModel {
   bool productsLoaded = false;
   bool isTransactionLoading = false;
 
-  SalesViewModel() {
+  final StockInvoiceAttachmentService _stockInvoiceService;
+  final List<StockInvoiceDraft> stockInvoiceDrafts = [];
+  final Set<String> _removedStockInvoicePaths = {};
+  String? _pristineStockInvoiceFingerprint;
+
+  SalesViewModel({StockInvoiceAttachmentService? stockInvoiceService})
+      : _stockInvoiceService =
+            stockInvoiceService ?? StockInvoiceAttachmentService() {
     // PAS-SALES-SHIMMER: broadcast controller so the StreamBuilder in
     // SalesList can be unmounted (toggling the Cash/Online segmented
     // button on SalesPage) and re-subscribed without throwing
@@ -76,6 +87,200 @@ class SalesViewModel extends TransactionViewModel {
       productsLoaded = true;
       notifyListeners();
     });
+  }
+
+  @override
+  bool get isDirty =>
+      super.isDirty ||
+      (_pristineStockInvoiceFingerprint != null &&
+          _stockInvoiceFingerprint != _pristineStockInvoiceFingerprint);
+
+  String get _stockInvoiceFingerprint => stockInvoiceDrafts
+      .map(
+        (draft) =>
+            draft.localFile?.path ?? draft.attachment?.storagePath ?? 'missing',
+      )
+      .join('|');
+
+  @override
+  void markPristine({bool force = false}) {
+    super.markPristine(force: force);
+    if (force || _pristineStockInvoiceFingerprint == null) {
+      _pristineStockInvoiceFingerprint = _stockInvoiceFingerprint;
+    }
+  }
+
+  Future<void> addStockInvoice(BuildContext context) async {
+    if (stockInvoiceDrafts.length >=
+        StockInvoiceAttachmentService.maxAttachments) {
+      showSnackbar(
+        context,
+        'You can attach up to 3 invoice images.',
+        Colors.orange,
+      );
+      return;
+    }
+    final file = await _stockInvoiceService.pickAndPrepare(context);
+    if (file == null || isDisposed) return;
+    if (await file.length() > StockInvoiceAttachmentService.maxImageBytes) {
+      if (context.mounted) {
+        showSnackbar(
+          context,
+          'That image is larger than 5 MB. Choose a smaller image.',
+          Colors.orange,
+        );
+      }
+      return;
+    }
+    stockInvoiceDrafts.add(StockInvoiceDraft.local(file));
+    notifyListeners();
+  }
+
+  Future<void> replaceStockInvoice(BuildContext context, int index) async {
+    if (index < 0 || index >= stockInvoiceDrafts.length) return;
+    final file = await _stockInvoiceService.pickAndPrepare(context);
+    if (file == null || isDisposed) return;
+    if (await file.length() > StockInvoiceAttachmentService.maxImageBytes) {
+      if (context.mounted) {
+        showSnackbar(
+          context,
+          'That image is larger than 5 MB. Choose a smaller image.',
+          Colors.orange,
+        );
+      }
+      return;
+    }
+    final previousAttachment = stockInvoiceDrafts[index].attachment;
+    stockInvoiceDrafts[index] = StockInvoiceDraft.local(file)
+      ..attachment = previousAttachment;
+    notifyListeners();
+  }
+
+  Future<void> removeStockInvoice(int index) async {
+    if (index < 0 || index >= stockInvoiceDrafts.length) return;
+    final removed = stockInvoiceDrafts.removeAt(index);
+    final previousPath = removed.attachment?.storagePath;
+    if (previousPath != null) _removedStockInvoicePaths.add(previousPath);
+    notifyListeners();
+  }
+
+  Future<void> retryStockInvoice(int index) async {
+    if (index < 0 || index >= stockInvoiceDrafts.length) return;
+    final draft = stockInvoiceDrafts[index];
+    if (draft.localFile == null) return;
+    draft
+      ..status = StockInvoiceDraftStatus.ready
+      ..errorMessage = null
+      ..progress = 0;
+    notifyListeners();
+  }
+
+  Future<Uint8List?> loadStockInvoicePreview(String storagePath) =>
+      _stockInvoiceService.loadPreview(storagePath);
+
+  Future<_StockInvoiceUploadResult> _uploadStockInvoices(String saleId) async {
+    final attachments = <StockInvoiceAttachment>[];
+    final newlyUploadedPaths = <String>[];
+    var failureCount = 0;
+
+    for (final draft in stockInvoiceDrafts) {
+      final localFile = draft.localFile;
+      if (localFile == null && draft.attachment != null) {
+        attachments.add(draft.attachment!);
+        continue;
+      }
+      if (localFile == null) continue;
+      final replacedAttachment = draft.attachment;
+
+      draft
+        ..status = StockInvoiceDraftStatus.uploading
+        ..errorMessage = null
+        ..progress = 0;
+      notifyListeners();
+      try {
+        final attachment = await _stockInvoiceService.upload(
+          storeId: userId,
+          saleId: saleId,
+          file: localFile,
+          onProgress: (value) {
+            draft.progress = value;
+            notifyListeners();
+          },
+        );
+        draft
+          ..attachment = attachment
+          ..localFile = null
+          ..status = StockInvoiceDraftStatus.uploaded
+          ..progress = 1;
+        attachments.add(attachment);
+        newlyUploadedPaths.add(attachment.storagePath);
+        final replacedPath = replacedAttachment?.storagePath;
+        if (replacedPath != null && replacedPath != attachment.storagePath) {
+          _removedStockInvoicePaths.add(replacedPath);
+        }
+      } catch (_) {
+        failureCount++;
+        if (replacedAttachment != null) attachments.add(replacedAttachment);
+        draft
+          ..status = StockInvoiceDraftStatus.failed
+          ..errorMessage =
+              'Could not attach this image. The sale can still be saved.'
+          ..progress = 0;
+      }
+      notifyListeners();
+    }
+
+    return _StockInvoiceUploadResult(
+      attachments: attachments,
+      newlyUploadedPaths: newlyUploadedPaths,
+      failureCount: failureCount,
+    );
+  }
+
+  Future<void> _deleteStockInvoicePaths(Iterable<String> paths) async {
+    for (final path in paths.toSet()) {
+      try {
+        await _stockInvoiceService.deletePath(path);
+      } catch (error, stack) {
+        await CrashService.instance.recordNonFatal(
+          error,
+          stack,
+          reason: 'stock invoice cleanup failed',
+        );
+      }
+    }
+  }
+
+  List<_StockInvoiceDraftSnapshot> _snapshotStockInvoiceDrafts() =>
+      stockInvoiceDrafts
+          .map(
+            (draft) => _StockInvoiceDraftSnapshot(
+              draft: draft,
+              localFile: draft.localFile,
+              attachment: draft.attachment,
+              status: draft.status,
+              errorMessage: draft.errorMessage,
+              progress: draft.progress,
+            ),
+          )
+          .toList(growable: false);
+
+  void _restoreStockInvoiceDraftsAfterWriteFailure(
+    Iterable<_StockInvoiceDraftSnapshot> snapshots,
+  ) {
+    for (final snapshot in snapshots) {
+      snapshot.draft
+        ..localFile = snapshot.localFile
+        ..attachment = snapshot.attachment
+        ..status = snapshot.localFile == null
+            ? snapshot.status
+            : StockInvoiceDraftStatus.failed
+        ..errorMessage = snapshot.localFile == null
+            ? snapshot.errorMessage
+            : 'The sale was not saved. Retry when you save again.'
+        ..progress = snapshot.localFile == null ? snapshot.progress : 0;
+    }
+    notifyListeners();
   }
 
   Stream<List<Sale>> get sales => _salesController.stream;
@@ -278,6 +483,10 @@ class SalesViewModel extends TransactionViewModel {
         return;
       }
 
+      final docRef =
+          firestore.collection('users').doc(userId).collection('sales').doc();
+      final invoiceSnapshots = _snapshotStockInvoiceDrafts();
+      final invoiceResult = await _uploadStockInvoices(docRef.id);
       final salesData = {
         'amount': amountEntered,
         'stockAmount': stockAmountEntered,
@@ -290,6 +499,8 @@ class SalesViewModel extends TransactionViewModel {
         'status': 'paid',
         'paymentMethod': 'Cash',
         'paymentStatus': 'paid',
+        'stockInvoices':
+            invoiceResult.attachments.map((item) => item.toMap()).toList(),
       };
 
       var connectivityResult = await Connectivity().checkConnectivity();
@@ -303,11 +514,13 @@ class SalesViewModel extends TransactionViewModel {
         });
       }
 
-      final docRef = await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('sales')
-          .add(salesData);
+      try {
+        await docRef.set(salesData);
+      } catch (_) {
+        await _deleteStockInvoicePaths(invoiceResult.newlyUploadedPaths);
+        _restoreStockInvoiceDraftsAfterWriteFailure(invoiceSnapshots);
+        rethrow;
+      }
 
       currentSale = Sale(
         id: docRef.id,
@@ -316,6 +529,7 @@ class SalesViewModel extends TransactionViewModel {
         type: 'Cash',
         products: selectedProducts,
         dateAdded: DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
+        stockInvoices: invoiceResult.attachments,
       );
 
       // The paid sale is durable at this point. Record its payment before
@@ -381,12 +595,18 @@ class SalesViewModel extends TransactionViewModel {
               Navigator.of(context, rootNavigator: true).context,
             ) ??
             ScaffoldMessenger.maybeOf(context);
+        final failedInvoiceCount = invoiceResult.failureCount;
         resetForm();
         rootMessenger?.hideCurrentSnackBar();
         rootMessenger?.showSnackBar(
-          const SnackBar(
-            content: Text('Sale added successfully.'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text(
+              failedInvoiceCount == 0
+                  ? 'Sale added successfully.'
+                  : 'Sale saved. $failedInvoiceCount invoice image could not be attached.',
+            ),
+            backgroundColor:
+                failedInvoiceCount == 0 ? Colors.green : Colors.orange,
           ),
         );
         Navigator.of(context).pop();
@@ -422,6 +642,10 @@ class SalesViewModel extends TransactionViewModel {
       );
 
       remarksController.text = sale.remarks ?? '';
+      stockInvoiceDrafts
+        ..clear()
+        ..addAll(sale.stockInvoices.map(StockInvoiceDraft.existing));
+      _removedStockInvoicePaths.clear();
 
       // Load product details for each selected product (optional, for displaying in the UI)
       for (var productId in sale.products.keys) {
@@ -478,6 +702,9 @@ class SalesViewModel extends TransactionViewModel {
         return;
       }
 
+      final invoiceSnapshots = _snapshotStockInvoiceDrafts();
+      final invoiceResult = await _uploadStockInvoices(sale.id);
+      final removedInvoicePaths = Set<String>.from(_removedStockInvoicePaths);
       // Prepare the sale update data
       final salesData = {
         'amount': updatedAmount,
@@ -487,6 +714,8 @@ class SalesViewModel extends TransactionViewModel {
           DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
         ),
         'remarks': remarksController.text,
+        'stockInvoices':
+            invoiceResult.attachments.map((item) => item.toMap()).toList(),
       };
 
       // Check connectivity and notify if offline
@@ -502,12 +731,20 @@ class SalesViewModel extends TransactionViewModel {
       }
 
       // Update sale in Firestore
-      await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('sales')
-          .doc(sale.id)
-          .update(salesData);
+      try {
+        await firestore
+            .collection('users')
+            .doc(userId)
+            .collection('sales')
+            .doc(sale.id)
+            .update(salesData);
+      } catch (_) {
+        await _deleteStockInvoicePaths(invoiceResult.newlyUploadedPaths);
+        _restoreStockInvoiceDraftsAfterWriteFailure(invoiceSnapshots);
+        rethrow;
+      }
+      await _deleteStockInvoicePaths(removedInvoicePaths);
+      _removedStockInvoicePaths.clear();
 
       // Update product quantities by comparing original and updated values
       for (var productId in sale.products.keys) {
@@ -536,7 +773,13 @@ class SalesViewModel extends TransactionViewModel {
       DocumentReference merchantRef = firestore.collection('users').doc(userId);
       await merchantRef.update({'lastSaleTransaction': salesData});
       // Show success message and navigate back
-      showSnackbar(context, 'Sale updated successfully!', Colors.green);
+      showSnackbar(
+        context,
+        invoiceResult.failureCount == 0
+            ? 'Sale updated successfully!'
+            : 'Sale updated. ${invoiceResult.failureCount} invoice image could not be attached.',
+        invoiceResult.failureCount == 0 ? Colors.green : Colors.orange,
+      );
 
       refreshSales();
 
@@ -584,6 +827,10 @@ class SalesViewModel extends TransactionViewModel {
           .collection('sales')
           .doc(sale.id)
           .delete();
+
+      await _deleteStockInvoicePaths(
+        sale.stockInvoices.map((item) => item.storagePath),
+      );
 
       refreshSales();
 
@@ -738,8 +985,47 @@ class SalesViewModel extends TransactionViewModel {
   }
 
   @override
+  void resetForm() {
+    super.resetForm();
+    stockInvoiceDrafts.clear();
+    _removedStockInvoicePaths.clear();
+    _pristineStockInvoiceFingerprint = '';
+    notifyListeners();
+  }
+
+  @override
   void dispose() {
     _salesController.close();
     super.dispose();
   }
+}
+
+class _StockInvoiceUploadResult {
+  const _StockInvoiceUploadResult({
+    required this.attachments,
+    required this.newlyUploadedPaths,
+    required this.failureCount,
+  });
+
+  final List<StockInvoiceAttachment> attachments;
+  final List<String> newlyUploadedPaths;
+  final int failureCount;
+}
+
+class _StockInvoiceDraftSnapshot {
+  const _StockInvoiceDraftSnapshot({
+    required this.draft,
+    required this.localFile,
+    required this.attachment,
+    required this.status,
+    required this.errorMessage,
+    required this.progress,
+  });
+
+  final StockInvoiceDraft draft;
+  final File? localFile;
+  final StockInvoiceAttachment? attachment;
+  final StockInvoiceDraftStatus status;
+  final String? errorMessage;
+  final double progress;
 }

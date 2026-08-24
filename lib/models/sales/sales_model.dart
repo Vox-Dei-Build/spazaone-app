@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 
 class Sale {
   final String id;
@@ -8,6 +9,7 @@ class Sale {
   final Map<String, int> products; // Product ID -> Qty
   final DateTime dateAdded;
   final String? remarks;
+  final List<StockInvoiceAttachment> stockInvoices;
 
   Sale({
     required this.id,
@@ -17,6 +19,7 @@ class Sale {
     required this.products,
     required this.dateAdded,
     this.remarks,
+    this.stockInvoices = const [],
   });
 
   // ---- helpers ----
@@ -69,6 +72,20 @@ class Sale {
     return out;
   }
 
+  static List<StockInvoiceAttachment> _asStockInvoices(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map(
+          (item) => StockInvoiceAttachment.fromMap(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .where((item) => item.storagePath.isNotEmpty)
+        .take(3)
+        .toList(growable: false);
+  }
+
   // ---- factory ----
   factory Sale.fromMap(Map<String, dynamic> data, String documentId) {
     return Sale(
@@ -81,6 +98,7 @@ class Sale {
       remarks: (data['remarks'] == null || data['remarks'] == '')
           ? null
           : data['remarks'].toString(),
+      stockInvoices: _asStockInvoices(data['stockInvoices']),
     );
   }
 }

@@ -103,7 +103,9 @@ class ReviewStep extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               Text(
-                'WhatsApp Cost: ${CurrencyUtil.format(whatsappPrice!)} per recipient',
+                whatsappPrice == null
+                    ? 'WhatsApp pricing unavailable'
+                    : 'WhatsApp Cost: ${CurrencyUtil.format(whatsappPrice!)} per recipient',
               ),
               MessagePreviewCard(
                 content: resolvedMessage(
@@ -127,7 +129,9 @@ class ReviewStep extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               Text(
-                'SMS Cost: ${CurrencyUtil.format(smsSegments * smsPricePerSegment!)} per recipient',
+                smsPricePerSegment == null
+                    ? 'SMS pricing unavailable'
+                    : 'SMS Cost: ${CurrencyUtil.format(smsSegments * smsPricePerSegment!)} per recipient',
               ),
               MessagePreviewCard(
                 content: resolvedMessage(smsContent, shopName),
@@ -145,11 +149,15 @@ class ReviewStep extends StatelessWidget {
             SizedBox(height: SizeConfig.heightMultiplier * 1),
             if (includeWhatsApp)
               Text(
-                'WhatsApp Cost: ${CurrencyUtil.format(whatsappPrice!)} per recipient',
+                whatsappPrice == null
+                    ? 'WhatsApp pricing unavailable'
+                    : 'WhatsApp Cost: ${CurrencyUtil.format(whatsappPrice!)} per recipient',
               ),
             if (includeSMS)
               Text(
-                'SMS Cost: ${CurrencyUtil.format(smsSegments * smsPricePerSegment!)} per recipient',
+                smsPricePerSegment == null
+                    ? 'SMS pricing unavailable'
+                    : 'SMS Cost: ${CurrencyUtil.format(smsSegments * smsPricePerSegment!)} per recipient',
               ),
             if (includeSMS && smsEncodingInfo.offenderLabel != null)
               Padding(

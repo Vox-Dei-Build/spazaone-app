@@ -40,6 +40,15 @@ class PromotionsViewModel extends ChangeNotifier {
 
   double? whatsappPrice;
   double? smsPricePerSegment;
+  bool _pricingLoading = false;
+  bool get pricingLoading => _pricingLoading;
+  String? _pricingUnavailableMessage;
+  String? get pricingUnavailableMessage => _pricingUnavailableMessage;
+  bool get messagingPricingAvailable =>
+      whatsappPrice != null &&
+      whatsappPrice! > 0 &&
+      smsPricePerSegment != null &&
+      smsPricePerSegment! > 0;
   bool _isLoading = false;
   bool get isLoading => _isLoading;
   String? selectedTemplateId;
@@ -132,6 +141,10 @@ class PromotionsViewModel extends ChangeNotifier {
     promotionsReports = [];
     shopName = '';
     merchantMobileNumber = '';
+    whatsappPrice = null;
+    smsPricePerSegment = null;
+    _pricingLoading = false;
+    _pricingUnavailableMessage = null;
     _loadingTemplates = false;
     loadingPromotions = false;
     _loadingWhatsAppCapability = false;
@@ -198,11 +211,43 @@ class PromotionsViewModel extends ChangeNotifier {
   }
 
   // initialize pricing, e.g.:
-  Future<void> initializePricing() async {
-    final pricingService = await DynamicPricingService.initialize();
-    whatsappPrice = pricingService.whatsappPromotionPrice;
-    smsPricePerSegment = pricingService.smsReminderTemplatePrice;
+  Future<bool> initializePricing() async {
+    final merchantId = userId;
+    if (merchantId.isEmpty) {
+      whatsappPrice = null;
+      smsPricePerSegment = null;
+      _pricingUnavailableMessage =
+          'Select a store before loading messaging prices.';
+      _pricingLoading = false;
+      notifyListeners();
+      return false;
+    }
+
+    _pricingLoading = true;
+    _pricingUnavailableMessage = null;
     notifyListeners();
+    try {
+      final pricingService = await DynamicPricingService.initialize();
+      if (!_isStillCurrentMerchant(merchantId)) return false;
+      whatsappPrice = pricingService.whatsappPromotionPrice;
+      smsPricePerSegment = pricingService.smsReminderTemplatePrice;
+      if (!messagingPricingAvailable) {
+        throw const MessagingPricingUnavailable();
+      }
+      return true;
+    } on MessagingPricingUnavailable catch (error) {
+      if (_isStillCurrentMerchant(merchantId)) {
+        whatsappPrice = null;
+        smsPricePerSegment = null;
+        _pricingUnavailableMessage = error.message;
+      }
+      return false;
+    } finally {
+      if (_isStillCurrentMerchant(merchantId)) {
+        _pricingLoading = false;
+        notifyListeners();
+      }
+    }
   }
 
   void selectTemplate(String templateId) {

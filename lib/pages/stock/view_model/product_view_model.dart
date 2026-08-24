@@ -79,7 +79,7 @@ class ProductViewModel extends ChangeNotifier {
         pendingImage = pickedImage;
         notifyListeners();
       }
-    });
+    }, purpose: PhotoPermissionPurpose.product);
   }
 
   Future<Product?> saveProduct(

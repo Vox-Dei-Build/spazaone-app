@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:pasella/config/spaza_environment.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
 
 import 'consent_service.dart';
 
@@ -176,6 +177,9 @@ class CrashService {
   /// than programming bugs. Recording these as fatal misleads the crash-free
   /// users metric and drowns real crashes in noise.
   bool _isRecoverableBackendError(Object error) {
+    if (error is MessagingPricingUnavailable) {
+      return true;
+    }
     if (error is FirebaseFunctionsException) {
       // Transient codes worth retrying; everything else (permission-denied,
       // unauthenticated, invalid-argument, etc.) is still classified as

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
@@ -5,18 +7,26 @@ import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
+import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 import 'package:pasella/pages/sales/widgets/edit_sale.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/services/stock_invoice_attachment_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
 
 class SaleDetailPage extends StatefulWidget {
   final Sale sale;
+  final Future<Uint8List?> Function(String storagePath)?
+      loadStockInvoicePreview;
 
-  const SaleDetailPage({super.key, required this.sale});
+  const SaleDetailPage({
+    super.key,
+    required this.sale,
+    this.loadStockInvoicePreview,
+  });
 
   @override
-  _SaleDetailPageState createState() => _SaleDetailPageState();
+  State<SaleDetailPage> createState() => _SaleDetailPageState();
 }
 
 class _SaleDetailPageState extends State<SaleDetailPage> {
@@ -33,6 +43,10 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
   // Firestore whereIn cap of 30) and keep the result in a map keyed
   // by product id.
   late final Future<Map<String, Map<String, dynamic>>> _productsFuture;
+
+  Future<Uint8List?> _loadStockInvoicePreview(String storagePath) =>
+      widget.loadStockInvoicePreview?.call(storagePath) ??
+      StockInvoiceAttachmentService().loadPreview(storagePath);
 
   @override
   void initState() {
@@ -143,6 +157,32 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
                             fontSize: SizeConfig.textMultiplier * 1.8,
                           ),
                         ),
+                      ),
+                      ListTile(
+                        title: Text(
+                          'Stock invoices',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: SizeConfig.textMultiplier * 2,
+                          ),
+                        ),
+                        subtitle: sale.stockInvoices.isEmpty
+                            ? Text(
+                                'No stock invoices attached.',
+                                style: TextStyle(
+                                  fontSize: SizeConfig.textMultiplier * 1.8,
+                                ),
+                              )
+                            : Column(
+                                children: sale.stockInvoices
+                                    .map(
+                                      (attachment) => _StockInvoiceTile(
+                                        attachment: attachment,
+                                        loadPreview: _loadStockInvoicePreview,
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
                       ),
                       ListTile(
                         title: Text(
@@ -317,6 +357,59 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StockInvoiceTile extends StatelessWidget {
+  const _StockInvoiceTile({
+    required this.attachment,
+    required this.loadPreview,
+  });
+
+  final StockInvoiceAttachment attachment;
+  final Future<Uint8List?> Function(String storagePath) loadPreview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(top: 8),
+      child: ListTile(
+        leading: SizedBox.square(
+          dimension: 52,
+          child: FutureBuilder<Uint8List?>(
+            future: loadPreview(attachment.storagePath),
+            builder: (context, snapshot) {
+              final bytes = snapshot.data;
+              if (bytes != null) {
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.memory(
+                    bytes,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.receipt_long_outlined,
+                    ),
+                  ),
+                );
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              }
+              return const Icon(Icons.receipt_long_outlined);
+            },
+          ),
+        ),
+        title: Text(
+          attachment.fileName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: const Text('Private invoice image'),
       ),
     );
   }

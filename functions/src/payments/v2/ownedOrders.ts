@@ -13,6 +13,7 @@ import {
   enqueueCommerceOrderNotification,
   OrderNotice,
 } from "../../commerce/notifications";
+import { finalizeInventoryOnce } from "../../ecommerce/finalizeOnlinePaid";
 import {
   authenticateFirebaseRequest,
   verifyBotRequest,
@@ -111,306 +112,310 @@ function referenceForIntent(intentId: string): string {
   return `p2-${createHash("sha256").update(intentId).digest("hex").slice(0, 36)}`;
 }
 
-export const createOwnedOrderPaymentV2 = functions
-  .runWith({ secrets: ["PASELLA_BOT_TOKEN", "PAYSTACK_SECRET_KEY"] })
-  .https.onRequest(async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Method Not Allowed" });
+export const handleCreateOwnedOrderPaymentV2 = async (
+  req: functions.https.Request,
+  res: functions.Response,
+): Promise<void> => {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method Not Allowed" });
+    return;
+  }
+  try {
+    const merchantId = requireStoreId(req.body?.merchantId);
+    let initiatedBy = "bot";
+    const botRequest = verifyBotRequest(req);
+    if (!botRequest) {
+      const uid = await authenticateFirebaseRequest(req, res);
+      if (!uid) return;
+      await assertStoreAccess(uid, merchantId);
+      initiatedBy = uid;
+    }
+    if (
+      botRequest &&
+      !(await merchantBotFeatureDecision(merchantId, "ownedOrderPayments"))
+        .enabled
+    ) {
+      res.status(409).json({
+        error:
+          "This shop needs to update Spaza One before online payments can be used.",
+        code: "MERCHANT_APP_UPDATE_REQUIRED",
+      });
+      return;
+    }
+    const readiness = await paymentReadiness({
+      merchantId,
+      purpose: "merchant_order",
+    });
+    if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
+    const paymentContext = { merchantId, purpose: "merchant_order" };
+    const providerMode = paystackPaymentProviderMode(paymentContext);
+    const activationScope = paystackPaymentActivationScope(paymentContext);
+    const orderId = String(req.body?.orderId ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{1,200}$/.test(orderId)) {
+      res.status(400).json({ error: "A valid order is required." });
+      return;
+    }
+    const email = String(req.body?.email ?? "")
+      .trim()
+      .toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      res.status(400).json({ error: "Enter a valid email address." });
+      return;
+    }
+    const channel = String(req.body?.channel ?? "").trim();
+    if (!isOwnedOrderChannel(channel)) throw new Error("ORDER_CHANNEL_INVALID");
+    if (!(readiness.channels ?? []).includes(channel)) {
+      throw new Error("ORDER_CHANNEL_INVALID");
+    }
+    const [sale, profile] = await Promise.all([
+      db.doc(`users/${merchantId}/sales/${orderId}`).get(),
+      db.doc(`merchantPaymentProfiles/${merchantId}`).get(),
+    ]);
+    if (!sale.exists) {
+      res.status(404).json({ error: "Order not found." });
+      return;
+    }
+    const saleData = sale.data() ?? {};
+    if (
+      botRequest &&
+      String(saleData.customerId ?? "") !==
+        String(req.body?.customerId ?? "").trim()
+    ) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "This WhatsApp customer does not own that order.",
+      );
+    }
+    if (
+      String(saleData.paymentRail ?? "") !== "paystack_v2" ||
+      String(saleData.status ?? "") !== "pending_payment" ||
+      String(saleData.paymentStatus ?? "") !== "pending"
+    ) {
+      throw new Error("SALE_ALREADY_PAID");
+    }
+    const profileData = profile.data() ?? {};
+    const subaccountCode = String(profileData.paystackSubaccountCode ?? "");
+    if (
+      profileData.bankVerificationStatus !== "approved" ||
+      !/^ACCT_[A-Za-z0-9]+$/.test(subaccountCode)
+    ) {
+      throw new Error("MERCHANT_SETTLEMENT_NOT_APPROVED");
+    }
+    const reservationId = String(saleData.inventoryReservationId ?? "");
+    const reservationRef = db.doc(`inventoryReservations/${reservationId}`);
+    const reservation = await reservationRef.get();
+    const reservationData = reservation.data() ?? {};
+    const expiresAt = reservationData.expiresAt as Timestamp | undefined;
+    if (
+      !reservation.exists ||
+      reservationData.status !== "active" ||
+      reservationData.merchantId !== merchantId ||
+      reservationData.orderId !== orderId ||
+      !expiresAt ||
+      expiresAt.toMillis() <= Date.now()
+    ) {
+      throw new Error("INVENTORY_RESERVATION_NOT_ACTIVE");
+    }
+    const amountMinor = requirePositiveMinorUnits(
+      reservationData.totalAmountMinor,
+      "order_amount",
+    );
+    const platformFeeMinor = calculatePlatformFeeMinor({
+      grossAmountMinor: amountMinor,
+    });
+    const providerFeeMinor = estimatedOwnedOrderProviderFeeMinor({
+      amountMinor,
+      channel,
+    });
+    const money = buildMoneySnapshot({
+      grossAmountMinor: amountMinor,
+      platformFeeMinor,
+      providerFeeMinor,
+    });
+    const created = await createPaymentIntentV2({
+      merchantId,
+      purpose: "merchant_order",
+      idempotencyKey: `owned-order:${orderId}`,
+      expectedAmountMinor: amountMinor,
+      businessBinding: { type: "owned_order", id: orderId },
+      money,
+      initiatedBy,
+    });
+    const intentRef = db.doc(`paymentIntents/${created.intentId}`);
+    const reference = referenceForIntent(created.intentId);
+    const claimId = stableDocumentId("claim", [
+      created.intentId,
+      initiatedBy,
+      String(Date.now()),
+    ]);
+    const existing = await db.runTransaction(async (tx) => {
+      const [intent, currentReservation] = await Promise.all([
+        tx.get(intentRef),
+        tx.get(reservationRef),
+      ]);
+      const intentData = intent.data() ?? {};
+      const currentReservationData = currentReservation.data() ?? {};
+      if (intentData.status === "initialized") {
+        return {
+          authorizationUrl: String(intentData.authorizationUrl ?? ""),
+          providerReference: String(intentData.providerReference ?? ""),
+        };
+      }
+      if (currentReservationData.status !== "active") {
+        throw new Error("INVENTORY_RESERVATION_NOT_ACTIVE");
+      }
+      if (
+        currentReservationData.paymentIntentId &&
+        currentReservationData.paymentIntentId !== created.intentId
+      ) {
+        throw new Error("INVENTORY_RESERVATION_PAYMENT_COLLISION");
+      }
+      if (
+        intentData.initializationState === "processing" &&
+        Number(intentData.initializationLeaseUntilMs ?? 0) > Date.now()
+      ) {
+        throw new Error("PAYMENT_INITIALIZATION_IN_PROGRESS");
+      }
+      const now = FieldValue.serverTimestamp();
+      tx.update(intentRef, {
+        initializationState: "processing",
+        initializationClaimId: claimId,
+        initializationLeaseUntilMs: Date.now() + 45_000,
+        initializationAttempts: FieldValue.increment(1),
+        selectedChannel: channel,
+        inventoryReservationId: reservationId,
+        paystackSubaccountCode: subaccountCode,
+        settlementDestination: {
+          bankName: String(profileData.bankName ?? ""),
+          accountName: String(profileData.resolvedAccountName ?? ""),
+          accountLast4: String(profileData.accountLast4 ?? ""),
+        },
+        providerMode,
+        activationScope,
+        updatedAt: now,
+      });
+      tx.update(reservationRef, {
+        paymentIntentId: created.intentId,
+        providerReference: reference,
+        updatedAt: now,
+      });
+      tx.set(
+        db.doc(`users/${merchantId}/sales/${orderId}`),
+        {
+          paymentIntentId: created.intentId,
+          paymentReference: reference,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+      return { authorizationUrl: "", providerReference: "" };
+    });
+    if (existing.authorizationUrl && existing.providerReference) {
+      res.status(200).json({
+        authorizationUrl: existing.authorizationUrl,
+        reference: existing.providerReference,
+        intentId: created.intentId,
+        amountMinor,
+        deduped: true,
+      });
       return;
     }
     try {
-      const merchantId = requireStoreId(req.body?.merchantId);
-      let initiatedBy = "bot";
-      const botRequest = verifyBotRequest(req);
-      if (!botRequest) {
-        const uid = await authenticateFirebaseRequest(req, res);
-        if (!uid) return;
-        await assertStoreAccess(uid, merchantId);
-        initiatedBy = uid;
-      }
-      if (
-        botRequest &&
-        !(await merchantBotFeatureDecision(merchantId, "ownedOrderPayments"))
-          .enabled
-      ) {
-        res.status(409).json({
-          error:
-            "This shop needs to update Spaza One before online payments can be used.",
-          code: "MERCHANT_APP_UPDATE_REQUIRED",
-        });
-        return;
-      }
-      const readiness = await paymentReadiness({
-        merchantId,
-        purpose: "merchant_order",
-      });
-      if (!readiness.enabled) throw new Error("PAYMENT_CAPABILITY_DISABLED");
-      const paymentContext = { merchantId, purpose: "merchant_order" };
-      const providerMode = paystackPaymentProviderMode(paymentContext);
-      const activationScope = paystackPaymentActivationScope(paymentContext);
-      const orderId = String(req.body?.orderId ?? "").trim();
-      if (!/^[A-Za-z0-9_-]{1,200}$/.test(orderId)) {
-        res.status(400).json({ error: "A valid order is required." });
-        return;
-      }
-      const email = String(req.body?.email ?? "")
-        .trim()
-        .toLowerCase();
-      if (!/^\S+@\S+\.\S+$/.test(email)) {
-        res.status(400).json({ error: "Enter a valid email address." });
-        return;
-      }
-      const channel = String(req.body?.channel ?? "").trim();
-      if (!isOwnedOrderChannel(channel))
-        throw new Error("ORDER_CHANNEL_INVALID");
-      if (!(readiness.channels ?? []).includes(channel)) {
-        throw new Error("ORDER_CHANNEL_INVALID");
-      }
-      const [sale, profile] = await Promise.all([
-        db.doc(`users/${merchantId}/sales/${orderId}`).get(),
-        db.doc(`merchantPaymentProfiles/${merchantId}`).get(),
-      ]);
-      if (!sale.exists) {
-        res.status(404).json({ error: "Order not found." });
-        return;
-      }
-      const saleData = sale.data() ?? {};
-      if (
-        botRequest &&
-        String(saleData.customerId ?? "") !==
-          String(req.body?.customerId ?? "").trim()
-      ) {
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          "This WhatsApp customer does not own that order.",
-        );
-      }
-      if (
-        String(saleData.paymentRail ?? "") !== "paystack_v2" ||
-        String(saleData.status ?? "") !== "pending_payment" ||
-        String(saleData.paymentStatus ?? "") !== "pending"
-      ) {
-        throw new Error("SALE_ALREADY_PAID");
-      }
-      const profileData = profile.data() ?? {};
-      const subaccountCode = String(profileData.paystackSubaccountCode ?? "");
-      if (
-        profileData.bankVerificationStatus !== "approved" ||
-        !/^ACCT_[A-Za-z0-9]+$/.test(subaccountCode)
-      ) {
-        throw new Error("MERCHANT_SETTLEMENT_NOT_APPROVED");
-      }
-      const reservationId = String(saleData.inventoryReservationId ?? "");
-      const reservationRef = db.doc(`inventoryReservations/${reservationId}`);
-      const reservation = await reservationRef.get();
-      const reservationData = reservation.data() ?? {};
-      const expiresAt = reservationData.expiresAt as Timestamp | undefined;
-      if (
-        !reservation.exists ||
-        reservationData.status !== "active" ||
-        reservationData.merchantId !== merchantId ||
-        reservationData.orderId !== orderId ||
-        !expiresAt ||
-        expiresAt.toMillis() <= Date.now()
-      ) {
-        throw new Error("INVENTORY_RESERVATION_NOT_ACTIVE");
-      }
-      const amountMinor = requirePositiveMinorUnits(
-        reservationData.totalAmountMinor,
-        "order_amount",
-      );
-      const platformFeeMinor = calculatePlatformFeeMinor({
-        grossAmountMinor: amountMinor,
-      });
-      const providerFeeMinor = estimatedOwnedOrderProviderFeeMinor({
-        amountMinor,
-        channel,
-      });
-      const money = buildMoneySnapshot({
-        grossAmountMinor: amountMinor,
-        platformFeeMinor,
-        providerFeeMinor,
-      });
-      const created = await createPaymentIntentV2({
-        merchantId,
-        purpose: "merchant_order",
-        idempotencyKey: `owned-order:${orderId}`,
-        expectedAmountMinor: amountMinor,
-        businessBinding: { type: "owned_order", id: orderId },
-        money,
-        initiatedBy,
-      });
-      const intentRef = db.doc(`paymentIntents/${created.intentId}`);
-      const reference = referenceForIntent(created.intentId);
-      const claimId = stableDocumentId("claim", [
-        created.intentId,
-        initiatedBy,
-        String(Date.now()),
-      ]);
-      const existing = await db.runTransaction(async (tx) => {
-        const [intent, currentReservation] = await Promise.all([
-          tx.get(intentRef),
-          tx.get(reservationRef),
-        ]);
-        const intentData = intent.data() ?? {};
-        const currentReservationData = currentReservation.data() ?? {};
-        if (intentData.status === "initialized") {
-          return {
-            authorizationUrl: String(intentData.authorizationUrl ?? ""),
-            providerReference: String(intentData.providerReference ?? ""),
-          };
-        }
-        if (currentReservationData.status !== "active") {
-          throw new Error("INVENTORY_RESERVATION_NOT_ACTIVE");
-        }
-        if (
-          currentReservationData.paymentIntentId &&
-          currentReservationData.paymentIntentId !== created.intentId
-        ) {
-          throw new Error("INVENTORY_RESERVATION_PAYMENT_COLLISION");
-        }
-        if (
-          intentData.initializationState === "processing" &&
-          Number(intentData.initializationLeaseUntilMs ?? 0) > Date.now()
-        ) {
-          throw new Error("PAYMENT_INITIALIZATION_IN_PROGRESS");
-        }
-        const now = FieldValue.serverTimestamp();
-        tx.update(intentRef, {
-          initializationState: "processing",
-          initializationClaimId: claimId,
-          initializationLeaseUntilMs: Date.now() + 45_000,
-          initializationAttempts: FieldValue.increment(1),
-          selectedChannel: channel,
-          inventoryReservationId: reservationId,
-          paystackSubaccountCode: subaccountCode,
-          settlementDestination: {
-            bankName: String(profileData.bankName ?? ""),
-            accountName: String(profileData.resolvedAccountName ?? ""),
-            accountLast4: String(profileData.accountLast4 ?? ""),
-          },
-          providerMode,
-          activationScope,
-          updatedAt: now,
-        });
-        tx.update(reservationRef, {
-          paymentIntentId: created.intentId,
-          providerReference: reference,
-          updatedAt: now,
-        });
-        tx.set(
-          db.doc(`users/${merchantId}/sales/${orderId}`),
-          {
-            paymentIntentId: created.intentId,
-            paymentReference: reference,
-            updatedAt: now,
-          },
-          { merge: true },
-        );
-        return { authorizationUrl: "", providerReference: "" };
-      });
-      if (existing.authorizationUrl && existing.providerReference) {
-        res.status(200).json({
-          authorizationUrl: existing.authorizationUrl,
-          reference: existing.providerReference,
-          intentId: created.intentId,
-          amountMinor,
-          deduped: true,
-        });
-        return;
-      }
-      try {
-        const response = await axios.post(
-          "https://api.paystack.co/transaction/initialize",
-          {
-            email,
-            amount: amountMinor,
-            currency: "ZAR",
-            channels: [channel],
-            reference,
-            subaccount: subaccountCode,
-            transaction_charge: platformFeeMinor,
-            bearer: "subaccount",
-            ...(process.env.PAYSTACK_CALLBACK_URL
-              ? { callback_url: process.env.PAYSTACK_CALLBACK_URL }
-              : {}),
-            metadata: {
-              schemaVersion: 2,
-              purpose: "merchant_order",
-              intentId: created.intentId,
-              merchantId,
-              orderId,
-              reservationId,
-              selectedChannel: channel,
-            },
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${paystackPaymentSecret(paymentContext)}`,
-            },
-            timeout: 15_000,
-          },
-        );
-        const authorizationUrl = String(
-          response.data?.data?.authorization_url ?? "",
-        ).trim();
-        const providerReference = String(
-          response.data?.data?.reference ?? "",
-        ).trim();
-        if (!authorizationUrl || providerReference !== reference) {
-          throw new Error("PAYSTACK_INITIALIZE_RESPONSE_INVALID");
-        }
-        await db.runTransaction(async (tx) => {
-          const intent = await tx.get(intentRef);
-          const data = intent.data() ?? {};
-          if (
-            data.status === "initialized" &&
-            data.providerReference === reference
-          ) {
-            return;
-          }
-          if (data.initializationClaimId !== claimId) {
-            throw new Error("PAYMENT_INITIALIZATION_CLAIM_LOST");
-          }
-          tx.update(intentRef, {
-            status: "initialized",
-            previousStatus: "created",
-            provider: "paystack",
-            providerReference: reference,
-            authorizationUrl,
-            initializationState: "completed",
-            initializationLeaseUntilMs: 0,
-            initializedAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-        });
-        res.status(200).json({
-          authorizationUrl,
+      const response = await axios.post(
+        "https://api.paystack.co/transaction/initialize",
+        {
+          email,
+          amount: amountMinor,
+          currency: "ZAR",
+          channels: [channel],
           reference,
-          intentId: created.intentId,
-          amountMinor,
-          deduped: created.deduped,
-        });
-      } catch (error) {
-        await intentRef.set(
-          {
-            initializationState: "retryable",
-            initializationLeaseUntilMs: 0,
-            initializationErrorCode: "provider_initialization_failed",
-            updatedAt: FieldValue.serverTimestamp(),
+          subaccount: subaccountCode,
+          transaction_charge: platformFeeMinor,
+          bearer: "subaccount",
+          ...(process.env.PAYSTACK_CALLBACK_URL
+            ? { callback_url: process.env.PAYSTACK_CALLBACK_URL }
+            : {}),
+          metadata: {
+            schemaVersion: 2,
+            purpose: "merchant_order",
+            intentId: created.intentId,
+            merchantId,
+            orderId,
+            reservationId,
+            selectedChannel: channel,
           },
-          { merge: true },
-        );
-        throw error;
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${paystackPaymentSecret(paymentContext)}`,
+          },
+          timeout: 15_000,
+        },
+      );
+      const authorizationUrl = String(
+        response.data?.data?.authorization_url ?? "",
+      ).trim();
+      const providerReference = String(
+        response.data?.data?.reference ?? "",
+      ).trim();
+      if (!authorizationUrl || providerReference !== reference) {
+        throw new Error("PAYSTACK_INITIALIZE_RESPONSE_INVALID");
       }
-    } catch (error) {
-      console.error("[payments-v2] owned order initialization failed", {
-        code: error instanceof Error ? error.message : "unknown",
+      await db.runTransaction(async (tx) => {
+        const intent = await tx.get(intentRef);
+        const data = intent.data() ?? {};
+        if (
+          data.status === "initialized" &&
+          data.providerReference === reference
+        ) {
+          return;
+        }
+        if (data.initializationClaimId !== claimId) {
+          throw new Error("PAYMENT_INITIALIZATION_CLAIM_LOST");
+        }
+        tx.update(intentRef, {
+          status: "initialized",
+          previousStatus: "created",
+          provider: "paystack",
+          providerReference: reference,
+          authorizationUrl,
+          initializationState: "completed",
+          initializationLeaseUntilMs: 0,
+          initializedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
       });
-      const response = publicError(error);
-      res.status(response.status).json({ error: response.message });
+      res.status(200).json({
+        authorizationUrl,
+        reference,
+        intentId: created.intentId,
+        amountMinor,
+        deduped: created.deduped,
+      });
+    } catch (error) {
+      await intentRef.set(
+        {
+          initializationState: "retryable",
+          initializationLeaseUntilMs: 0,
+          initializationErrorCode: "provider_initialization_failed",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      throw error;
     }
-  });
+  } catch (error) {
+    console.error("[payments-v2] owned order initialization failed", {
+      code: error instanceof Error ? error.message : "unknown",
+    });
+    const response = publicError(error);
+    res.status(response.status).json({ error: response.message });
+  }
+};
+
+export const createOwnedOrderPaymentV2 = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN", "PAYSTACK_SECRET_KEY"] })
+  .https.onRequest(handleCreateOwnedOrderPaymentV2);
 
 export async function applyVerifiedOwnedOrderPaymentV2(
   transaction: Record<string, any>,
@@ -464,6 +469,8 @@ export async function applyVerifiedOwnedOrderPaymentV2(
   const settlementId = stableDocumentId("st", [intentId]);
   const settlementRef = db.doc(`settlements/${settlementId}`);
   let notificationId = "";
+  let finalizedCustomerId = "";
+  let shouldFinalize = false;
   let deduped = recorded.deduped;
   await db.runTransaction(async (tx) => {
     const [intent, event, sale, reservation, settlement] = await Promise.all([
@@ -482,11 +489,16 @@ export async function applyVerifiedOwnedOrderPaymentV2(
       throw new Error("OWNED_ORDER_PAYMENT_CORE_MISSING");
     }
     const intentData = intent.data() ?? {};
+    const saleData = sale.data() ?? {};
+    finalizedCustomerId = String(
+      saleData.customerId ?? saleData.customerID ?? "",
+    );
     const applied = Array.isArray(intentData.appliedProviderEventIds)
       ? intentData.appliedProviderEventIds.map(String)
       : [];
     if (applied.includes(eventRef.id)) {
       deduped = true;
+      shouldFinalize = intentData.status === "paid";
       return;
     }
     const reservationData = reservation.data() ?? {};
@@ -553,7 +565,6 @@ export async function applyVerifiedOwnedOrderPaymentV2(
       platformFeeMinor,
       providerFeeMinor,
     });
-    const saleData = sale.data() ?? {};
     const customerId = String(saleData.customerId ?? saleData.customerID ?? "");
     const customer = customerId
       ? await tx.get(db.doc(`users/${merchantId}/customers/${customerId}`))
@@ -579,6 +590,7 @@ export async function applyVerifiedOwnedOrderPaymentV2(
       eventKey: eventRef.id,
     };
     notificationId = commerceNotificationDocumentId(notice);
+    shouldFinalize = true;
     tx.update(intentRef, {
       status: "paid",
       previousStatus: String(intentData.status),
@@ -641,6 +653,9 @@ export async function applyVerifiedOwnedOrderPaymentV2(
     });
     enqueueCommerceOrderNotification(tx, notice);
   });
+  if (shouldFinalize) {
+    await finalizeInventoryOnce(merchantId, orderId, finalizedCustomerId);
+  }
   if (notificationId) {
     await deliverCommerceOrderNotificationOutbox(notificationId).catch(
       (error) => {

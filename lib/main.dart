@@ -54,6 +54,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'services/merchant_heartbeat.dart';
 import 'services/store_session.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -368,6 +369,17 @@ bool isOnlinePaymentsNotificationRoute(Uri? uri) {
       uri?.queryParameters['destination'] == 'online_payments';
 }
 
+@visibleForTesting
+bool isPaymentOperationsWorkspaceNotification(
+  Uri? uri,
+  Map<String, dynamic> data,
+) {
+  return data['notificationType'] == 'payment_operations' &&
+      uri?.scheme == 'https' &&
+      uri?.host == 'workspace.spazaone.com' &&
+      ((uri?.path.isEmpty ?? false) || uri?.path == '/');
+}
+
 /// Routes a notification tap to the correct screen.
 ///
 /// Recognises the `route` data field. For the `/promotionsPage` family of
@@ -384,6 +396,11 @@ void _handleNotificationRouteData(String? route, Map<String, dynamic> data) {
   }
 
   if (uri == null) return;
+
+  if (isPaymentOperationsWorkspaceNotification(uri, data)) {
+    unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
+    return;
+  }
 
   if (uri.path == '/promotionsPage') {
     PromoteIntentBus.instance.set(PromoteIntent.fromUri(uri));

@@ -196,4 +196,28 @@ void main() {
     expect(continued, isTrue);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('consumed attempts explain provider failure and prevent retry',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MerchantVerificationJourneyCard(
+            journey: MerchantVerificationJourney(
+              stage: 'blocked',
+              reason: 'approved_attempts_consumed',
+            ),
+            isSubmitting: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Approved bank checks used'), findsOneWidget);
+    expect(find.textContaining('could not validate'), findsOneWidget);
+    expect(find.textContaining('saved banking details are unchanged'),
+        findsOneWidget);
+    expect(find.textContaining('Do not retry'), findsOneWidget);
+    expect(find.text('Continue verification'), findsNothing);
+  });
 }

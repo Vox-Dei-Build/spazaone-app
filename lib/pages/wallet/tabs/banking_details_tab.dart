@@ -393,10 +393,32 @@ class MerchantVerificationJourneyCard extends StatelessWidget {
         actionLabel = 'Try updated details';
         action = onRequest;
       case 'blocked':
-        title = 'Verification is paused';
-        body = journey.reason == 'authorization_expired'
-            ? 'The verification window expired before the bank check finished. Contact support so the request can be reviewed again.'
-            : 'A support review is needed before verification can continue. Your saved bank details and progress are still available.';
+        switch (journey.reason) {
+          case 'authorization_expired':
+            title = 'Verification approval expired';
+            body =
+                'The verification window expired before the bank check finished. Your saved bank details are unchanged. Contact support so the request can be reviewed again.';
+          case 'approved_attempts_consumed':
+            title = 'Approved bank checks used';
+            body =
+                'The secure bank check could not validate the submitted details and the approved attempts have been used. Your saved banking details are unchanged. Do not retry; support must review the bank, account type, account holder and matching identity document type.';
+          case 'daily_validation_limit_reached':
+            title = 'Daily bank-check limit reached';
+            body =
+                'No more secure bank checks can be attempted today. Your saved banking details are unchanged. Do not retry; contact support to review the details first.';
+          case 'provider_could_not_validate_account':
+            title = 'Bank details could not be validated';
+            body =
+                'The secure bank check could not validate the submitted details. Your saved banking details are unchanged. Do not retry; support must review the bank, branch code, account type, account holder and matching identity document type.';
+          case 'platform_security_suspension':
+            title = 'Bank checks are securely paused';
+            body =
+                'Spaza One has paused bank checks for a platform security review. Your saved banking details are unchanged. Support will need to review the request before verification can continue.';
+          default:
+            title = 'Support review required';
+            body =
+                'A support review is needed before verification can continue. Your saved bank details and progress are still available.';
+        }
         icon = Icons.pause_circle_outline;
       case 'not_started':
         break;

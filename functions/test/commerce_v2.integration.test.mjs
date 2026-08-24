@@ -121,7 +121,11 @@ function installProviderFakes() {
     }
     if (url.includes("frankfurter.dev")) {
       return ok(config, {
-        date: "2026-08-13",
+        // Keep the provider fake within the production freshness window. A
+        // fixed date makes this integration test start calling the fallback
+        // path as soon as the calendar advances, which tests time rather than
+        // checkout behavior.
+        date: new Date().toISOString().slice(0, 10),
         base: "USD",
         quote: "ZAR",
         rate: 18,

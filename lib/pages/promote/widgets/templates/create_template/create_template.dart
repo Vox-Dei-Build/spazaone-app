@@ -75,6 +75,8 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
   DynamicPricingService? _pricingService;
   double? _whatsappPrice;
   double? _smsPricePerSegment;
+  bool _pricingLoading = true;
+  bool _pricingUnavailable = false;
   int _smsSegments = 1;
   SmsEncodingInfo _smsEncodingInfo = const SmsEncodingInfo(
     encoding: SmsEncoding.gsm7,
@@ -103,13 +105,37 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadPricing();
+    });
+  }
+
+  Future<void> _loadPricing() async {
+    if (mounted) {
+      setState(() {
+        _pricingLoading = true;
+        _pricingUnavailable = false;
+      });
+    }
+    try {
       _pricingService = await DynamicPricingService.initialize();
       if (!mounted) return;
       setState(() {
         _whatsappPrice = _pricingService?.whatsappPromotionPrice;
         _smsPricePerSegment = _pricingService?.smsReminderTemplatePrice;
+        _pricingUnavailable =
+            _whatsappPrice == null || _smsPricePerSegment == null;
+        _pricingLoading = false;
       });
-    });
+    } on MessagingPricingUnavailable {
+      if (!mounted) return;
+      setState(() {
+        _pricingService = null;
+        _whatsappPrice = null;
+        _smsPricePerSegment = null;
+        _pricingUnavailable = true;
+        _pricingLoading = false;
+      });
+    }
   }
 
   @override
@@ -376,17 +402,22 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
     final smsFilled = _smsContentController.text.trim().isNotEmpty;
     final contentValid =
         (!includeWhatsApp || whatsappFilled) && (!includeSMS || smsFilled);
+    final pricingReady =
+        !_pricingLoading && !_pricingUnavailable && _pricingService != null;
 
     final canProceed = currentStep == CreateTemplateStep.basicInfo
         ? nameValid
         : currentStep == CreateTemplateStep.content
-            ? contentValid
+            ? contentValid && pricingReady
             : true;
 
-    final blockedMessage =
-        currentStep == CreateTemplateStep.content && !contentValid
+    final blockedMessage = currentStep == CreateTemplateStep.content
+        ? !contentValid
             ? 'Write your promotion message above to continue.'
-            : null;
+            : !pricingReady
+                ? 'Messaging prices must load before you review this template.'
+                : null
+        : null;
 
     return SafeArea(
       top: false,
@@ -404,6 +435,16 @@ class _CreateTemplatePageState extends State<CreateTemplatePage> {
                   color: Theme.of(context).colorScheme.error,
                   fontSize: 12.5,
                 ),
+              ),
+            ),
+          if (currentStep == CreateTemplateStep.content && _pricingUnavailable)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const Key('retry-template-pricing'),
+                onPressed: _pricingLoading ? null : _loadPricing,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry pricing'),
               ),
             ),
           Row(

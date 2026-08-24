@@ -548,6 +548,10 @@ function providerEventId(transaction: Record<string, unknown>): string {
 export async function applyVerifiedCampaignTopupV2(
   transaction: Record<string, any>,
   rawBody: Buffer,
+  options: {
+    providerEventId?: string;
+    ingestionSource?: "webhook" | "admin_provider_verify";
+  } = {},
 ): Promise<{ deduped: boolean; intentId: string }> {
   const metadata = transaction.metadata ?? {};
   const intentId = String(metadata.intentId ?? "").trim();
@@ -566,13 +570,18 @@ export async function applyVerifiedCampaignTopupV2(
     throw new Error("TOPUP_CHANNEL_MISMATCH");
   const eventInput = {
     provider: "paystack" as const,
-    ...(providerEventId(transaction)
-      ? { providerEventId: providerEventId(transaction) }
+    ...(String(options.providerEventId ?? providerEventId(transaction)).trim()
+      ? {
+          providerEventId: String(
+            options.providerEventId ?? providerEventId(transaction),
+          ).trim(),
+        }
       : {}),
     eventType: "charge.success",
     reference,
     rawBody,
     intentId,
+    ingestionSource: options.ingestionSource ?? "webhook",
   };
   const recorded = await recordProviderEventV2(eventInput);
   const eventRef = db.doc(
@@ -592,8 +601,10 @@ export async function applyVerifiedCampaignTopupV2(
     String(initial.providerReference ?? "") !== reference ||
     String(initial.selectedChannel ?? "") !== channel ||
     Number(initial.expectedAmountMinor) !== amountMinor ||
+    String(metadata.purpose ?? "").toLowerCase() !== "campaign_credit" ||
     String(metadata.merchantId ?? "") !== merchantId ||
-    String(metadata.walletStoreId ?? "") !== walletStoreId
+    String(metadata.walletStoreId ?? "") !== walletStoreId ||
+    String(metadata.selectedChannel ?? "") !== channel
   ) {
     throw new Error("CAMPAIGN_TOPUP_BINDING_MISMATCH");
   }
@@ -621,10 +632,32 @@ export async function applyVerifiedCampaignTopupV2(
     if (purchase.exists || applied.includes(eventRef.id)) {
       if (
         !purchase.exists ||
-        Number(purchase.get("creditAmountMinor")) !== creditAmountMinor
+        String(data.status ?? "") !== "paid" ||
+        String(purchase.get("intentId") ?? "") !== intentId ||
+        String(purchase.get("merchantId") ?? "") !== merchantId ||
+        String(purchase.get("walletStoreId") ?? "") !== walletStoreId ||
+        Number(purchase.get("creditAmountMinor")) !== creditAmountMinor ||
+        Number(purchase.get("grossAmountMinor")) !== amountMinor ||
+        String(purchase.get("reference") ?? "") !== reference ||
+        String(purchase.get("channel") ?? "") !== channel ||
+        String(purchase.get("currency") ?? "") !== "ZAR"
       ) {
         throw new Error("CAMPAIGN_TOPUP_IDEMPOTENCY_COLLISION");
       }
+      const alreadyApplied = applied.includes(eventRef.id);
+      const now = FieldValue.serverTimestamp();
+      if (!alreadyApplied) {
+        tx.update(intentRef, {
+          appliedProviderEventIds: FieldValue.arrayUnion(eventRef.id),
+          updatedAt: now,
+        });
+      }
+      tx.update(eventRef, {
+        processingState: alreadyApplied ? "applied" : "deduplicated",
+        attemptCount: FieldValue.increment(1),
+        processedAt: now,
+        updatedAt: now,
+      });
       deduped = true;
       return;
     }

@@ -29,12 +29,14 @@ export * from "./payments/paystack/verifyPaystackTransaction";
 export * from "./payments/paystack/getPaystackQuote";
 export * from "./payments/v2/admin";
 export * from "./payments/v2/reconciliation";
+export { monitorStalePaymentIntentsV2 } from "./payments/v2/paymentIntentMonitoring";
 export * from "./payments/v2/settlementStatus";
 export {
   createCampaignTopupV2,
   getCampaignTopupQuoteV2,
   getCampaignTopupStatusV2,
 } from "./payments/v2/campaignTopup";
+export { recoverCampaignTopupV2OnDemand } from "./payments/v2/campaignTopupRecovery";
 export { expireOwnedInventoryReservations } from "./payments/v2/inventoryReservations";
 export { createOwnedOrderPaymentV2 } from "./payments/v2/ownedOrders";
 export {
@@ -45,6 +47,7 @@ export {
   reviewSettlementVerificationRequestV1,
 } from "./payments/v2/merchantProfiles";
 export { getMerchantPaymentOverviewV2 } from "./payments/v2/merchantOverview";
+export { onPaymentOperationsNotificationCreated } from "./payments/v2/settlementOperationsNotifications";
 export {
   reconcileSupplierTrackingV2,
   reconcileSupplierTrackingV2OnDemand,

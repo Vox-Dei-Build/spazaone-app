@@ -44,6 +44,9 @@ export function merchantVerificationJourney(input: {
   const authorization = (profile.settlementVerificationAuthorization ??
     {}) as Record<string, unknown>;
   const validationState = String(profile.validationAttemptState ?? "");
+  const validationFailureCode = String(
+    profile.validationAttemptFailureCode ?? "",
+  );
   const reviewState = String(profile.bankReviewState ?? "");
 
   if (!input.hasSavedBankingDetails) {
@@ -86,10 +89,32 @@ export function merchantVerificationJourney(input: {
     return { stage: "submitted", reason: "authorization_review_pending" };
   }
   if (requestStatus === "authorized") {
+    const remainingAttempts = Number(authorization.remainingAttempts ?? 0);
+    if (authorization.state === "consumed" || remainingAttempts <= 0) {
+      return { stage: "blocked", reason: "approved_attempts_consumed" };
+    }
+    if (
+      validationFailureCode === "BANK_VALIDATION_DAILY_LIMIT" ||
+      validationFailureCode === "BANK_VALIDATION_RATE_LIMITED"
+    ) {
+      return { stage: "blocked", reason: "daily_validation_limit_reached" };
+    }
+    if (validationFailureCode === "BANK_ACCOUNT_NOT_VALIDATED") {
+      return {
+        stage: "blocked",
+        reason: "provider_could_not_validate_account",
+      };
+    }
+    if (
+      validationFailureCode === "BANK_VALIDATION_PLATFORM_LIMIT" ||
+      validationFailureCode === "BANK_VALIDATION_SUSPENDED"
+    ) {
+      return { stage: "blocked", reason: "platform_security_suspension" };
+    }
     const activeAuthorization =
       authorization.state === "authorized" &&
       Number(authorization.expiresAtMs ?? 0) >= input.nowMs &&
-      Number(authorization.remainingAttempts ?? 0) > 0;
+      remainingAttempts > 0;
     return activeAuthorization
       ? { stage: "ready_to_verify", reason: "authorization_ready" }
       : { stage: "blocked", reason: "authorization_expired" };

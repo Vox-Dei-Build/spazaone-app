@@ -377,7 +377,7 @@ class AddContactViewModel extends ChangeNotifier {
     await _photoUploadUtil.handleImagePick(context, (pickedImage) {
       _profileImage = pickedImage;
       notifyListeners();
-    });
+    }, purpose: PhotoPermissionPurpose.customer);
   }
 
   Map<String, dynamic> getDefaultTransaction() {

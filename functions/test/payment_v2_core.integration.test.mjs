@@ -18,9 +18,11 @@ import {
   applyVerifiedCampaignTopupV2,
   quoteCampaignTopup,
 } from "../lib/payments/v2/campaignTopup.js";
+import { recoverCampaignTopupV2 } from "../lib/payments/v2/campaignTopupRecovery.js";
 import {
   applyVerifiedOwnedOrderPaymentV2,
   estimatedOwnedOrderProviderFeeMinor,
+  handleCreateOwnedOrderPaymentV2,
 } from "../lib/payments/v2/ownedOrders.js";
 import {
   consumeOwnedInventoryReservation,
@@ -42,6 +44,8 @@ import {
   releaseReviewedCustomerPaymentRequest,
   reserveCustomerPaymentRequest,
 } from "../lib/payments/v2/customerPaymentRequests.js";
+import { upsertSettlementAuthorizationRequest } from "../lib/payments/v2/settlementAdminRequests.js";
+import { monitorStalePaymentIntents } from "../lib/payments/v2/paymentIntentMonitoring.js";
 
 const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "");
 const emulatorProject = String(
@@ -78,6 +82,12 @@ async function clear() {
     "operationsAlerts",
     "financialReconciliationRuns",
     "paymentOperations",
+    "paymentRecoveryOperations",
+    "paymentAdministrationRequests",
+    "paymentOperationsNotifications",
+    "paymentMonitoringIncidents",
+    "paymentConfiguration",
+    "merchantPaymentProfiles",
     "customerPaymentRequests",
     "customerPaymentRequestState",
     "paymentRequestWalletReservations",
@@ -131,6 +141,132 @@ test("concurrent intent creation is immutable and idempotent", async () => {
       }),
     ),
     /IDEMPOTENCY_BINDING_MISMATCH/,
+  );
+});
+
+test("settlement requests create one durable operations alert per real refresh", async () => {
+  const base = {
+    merchantId: "merchant-alert",
+    bankingDetailsId: "banking-alert",
+    bankingDetailsUpdatedAtMs: 1_000,
+    storeName: "Alert Store",
+    bankName: "Example Bank",
+    accountNumber: "1234567890",
+    maskedAccountHolder: "A*** Z***",
+    reasonCode: "MERCHANT_REQUESTED",
+  };
+  const first = await upsertSettlementAuthorizationRequest(base);
+  const requestRef = db.doc(`paymentAdministrationRequests/${first.requestId}`);
+  const requestBeforeReplay = await requestRef.get();
+  assert.equal(first.deduped, false);
+  assert.equal(
+    (await db.collection("paymentOperationsNotifications").get()).size,
+    1,
+  );
+
+  const replay = await upsertSettlementAuthorizationRequest(base);
+  const requestAfterReplay = await requestRef.get();
+  assert.equal(replay.deduped, true);
+  assert.equal(
+    requestAfterReplay.get("requestedAt").toMillis(),
+    requestBeforeReplay.get("requestedAt").toMillis(),
+  );
+  assert.equal(
+    (await db.collection("paymentOperationsNotifications").get()).size,
+    1,
+  );
+
+  const refreshed = await upsertSettlementAuthorizationRequest({
+    ...base,
+    bankingDetailsUpdatedAtMs: 2_000,
+  });
+  assert.equal(refreshed.deduped, false);
+  const alerts = await db.collection("paymentOperationsNotifications").get();
+  assert.equal(alerts.size, 2);
+  for (const alert of alerts.docs) {
+    assert.equal(alert.get("pushDeliveryState"), "pending");
+    assert.equal(alert.get("route"), "https://workspace.spazaone.com/");
+    assert.equal(alert.get("merchantId"), undefined);
+    assert.equal(alert.get("bankName"), undefined);
+    assert.equal(alert.get("bankingDetailsId"), undefined);
+  }
+});
+
+test("stale initialized payments alert once and resolve without financial mutation", async () => {
+  const nowMs = 1_000_000;
+  const staleIntentId = `pi_${"a".repeat(64)}`;
+  const recentIntentId = `pi_${"b".repeat(64)}`;
+  const historicalPaidBatch = db.batch();
+  for (let index = 0; index < 201; index += 1) {
+    historicalPaidBatch.set(
+      db.doc(`paymentIntents/historical-paid-${index}`),
+      {
+        status: "paid",
+        initializedAt: admin.firestore.Timestamp.fromMillis(0),
+      },
+    );
+  }
+  await historicalPaidBatch.commit();
+  await db.doc(`paymentIntents/${staleIntentId}`).set({
+    status: "initialized",
+    merchantId: "monitor-merchant",
+    purpose: "campaign_credit",
+    initializedAt: admin.firestore.Timestamp.fromMillis(1),
+  });
+  await db.doc(`paymentIntents/${recentIntentId}`).set({
+    status: "initialized",
+    merchantId: "monitor-merchant",
+    purpose: "merchant_order",
+    initializedAt: admin.firestore.Timestamp.fromMillis(nowMs - 60_000),
+  });
+
+  const first = await monitorStalePaymentIntents({ source: "test", nowMs });
+  assert.equal(first.checkedCount, 1);
+  assert.equal(first.detectedCount, 1);
+  assert.equal(first.resolvedCount, 0);
+  assert.equal(
+    (await db.collection("paymentMonitoringIncidents").get()).size,
+    1,
+  );
+  assert.equal(
+    (
+      await db
+        .collection("paymentOperationsNotifications")
+        .where("type", "==", "PAYMENT_INTENT_CONFIRMATION_OVERDUE")
+        .get()
+    ).size,
+    1,
+  );
+
+  const replay = await monitorStalePaymentIntents({ source: "test", nowMs });
+  assert.equal(replay.detectedCount, 0);
+  assert.equal(
+    (
+      await db
+        .collection("paymentOperationsNotifications")
+        .where("type", "==", "PAYMENT_INTENT_CONFIRMATION_OVERDUE")
+        .get()
+    ).size,
+    1,
+  );
+
+  await db.doc(`paymentIntents/${staleIntentId}`).update({ status: "paid" });
+  const resolved = await monitorStalePaymentIntents({ source: "test", nowMs });
+  assert.equal(resolved.resolvedCount, 1);
+  assert.equal(
+    (
+      await db.collection("paymentMonitoringIncidents").limit(1).get()
+    ).docs[0].get("status"),
+    "resolved",
+  );
+  assert.equal(
+    (
+      await db
+        .collection("paymentOperationsNotifications")
+        .where("type", "==", "PAYMENT_INTENT_CONFIRMATION_OVERDUE")
+        .get()
+    ).size,
+    1,
   );
 });
 
@@ -295,9 +431,21 @@ test("provider replay deduplicates and altered payload collides", async () => {
   };
   const first = await recordProviderEventV2(event);
   const replay = await recordProviderEventV2(event);
+  const replayAfterSourceUpgrade = await recordProviderEventV2({
+    ...event,
+    ingestionSource: "webhook",
+  });
   assert.equal(first.eventId, replay.eventId);
   assert.equal(first.deduped, false);
   assert.equal(replay.deduped, true);
+  assert.equal(replayAfterSourceUpgrade.deduped, true);
+  await assert.rejects(
+    recordProviderEventV2({
+      ...event,
+      ingestionSource: "admin_provider_verify",
+    }),
+    /PROVIDER_EVENT_COLLISION/,
+  );
   await assert.rejects(
     recordProviderEventV2({
       ...event,
@@ -681,12 +829,242 @@ test("campaign top-up credits exactly once and refund reverses the purchase", as
   );
 });
 
-test("owned stock is reserved before payment and never decremented twice", async () => {
+test("admin provider verification recovers one campaign top-up exactly once", async () => {
+  const merchantId = "merchant-campaign-recovery";
+  const quote = quoteCampaignTopup({
+    creditAmountMinor: 20_000,
+    channel: "card",
+  });
+  const created = await createPaymentIntentV2({
+    merchantId,
+    purpose: "campaign_credit",
+    idempotencyKey: "campaign-recovery-checkout",
+    expectedAmountMinor: quote.totalChargeMinor,
+    businessBinding: { type: "campaign_wallet", id: merchantId },
+    money: buildMoneySnapshot({
+      grossAmountMinor: quote.totalChargeMinor,
+      platformFeeMinor: 0,
+      providerFeeMinor: quote.providerFeeMinor,
+    }),
+  });
+  const reference = "p2-campaign-recovery";
+  await db.doc(`paymentIntents/${created.intentId}`).update({
+    status: "initialized",
+    previousStatus: "created",
+    provider: "paystack",
+    providerReference: reference,
+    selectedChannel: "card",
+    campaignCreditAmountMinor: quote.creditAmountMinor,
+    campaignWalletStoreId: merchantId,
+    campaignWalletShared: false,
+  });
+  await db.doc(`users/${merchantId}/wallet/current`).set({
+    virtualBalance: 0,
+  });
+  const transaction = {
+    id: 20810,
+    status: "success",
+    reference,
+    amount: quote.totalChargeMinor,
+    fees: quote.providerFeeMinor,
+    currency: "ZAR",
+    channel: "card",
+    paid_at: "2026-08-24T05:09:00.000Z",
+    metadata: {
+      purpose: "campaign_credit",
+      intentId: created.intentId,
+      merchantId,
+      walletStoreId: merchantId,
+      creditAmountMinor: quote.creditAmountMinor,
+      selectedChannel: "card",
+      initiatedBy: merchantId,
+    },
+  };
+  let verificationCalls = 0;
+  const dependencies = {
+    nowMs: () => 1_000,
+    verifyTransaction: async ({ reference: requestedReference }) => {
+      verificationCalls += 1;
+      assert.equal(requestedReference, reference);
+      return transaction;
+    },
+  };
+
+  const [first, independentRetry] = await Promise.all([
+    recoverCampaignTopupV2(
+      {
+        intentId: created.intentId,
+        operationId: "recover-campaign-op-1",
+        reason: "Provider success was not delivered to the webhook.",
+        actorUid: "admin-recovery",
+      },
+      dependencies,
+    ),
+    recoverCampaignTopupV2(
+      {
+        intentId: created.intentId,
+        operationId: "recover-campaign-op-2",
+        reason: "Confirm concurrent recovery remains exact-once.",
+        actorUid: "admin-recovery",
+      },
+      dependencies,
+    ),
+  ]);
+  const replay = await recoverCampaignTopupV2(
+    {
+      intentId: created.intentId,
+      operationId: "recover-campaign-op-1",
+      reason: "Provider success was not delivered to the webhook.",
+      actorUid: "admin-recovery",
+    },
+    dependencies,
+  );
+  await assert.rejects(
+    recoverCampaignTopupV2(
+      {
+        intentId: created.intentId,
+        operationId: "recover-campaign-op-1",
+        reason: "A changed reason must not rebind the operation.",
+        actorUid: "admin-recovery",
+      },
+      dependencies,
+    ),
+    /RECOVERY_OPERATION_COLLISION/,
+  );
+  assert.deepEqual([first.deduped, independentRetry.deduped].sort(), [
+    false,
+    true,
+  ]);
+  assert.equal(replay.deduped, true);
+  assert.equal(first.eventId, replay.eventId);
+  assert.equal(first.eventId, independentRetry.eventId);
+  assert.equal(verificationCalls, 2);
+
+  const webhookBody = Buffer.from(
+    JSON.stringify({ event: "charge.success", data: transaction }),
+  );
+  const delayedWebhook = await applyVerifiedCampaignTopupV2(
+    transaction,
+    webhookBody,
+  );
+  assert.equal(delayedWebhook.deduped, true);
+  assert.equal(
+    (await db.doc(`users/${merchantId}/wallet/current`).get()).get(
+      "virtualBalance",
+    ),
+    200,
+  );
+  assert.equal(
+    (await db.collection(`users/${merchantId}/topUpTransactions`).get()).size,
+    1,
+  );
+  const intentAfter = (
+    await db.doc(`paymentIntents/${created.intentId}`).get()
+  ).data();
+  assert.equal(intentAfter.status, "paid");
+  assert.equal(intentAfter.appliedProviderEventIds.length, 2);
+  const events = await db
+    .collection("paymentEvents")
+    .where("intentId", "==", created.intentId)
+    .get();
+  assert.equal(events.size, 2);
+  const recoveryEvent = events.docs.find(
+    (doc) => doc.get("ingestionSource") === "admin_provider_verify",
+  );
+  const webhookEvent = events.docs.find(
+    (doc) => doc.get("ingestionSource") === "webhook",
+  );
+  assert.equal(recoveryEvent?.get("processingState"), "applied");
+  assert.equal(webhookEvent?.get("processingState"), "deduplicated");
+  const recoveryReceipts = await db
+    .collection("paymentRecoveryOperations")
+    .where("intentId", "==", created.intentId)
+    .get();
+  assert.deepEqual(
+    recoveryReceipts.docs.map((doc) => doc.get("applicationDeduped")).sort(),
+    [false, true],
+  );
+});
+
+test("campaign recovery records a safe failure without crediting", async () => {
+  const merchantId = "merchant-campaign-recovery-failed";
+  const quote = quoteCampaignTopup({
+    creditAmountMinor: 5_000,
+    channel: "card",
+  });
+  const created = await createPaymentIntentV2({
+    merchantId,
+    purpose: "campaign_credit",
+    idempotencyKey: "campaign-recovery-failed-checkout",
+    expectedAmountMinor: quote.totalChargeMinor,
+    businessBinding: { type: "campaign_wallet", id: merchantId },
+    money: buildMoneySnapshot({
+      grossAmountMinor: quote.totalChargeMinor,
+      platformFeeMinor: 0,
+      providerFeeMinor: quote.providerFeeMinor,
+    }),
+  });
+  const reference = "p2-campaign-recovery-failed";
+  await db.doc(`paymentIntents/${created.intentId}`).update({
+    status: "initialized",
+    previousStatus: "created",
+    provider: "paystack",
+    providerReference: reference,
+    selectedChannel: "card",
+    campaignCreditAmountMinor: quote.creditAmountMinor,
+  });
+  await db.doc(`users/${merchantId}/wallet/current`).set({
+    virtualBalance: 0,
+  });
+
+  await assert.rejects(
+    recoverCampaignTopupV2(
+      {
+        intentId: created.intentId,
+        operationId: "recover-campaign-failed-op",
+        reason: "Verify that provider failure cannot credit the wallet.",
+        actorUid: "admin-recovery",
+      },
+      {
+        nowMs: () => 2_000,
+        verifyTransaction: async () => ({
+          id: 5000,
+          status: "failed",
+          reference,
+          currency: "ZAR",
+        }),
+      },
+    ),
+    /PROVIDER_TRANSACTION_NOT_SUCCESSFUL/,
+  );
+  assert.equal(
+    (await db.doc(`users/${merchantId}/wallet/current`).get()).get(
+      "virtualBalance",
+    ),
+    0,
+  );
+  assert.equal(
+    (await db.doc(`campaignCreditPurchases/${created.intentId}`).get()).exists,
+    false,
+  );
+  const receipt = await db
+    .doc("paymentRecoveryOperations/recover-campaign-failed-op")
+    .get();
+  assert.equal(receipt.get("status"), "failed");
+  assert.equal(
+    receipt.get("failureCode"),
+    "PROVIDER_TRANSACTION_NOT_SUCCESSFUL",
+  );
+  assert.equal(receipt.get("providerReference"), undefined);
+});
+
+test("one owned order opens one hosted link and finalizes once after its verified event", async () => {
   const merchantId = "merchant-owned";
   const orderId = "owned-order-1";
   await db.doc(`users/${merchantId}`).set({
     name: "Owned Stock Merchant",
     unreadCount: 0,
+    buildNumber: 88,
   });
   await db.doc(`users/${merchantId}/products/product-1`).set({
     name: "Reserved product",
@@ -699,6 +1077,7 @@ test("owned stock is reserved before payment and never decremented twice", async
     paymentRail: "paystack_v2",
     paymentStatus: "pending",
     status: "pending_payment",
+    type: "Online",
     amount: 100,
     products: { "product-1": 2 },
     items: [
@@ -714,6 +1093,36 @@ test("owned stock is reserved before payment and never decremented twice", async
     name: "Customer",
     number: "",
   });
+  await Promise.all([
+    db.doc("paymentConfiguration/global").set(
+      {
+        emergencySuspended: false,
+        capabilities: { merchant_order: true },
+        paystackChannels: ["card"],
+      },
+      { merge: true },
+    ),
+    db.doc(`merchantPaymentProfiles/${merchantId}`).set({
+      status: "enabled",
+      bankVerificationStatus: "approved",
+      paystackSubaccountCode: "ACCT_testmerchant",
+      capabilities: { merchant_order: true },
+      bankName: "Test Bank",
+      resolvedAccountName: "Merchant",
+      accountLast4: "1234",
+    }),
+    db.doc(`users/${merchantId}/carts/customer-1`).set({
+      items: [{ productId: "product-1", quantity: 2 }],
+      products: { "product-1": 2 },
+      itemsCount: 2,
+      subtotal: 100,
+      total: 100,
+      lock: { saleId: orderId },
+    }),
+    db
+      .doc(`users/${merchantId}/carts/customer-1/items/product-1`)
+      .set({ productId: "product-1", quantity: 2 }),
+  ]);
   const reserved = await reserveOwnedInventoryForSale({ merchantId, orderId });
   assert.equal(reserved.deduped, false);
   assert.equal(
@@ -747,40 +1156,127 @@ test("owned stock is reserved before payment and never decremented twice", async
     { reservationId: reserved.reservationId, deduped: true },
   );
 
-  const providerFeeMinor = estimatedOwnedOrderProviderFeeMinor({
-    amountMinor: 10_000,
-    channel: "card",
-  });
-  const created = await createPaymentIntentV2({
-    merchantId,
-    purpose: "merchant_order",
-    idempotencyKey: `owned-order:${orderId}`,
-    expectedAmountMinor: 10_000,
-    businessBinding: { type: "owned_order", id: orderId },
-    money: buildMoneySnapshot({
-      grossAmountMinor: 10_000,
-      platformFeeMinor: 150,
-      providerFeeMinor,
-    }),
-  });
-  const reference = "p2-owned-order";
-  await db.doc(`paymentIntents/${created.intentId}`).update({
-    status: "initialized",
-    previousStatus: "created",
-    providerReference: reference,
-    selectedChannel: "card",
-    inventoryReservationId: reserved.reservationId,
-    paystackSubaccountCode: "ACCT_testmerchant",
-    settlementDestination: {
-      bankName: "Test Bank",
-      accountName: "Merchant",
-      accountLast4: "1234",
+  const originalAdapter = axios.defaults.adapter;
+  const priorEnvironment = process.env.SPAZAONE_ENVIRONMENT;
+  const priorMasterEnabled = process.env.PAYMENTS_V2_MASTER_ENABLED;
+  const priorPaystackSecret = process.env.PAYSTACK_SECRET_KEY;
+  const priorBotToken = process.env.PASELLA_BOT_TOKEN;
+  process.env.SPAZAONE_ENVIRONMENT = "local";
+  process.env.PAYMENTS_V2_MASTER_ENABLED = "true";
+  process.env.PAYSTACK_SECRET_KEY = "sk_test_owned_order_emulator";
+  process.env.PASELLA_BOT_TOKEN = "owned-order-bot-token";
+  let paystackInitializeCalls = 0;
+  let paystackInitializeInput = {};
+  axios.defaults.adapter = async (config) => {
+    assert.match(String(config.url), /paystack\.co\/transaction\/initialize/);
+    paystackInitializeCalls += 1;
+    paystackInitializeInput =
+      typeof config.data === "string" ? JSON.parse(config.data) : config.data;
+    return {
+      data: {
+        status: true,
+        data: {
+          authorization_url: "https://paystack.test/owned-order",
+          reference: paystackInitializeInput.reference,
+        },
+      },
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config,
+    };
+  };
+  const request = {
+    method: "POST",
+    body: {
+      merchantId,
+      orderId,
+      customerId: "customer-1",
+      email: "customer@example.test",
+      channel: "card",
+    },
+    get(name) {
+      return String(name).toLowerCase() === "x-pasella-bot-token"
+        ? "owned-order-bot-token"
+        : undefined;
+    },
+  };
+  const responseRecorder = () => ({
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
     },
   });
-  await db.doc(`inventoryReservations/${reserved.reservationId}`).update({
-    paymentIntentId: created.intentId,
-    providerReference: reference,
-  });
+  const prepared = responseRecorder();
+  try {
+    await handleCreateOwnedOrderPaymentV2(request, prepared);
+    assert.equal(prepared.statusCode, 200);
+    assert.equal(prepared.body.amountMinor, 10_000);
+    assert.equal(
+      prepared.body.authorizationUrl,
+      "https://paystack.test/owned-order",
+    );
+    assert.equal(paystackInitializeCalls, 1);
+    assert.equal(paystackInitializeInput.amount, 10_000);
+    assert.deepEqual(paystackInitializeInput.channels, ["card"]);
+    assert.equal(
+      paystackInitializeInput.metadata.intentId,
+      prepared.body.intentId,
+    );
+    assert.equal(paystackInitializeInput.metadata.orderId, orderId);
+
+    const retried = responseRecorder();
+    await handleCreateOwnedOrderPaymentV2(request, retried);
+    assert.equal(retried.statusCode, 200);
+    assert.equal(retried.body.intentId, prepared.body.intentId);
+    assert.equal(retried.body.reference, prepared.body.reference);
+    assert.equal(retried.body.deduped, true);
+    assert.equal(paystackInitializeCalls, 1);
+  } finally {
+    axios.defaults.adapter = originalAdapter;
+    const restore = (name, value) => {
+      if (value == null) delete process.env[name];
+      else process.env[name] = value;
+    };
+    restore("SPAZAONE_ENVIRONMENT", priorEnvironment);
+    restore("PAYMENTS_V2_MASTER_ENABLED", priorMasterEnabled);
+    restore("PAYSTACK_SECRET_KEY", priorPaystackSecret);
+    restore("PASELLA_BOT_TOKEN", priorBotToken);
+  }
+  const created = { intentId: prepared.body.intentId };
+  const reference = prepared.body.reference;
+  const intentBeforePayment = await db
+    .doc(`paymentIntents/${created.intentId}`)
+    .get();
+  assert.equal(intentBeforePayment.get("status"), "initialized");
+  assert.equal(intentBeforePayment.get("expectedAmountMinor"), 10_000);
+  assert.equal(intentBeforePayment.get("selectedChannel"), "card");
+  assert.equal(intentBeforePayment.get("businessBinding.id"), orderId);
+  assert.equal(
+    (await db.doc(`users/${merchantId}/sales/${orderId}`).get()).get(
+      "paymentIntentId",
+    ),
+    created.intentId,
+  );
+  assert.equal(
+    (await db.doc(`inventoryReservations/${reserved.reservationId}`).get()).get(
+      "paymentIntentId",
+    ),
+    created.intentId,
+  );
+  assert.equal((await db.collection("settlements").get()).size, 0);
+  assert.equal(
+    (await db.doc(`users/${merchantId}/sales/${orderId}`).get()).get(
+      "paymentStatus",
+    ),
+    "pending",
+  );
   const transaction = {
     id: 987655,
     status: "success",
@@ -812,7 +1308,7 @@ test("owned stock is reserved before payment and never decremented twice", async
     (await db.doc(`inventoryReservations/${reserved.reservationId}`).get()).get(
       "status",
     ),
-    "committed",
+    "consumed",
   );
   assert.equal(
     (await db.doc(`users/${merchantId}/sales/${orderId}`).get()).get(
@@ -820,13 +1316,46 @@ test("owned stock is reserved before payment and never decremented twice", async
     ),
     "paid",
   );
-  assert.equal((await db.collection("settlements").get()).size, 1);
+  const ownedSettlements = await db
+    .collection("settlements")
+    .where("intentId", "==", created.intentId)
+    .get();
+  assert.equal(ownedSettlements.size, 1);
   assert.equal(
-    (await db.collection("settlements").limit(1).get()).docs[0].get(
-      "merchantNetProceedsMinor",
-    ),
-    9_401,
+    (
+      await db
+        .collection("paymentEvents")
+        .where("intentId", "==", created.intentId)
+        .get()
+    ).size,
+    1,
   );
+  assert.equal(
+    (await db.doc(`users/${merchantId}/sales/${orderId}`).get()).get(
+      "inventoryFinalized",
+    ),
+    true,
+  );
+  assert.equal(
+    (await db.doc(`users/${merchantId}/carts/customer-1/items/product-1`).get())
+      .exists,
+    false,
+  );
+  const clearedCart = await db
+    .doc(`users/${merchantId}/carts/customer-1`)
+    .get();
+  assert.deepEqual(clearedCart.get("items"), []);
+  assert.deepEqual(clearedCart.get("products"), {});
+  assert.equal(clearedCart.get("itemsCount"), 0);
+  assert.equal(clearedCart.get("lock"), undefined);
+  const notificationOutbox = await db
+    .collection("commerceNotificationOutbox")
+    .where("notice.orderId", "==", orderId)
+    .get();
+  assert.equal(notificationOutbox.size, 1);
+  assert.equal(notificationOutbox.docs[0].get("notice.orderId"), orderId);
+  assert.equal(notificationOutbox.docs[0].get("notice.status"), "paid");
+  assert.equal(ownedSettlements.docs[0].get("merchantNetProceedsMinor"), 9_401);
   await assert.rejects(
     releaseOwnedInventoryReservation({
       reservationId: reserved.reservationId,
@@ -839,7 +1368,7 @@ test("owned stock is reserved before payment and never decremented twice", async
     merchantId,
     orderId,
   });
-  assert.deepEqual(consumed, { deduped: false });
+  assert.deepEqual(consumed, { deduped: true });
   assert.deepEqual(
     await consumeOwnedInventoryReservation({
       reservationId: reserved.reservationId,

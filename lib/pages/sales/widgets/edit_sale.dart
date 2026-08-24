@@ -4,6 +4,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/sales/widgets/stock_amount_field.dart';
+import 'package:pasella/pages/sales/widgets/stock_invoice_attachments_field.dart';
 import 'package:pasella/pages/transactions/widgets/product_selection.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
@@ -93,6 +94,15 @@ class EditSale extends StatelessWidget {
                 ),
                 StockAmountField(
                   controller: transactionViewModel.stockAmountController,
+                ),
+                StockInvoiceAttachmentsField(
+                  attachments: transactionViewModel.stockInvoiceDrafts,
+                  onAdd: () => transactionViewModel.addStockInvoice(context),
+                  onRemove: transactionViewModel.removeStockInvoice,
+                  onReplace: (index) =>
+                      transactionViewModel.replaceStockInvoice(context, index),
+                  onRetry: transactionViewModel.retryStockInvoice,
+                  loadPreview: transactionViewModel.loadStockInvoicePreview,
                 ),
                 DateRow(
                   label: 'Date of Sale',
