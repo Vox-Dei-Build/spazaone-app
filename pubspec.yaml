@@ -3,7 +3,7 @@ description: SpazaOne helps South African merchants manage customers, balances, 
 
 publish_to: "none"
 
-version: 4.8.2+95
+version: 4.8.3+96
 
 environment:
   sdk: ">=3.0.5 <4.0.0"
