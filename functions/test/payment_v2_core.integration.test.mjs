@@ -196,6 +196,17 @@ test("stale initialized payments alert once and resolve without financial mutati
   const nowMs = 1_000_000;
   const staleIntentId = `pi_${"a".repeat(64)}`;
   const recentIntentId = `pi_${"b".repeat(64)}`;
+  const historicalPaidBatch = db.batch();
+  for (let index = 0; index < 201; index += 1) {
+    historicalPaidBatch.set(
+      db.doc(`paymentIntents/historical-paid-${index}`),
+      {
+        status: "paid",
+        initializedAt: admin.firestore.Timestamp.fromMillis(0),
+      },
+    );
+  }
+  await historicalPaidBatch.commit();
   await db.doc(`paymentIntents/${staleIntentId}`).set({
     status: "initialized",
     merchantId: "monitor-merchant",
@@ -210,6 +221,7 @@ test("stale initialized payments alert once and resolve without financial mutati
   });
 
   const first = await monitorStalePaymentIntents({ source: "test", nowMs });
+  assert.equal(first.checkedCount, 1);
   assert.equal(first.detectedCount, 1);
   assert.equal(first.resolvedCount, 0);
   assert.equal(

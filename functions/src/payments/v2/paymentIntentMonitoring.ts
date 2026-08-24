@@ -71,6 +71,7 @@ export async function monitorStalePaymentIntents(input: {
   const [stale, openIncidents] = await Promise.all([
     db
       .collection("paymentIntents")
+      .where("status", "==", "initialized")
       .where("initializedAt", "<=", cutoff)
       .orderBy("initializedAt", "asc")
       .limit(MAX_STALE_INTENTS_PER_RUN + 1)

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   paymentIntentMonitoringIncidentId,
@@ -48,4 +49,34 @@ test("payment monitoring incident IDs are deterministic per intent", () => {
     paymentIntentMonitoringIncidentId("intent-a"),
     paymentIntentMonitoringIncidentId("intent-b"),
   );
+});
+
+test("scheduled monitoring cannot be starved by historical paid intents", () => {
+  const source = readFileSync(
+    new URL(
+      "../src/payments/v2/paymentIntentMonitoring.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /collection\("paymentIntents"\)[\s\S]*?\.where\("status",\s*"==",\s*"initialized"\)[\s\S]*?\.where\("initializedAt",\s*"<=",\s*cutoff\)/,
+  );
+
+  const indexes = JSON.parse(
+    readFileSync(new URL("../../firestore.indexes.json", import.meta.url)),
+  );
+  const monitoringIndex = indexes.indexes.find(
+    (index) =>
+      index.collectionGroup === "paymentIntents" &&
+      index.fields.some(
+        (field) => field.fieldPath === "status" && field.order === "ASCENDING",
+      ) &&
+      index.fields.some(
+        (field) =>
+          field.fieldPath === "initializedAt" && field.order === "ASCENDING",
+      ),
+  );
+  assert.ok(monitoringIndex);
 });
