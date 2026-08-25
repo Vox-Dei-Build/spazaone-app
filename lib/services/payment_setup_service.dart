@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:http/http.dart' as http;
 import 'package:pasella/config/function_endpoints.dart';
 import 'package:pasella/services/secure_function_client.dart';
 
@@ -422,16 +423,23 @@ class PaymentSetupService {
     required String documentType,
     required String documentNumber,
   }) async {
-    final response = await SecureFunctionClient().post(
-      FunctionEndpoints.https('prepareMerchantSettlementProfileV2'),
-      {
-        'merchantId': merchantId,
-        'bankingDetailsId': bankingDetailsId,
-        'accountType': accountType,
-        'documentType': documentType,
-        'documentNumber': documentNumber,
-      },
-    );
+    late final http.Response response;
+    try {
+      response = await SecureFunctionClient().post(
+        FunctionEndpoints.https('prepareMerchantSettlementProfileV2'),
+        {
+          'merchantId': merchantId,
+          'bankingDetailsId': bankingDetailsId,
+          'accountType': accountType,
+          'documentType': documentType,
+          'documentNumber': documentNumber,
+        },
+      );
+    } catch (_) {
+      throw const PaymentSetupException(
+        'Secure bank verification could not connect. Reopen SpazaOne and try again.',
+      );
+    }
     Map<String, dynamic> body = const {};
     try {
       final decoded = jsonDecode(response.body);
