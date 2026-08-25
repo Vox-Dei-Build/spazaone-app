@@ -23,6 +23,7 @@ import {
   settlementAdminRequestDetailProjection,
   settlementAdminRequestProjection,
   settlementAdminRequestRef,
+  settlementSupportReviewResetDecision,
 } from "./settlementAdminRequests";
 
 const paymentAdminMutationRuntime = functions.runWith({
@@ -304,9 +305,10 @@ async function applySettlementVerificationAuthorization(input: {
   let deduped = false;
 
   await db.runTransaction(async (tx) => {
-    const [existingAudit, request] = await Promise.all([
+    const [existingAudit, request, profile] = await Promise.all([
       tx.get(auditRef),
       tx.get(requestRef),
+      tx.get(profileRef),
     ]);
     if (existingAudit.exists) {
       const previous = existingAudit.data() ?? {};
@@ -325,6 +327,7 @@ async function applySettlementVerificationAuthorization(input: {
       return;
     }
     const requestData = request.data() ?? {};
+    const profileData = profile.data() ?? {};
     if (
       !request.exists ||
       requestData.type !== SETTLEMENT_ADMIN_REQUEST_TYPE ||
@@ -362,6 +365,17 @@ async function applySettlementVerificationAuthorization(input: {
     }
 
     const now = FieldValue.serverTimestamp();
+    const previousValidationAttemptState = String(
+      profileData.validationAttemptState ?? "",
+    );
+    const previousValidationAttemptFailureCode = String(
+      profileData.validationAttemptFailureCode ?? "",
+    );
+    const clearsReviewedFailure = settlementSupportReviewResetDecision({
+      authorized: input.authorized,
+      validationAttemptState: previousValidationAttemptState,
+      validationAttemptFailureCode: previousValidationAttemptFailureCode,
+    }).clearPreviousFailure;
     tx.set(
       profileRef,
       {
@@ -380,6 +394,16 @@ async function applySettlementVerificationAuthorization(input: {
             ? bankingDetailsUpdatedAtMs
             : 0,
         },
+        ...(clearsReviewedFailure
+          ? {
+              validationAttemptState: "support_reviewed",
+              validationAttemptFailureCode: FieldValue.delete(),
+              validationAttemptLeaseUntilMs: 0,
+              validationSupportReviewedAt: now,
+              validationSupportReviewedBy: input.adminUid,
+              validationSupportReviewedOperationId: input.operationId,
+            }
+          : {}),
         schemaVersion: 2,
         updatedAt: now,
         updatedBy: input.adminUid,
@@ -409,6 +433,9 @@ async function applySettlementVerificationAuthorization(input: {
         ? SETTLEMENT_VERIFICATION_AUTHORIZATION_ATTEMPTS
         : 0,
       reason: input.reason,
+      clearedReviewedFailure: clearsReviewedFailure,
+      previousValidationAttemptState,
+      previousValidationAttemptFailureCode,
       createdAt: now,
       schemaVersion: 2,
     });

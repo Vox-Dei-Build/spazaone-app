@@ -12,6 +12,7 @@ import {
   settlementAdminRequestProjection,
   settlementAuthorizationOpenDecision,
   settlementAuthorizationRequestDecision,
+  settlementSupportReviewResetDecision,
 } from "../lib/payments/v2/settlementAdminRequests.js";
 import { merchantVerificationJourney } from "../lib/payments/v2/merchantOverview.js";
 import {
@@ -331,6 +332,33 @@ test("only a merchant's first guarded bank check is auto-authorized", () => {
       validationLifetimeAttemptCount: 0,
     }).reason,
     "provider_attempt_requires_review",
+  );
+});
+
+test("a reviewed authorization clears only a completed provider failure", () => {
+  assert.deepEqual(
+    settlementSupportReviewResetDecision({
+      authorized: true,
+      validationAttemptState: "failed",
+      validationAttemptFailureCode: "BANK_ACCOUNT_NOT_VERIFIED",
+    }),
+    { clearPreviousFailure: true },
+  );
+  assert.equal(
+    settlementSupportReviewResetDecision({
+      authorized: false,
+      validationAttemptState: "failed",
+      validationAttemptFailureCode: "BANK_ACCOUNT_NOT_VERIFIED",
+    }).clearPreviousFailure,
+    false,
+  );
+  assert.equal(
+    settlementSupportReviewResetDecision({
+      authorized: true,
+      validationAttemptState: "provider_outcome_unknown",
+      validationAttemptFailureCode: "BANK_VALIDATION_OUTCOME_UNKNOWN",
+    }).clearPreviousFailure,
+    false,
   );
 });
 
