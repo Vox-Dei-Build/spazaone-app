@@ -37,6 +37,19 @@ export type SettlementAuthorizationRequestDecision = {
   deduped: boolean;
 };
 
+export function settlementSupportReviewResetDecision(input: {
+  authorized: boolean;
+  validationAttemptState: unknown;
+  validationAttemptFailureCode: unknown;
+}): { clearPreviousFailure: boolean } {
+  return {
+    clearPreviousFailure:
+      input.authorized &&
+      String(input.validationAttemptState ?? "") === "failed" &&
+      String(input.validationAttemptFailureCode ?? "").length > 0,
+  };
+}
+
 export function automaticSettlementAuthorizationDecision(input: {
   requestStatus: unknown;
   authorizationState: unknown;
