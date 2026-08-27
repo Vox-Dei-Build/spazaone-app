@@ -393,6 +393,7 @@ export async function upsertSettlementAuthorizationRequest(input: {
         route: PAYMENT_OPERATIONS_WORKSPACE_URL,
         source: "settlementAuthorizationRequest",
         pushDeliveryState: "pending",
+        emailDeliveryState: "pending",
         createdAt: now,
         updatedAt: now,
         schemaVersion: 1,

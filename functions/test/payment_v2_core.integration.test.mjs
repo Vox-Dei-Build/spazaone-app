@@ -185,6 +185,7 @@ test("settlement requests create one durable operations alert per real refresh",
   assert.equal(alerts.size, 2);
   for (const alert of alerts.docs) {
     assert.equal(alert.get("pushDeliveryState"), "pending");
+    assert.equal(alert.get("emailDeliveryState"), "pending");
     assert.equal(alert.get("route"), "https://workspace.spazaone.com/");
     assert.equal(alert.get("merchantId"), undefined);
     assert.equal(alert.get("bankName"), undefined);

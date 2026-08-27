@@ -1,5 +1,6 @@
+import axios, { isAxiosError } from "axios";
 import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { DocumentReference, FieldValue } from "firebase-admin/firestore";
 import { MulticastMessage } from "firebase-admin/messaging";
 import { db, functions } from "../../config/main";
 import { stableDocumentId } from "./domain";
@@ -14,6 +15,7 @@ export const PAYMENT_OPERATIONS_WORKSPACE_URL =
 const MAX_RECIPIENT_IDENTITIES = 20;
 const MAX_RECIPIENT_STORES = 50;
 const MAX_PUSH_TOKENS = 100;
+const MAILGUN_TIMEOUT_MS = 15_000;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -63,6 +65,112 @@ export function paymentIntentStaleNotificationCopy(): {
     title: "Payment confirmation overdue",
     body: "A payment has not confirmed in time. Open the SpazaOne Payment Operations workspace to review it.",
   };
+}
+
+export function settlementOperationsEmailCopy(): {
+  subject: string;
+  text: string;
+} {
+  return {
+    subject: "SpazaOne verification request",
+    text: [
+      "A merchant requested bank verification.",
+      "",
+      `Review the request: ${PAYMENT_OPERATIONS_WORKSPACE_URL}`,
+      "",
+      "This automated alert contains no banking or identity details.",
+    ].join("\n"),
+  };
+}
+
+export type MailgunOperationsEmailConfig = {
+  apiBaseUrl: string;
+  apiKey: string;
+  domain: string;
+  from: string;
+};
+
+function validEmailHeader(value: string): boolean {
+  const bracketed = value.match(/<([^<>]+)>$/);
+  const candidate = bracketed?.[1] ?? value;
+  return paymentOperationsRecipientEmails(candidate).length === 1;
+}
+
+export function mailgunOperationsEmailConfig(
+  env: Record<string, string | undefined>,
+): MailgunOperationsEmailConfig | null {
+  if (
+    String(env.MAILGUN_PROVIDER_MODE ?? "")
+      .trim()
+      .toLowerCase() !== "live"
+  ) {
+    return null;
+  }
+  const region = String(env.MAILGUN_REGION ?? "us")
+    .trim()
+    .toLowerCase();
+  const apiBaseUrl =
+    region === "eu"
+      ? "https://api.eu.mailgun.net"
+      : region === "us"
+        ? "https://api.mailgun.net"
+        : "";
+  const apiKey = String(env.MAILGUN_API_KEY ?? "").trim();
+  const domain = String(env.MAILGUN_DOMAIN ?? "")
+    .trim()
+    .toLowerCase();
+  const from = String(env.MAILGUN_FROM ?? "").trim();
+  if (
+    !apiBaseUrl ||
+    !apiKey ||
+    !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(
+      domain,
+    ) ||
+    !validEmailHeader(from)
+  ) {
+    return null;
+  }
+  return { apiBaseUrl, apiKey, domain, from };
+}
+
+export function mailgunVerificationMessageFields(input: {
+  from: string;
+  notificationId: string;
+  recipient: string;
+}): Record<string, string> {
+  const copy = settlementOperationsEmailCopy();
+  return {
+    from: input.from,
+    to: input.recipient,
+    subject: copy.subject,
+    text: copy.text,
+    "o:tag": "payment-operations",
+    "o:tracking": "no",
+    "o:require-tls": "yes",
+    "h:X-SpazaOne-Notification-Id": input.notificationId,
+  };
+}
+
+export async function sendMailgunVerificationMessage(input: {
+  config: MailgunOperationsEmailConfig;
+  notificationId: string;
+  recipient: string;
+}): Promise<void> {
+  const fields = mailgunVerificationMessageFields({
+    from: input.config.from,
+    notificationId: input.notificationId,
+    recipient: input.recipient,
+  });
+  const body = new FormData();
+  Object.entries(fields).forEach(([name, value]) => body.append(name, value));
+  await axios.post(
+    `${input.config.apiBaseUrl}/v3/${encodeURIComponent(input.config.domain)}/messages`,
+    body,
+    {
+      auth: { username: "api", password: input.config.apiKey },
+      timeout: MAILGUN_TIMEOUT_MS,
+    },
+  );
 }
 
 export function settlementOperationsNotificationId(input: {
@@ -135,28 +243,14 @@ async function readPaymentOperationsTokens(): Promise<string[]> {
   return [...tokens].slice(0, MAX_PUSH_TOKENS);
 }
 
-export async function deliverPaymentOperationsNotification(
-  notificationId: string,
-): Promise<void> {
-  const notificationRef = db.doc(
-    `paymentOperationsNotifications/${notificationId}`,
-  );
-  const notification = await notificationRef.get();
-  const data = notification.data() ?? {};
-  const type = String(data.type ?? "");
-  if (
-    !notification.exists ||
-    ![
-      PAYMENT_OPERATIONS_NOTIFICATION_TYPE,
-      PAYMENT_INTENT_STALE_NOTIFICATION_TYPE,
-    ].includes(type)
-  ) {
-    return;
-  }
-
+async function deliverPaymentOperationsPush(input: {
+  notificationId: string;
+  notificationRef: DocumentReference;
+  type: string;
+}): Promise<void> {
   const tokens = await readPaymentOperationsTokens();
   if (tokens.length === 0) {
-    await notificationRef.set(
+    await input.notificationRef.set(
       {
         pushDeliveryState: "no_registered_device",
         pushSuccessCount: 0,
@@ -168,7 +262,7 @@ export async function deliverPaymentOperationsNotification(
     return;
   }
 
-  const isStalePayment = type === PAYMENT_INTENT_STALE_NOTIFICATION_TYPE;
+  const isStalePayment = input.type === PAYMENT_INTENT_STALE_NOTIFICATION_TYPE;
   const copy = isStalePayment
     ? paymentIntentStaleNotificationCopy()
     : settlementOperationsNotificationCopy();
@@ -188,7 +282,7 @@ export async function deliverPaymentOperationsNotification(
       type: "PAYMENT_ADMINISTRATION",
       notificationType: "payment_operations",
       route: PAYMENT_OPERATIONS_WORKSPACE_URL,
-      idempotencyKey: notificationId,
+      idempotencyKey: input.notificationId,
       source: isStalePayment
         ? "paymentIntentMonitoring"
         : "settlementAuthorizationRequest",
@@ -197,7 +291,7 @@ export async function deliverPaymentOperationsNotification(
 
   try {
     const response = await admin.messaging().sendEachForMulticast(message);
-    await notificationRef.set(
+    await input.notificationRef.set(
       {
         pushDeliveryState:
           response.successCount > 0 ? "delivered" : "not_delivered",
@@ -208,10 +302,10 @@ export async function deliverPaymentOperationsNotification(
       { merge: true },
     );
   } catch (error) {
-    console.error("[payments-v2] operations notification delivery failed", {
+    console.error("[payments-v2] operations push delivery failed", {
       code: error instanceof Error ? error.name : "unknown",
     });
-    await notificationRef.set(
+    await input.notificationRef.set(
       {
         pushDeliveryState: "not_delivered",
         pushSuccessCount: 0,
@@ -223,11 +317,110 @@ export async function deliverPaymentOperationsNotification(
   }
 }
 
+async function deliverSettlementVerificationEmail(input: {
+  notificationId: string;
+  notificationRef: DocumentReference;
+}): Promise<void> {
+  const recipients = paymentOperationsRecipientEmails(
+    process.env.PAYMENT_ADMIN_ALLOWED_EMAILS,
+  );
+  const config = mailgunOperationsEmailConfig(process.env);
+  if (recipients.length === 0 || config == null) {
+    await input.notificationRef.set(
+      {
+        emailDeliveryState: "not_configured",
+        emailDeliveryReason:
+          recipients.length === 0 ? "no_recipient" : "provider_unavailable",
+        emailRecipientCount: recipients.length,
+        emailDeliveryUpdatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return;
+  }
+
+  await input.notificationRef.set(
+    {
+      emailDeliveryState: "sending",
+      emailRecipientCount: recipients.length,
+      emailDeliveryUpdatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  let successCount = 0;
+  for (const recipient of recipients) {
+    try {
+      await sendMailgunVerificationMessage({
+        config,
+        notificationId: input.notificationId,
+        recipient,
+      });
+      successCount += 1;
+    } catch (error) {
+      console.error("[payments-v2] operations email delivery failed", {
+        code: isAxiosError(error)
+          ? String(error.response?.status ?? error.code ?? "mailgun_error")
+          : error instanceof Error
+            ? error.name
+            : "unknown",
+      });
+    }
+  }
+
+  await input.notificationRef.set(
+    {
+      emailDeliveryState:
+        successCount === recipients.length
+          ? "delivered"
+          : successCount > 0
+            ? "partially_delivered"
+            : "not_delivered",
+      emailSuccessCount: successCount,
+      emailFailureCount: recipients.length - successCount,
+      emailDeliveryReason: FieldValue.delete(),
+      emailDeliveryUpdatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function deliverPaymentOperationsNotification(
+  notificationId: string,
+): Promise<void> {
+  const notificationRef = db.doc(
+    `paymentOperationsNotifications/${notificationId}`,
+  );
+  const notification = await notificationRef.get();
+  const data = notification.data() ?? {};
+  const type = String(data.type ?? "");
+  if (
+    !notification.exists ||
+    ![
+      PAYMENT_OPERATIONS_NOTIFICATION_TYPE,
+      PAYMENT_INTENT_STALE_NOTIFICATION_TYPE,
+    ].includes(type)
+  ) {
+    return;
+  }
+
+  await Promise.all([
+    deliverPaymentOperationsPush({ notificationId, notificationRef, type }),
+    type === PAYMENT_OPERATIONS_NOTIFICATION_TYPE
+      ? deliverSettlementVerificationEmail({
+          notificationId,
+          notificationRef,
+        })
+      : Promise.resolve(),
+  ]);
+}
+
 export const deliverSettlementOperationsNotification =
   deliverPaymentOperationsNotification;
 
-export const onPaymentOperationsNotificationCreated = functions.firestore
-  .document("paymentOperationsNotifications/{notificationId}")
+export const onPaymentOperationsNotificationCreated = functions
+  .runWith({ secrets: ["MAILGUN_API_KEY"] })
+  .firestore.document("paymentOperationsNotifications/{notificationId}")
   .onCreate(async (_snapshot, context) => {
     await deliverPaymentOperationsNotification(
       String(context.params.notificationId),

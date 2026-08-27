@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { Timestamp } from "firebase-admin/firestore";
 
@@ -17,9 +18,16 @@ import {
 import { merchantVerificationJourney } from "../lib/payments/v2/merchantOverview.js";
 import {
   paymentOperationsRecipientEmails,
+  mailgunOperationsEmailConfig,
+  mailgunVerificationMessageFields,
+  sendMailgunVerificationMessage,
+  settlementOperationsEmailCopy,
   settlementOperationsNotificationCopy,
   settlementOperationsNotificationId,
 } from "../lib/payments/v2/settlementOperationsNotifications.js";
+
+const requireModule = createRequire(import.meta.url);
+const axios = requireModule("axios");
 
 const secureAdminRequest = {
   authenticated: true,
@@ -469,6 +477,10 @@ test("operations request alerts are deterministic, admin-only and PII-free", () 
     ),
     ["ops@example.com"],
   );
+  assert.deepEqual(
+    paymentOperationsRecipientEmails("tsepo.ntsaba@thedelta.io"),
+    ["tsepo.ntsaba@thedelta.io"],
+  );
   const copy = settlementOperationsNotificationCopy();
   assert.match(copy.body, /merchant requested bank verification/i);
   assert.match(copy.body, /Payment Operations workspace/);
@@ -486,7 +498,105 @@ test("operations request alerts are deterministic, admin-only and PII-free", () 
   );
   assert.match(source, /PAYMENT_ADMIN_ALLOWED_EMAILS/);
   assert.match(source, /admin\.auth\(\)\.getUserByEmail/);
+  assert.match(source, /secrets:\s*\["MAILGUN_API_KEY"\]/);
   assert.doesNotMatch(source, /readStoreNotificationTokens/);
+});
+
+test("verification email is allowlisted, tracking-free and PII-free", () => {
+  const config = mailgunOperationsEmailConfig({
+    MAILGUN_PROVIDER_MODE: "live",
+    MAILGUN_REGION: "eu",
+    MAILGUN_API_KEY: "test-key",
+    MAILGUN_DOMAIN: "mg.spazaone.com",
+    MAILGUN_FROM: "SpazaOne Operations <notifications@mg.spazaone.com>",
+  });
+  assert.deepEqual(config, {
+    apiBaseUrl: "https://api.eu.mailgun.net",
+    apiKey: "test-key",
+    domain: "mg.spazaone.com",
+    from: "SpazaOne Operations <notifications@mg.spazaone.com>",
+  });
+  assert.equal(
+    mailgunOperationsEmailConfig({
+      MAILGUN_PROVIDER_MODE: "disabled",
+      MAILGUN_API_KEY: "test-key",
+      MAILGUN_DOMAIN: "mg.spazaone.com",
+      MAILGUN_FROM: "notifications@mg.spazaone.com",
+    }),
+    null,
+  );
+  assert.equal(
+    mailgunOperationsEmailConfig({
+      MAILGUN_PROVIDER_MODE: "live",
+      MAILGUN_REGION: "invalid",
+      MAILGUN_API_KEY: "test-key",
+      MAILGUN_DOMAIN: "mg.spazaone.com",
+      MAILGUN_FROM: "notifications@mg.spazaone.com",
+    }),
+    null,
+  );
+
+  const copy = settlementOperationsEmailCopy();
+  assert.match(copy.subject, /verification request/i);
+  assert.match(copy.text, /merchant requested bank verification/i);
+  assert.match(copy.text, /https:\/\/workspace\.spazaone\.com\//);
+  assert.doesNotMatch(copy.text, /\d{4,}|@|branch|identity number|provider/i);
+
+  const fields = mailgunVerificationMessageFields({
+    from: config.from,
+    recipient: "tsepo.ntsaba@thedelta.io",
+    notificationId: "opaque-notification-id",
+  });
+  assert.equal(fields.to, "tsepo.ntsaba@thedelta.io");
+  assert.equal(fields["o:tracking"], "no");
+  assert.equal(fields["o:require-tls"], "yes");
+  assert.equal(
+    fields["h:X-SpazaOne-Notification-Id"],
+    "opaque-notification-id",
+  );
+});
+
+test("verification email uses Mailgun's authenticated message endpoint", async () => {
+  const originalAdapter = axios.defaults.adapter;
+  let captured;
+  axios.defaults.adapter = async (request) => {
+    captured = request;
+    return {
+      data: { id: "queued-message" },
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config: request,
+    };
+  };
+  try {
+    await sendMailgunVerificationMessage({
+      config: {
+        apiBaseUrl: "https://api.mailgun.net",
+        apiKey: "domain-sending-key",
+        domain: "mg.spazaone.com",
+        from: "SpazaOne Operations <notifications@mg.spazaone.com>",
+      },
+      notificationId: "opaque-notification-id",
+      recipient: "tsepo.ntsaba@thedelta.io",
+    });
+  } finally {
+    axios.defaults.adapter = originalAdapter;
+  }
+
+  assert.equal(
+    captured.url,
+    "https://api.mailgun.net/v3/mg.spazaone.com/messages",
+  );
+  assert.deepEqual(captured.auth, {
+    username: "api",
+    password: "domain-sending-key",
+  });
+  assert.equal(captured.timeout, 15_000);
+  const fields = Object.fromEntries(captured.data.entries());
+  assert.equal(fields.to, "tsepo.ntsaba@thedelta.io");
+  assert.equal(fields["o:tracking"], "no");
+  assert.equal(fields["o:require-tls"], "yes");
 });
 
 test("merchant verification journey covers every persistent review state", () => {
