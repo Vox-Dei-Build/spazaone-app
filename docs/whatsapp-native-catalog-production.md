@@ -21,6 +21,43 @@ Development retains its exact single-merchant canary rule and forbids full
 rollout. Turning `WHATSAPP_PRODUCT_LIST_ENABLED` off is the delivery rollback;
 it does not alter catalogue or customer data.
 
+## Mandatory dark reconciliation
+
+Do not enable production delivery from product-change triggers or the daily
+200-product reconciler alone. Existing merchants must first complete the
+authenticated, resumable full reconciliation while delivery is dark:
+
+1. Keep `WHATSAPP_PRODUCT_LIST_ENABLED=false`. Enable the queue, catalogue
+   synchronization, and its full-rollout scope.
+2. Call `POST runWhatsAppCatalogFullReconciliationBotHttp` with a bounded
+   `pageSize` (1–200). Save its returned `cycleId` and `nextCursorPath`; pass
+   both back unchanged until each product and reverse-mapping page is scanned.
+3. Let `syncWhatsAppMerchantCatalog` drain every queued Meta job. Continue the
+   same cycle through verification. `verification_incomplete` is expected
+   before Meta has accepted the items.
+4. Continue the cycle through its repeat source scans and verification passes.
+   The service detects behind-cursor insertions, source/mapping mutations,
+   deleted-product mappings, invalid owner/product mappings, and changes during
+   paged merchant verification. Avoid merchant catalogue writes during the
+   final stabilization window; any detected change starts another pass.
+5. Delivery may be considered ready only when the immutable run receipt says
+   all of the following: `catalogComplete=true`, `setEqualityVerified=true`,
+   `stabilityVerified=true`, `sourceCountsVerified=true`,
+   `outboxDrained=true`, `pendingOutboxJobs=0`, `malformedMappings=0`, and has a
+   non-empty `completionDigest`. The eligible and active/Meta-accepted totals
+   must match. State and receipt completion are committed atomically.
+
+The reverse scan records merchants even when a mapping has a malformed product
+identity. Unattributable or non-canonical mapping rows are represented only by
+a non-secret count and digest, block completion, and must be safely repaired or
+quarantined before another pass; the reconciler never guesses their owner.
+`POST getMerchantWhatsAppCatalogCompletenessBotHttp` provides the same exact
+per-merchant eligibility, accepted-revision, and transient-outbox evidence used
+to gate a new page-zero catalogue session. A previously issued catalogue
+version can still serve deterministic More/Back pages; resolution, atomic cart
+replacement, and checkout revalidate only the selected items and are not
+blocked by an unrelated product still syncing.
+
 ## Atomic cart contract
 
 `POST replaceWhatsAppCatalogCartBotHttp` is bot-authenticated. It accepts one to
@@ -69,3 +106,10 @@ Run the focused contract suite and the Firestore-emulator integration suite:
 npm --prefix functions run test:whatsapp-catalog
 npm --prefix functions run test:whatsapp-catalog-integration
 ```
+
+Also retain the completed reconciliation receipt, redacted rollout
+configuration comparison, Meta item-level acceptance evidence, and the
+delivery monitor result in the release evidence. Rollback is to disable native
+delivery first; catalogue synchronization can then be disabled separately
+after in-flight jobs are observed and handled. Neither action deletes carts,
+orders, products, mappings, or customer data.

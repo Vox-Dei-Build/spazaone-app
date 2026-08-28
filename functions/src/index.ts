@@ -179,8 +179,12 @@ export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
 /* ---- WhatsApp merchant catalogue projection ---- */
 export { onMerchantProductCatalogChange } from "./whatsapp/catalogQueue";
 export { syncWhatsAppMerchantCatalog } from "./whatsapp/catalogWorker";
-export { reconcileWhatsAppMerchantCatalog } from "./whatsapp/catalogReconciliation";
 export {
+  reconcileWhatsAppMerchantCatalog,
+  runWhatsAppCatalogFullReconciliationBotHttp,
+} from "./whatsapp/catalogReconciliation";
+export {
+  getMerchantWhatsAppCatalogCompletenessBotHttp,
   getMerchantWhatsAppProductListBotHttp,
   getWhatsAppCatalogSyncStatusV1,
 } from "./whatsapp/catalogStatus";

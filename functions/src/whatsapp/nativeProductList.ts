@@ -664,6 +664,11 @@ export function opaqueProductListId(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export function validMetaWhatsAppMessageId(value: unknown): string | undefined {
+  const wamid = String(value ?? "").trim();
+  return /^wamid\.[A-Za-z0-9._~+/=-]{1,500}$/.test(wamid) ? wamid : undefined;
+}
+
 export function decideNativeProductListClaim(input: {
   existing?: NativeProductListDeliveryRecord;
   fingerprint: string;
@@ -676,9 +681,9 @@ export function decideNativeProductListClaim(input: {
     return { action: "idempotency_conflict" };
   }
   const status = String(existing?.status ?? "");
-  const wamid = String(existing?.wamid ?? "").trim();
-  if (status === "sent" && wamid) {
-    return { action: "duplicate", wamid };
+  const wamid = validMetaWhatsAppMessageId(existing?.wamid);
+  if (status === "sent") {
+    return wamid ? { action: "duplicate", wamid } : { action: "needs_review" };
   }
   if (status === "needs_review") return { action: "needs_review" };
   if (status === "failed") return { action: "failed" };
@@ -790,10 +795,11 @@ export async function sendMetaWhatsAppCatalog(input: {
   }
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const first = messages[0];
-  const wamid =
+  const wamid = validMetaWhatsAppMessageId(
     first && typeof first === "object"
-      ? String((first as Record<string, unknown>).id ?? "").trim()
-      : "";
+      ? (first as Record<string, unknown>).id
+      : undefined,
+  );
   if (!wamid || messages.length !== 1) {
     throw new MetaWhatsAppProductListError(
       "META_WHATSAPP_MESSAGE_ID_OUTCOME_UNKNOWN",

@@ -231,6 +231,9 @@ test("supplier and WhatsApp catalogue internals remain server-only", async () =>
       getDoc(doc(db, "whatsappCatalogSyncState/productReconciliation")),
     );
     await assertFails(
+      getDoc(doc(db, "whatsappCatalogReconciliationRuns/runA")),
+    );
+    await assertFails(
       getDoc(doc(db, "whatsappProductListDeliveries/deliveryA")),
     );
     await assertFails(
@@ -548,16 +551,12 @@ test("stock invoice images are private and store scoped", async () => {
     ),
   );
   await assertFails(
-    getBytes(
-      ref(operatorStorage, "stock_invoices/storeB/sale1/invoice.jpg"),
-    ),
+    getBytes(ref(operatorStorage, "stock_invoices/storeB/sale1/invoice.jpg")),
   );
 
   const publicStorage = env.unauthenticatedContext().storage();
   await assertFails(
-    getBytes(
-      ref(publicStorage, "stock_invoices/storeA/sale1/invoice.jpg"),
-    ),
+    getBytes(ref(publicStorage, "stock_invoices/storeA/sale1/invoice.jpg")),
   );
   await assertFails(
     uploadString(

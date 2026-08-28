@@ -38,11 +38,22 @@ import {
   whatsappProductListRuntimeConfig,
 } from "../lib/whatsapp/nativeProductList.js";
 import { summarizeProductListDeliveryHealth } from "../lib/whatsapp/nativeProductListStatus.js";
+import { summarizeMerchantWhatsAppCatalogCompleteness } from "../lib/whatsapp/catalogCompleteness.js";
 import {
   catalogMappingUnavailableReason,
   merchantAvailableForNativeCatalog,
   mappingMatchesCurrentProjection,
+  nativeCatalogProductAllowedByMerchantFeature,
+  nativeCatalogProductKind,
+  nativeCatalogSessionGate,
+  nativeCatalogSupplierListingMatches,
+  resolvedMerchantWhatsAppCatalogProductResponse,
+  runNativeCatalogPreDispatch,
 } from "../lib/whatsapp/nativeProductListDelivery.js";
+import {
+  collectAllNativeCatalogMappingPages,
+  collectNativeCatalogBatchReads,
+} from "../lib/whatsapp/catalogMappingPages.js";
 import {
   WHATSAPP_CATALOG_CART_MAX_ITEMS,
   WhatsAppCatalogCartValidationError,
@@ -742,6 +753,142 @@ test("continuation pages require the unchanged ordered catalog version", () => {
   );
 });
 
+test("a pending unrelated product gates only a new catalogue session", () => {
+  const merchantId = "merchant_a";
+  const merchant = {
+    whatsappOrdering: { orderingUrl: "https://shop.example.test/merchant-a" },
+  };
+  const products = Array.from({ length: 12 }, (_, index) => ({
+    id: `product_${index + 1}`,
+    data: {
+      ...product,
+      name: `Product ${index + 1}`,
+      sellingPrice: 10 + index,
+      image: `https://images.example.test/product-${index + 1}.jpg`,
+    },
+  }));
+  const decisions = products.map(({ id, data }) =>
+    buildMerchantCatalogDecision({
+      merchantId,
+      productId: id,
+      product: data,
+      merchant,
+    }),
+  );
+  const visible = decisions.slice(0, 11).map((decision) => ({
+    retailerId: decision.retailerId,
+    lastAppliedRevision: decision.revision,
+  }));
+  const incomplete = summarizeMerchantWhatsAppCatalogCompleteness({
+    merchantId,
+    merchant,
+    products,
+    mappings: decisions.slice(0, 11).map((decision, index) => ({
+      merchantId,
+      productId: products[index].id,
+      retailerId: decision.retailerId,
+      status: "active",
+      metaPolicyStatus: "accepted",
+      lastAppliedRevision: decision.revision,
+    })),
+  });
+  assert.equal(incomplete.complete, false);
+  assert.equal(incomplete.missingProducts, 1);
+  assert.equal(
+    nativeCatalogSessionGate({ page: 0, catalogVersion: "" }),
+    "completeness_required",
+  );
+
+  const first = selectNativeCatalogPage({ items: visible, page: 0 });
+  assert.equal(first.outcome, "ready");
+  assert.equal(
+    nativeCatalogSessionGate({
+      page: 1,
+      catalogVersion: first.catalogVersion,
+    }),
+    undefined,
+  );
+  assert.equal(
+    selectNativeCatalogPage({
+      items: visible,
+      page: 1,
+      catalogVersion: first.catalogVersion,
+    }).outcome,
+    "ready",
+  );
+  assert.equal(
+    selectNativeCatalogPage({
+      items: visible,
+      page: 0,
+      catalogVersion: first.catalogVersion,
+    }).outcome,
+    "ready",
+  );
+  assert.equal(
+    nativeCatalogSessionGate({ page: 1, catalogVersion: "" }),
+    "catalog_version_required",
+  );
+});
+
+test("send-time mapping pagination does not truncate a merchant above 2,000 items", async () => {
+  const all = Array.from({ length: 2_001 }, (_, index) => ({
+    id: `mapping-${String(index).padStart(4, "0")}`,
+  }));
+  const cursors = [];
+  const collected = await collectAllNativeCatalogMappingPages(
+    async (cursor, limit) => {
+      cursors.push(cursor ?? null);
+      const start = cursor
+        ? all.findIndex((item) => item.id === cursor) + 1
+        : 0;
+      return all.slice(start, start + limit);
+    },
+    500,
+  );
+
+  assert.equal(collected.length, 2_001);
+  assert.deepEqual(collected, all);
+  assert.deepEqual(cursors, [
+    null,
+    "mapping-0499",
+    "mapping-0999",
+    "mapping-1499",
+    "mapping-1999",
+  ]);
+
+  const batches = [];
+  const read = await collectNativeCatalogBatchReads(
+    all,
+    async (batch) => {
+      batches.push(batch.length);
+      return batch.map((item) => ({ readId: item.id }));
+    },
+    200,
+  );
+  assert.deepEqual(
+    batches,
+    [200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 1],
+  );
+  assert.deepEqual(
+    read.map((item) => item.readId),
+    all.map((item) => item.id),
+  );
+});
+
+test("pre-dispatch storage failures select one compact fallback without provider delivery", async () => {
+  let providerRequests = 0;
+  const result = await runNativeCatalogPreDispatch(async () => {
+    throw new Error("synthetic-firestore-read-failure");
+  });
+  if (result.outcome === "ready") providerRequests += 1;
+
+  assert.deepEqual(result, {
+    outcome: "fallback",
+    reason: "catalog_temporarily_unavailable",
+  });
+  assert.equal(providerRequests, 0);
+});
+
 test("one-product remainder uses native single-product detail", () => {
   const retailerId = `spz_${"e".repeat(32)}`;
   const payload = buildMetaWhatsAppSingleProductPayload({
@@ -1087,6 +1234,29 @@ test("transport classifies explicit rejection, 429, 5xx, and post-dispatch ambig
           return true;
         },
       );
+      for (const body of [
+        { messages: [] },
+        { messages: [{ id: "abc" }] },
+        { messages: [{ id: `wamid.${"x".repeat(501)}` }] },
+      ]) {
+        await assert.rejects(
+          sendMetaWhatsAppCatalog({
+            config,
+            payload,
+            fetchImpl: async () =>
+              new Response(JSON.stringify(body), { status: 200 }),
+          }),
+          (error) => {
+            assert.equal(
+              error.providerCode,
+              "META_WHATSAPP_MESSAGE_ID_OUTCOME_UNKNOWN",
+            );
+            assert.equal(error.retryable, false);
+            assert.equal(error.ambiguous, true);
+            return true;
+          },
+        );
+      }
     },
   );
 });
@@ -1114,6 +1284,20 @@ test("delivery claim prevents duplicates and never retries an unknown outcome", 
     }),
     { action: "duplicate", wamid: "wamid.original" },
   );
+  for (const wamid of ["", "abc", `wamid.${"x".repeat(501)}`]) {
+    assert.deepEqual(
+      decideNativeProductListClaim({
+        ...base,
+        existing: {
+          fingerprint: "fingerprint-a",
+          status: "sent",
+          attempts: 1,
+          wamid,
+        },
+      }),
+      { action: "needs_review" },
+    );
+  }
   assert.deepEqual(
     decideNativeProductListClaim({
       ...base,
@@ -1522,7 +1706,11 @@ test("native delivery selects products server-side and rechecks visibility", () 
   assert.match(deliverySource, /buildMerchantCatalogDecision/);
   assert.match(deliverySource, /mappingMatchesCurrentProjection/);
   assert.match(deliverySource, /status === "active"/);
-  assert.match(deliverySource, /priceMinor: decision\.projection\.priceMinor/);
+  assert.match(deliverySource, /priceMinor: input\.projection\.priceMinor/);
+  assert.match(
+    deliverySource,
+    /resolvedMerchantWhatsAppCatalogProductResponse\(\{/,
+  );
   assert.ok(
     (deliverySource.match(/whatsappNativeCatalogAccessReason/g) ?? []).length >=
       3,
@@ -1644,6 +1832,240 @@ test("catalog resolution distinguishes a cross-merchant cart from a missing prod
     catalogMappingUnavailableReason({ ...base, status: "deleted" }),
     "not_found",
   );
+});
+
+test("catalog resolution serializes exact owned and supplier wire contracts", () => {
+  const decision = buildMerchantCatalogDecision({
+    merchantId: "merchant_a",
+    productId: "product_1",
+    product,
+  });
+  assert.equal(decision.action, "upsert");
+  assert.ok(decision.projection);
+  const base = {
+    productId: "product_1",
+    retailerId: decision.retailerId,
+    projection: decision.projection,
+  };
+
+  assert.deepEqual(
+    resolvedMerchantWhatsAppCatalogProductResponse({
+      ...base,
+      supplier: { isDropshipListing: false },
+    }),
+    {
+      outcome: "found",
+      product: {
+        id: "product_1",
+        retailerId: decision.retailerId,
+        name: "Maize Meal 5 kg",
+        description: "Merchant product",
+        imageUrl: "https://images.example.test/maize.jpg",
+        price: 122.54,
+        priceMinor: 12_254,
+        currency: "ZAR",
+        availability: "in stock",
+        isDropshipListing: false,
+      },
+    },
+  );
+
+  assert.deepEqual(
+    resolvedMerchantWhatsAppCatalogProductResponse({
+      ...base,
+      supplier: {
+        isDropshipListing: true,
+        commerceListingId: "listing_1",
+      },
+    }),
+    {
+      outcome: "found",
+      product: {
+        id: "product_1",
+        retailerId: decision.retailerId,
+        name: "Maize Meal 5 kg",
+        description: "Merchant product",
+        imageUrl: "https://images.example.test/maize.jpg",
+        price: 122.54,
+        priceMinor: 12_254,
+        currency: "ZAR",
+        availability: "in stock",
+        isDropshipListing: true,
+        commerceListingId: "listing_1",
+      },
+    },
+  );
+});
+
+test("supplier metadata requires an exact server-owned merchant binding", () => {
+  assert.equal(
+    nativeCatalogProductAllowedByMerchantFeature(product, false),
+    true,
+  );
+  assert.equal(
+    nativeCatalogProductAllowedByMerchantFeature(
+      { ...product, isDropshipListing: true },
+      false,
+    ),
+    false,
+  );
+  assert.equal(
+    nativeCatalogProductAllowedByMerchantFeature(
+      { ...product, isDropshipListing: true },
+      true,
+    ),
+    true,
+  );
+  assert.deepEqual(nativeCatalogProductKind(product), { kind: "owned" });
+  assert.deepEqual(
+    nativeCatalogProductKind({
+      ...product,
+      isDropshipListing: true,
+      commerceListingId: "listing_1",
+    }),
+    { kind: "supplier", commerceListingId: "listing_1" },
+  );
+  assert.deepEqual(
+    nativeCatalogProductKind({
+      ...product,
+      isDropshipListing: true,
+      commerceListingId: "../foreign",
+    }),
+    { kind: "invalid_supplier" },
+  );
+
+  const binding = {
+    exists: true,
+    requestedMerchantId: "merchant_a",
+    requestedProductId: "product_1",
+    expectedPriceMinor: 12_254,
+    listing: {
+      active: true,
+      supplierId: "cj_dropshipping",
+      sellerId: "merchant_a",
+      sellerProductId: "product_1",
+      sellPriceMinor: 12_254,
+      supplierProductCostMinor: 4_200,
+    },
+  };
+  assert.equal(nativeCatalogSupplierListingMatches(binding), true);
+  assert.equal(
+    nativeCatalogSupplierListingMatches({
+      ...binding,
+      listing: { ...binding.listing, sellerId: "merchant_b" },
+    }),
+    false,
+  );
+  assert.equal(
+    nativeCatalogSupplierListingMatches({
+      ...binding,
+      listing: { ...binding.listing, sellerProductId: "foreign_product" },
+    }),
+    false,
+  );
+  assert.equal(
+    nativeCatalogSupplierListingMatches({
+      ...binding,
+      listing: { ...binding.listing, sellPriceMinor: 12_255 },
+    }),
+    false,
+  );
+});
+
+test("merchant completeness requires every eligible revision to be Meta-accepted", () => {
+  const merchantId = "merchant_a";
+  const merchant = {
+    whatsappOrdering: { orderingUrl: "https://shop.example.test/merchant-a" },
+  };
+  const products = [
+    { id: "product_1", data: product },
+    {
+      id: "product_2",
+      data: { ...product, name: "Rice 2 kg", sellingPrice: 77.5 },
+    },
+  ];
+  const decisions = products.map(({ id, data }) =>
+    buildMerchantCatalogDecision({
+      merchantId,
+      productId: id,
+      product: data,
+      merchant,
+    }),
+  );
+  const mappings = decisions.map((decision, index) => ({
+    merchantId,
+    productId: products[index].id,
+    retailerId: decision.retailerId,
+    status: "active",
+    metaPolicyStatus: "accepted",
+    lastAppliedRevision: decision.revision,
+  }));
+
+  const complete = summarizeMerchantWhatsAppCatalogCompleteness({
+    merchantId,
+    merchant,
+    products,
+    mappings,
+  });
+  assert.equal(complete.merchantId, merchantId);
+  assert.equal(complete.eligibleProducts, 2);
+  assert.equal(complete.activeAcceptedProducts, 2);
+  assert.equal(complete.missingProducts, 0);
+  assert.equal(complete.staleProducts, 0);
+  assert.equal(complete.unexpectedActiveMappings, 0);
+  assert.equal(complete.pendingOutboxJobs, 0);
+  assert.match(complete.eligibleSetDigest, /^[a-f0-9]{64}$/);
+  assert.equal(complete.activeAcceptedSetDigest, complete.eligibleSetDigest);
+  assert.equal(complete.complete, true);
+
+  const stale = summarizeMerchantWhatsAppCatalogCompleteness({
+    merchantId,
+    merchant,
+    products,
+    mappings: [
+      mappings[0],
+      { ...mappings[1], lastAppliedRevision: "f".repeat(64) },
+      {
+        ...mappings[0],
+        productId: "foreign_product",
+        retailerId: `spz_${"e".repeat(32)}`,
+      },
+    ],
+  });
+  assert.equal(stale.complete, false);
+  assert.equal(stale.activeAcceptedProducts, 1);
+  assert.equal(stale.missingProducts, 1);
+  assert.equal(stale.staleProducts, 1);
+  assert.equal(stale.unexpectedActiveMappings, 1);
+
+  for (const status of ["pending_delete", "rejected", "failed"]) {
+    const unsafeDelete = summarizeMerchantWhatsAppCatalogCompleteness({
+      merchantId,
+      merchant,
+      products: [],
+      mappings: [
+        {
+          ...mappings[0],
+          status,
+          metaPolicyStatus: "accepted",
+        },
+      ],
+    });
+    assert.equal(unsafeDelete.complete, false, status);
+    assert.equal(unsafeDelete.unexpectedActiveMappings, 1, status);
+  }
+
+  for (const status of ["pending", "processing", "submitted", "retry"]) {
+    const pendingOutbox = summarizeMerchantWhatsAppCatalogCompleteness({
+      merchantId,
+      merchant,
+      products,
+      mappings,
+      outboxStatuses: [status],
+    });
+    assert.equal(pendingOutbox.complete, false, status);
+    assert.equal(pendingOutbox.pendingOutboxJobs, 1, status);
+  }
 });
 
 test("native cart request accepts one or ten unique items and rejects bad batches", () => {

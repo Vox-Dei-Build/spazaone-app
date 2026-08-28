@@ -1,3 +1,4 @@
+import { FieldPath } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { requireBotRequest } from "../security/requestAuth";
 import { assertCallableStoreAccess } from "../stores/storeAccess";
@@ -5,6 +6,8 @@ import {
   whatsappCatalogMerchantAllowed,
   whatsappCatalogRuntimeConfig,
 } from "./catalogConfig";
+import { reconcileMerchantWhatsAppCatalogCompleteness } from "./catalogCompleteness";
+import { collectAllNativeCatalogMappingPages } from "./catalogMappingPages";
 import { WHATSAPP_CATALOG_MAPPINGS } from "./catalogQueue";
 
 type MappingSummary = {
@@ -29,12 +32,18 @@ function summarizeMapping(
 }
 
 async function merchantMappings(merchantId: string): Promise<MappingSummary[]> {
-  const snapshot = await db
-    .collection(WHATSAPP_CATALOG_MAPPINGS)
-    .where("merchantId", "==", merchantId)
-    .limit(2000)
-    .get();
-  return snapshot.docs.map(summarizeMapping);
+  const documents = await collectAllNativeCatalogMappingPages(
+    async (cursor, limit) => {
+      let query = db
+        .collection(WHATSAPP_CATALOG_MAPPINGS)
+        .where("merchantId", "==", merchantId)
+        .orderBy(FieldPath.documentId())
+        .limit(limit);
+      if (cursor) query = query.startAfter(cursor);
+      return (await query.get()).docs;
+    },
+  );
+  return documents.map(summarizeMapping);
 }
 
 function merchantStatusMessage(input: {
@@ -145,5 +154,52 @@ export const getMerchantWhatsAppProductListBotHttp = functions
         productId: item.productId,
         productRetailerId: item.retailerId,
       })),
+    });
+  });
+
+/** Exact live eligibility-versus-Meta-acceptance audit for one merchant. */
+export const getMerchantWhatsAppCatalogCompletenessBotHttp = functions
+  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .https.onRequest(async (req, res) => {
+    if (!requireBotRequest(req, res)) return;
+    if (req.method !== "POST") {
+      res.status(405).json({
+        outcome: "rejected",
+        reason: "method_not_allowed",
+        code: "METHOD_NOT_ALLOWED",
+      });
+      return;
+    }
+    const merchantId = String(req.body?.merchantId ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{1,200}$/.test(merchantId)) {
+      res.status(400).json({
+        outcome: "rejected",
+        reason: "invalid_request",
+        code: "INVALID_REQUEST",
+      });
+      return;
+    }
+    let config;
+    try {
+      config = whatsappCatalogRuntimeConfig();
+    } catch (_) {
+      res.status(503).json({
+        outcome: "rejected",
+        reason: "configuration_blocked",
+        code: "CONFIGURATION_BLOCKED",
+      });
+      return;
+    }
+    if (!whatsappCatalogMerchantAllowed(config, merchantId)) {
+      res.status(403).json({
+        outcome: "rejected",
+        reason: "merchant_not_allowed",
+        code: "MERCHANT_NOT_ALLOWED",
+      });
+      return;
+    }
+    res.status(200).json({
+      outcome: "checked",
+      ...(await reconcileMerchantWhatsAppCatalogCompleteness(merchantId)),
     });
   });
