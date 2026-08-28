@@ -2,6 +2,10 @@
 import { db, functions } from "../config/main";
 import { FieldValue } from "firebase-admin/firestore";
 import { consumeOwnedInventoryReservation } from "../payments/v2/inventoryReservations";
+import {
+  WHATSAPP_CATALOG_CART_STATES,
+  nativeCatalogCartStateDocumentId,
+} from "./replaceWhatsAppCatalogCart";
 
 /**
  * Finalizes the inventory and clears the customer's cart for a given order.
@@ -38,6 +42,12 @@ export async function finalizeInventoryOnce(
     .doc(merchantId)
     .collection("carts")
     .doc(customerId);
+  const nativeCartStateRef = db.doc(
+    `${WHATSAPP_CATALOG_CART_STATES}/${nativeCatalogCartStateDocumentId({
+      merchantId,
+      customerId,
+    })}`,
+  );
 
   const now = FieldValue.serverTimestamp();
 
@@ -126,11 +136,17 @@ export async function finalizeInventoryOnce(
       items: [], // array shape
       products: {}, // map shape
       itemsCount: 0,
+      lineCount: 0,
       subtotal: 0,
       total: 0,
+      totalMinor: 0,
       discounts: 0,
       tax: 0,
       lock: FieldValue.delete(),
+      source: FieldValue.delete(),
+      catalogId: FieldValue.delete(),
+      catalogCartFingerprint: FieldValue.delete(),
+      nativeCartFingerprint: FieldValue.delete(),
       lastClearedBecause: "online_payment_finalized",
       updatedAt: now,
     };
@@ -140,6 +156,7 @@ export async function finalizeInventoryOnce(
       // Ensure doc exists to make the UI state unambiguous
       tx.set(cartRef, clearedFields, { merge: true });
     }
+    tx.delete(nativeCartStateRef);
 
     // 4) Mark sale as finalized
     tx.update(saleRef, {

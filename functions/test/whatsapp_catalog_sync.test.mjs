@@ -24,20 +24,37 @@ import {
   buildMetaWhatsAppProductCarouselPayload,
   buildMetaWhatsAppProductListPayload,
   buildMetaWhatsAppSingleProductPayload,
+  controlledWhatsAppRecipientDigest,
   decideNativeProductListClaim,
   orderedCatalogVersion,
+  productListDeliveryFingerprint,
   productListRetryDelayMs,
   selectNativeCatalogPage,
   sendMetaWhatsAppCatalog,
   sendMetaWhatsAppCatalogWithFallback,
   sendMetaWhatsAppProductList,
+  whatsappNativeCatalogAccessReason,
+  whatsappProductListMerchantAllowed,
   whatsappProductListRuntimeConfig,
 } from "../lib/whatsapp/nativeProductList.js";
 import { summarizeProductListDeliveryHealth } from "../lib/whatsapp/nativeProductListStatus.js";
 import {
   catalogMappingUnavailableReason,
+  merchantAvailableForNativeCatalog,
   mappingMatchesCurrentProjection,
 } from "../lib/whatsapp/nativeProductListDelivery.js";
+import {
+  WHATSAPP_CATALOG_CART_MAX_ITEMS,
+  WhatsAppCatalogCartValidationError,
+  customerMatchesWhatsAppRecipient,
+  decideCatalogCartIdempotency,
+  nativeCatalogCartFingerprint,
+  nativeCatalogCartStateDocumentId,
+  parseWhatsAppCatalogCartRequest,
+  planStoredNativeCatalogCart,
+  planWhatsAppCatalogCartReplacement,
+  validateCatalogCartMappings,
+} from "../lib/ecommerce/replaceWhatsAppCatalogCart.js";
 
 const sourceRoot = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -53,6 +70,32 @@ const product = {
   image: "https://images.example.test/maize.jpg",
   whatsappListed: true,
   checkoutUrl: "https://shop.example.test/order/maize",
+};
+
+const controlledRecipient = "+27821234567";
+const controlledRecipientHashKey = "whatsapp-catalog-test-recipient-key-2026";
+const controlledRecipientHash = controlledWhatsAppRecipientDigest(
+  controlledRecipient,
+  controlledRecipientHashKey,
+);
+const developmentCatalogScope = {
+  WHATSAPP_CATALOG_QUEUE_ENABLED: "true",
+  WHATSAPP_CATALOG_SYNC_ENABLED: "true",
+  META_CATALOG_PROVIDER_MODE: "test",
+  WHATSAPP_CATALOG_CANARY_MERCHANT_IDS: "merchant_a",
+  WHATSAPP_CATALOG_FULL_ROLLOUT_ENABLED: "false",
+};
+const productionCatalogFullScope = {
+  WHATSAPP_CATALOG_QUEUE_ENABLED: "true",
+  WHATSAPP_CATALOG_SYNC_ENABLED: "true",
+  META_CATALOG_PROVIDER_MODE: "live",
+  WHATSAPP_CATALOG_CANARY_MERCHANT_IDS: "",
+  WHATSAPP_CATALOG_FULL_ROLLOUT_ENABLED: "true",
+};
+const productionCatalogCanaryScope = {
+  ...productionCatalogFullScope,
+  WHATSAPP_CATALOG_CANARY_MERCHANT_IDS: "merchant_a",
+  WHATSAPP_CATALOG_FULL_ROLLOUT_ENABLED: "false",
 };
 
 function withEnvironment(values, run) {
@@ -87,6 +130,128 @@ async function withEnvironmentAsync(values, run) {
       else process.env[key] = value;
     }
   }
+}
+
+function catalogCartFixture(count = 1) {
+  const merchantId = "merchant_a";
+  const merchant = {
+    name: "Merchant A",
+    whatsappOrdering: { orderingUrl: "https://shop.example.test/merchant-a" },
+  };
+  const requests = [];
+  const mappings = [];
+  const products = [];
+  for (let index = 0; index < count; index += 1) {
+    const productId = `product_${index + 1}`;
+    const priceMinor = 1_000 + index;
+    const value = {
+      name: `Product ${index + 1}`,
+      description: `Product ${index + 1} description`,
+      sellPriceMinor: priceMinor,
+      imageUrl: `https://images.example.test/product-${index + 1}.jpg`,
+      whatsappListed: true,
+      quantity: 50,
+    };
+    const decision = buildMerchantCatalogDecision({
+      merchantId,
+      productId,
+      product: value,
+      merchant,
+    });
+    assert.equal(decision.action, "upsert");
+    requests.push({
+      retailerId: decision.retailerId,
+      quantity: (index % 3) + 1,
+      expectedPriceMinor: priceMinor,
+    });
+    mappings.push({
+      exists: true,
+      status: "active",
+      merchantId,
+      productId,
+      retailerId: decision.retailerId,
+      lastAppliedRevision: decision.revision,
+    });
+    products.push(value);
+  }
+  const resolved = validateCatalogCartMappings({
+    merchantId,
+    items: requests,
+    mappings,
+  });
+  return { merchantId, merchant, requests, mappings, products, resolved };
+}
+
+function planCatalogCart(fixture) {
+  return planWhatsAppCatalogCartReplacement({
+    merchantId: fixture.merchantId,
+    merchantExists: true,
+    merchant: fixture.merchant,
+    items: fixture.resolved.map((request, index) => ({
+      request,
+      product: fixture.products[index],
+    })),
+  });
+}
+
+function storedNativeCartFixture(count = 1) {
+  const fixture = catalogCartFixture(count);
+  const customerId = "customer_1";
+  const catalogId = "1234567890";
+  const plan = planCatalogCart(fixture);
+  const fingerprint = nativeCatalogCartFingerprint({
+    merchantId: fixture.merchantId,
+    customerId,
+    catalogId,
+    items: plan.items,
+  });
+  return {
+    ...fixture,
+    customerId,
+    catalogId,
+    plan,
+    fingerprint,
+    summary: {
+      source: "whatsapp_native_catalog",
+      catalogId,
+      nativeCartFingerprint: fingerprint,
+      currency: plan.currency,
+      lineCount: plan.lineCount,
+      itemsCount: plan.itemsCount,
+      total: plan.total,
+      totalMinor: plan.totalMinor,
+    },
+    state: {
+      exists: true,
+      merchantId: fixture.merchantId,
+      customerId,
+      catalogId,
+      fingerprint,
+      schemaVersion: 1,
+    },
+    lines: plan.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      source: "whatsapp_native_catalog",
+      retailerId: item.retailerId,
+      catalogRevision: item.catalogRevision,
+      catalogPriceMinor: item.priceMinor,
+    })),
+  };
+}
+
+function planStoredCart(fixture) {
+  return planStoredNativeCatalogCart({
+    merchantId: fixture.merchantId,
+    customerId: fixture.customerId,
+    merchantExists: true,
+    merchant: fixture.merchant,
+    summary: fixture.summary,
+    state: fixture.state,
+    lines: fixture.lines,
+    mappings: fixture.mappings,
+    products: fixture.products,
+  });
 }
 
 test("merchant retailer IDs are stable, opaque, and tenant-specific", () => {
@@ -559,6 +724,22 @@ test("continuation pages require the unchanged ordered catalog version", () => {
     }).reason,
     "catalog_changed",
   );
+  assert.equal(
+    selectNativeCatalogPage({
+      items: changed,
+      page: 0,
+      catalogVersion: version,
+    }).reason,
+    "catalog_changed",
+  );
+  assert.equal(
+    selectNativeCatalogPage({
+      items,
+      page: 0,
+      catalogVersion: version,
+    }).outcome,
+    "ready",
+  );
 });
 
 test("one-product remainder uses native single-product detail", () => {
@@ -789,6 +970,20 @@ test("Meta pair-limit code 131056 is a definite paced rejection", async () => {
   );
 });
 
+test("pair-limit completion persists delivery and recipient pause atomically", () => {
+  const deliverySource = readFileSync(
+    join(sourceRoot, "nativeProductListDelivery.ts"),
+    "utf8",
+  );
+  assert.match(deliverySource, /recipientPauseUntilMs/);
+  assert.match(
+    deliverySource,
+    /tx\.set\([\s\S]*WHATSAPP_PRODUCT_LIST_RECIPIENT_STATE/,
+  );
+  assert.match(deliverySource, /retryAfterMs: effectiveRetryDelay/);
+  assert.doesNotMatch(deliverySource, /async function pauseRecipient/);
+});
+
 test("transport classifies explicit rejection, 429, 5xx, and post-dispatch ambiguity", async () => {
   const config = {
     environment: "development",
@@ -943,6 +1138,19 @@ test("delivery claim prevents duplicates and never retries an unknown outcome", 
     { action: "idempotency_conflict" },
   );
   assert.deepEqual(
+    decideNativeProductListClaim({
+      ...base,
+      recipientNextAllowedAtMs: 96_400_000,
+      existing: {
+        fingerprint: "fingerprint-a",
+        status: "retry_wait",
+        attempts: 1,
+        nextAttemptAtMs: 17_000,
+      },
+    }),
+    { action: "retry_later", retryAfterMs: 96_390_000 },
+  );
+  assert.deepEqual(
     [1, 2, 3, 10].map(productListRetryDelayMs),
     [7_000, 14_000, 28_000, 28_000],
   );
@@ -951,6 +1159,7 @@ test("delivery claim prevents duplicates and never retries an unknown outcome", 
 test("native product-list gates require dev-only provider and exact canary", () => {
   withEnvironment(
     {
+      ...developmentCatalogScope,
       SPAZAONE_ENVIRONMENT: "development",
       SPAZAONE_FIREBASE_PROJECT_ID: "spazaone-dev",
       WHATSAPP_PRODUCT_LIST_ENABLED: "true",
@@ -958,6 +1167,9 @@ test("native product-list gates require dev-only provider and exact canary", () 
       WHATSAPP_CATALOG_ID: "1234567890",
       WHATSAPP_SENDER_NUMBER_ID: "9876543210",
       WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "merchant_a,merchant_b",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "false",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: controlledRecipientHash,
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
       GCLOUD_PROJECT: undefined,
       GOOGLE_CLOUD_PROJECT: undefined,
     },
@@ -971,6 +1183,7 @@ test("native product-list gates require dev-only provider and exact canary", () 
 
   withEnvironment(
     {
+      ...developmentCatalogScope,
       SPAZAONE_ENVIRONMENT: "development",
       SPAZAONE_FIREBASE_PROJECT_ID: "spazaone-dev",
       WHATSAPP_PRODUCT_LIST_ENABLED: "true",
@@ -978,6 +1191,9 @@ test("native product-list gates require dev-only provider and exact canary", () 
       WHATSAPP_CATALOG_ID: "1234567890",
       WHATSAPP_SENDER_NUMBER_ID: "9876543210",
       WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "merchant_a",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "false",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: controlledRecipientHash,
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
       GCLOUD_PROJECT: undefined,
       GOOGLE_CLOUD_PROJECT: undefined,
     },
@@ -990,6 +1206,30 @@ test("native product-list gates require dev-only provider and exact canary", () 
   );
   withEnvironment(
     {
+      ...developmentCatalogScope,
+      SPAZAONE_ENVIRONMENT: "development",
+      SPAZAONE_FIREBASE_PROJECT_ID: "spazaone-dev",
+      WHATSAPP_PRODUCT_LIST_ENABLED: "true",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "test",
+      WHATSAPP_CATALOG_ID: "1234567890",
+      WHATSAPP_SENDER_NUMBER_ID: "9876543210",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "merchant_a",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "true",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: controlledRecipientHash,
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
+      GCLOUD_PROJECT: undefined,
+      GOOGLE_CLOUD_PROJECT: undefined,
+    },
+    () => {
+      assert.throws(
+        whatsappProductListRuntimeConfig,
+        /DEVELOPMENT_WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_FORBIDDEN/,
+      );
+    },
+  );
+  withEnvironment(
+    {
+      ...developmentCatalogScope,
       SPAZAONE_ENVIRONMENT: "development",
       SPAZAONE_FIREBASE_PROJECT_ID: "spazaone-dev",
       WHATSAPP_PRODUCT_LIST_ENABLED: "true",
@@ -997,6 +1237,9 @@ test("native product-list gates require dev-only provider and exact canary", () 
       WHATSAPP_CATALOG_ID: "1234567890",
       WHATSAPP_SENDER_NUMBER_ID: "9876543210",
       WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "merchant_a",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "false",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: controlledRecipientHash,
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
       GCLOUD_PROJECT: undefined,
       GOOGLE_CLOUD_PROJECT: undefined,
     },
@@ -1004,6 +1247,264 @@ test("native product-list gates require dev-only provider and exact canary", () 
       assert.throws(
         whatsappProductListRuntimeConfig,
         /DEVELOPMENT_META_WHATSAPP_MESSAGE_MODE_INVALID/,
+      );
+    },
+  );
+});
+
+test("native delivery allows all recipients only when both full-rollout gates are enabled", () => {
+  withEnvironment(
+    {
+      ...productionCatalogFullScope,
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      WHATSAPP_PRODUCT_LIST_ENABLED: "true",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "live",
+      WHATSAPP_CATALOG_ID: "1234567890",
+      WHATSAPP_SENDER_NUMBER_ID: "9876543210",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "true",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: "",
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
+      GCLOUD_PROJECT: undefined,
+      GOOGLE_CLOUD_PROJECT: undefined,
+    },
+    () => {
+      const config = whatsappProductListRuntimeConfig();
+      assert.equal(config.fullRolloutEnabled, true);
+      assert.equal(
+        whatsappProductListMerchantAllowed(config, "merchant_a"),
+        true,
+      );
+      assert.equal(
+        whatsappProductListMerchantAllowed(config, "merchant_b"),
+        true,
+      );
+      assert.equal(
+        whatsappProductListMerchantAllowed(
+          {
+            ...config,
+            catalogFullRolloutEnabled: false,
+            catalogCanaryMerchantIds: new Set(["merchant_a"]),
+          },
+          "merchant_b",
+        ),
+        false,
+      );
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          config,
+          "merchant_b",
+          controlledRecipient,
+        ),
+        undefined,
+      );
+      assert.equal(
+        whatsappNativeCatalogAccessReason(config, "merchant_b", "+27820000000"),
+        undefined,
+      );
+      const catalogCanaryOnly = {
+        ...config,
+        catalogFullRolloutEnabled: false,
+        catalogCanaryMerchantIds: new Set(["merchant_a"]),
+        controlledRecipientHashes: new Set([controlledRecipientHash]),
+      };
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          catalogCanaryOnly,
+          "merchant_a",
+          "+27820000000",
+        ),
+        "recipient_not_allowed",
+      );
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          catalogCanaryOnly,
+          "merchant_a",
+          controlledRecipient,
+        ),
+        undefined,
+      );
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          catalogCanaryOnly,
+          "merchant_b",
+          controlledRecipient,
+        ),
+        "merchant_not_allowed",
+      );
+      const deliveryCanaryOnly = {
+        ...config,
+        fullRolloutEnabled: false,
+        canaryMerchantIds: new Set(["merchant_a"]),
+        controlledRecipientHashes: new Set([controlledRecipientHash]),
+      };
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          deliveryCanaryOnly,
+          "merchant_a",
+          "+27820000000",
+        ),
+        "recipient_not_allowed",
+      );
+    },
+  );
+});
+
+test("native access rejects disabled, non-canary and non-controlled requests", () => {
+  withEnvironment(
+    {
+      ...productionCatalogCanaryScope,
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      WHATSAPP_PRODUCT_LIST_ENABLED: "true",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "live",
+      WHATSAPP_CATALOG_ID: "1234567890",
+      WHATSAPP_SENDER_NUMBER_ID: "9876543210",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "merchant_a",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "false",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: controlledRecipientHash,
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
+      GCLOUD_PROJECT: undefined,
+      GOOGLE_CLOUD_PROJECT: undefined,
+    },
+    () => {
+      const config = whatsappProductListRuntimeConfig();
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          { ...config, enabled: false },
+          "merchant_a",
+          controlledRecipient,
+        ),
+        "feature_disabled",
+      );
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          config,
+          "merchant_b",
+          controlledRecipient,
+        ),
+        "merchant_not_allowed",
+      );
+      assert.equal(
+        whatsappNativeCatalogAccessReason(config, "merchant_a", "+27820000000"),
+        "recipient_not_allowed",
+      );
+      assert.equal(
+        whatsappNativeCatalogAccessReason(
+          config,
+          "merchant_a",
+          controlledRecipient,
+        ),
+        undefined,
+      );
+    },
+  );
+});
+
+test("controlled recipients use keyed, normalized one-way digests", () => {
+  assert.equal(
+    controlledWhatsAppRecipientDigest(
+      "082 123 4567",
+      controlledRecipientHashKey,
+    ),
+    controlledRecipientHash,
+  );
+  assert.notEqual(
+    controlledWhatsAppRecipientDigest(
+      controlledRecipient,
+      `${controlledRecipientHashKey}-rotated`,
+    ),
+    controlledRecipientHash,
+  );
+  assert.equal(controlledRecipientHash.includes("27821234567"), false);
+  const deliveryFingerprint = productListDeliveryFingerprint({
+    merchantId: "merchant_a",
+    recipientHash: controlledRecipientHash,
+    senderPhoneNumberId: "9876543210",
+    catalogId: "1234567890",
+    page: 0,
+    productRetailerIds: [`spz_${"a".repeat(32)}`],
+  });
+  assert.match(deliveryFingerprint, /^[a-f0-9]{64}$/);
+  assert.throws(
+    () =>
+      productListDeliveryFingerprint({
+        merchantId: "merchant_a",
+        recipientHash: controlledRecipient,
+        senderPhoneNumberId: "9876543210",
+        catalogId: "1234567890",
+        page: 0,
+        productRetailerIds: [`spz_${"a".repeat(32)}`],
+      }),
+    /WHATSAPP_RECIPIENT_HASH_INVALID/,
+  );
+});
+
+test("enabled native delivery refuses missing or weak recipient policy", () => {
+  const base = {
+    ...productionCatalogCanaryScope,
+    SPAZAONE_ENVIRONMENT: "production",
+    SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+    WHATSAPP_PRODUCT_LIST_ENABLED: "true",
+    META_WHATSAPP_MESSAGE_PROVIDER_MODE: "live",
+    WHATSAPP_CATALOG_ID: "1234567890",
+    WHATSAPP_SENDER_NUMBER_ID: "9876543210",
+    WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "merchant_a",
+    WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "false",
+    GCLOUD_PROJECT: undefined,
+    GOOGLE_CLOUD_PROJECT: undefined,
+  };
+  withEnvironment(
+    {
+      ...base,
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: "",
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
+    },
+    () => {
+      assert.throws(
+        whatsappProductListRuntimeConfig,
+        /WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_REQUIRED/,
+      );
+    },
+  );
+  withEnvironment(
+    {
+      ...base,
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: controlledRecipientHash,
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: "too-short",
+    },
+    () => {
+      assert.throws(
+        whatsappProductListRuntimeConfig,
+        /WHATSAPP_CATALOG_RECIPIENT_HASH_KEY_INVALID/,
+      );
+    },
+  );
+});
+
+test("enabled native delivery refuses a disabled catalogue-sync scope", () => {
+  withEnvironment(
+    {
+      ...productionCatalogFullScope,
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      WHATSAPP_CATALOG_SYNC_ENABLED: "false",
+      WHATSAPP_PRODUCT_LIST_ENABLED: "true",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "live",
+      WHATSAPP_CATALOG_ID: "1234567890",
+      WHATSAPP_SENDER_NUMBER_ID: "9876543210",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "true",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: controlledRecipientHash,
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
+      GCLOUD_PROJECT: undefined,
+      GOOGLE_CLOUD_PROJECT: undefined,
+    },
+    () => {
+      assert.throws(
+        whatsappProductListRuntimeConfig,
+        /WHATSAPP_CATALOG_SYNC_REQUIRED/,
       );
     },
   );
@@ -1021,15 +1522,36 @@ test("native delivery selects products server-side and rechecks visibility", () 
   assert.match(deliverySource, /buildMerchantCatalogDecision/);
   assert.match(deliverySource, /mappingMatchesCurrentProjection/);
   assert.match(deliverySource, /status === "active"/);
+  assert.match(deliverySource, /priceMinor: decision\.projection\.priceMinor/);
+  assert.ok(
+    (deliverySource.match(/whatsappNativeCatalogAccessReason/g) ?? []).length >=
+      3,
+  );
+  assert.ok(
+    (deliverySource.match(/req\.body\?\.recipientPhone/g) ?? []).length >= 2,
+  );
+  assert.ok(
+    (deliverySource.match(/req\.body\?\.senderPhoneNumberId/g) ?? []).length >=
+      2,
+  );
   assert.doesNotMatch(deliverySource, /req\.body\?\.productRetailerIds/);
   assert.equal(deliverySource.includes("supplierCatalogProducts"), false);
 });
 
 test("every development catalogue entrypoint enforces the merchant canary", () => {
   const queueSource = readFileSync(join(sourceRoot, "catalogQueue.ts"), "utf8");
-  const statusSource = readFileSync(join(sourceRoot, "catalogStatus.ts"), "utf8");
-  assert.match(queueSource, /whatsappCatalogMerchantAllowed\(config, merchantId\)/);
-  assert.match(statusSource, /whatsappCatalogMerchantAllowed\(config, merchantId\)/);
+  const statusSource = readFileSync(
+    join(sourceRoot, "catalogStatus.ts"),
+    "utf8",
+  );
+  assert.match(
+    queueSource,
+    /whatsappCatalogMerchantAllowed\(config, merchantId\)/,
+  );
+  assert.match(
+    statusSource,
+    /whatsappCatalogMerchantAllowed\(config, merchantId\)/,
+  );
   assert.match(statusSource, /reason: "merchant_not_allowed"/);
 });
 
@@ -1072,6 +1594,30 @@ test("send-time selection rejects cross-tenant, internal, and stale mappings", (
   );
 });
 
+test("native send and detail fail closed for missing or paused merchants", () => {
+  assert.equal(
+    merchantAvailableForNativeCatalog({ exists: false, isPaused: false }),
+    false,
+  );
+  assert.equal(
+    merchantAvailableForNativeCatalog({ exists: true, isPaused: true }),
+    false,
+  );
+  assert.equal(
+    merchantAvailableForNativeCatalog({ exists: true, isPaused: false }),
+    true,
+  );
+  const deliverySource = readFileSync(
+    join(sourceRoot, "nativeProductListDelivery.ts"),
+    "utf8",
+  );
+  assert.ok(
+    (deliverySource.match(/merchantAvailableForNativeCatalog/g) ?? []).length >=
+      3,
+  );
+  assert.match(deliverySource, /reason: "merchant_unavailable"/);
+});
+
 test("catalog resolution distinguishes a cross-merchant cart from a missing product", () => {
   const base = {
     exists: true,
@@ -1100,19 +1646,374 @@ test("catalog resolution distinguishes a cross-merchant cart from a missing prod
   );
 });
 
-test("catalog-origin cart writes revalidate mapping and projection atomically", () => {
+test("native cart request accepts one or ten unique items and rejects bad batches", () => {
+  const one = catalogCartFixture(1);
+  const request = {
+    merchantId: one.merchantId,
+    customerId: "customer_1",
+    recipientPhone: "082 123 4567",
+    senderPhoneNumberId: "9876543210",
+    catalogId: "1234567890",
+    idempotencyKey: "native-cart:conversation-1",
+    items: one.requests,
+  };
+  assert.equal(parseWhatsAppCatalogCartRequest(request)?.items.length, 1);
+  assert.equal(
+    parseWhatsAppCatalogCartRequest({
+      ...request,
+      senderPhoneNumberId: undefined,
+    }),
+    undefined,
+  );
+
+  const ten = catalogCartFixture(WHATSAPP_CATALOG_CART_MAX_ITEMS);
+  assert.equal(
+    parseWhatsAppCatalogCartRequest({ ...request, items: ten.requests })?.items
+      .length,
+    10,
+  );
+  assert.equal(
+    parseWhatsAppCatalogCartRequest({ ...request, items: [] }),
+    undefined,
+  );
+  assert.equal(
+    parseWhatsAppCatalogCartRequest({
+      ...request,
+      items: [...ten.requests, one.requests[0]],
+    }),
+    undefined,
+  );
+  assert.equal(
+    parseWhatsAppCatalogCartRequest({
+      ...request,
+      items: [one.requests[0], one.requests[0]],
+    }),
+    undefined,
+  );
+});
+
+test("native cart binds its controlled recipient to the merchant customer", () => {
+  assert.equal(
+    customerMatchesWhatsAppRecipient({
+      customerExists: true,
+      customerNumber: "082 123 4567",
+      recipient: controlledRecipient,
+    }),
+    true,
+  );
+  assert.equal(
+    customerMatchesWhatsAppRecipient({
+      customerExists: true,
+      customerNumber: "082 000 0000",
+      recipient: controlledRecipient,
+    }),
+    false,
+  );
+  assert.equal(
+    customerMatchesWhatsAppRecipient({
+      customerExists: false,
+      customerNumber: controlledRecipient,
+      recipient: controlledRecipient,
+    }),
+    false,
+  );
+});
+
+test("native cart plans complete one- and ten-line replacements", () => {
+  const one = planCatalogCart(catalogCartFixture(1));
+  assert.equal(one.lineCount, 1);
+  assert.equal(one.itemsCount, 1);
+  assert.equal(one.totalMinor, 1_000);
+  assert.equal(one.total, 10);
+  assert.match(one.items[0].catalogRevision, /^[a-f0-9]{64}$/);
+
+  const ten = planCatalogCart(catalogCartFixture(10));
+  assert.equal(ten.lineCount, 10);
+  assert.equal(new Set(ten.items.map((item) => item.productId)).size, 10);
+  assert.equal(new Set(ten.items.map((item) => item.retailerId)).size, 10);
+  assert.equal(
+    ten.totalMinor,
+    ten.items.reduce(
+      (total, item) => total + item.quantity * item.priceMinor,
+      0,
+    ),
+  );
+});
+
+test("native cart fingerprint is stable by content and tenant-bound", () => {
+  const fixture = storedNativeCartFixture(10);
+  assert.equal(
+    nativeCatalogCartFingerprint({
+      merchantId: fixture.merchantId,
+      customerId: fixture.customerId,
+      catalogId: fixture.catalogId,
+      items: [...fixture.plan.items].reverse(),
+    }),
+    fixture.fingerprint,
+  );
+  assert.notEqual(
+    nativeCatalogCartFingerprint({
+      merchantId: fixture.merchantId,
+      customerId: "customer_2",
+      catalogId: fixture.catalogId,
+      items: fixture.plan.items,
+    }),
+    fixture.fingerprint,
+  );
+  assert.match(
+    nativeCatalogCartStateDocumentId({
+      merchantId: fixture.merchantId,
+      customerId: fixture.customerId,
+    }),
+    /^[a-f0-9]{64}$/,
+  );
+});
+
+test("stored native cart revalidates one and ten lines at canonical minor prices", () => {
+  const one = storedNativeCartFixture(1);
+  one.products[0] = { ...one.products[0], sellingPrice: 999.99 };
+  const oneResult = planStoredCart(one);
+  assert.equal(oneResult.plan.totalMinor, 1_000);
+  assert.equal(oneResult.plan.total, 10);
+
+  const ten = storedNativeCartFixture(10);
+  const tenResult = planStoredCart(ten);
+  assert.equal(tenResult.plan.lineCount, 10);
+  assert.equal(tenResult.fingerprint, ten.fingerprint);
+});
+
+test("stored native cart rejects altered content and server-state rollback", () => {
+  for (const mutate of [
+    (fixture) => {
+      fixture.lines[9].quantity += 1;
+    },
+    (fixture) => {
+      fixture.lines[9].catalogPriceMinor += 1;
+    },
+    (fixture) => {
+      fixture.lines[9].catalogRevision = "f".repeat(64);
+    },
+    (fixture) => {
+      fixture.summary.nativeCartFingerprint = "e".repeat(64);
+    },
+    (fixture) => {
+      fixture.state.fingerprint = "d".repeat(64);
+    },
+  ]) {
+    const fixture = storedNativeCartFixture(10);
+    mutate(fixture);
+    assert.throws(
+      () => planStoredCart(fixture),
+      (error) => error instanceof WhatsAppCatalogCartValidationError,
+    );
+  }
+});
+
+test("native cart rejects a late cross-merchant item before planning", () => {
+  const fixture = catalogCartFixture(10);
+  fixture.mappings[9] = {
+    ...fixture.mappings[9],
+    merchantId: "merchant_b",
+  };
+  assert.throws(
+    () =>
+      validateCatalogCartMappings({
+        merchantId: fixture.merchantId,
+        items: fixture.requests,
+        mappings: fixture.mappings,
+      }),
+    (error) => {
+      assert.ok(error instanceof WhatsAppCatalogCartValidationError);
+      assert.equal(error.reason, "merchant_mismatch");
+      assert.equal(error.failedItemIndex, 9);
+      return true;
+    },
+  );
+});
+
+test("native cart distinguishes stale mapping, price and quantity failures", () => {
+  const stale = catalogCartFixture(1);
+  stale.resolved[0] = {
+    ...stale.resolved[0],
+    lastAppliedRevision: "f".repeat(64),
+  };
+  assert.throws(
+    () => planCatalogCart(stale),
+    (error) => {
+      assert.equal(error.reason, "stale_mapping");
+      return true;
+    },
+  );
+
+  const repriced = catalogCartFixture(1);
+  repriced.products[0] = { ...repriced.products[0], sellPriceMinor: 1_001 };
+  assert.throws(
+    () => planCatalogCart(repriced),
+    (error) => {
+      assert.equal(error.reason, "price_changed");
+      return true;
+    },
+  );
+
+  const unavailable = catalogCartFixture(1);
+  unavailable.products[0] = {
+    ...unavailable.products[0],
+    whatsappListed: false,
+  };
+  assert.throws(
+    () => planCatalogCart(unavailable),
+    (error) => {
+      assert.equal(error.reason, "product_unavailable");
+      return true;
+    },
+  );
+
+  const insufficient = catalogCartFixture(1);
+  insufficient.resolved[0] = { ...insufficient.resolved[0], quantity: 51 };
+  assert.throws(
+    () => planCatalogCart(insufficient),
+    (error) => {
+      assert.equal(error.reason, "quantity_unavailable");
+      return true;
+    },
+  );
+});
+
+test("native cart idempotency returns exact duplicates and rejects key reuse", () => {
+  const cart = { currency: "ZAR", total: 10, items: [] };
+  assert.deepEqual(
+    decideCatalogCartIdempotency({
+      exists: false,
+      fingerprint: "a".repeat(64),
+    }),
+    { action: "apply" },
+  );
+  assert.deepEqual(
+    decideCatalogCartIdempotency({
+      exists: true,
+      existingFingerprint: "a".repeat(64),
+      existingCart: cart,
+      fingerprint: "a".repeat(64),
+    }),
+    { action: "duplicate", cart },
+  );
+  assert.deepEqual(
+    decideCatalogCartIdempotency({
+      exists: true,
+      existingFingerprint: "b".repeat(64),
+      existingCart: cart,
+      fingerprint: "a".repeat(64),
+    }),
+    { action: "idempotency_conflict" },
+  );
+});
+
+test("late cart validation failure cannot stage any Firestore write", () => {
+  const fixture = catalogCartFixture(10);
+  const original = structuredClone(fixture);
+  fixture.products[9] = {
+    ...fixture.products[9],
+    sellPriceMinor: fixture.requests[9].expectedPriceMinor + 1,
+  };
+  assert.throws(() => planCatalogCart(fixture), /price_changed/);
+  assert.deepEqual(fixture.requests, original.requests);
+  assert.deepEqual(fixture.resolved, original.resolved);
+
   const source = readFileSync(
-    join(sourceRoot, "..", "ecommerce", "addToCart.ts"),
+    join(sourceRoot, "..", "ecommerce", "replaceWhatsAppCatalogCart.ts"),
     "utf8",
   );
-  assert.match(source, /addWhatsAppCatalogProductToCartBotHttp/);
+  const transactionStart = source.indexOf("db.runTransaction");
+  const allItemPreflight = source.indexOf(
+    "const plan = planWhatsAppCatalogCartReplacement",
+    transactionStart,
+  );
+  const beforePreflight = source.slice(transactionStart, allItemPreflight);
+  assert.doesNotMatch(beforePreflight, /tx\.(?:set|create|update|delete)\(/);
+  assert.ok(
+    source.indexOf("existingCartItems.docs.forEach", allItemPreflight) >
+      allItemPreflight,
+  );
+});
+
+test("native cart endpoint is authenticated, atomic and rollout-gated", () => {
+  const source = readFileSync(
+    join(sourceRoot, "..", "ecommerce", "replaceWhatsAppCatalogCart.ts"),
+    "utf8",
+  );
+  assert.match(source, /replaceWhatsAppCatalogCartBotHttp/);
   assert.match(source, /requireBotRequest/);
-  assert.match(source, /buildMerchantCatalogDecision/);
-  assert.match(source, /mapping\.merchantId !== merchantId/);
-  assert.match(source, /mapping\.productId !== productId/);
-  assert.match(source, /decision\.revision !== mapping\.lastAppliedRevision/);
+  assert.match(source, /whatsappNativeCatalogAccessReason/);
+  assert.match(source, /customerMatchesWhatsAppRecipient/);
+  assert.match(source, /customer_recipient_mismatch/);
+  assert.match(
+    source,
+    /request\.senderPhoneNumberId !== config\.phoneNumberId/,
+  );
+  assert.match(source, /WHATSAPP_CATALOG_CART_STATES/);
+  assert.match(source, /nativeCartFingerprint/);
+  assert.match(source, /validateCatalogCartMappings/);
+  assert.match(source, /planWhatsAppCatalogCartReplacement/);
   assert.match(source, /db\.runTransaction/);
-  assert.match(source, /catalogRetailerId: retailerId/);
+  assert.match(source, /whatsappCatalogCartReplacements/);
+  assert.doesNotMatch(source, /addWhatsAppCatalogProductToCartBotHttp/);
+  for (const code of [
+    "INVALID_REQUEST",
+    "CONFIGURATION_BLOCKED",
+    "CATALOG_MISMATCH",
+    "CART_WRITE_FAILED",
+  ]) {
+    assert.match(source, new RegExp(`code: "${code}"`));
+  }
+  assert.match(source, /code: error\.reason\.toUpperCase\(\)/);
+  const authSource = readFileSync(
+    join(sourceRoot, "..", "security", "requestAuth.ts"),
+    "utf8",
+  );
+  assert.match(authSource, /code: "AUTHENTICATION_REQUIRED"/);
+});
+
+test("native checkout revalidates state and creates the sale in one transaction", () => {
+  const checkoutSource = readFileSync(
+    join(sourceRoot, "..", "ecommerce", "checkoutCart.ts"),
+    "utf8",
+  );
+  assert.match(checkoutSource, /claimedNativeCartFingerprint/);
+  assert.match(checkoutSource, /planStoredNativeCatalogCart/);
+  assert.match(checkoutSource, /tx\.get\(stateRef\)/);
+  assert.match(checkoutSource, /tx\.create\(saleRef, saleData\)/);
+  assert.match(checkoutSource, /nativeCartPlan\?\.fingerprint/);
+  assert.match(checkoutSource, /NATIVE_CATALOG_CART_CHANGED/);
+  assert.match(checkoutSource, /cartSource: "whatsapp_native_catalog"/);
+});
+
+test("native Paystack reservation keeps canonical minor-unit pricing", () => {
+  const reservationSource = readFileSync(
+    join(sourceRoot, "..", "payments", "v2", "inventoryReservations.ts"),
+    "utf8",
+  );
+  assert.match(reservationSource, /merchantProductSellPriceMinor/);
+  assert.match(reservationSource, /saleItem\?\.priceMinor/);
+  assert.match(reservationSource, /saleData\.subtotalMinor/);
+  const checkoutSource = readFileSync(
+    join(sourceRoot, "..", "ecommerce", "checkoutCart.ts"),
+    "utf8",
+  );
+  assert.match(
+    checkoutSource,
+    /cancelFailedNativeInventoryReservationAtomically\(\{/,
+  );
+});
+
+test("delivery monitor binds the controlled-recipient HMAC secret", () => {
+  const statusSource = readFileSync(
+    join(sourceRoot, "nativeProductListStatus.ts"),
+    "utf8",
+  );
+  assert.match(
+    statusSource,
+    /monitorWhatsAppProductListDeliveries[\s\S]*secrets:\s*\["WHATSAPP_CATALOG_RECIPIENT_HASH_KEY"\]/,
+  );
 });
 
 test("delivery ledgers are denied to every client in Firestore rules", () => {
@@ -1126,6 +2027,8 @@ test("delivery ledgers are denied to every client in Firestore rules", () => {
     "utf8",
   );
   for (const collectionName of [
+    "whatsappCatalogCartReplacements",
+    "whatsappCatalogCartStates",
     "whatsappProductListDeliveries",
     "whatsappProductListRecipientState",
   ]) {

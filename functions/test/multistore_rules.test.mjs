@@ -236,6 +236,10 @@ test("supplier and WhatsApp catalogue internals remain server-only", async () =>
     await assertFails(
       getDoc(doc(db, "whatsappProductListRecipientState/recipientA")),
     );
+    await assertFails(
+      getDoc(doc(db, "whatsappCatalogCartReplacements/replacementA")),
+    );
+    await assertFails(getDoc(doc(db, "whatsappCatalogCartStates/stateA")));
   }
 });
 

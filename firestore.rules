@@ -346,6 +346,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /whatsappCatalogCartReplacements/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /whatsappCatalogCartStates/{document=**} {
+      allow read, write: if false;
+    }
+
     // Capability cache contains phone-number delivery capability but no
     // customer ledger data. Keep authenticated compatibility until it moves
     // behind a callable; unauthenticated access is denied.

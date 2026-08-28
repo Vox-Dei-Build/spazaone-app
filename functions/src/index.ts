@@ -111,6 +111,7 @@ export * from "./wallet/campaignCredits";
 /* ---- Ecommerce ---- */
 export * from "./ecommerce/getProducts";
 export * from "./ecommerce/addToCart";
+export * from "./ecommerce/replaceWhatsAppCatalogCart";
 export * from "./ecommerce/removeFromCart";
 export * from "./ecommerce/getCart";
 export * from "./ecommerce/checkoutCart";

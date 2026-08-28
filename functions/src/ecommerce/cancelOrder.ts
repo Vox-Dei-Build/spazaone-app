@@ -9,6 +9,10 @@ import {
   openRefundCaseInTransactionV2,
 } from "../payments/v2/refunds";
 import {
+  WHATSAPP_CATALOG_CART_STATES,
+  nativeCatalogCartStateDocumentId,
+} from "./replaceWhatsAppCatalogCart";
+import {
   authenticateFirebaseRequest,
   verifyBotRequest,
 } from "../security/requestAuth";
@@ -83,6 +87,12 @@ export const cancelOrder = functions
         .doc(merchantId)
         .collection("carts")
         .doc(customerId);
+      const nativeCartStateRef = db.doc(
+        `${WHATSAPP_CATALOG_CART_STATES}/${nativeCatalogCartStateDocumentId({
+          merchantId,
+          customerId,
+        })}`,
+      );
 
       const now = FieldValue.serverTimestamp();
 
@@ -159,14 +169,20 @@ export const cancelOrder = functions
           items: [], // array shape (if your UI reads this)
           products: {}, // map shape (if your UI reads this)
           itemsCount: 0,
+          lineCount: 0,
           subtotal: 0,
           total: 0,
+          totalMinor: 0,
           discounts: 0,
           tax: 0,
           lastClearedBecause: "order_cancelled",
           updatedAt: now,
           // remove any lock flag
           lock: FieldValue.delete(),
+          source: FieldValue.delete(),
+          catalogId: FieldValue.delete(),
+          catalogCartFingerprint: FieldValue.delete(),
+          nativeCartFingerprint: FieldValue.delete(),
         };
 
         if (cartSnap.exists) {
@@ -175,6 +191,7 @@ export const cancelOrder = functions
           // Ensure the doc exists in a clean state
           tx.set(cartRef, clearedCart, { merge: true });
         }
+        tx.delete(nativeCartStateRef);
       });
 
       if (refundCaseId) {

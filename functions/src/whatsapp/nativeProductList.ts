@@ -1,5 +1,6 @@
-import { createHash } from "crypto";
+import { createHash, createHmac } from "crypto";
 import { resolveEnvironment, SpazaEnvironment } from "../config/environment";
+import { whatsappCatalogRuntimeConfig } from "./catalogConfig";
 
 export const WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS = 5;
 export const WHATSAPP_CATALOG_MAX_PAGE_ITEMS = 10;
@@ -21,6 +22,11 @@ export type WhatsAppProductListRuntimeConfig = {
   phoneNumberId: string;
   graphApiVersion: string;
   canaryMerchantIds: ReadonlySet<string>;
+  fullRolloutEnabled: boolean;
+  catalogSyncEnabled: boolean;
+  catalogCanaryMerchantIds: ReadonlySet<string>;
+  catalogFullRolloutEnabled: boolean;
+  controlledRecipientHashes: ReadonlySet<string>;
   recipientCooldownMs: number;
   pairLimitPauseMs: number;
   maxAttempts: number;
@@ -194,6 +200,30 @@ function canaryMerchantIds(): ReadonlySet<string> {
   return new Set(ids);
 }
 
+function controlledRecipientHashes(): ReadonlySet<string> {
+  const raw = value("WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES");
+  if (!raw) return new Set();
+  const hashes = raw
+    .split(",")
+    .map((hash) => hash.trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    hashes.some((hash) => !/^[a-f0-9]{64}$/.test(hash)) ||
+    new Set(hashes).size !== hashes.length
+  ) {
+    throw new Error("WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES_INVALID");
+  }
+  return new Set(hashes);
+}
+
+function controlledRecipientHashKey(): string {
+  const key = value("WHATSAPP_CATALOG_RECIPIENT_HASH_KEY");
+  if (key.length < 32 || key.length > 512) {
+    throw new Error("WHATSAPP_CATALOG_RECIPIENT_HASH_KEY_INVALID");
+  }
+  return key;
+}
+
 export function whatsappProductListRuntimeConfig(): WhatsAppProductListRuntimeConfig {
   const environment = resolveEnvironment();
   const isEnabled = enabled("WHATSAPP_PRODUCT_LIST_ENABLED");
@@ -202,8 +232,25 @@ export function whatsappProductListRuntimeConfig(): WhatsAppProductListRuntimeCo
   const phoneNumberId = value("WHATSAPP_SENDER_NUMBER_ID");
   const graphApiVersion = value("META_GRAPH_API_VERSION") || "v25.0";
   const canaries = canaryMerchantIds();
+  const fullRolloutEnabled = enabled(
+    "WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED",
+  );
+  const recipientHashes = controlledRecipientHashes();
+  let catalogSyncEnabled = false;
+  let catalogCanaries: ReadonlySet<string> = new Set();
+  let catalogFullRolloutEnabled = false;
 
   if (isEnabled) {
+    const catalogConfig = whatsappCatalogRuntimeConfig();
+    catalogSyncEnabled = catalogConfig.syncEnabled;
+    catalogCanaries = catalogConfig.canaryMerchantIds;
+    catalogFullRolloutEnabled = catalogConfig.fullRolloutEnabled;
+    if (!catalogSyncEnabled) {
+      throw new Error("WHATSAPP_CATALOG_SYNC_REQUIRED");
+    }
+    if (catalogConfig.catalogId !== catalogId) {
+      throw new Error("WHATSAPP_CATALOG_SCOPE_MISMATCH");
+    }
     if (mode === "disabled") {
       throw new Error("META_WHATSAPP_MESSAGE_PROVIDER_DISABLED");
     }
@@ -216,13 +263,28 @@ export function whatsappProductListRuntimeConfig(): WhatsAppProductListRuntimeCo
     if (!/^v\d{1,2}\.\d$/.test(graphApiVersion)) {
       throw new Error("META_GRAPH_API_VERSION_INVALID");
     }
-    if (canaries.size === 0) {
+    if (!fullRolloutEnabled && canaries.size === 0) {
       throw new Error("WHATSAPP_PRODUCT_LIST_CANARY_REQUIRED");
     }
-    if (environment === "development" && canaries.size !== 1) {
-      throw new Error(
-        "DEVELOPMENT_WHATSAPP_PRODUCT_LIST_SINGLE_MERCHANT_REQUIRED",
-      );
+    const globalFullRollout = fullRolloutEnabled && catalogFullRolloutEnabled;
+    if (!globalFullRollout && recipientHashes.size === 0) {
+      throw new Error("WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_REQUIRED");
+    }
+    // Delivery ledgers and cart idempotency always use a keyed recipient
+    // digest, including during full rollout. Only the membership list becomes
+    // optional once both independent full-rollout switches are enabled.
+    controlledRecipientHashKey();
+    if (environment === "development") {
+      if (fullRolloutEnabled) {
+        throw new Error(
+          "DEVELOPMENT_WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_FORBIDDEN",
+        );
+      }
+      if (canaries.size !== 1) {
+        throw new Error(
+          "DEVELOPMENT_WHATSAPP_PRODUCT_LIST_SINGLE_MERCHANT_REQUIRED",
+        );
+      }
     }
   }
 
@@ -234,6 +296,11 @@ export function whatsappProductListRuntimeConfig(): WhatsAppProductListRuntimeCo
     phoneNumberId,
     graphApiVersion,
     canaryMerchantIds: canaries,
+    fullRolloutEnabled,
+    catalogSyncEnabled,
+    catalogCanaryMerchantIds: catalogCanaries,
+    catalogFullRolloutEnabled,
+    controlledRecipientHashes: recipientHashes,
     recipientCooldownMs: boundedInteger(
       "WHATSAPP_PRODUCT_LIST_RECIPIENT_COOLDOWN_MS",
       7_000,
@@ -254,7 +321,75 @@ export function whatsappProductListMerchantAllowed(
   config: WhatsAppProductListRuntimeConfig,
   merchantId: string,
 ): boolean {
-  return config.enabled && config.canaryMerchantIds.has(merchantId);
+  return (
+    config.enabled &&
+    config.catalogSyncEnabled &&
+    (config.fullRolloutEnabled || config.canaryMerchantIds.has(merchantId)) &&
+    (config.catalogFullRolloutEnabled ||
+      config.catalogCanaryMerchantIds.has(merchantId))
+  );
+}
+
+/**
+ * Keyed one-way digest for controlled handset rollout. Plain phone numbers are
+ * never stored in configuration or Firestore policy records.
+ */
+export function controlledWhatsAppRecipientDigest(
+  recipient: string,
+  hashKey: string,
+): string {
+  if (hashKey.length < 32 || hashKey.length > 512) {
+    throw new Error("WHATSAPP_CATALOG_RECIPIENT_HASH_KEY_INVALID");
+  }
+  return createHmac("sha256", hashKey)
+    .update(
+      `spazaone:whatsapp-catalog-recipient:v1\u0000${normalizeWhatsAppRecipient(recipient)}`,
+    )
+    .digest("hex");
+}
+
+export function whatsappProductListRecipientAllowed(
+  config: WhatsAppProductListRuntimeConfig,
+  recipient: string,
+): boolean {
+  if (!config.enabled || !config.catalogSyncEnabled) {
+    return false;
+  }
+  if (config.fullRolloutEnabled && config.catalogFullRolloutEnabled) {
+    return true;
+  }
+  if (config.controlledRecipientHashes.size === 0) return false;
+  return config.controlledRecipientHashes.has(
+    currentControlledWhatsAppRecipientDigest(recipient),
+  );
+}
+
+export function currentControlledWhatsAppRecipientDigest(
+  recipient: string,
+): string {
+  return controlledWhatsAppRecipientDigest(
+    recipient,
+    controlledRecipientHashKey(),
+  );
+}
+
+export function whatsappNativeCatalogAccessReason(
+  config: WhatsAppProductListRuntimeConfig,
+  merchantId: string,
+  recipient: string,
+):
+  | "feature_disabled"
+  | "merchant_not_allowed"
+  | "recipient_not_allowed"
+  | undefined {
+  if (!config.enabled) return "feature_disabled";
+  if (!whatsappProductListMerchantAllowed(config, merchantId)) {
+    return "merchant_not_allowed";
+  }
+  if (!whatsappProductListRecipientAllowed(config, recipient)) {
+    return "recipient_not_allowed";
+  }
+  return undefined;
 }
 
 export function metaWhatsAppAccessToken(): string {
@@ -466,6 +601,9 @@ export function selectNativeCatalogPage<T extends CatalogPageItem>(input: {
     catalogVersion,
     availableProducts: input.items.length,
   });
+  if (input.catalogVersion && input.catalogVersion !== catalogVersion) {
+    return fallback("catalog_changed");
+  }
   if (
     input.page === 0 &&
     input.items.length < WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS
@@ -474,9 +612,6 @@ export function selectNativeCatalogPage<T extends CatalogPageItem>(input: {
   }
   if (input.page > 0 && !input.catalogVersion) {
     return fallback("catalog_version_required");
-  }
-  if (input.page > 0 && input.catalogVersion !== catalogVersion) {
-    return fallback("catalog_changed");
   }
   const start = input.page * WHATSAPP_CATALOG_MAX_PAGE_ITEMS;
   if (start >= input.items.length) return fallback("page_out_of_range");
@@ -496,7 +631,7 @@ export function selectNativeCatalogPage<T extends CatalogPageItem>(input: {
 
 export function productListDeliveryFingerprint(input: {
   merchantId: string;
-  recipient: string;
+  recipientHash: string;
   senderPhoneNumberId: string;
   catalogId: string;
   format?: WhatsAppCatalogDeliveryFormat;
@@ -505,11 +640,14 @@ export function productListDeliveryFingerprint(input: {
   catalogVersion?: string;
   productRetailerIds: readonly string[];
 }): string {
+  if (!/^[a-f0-9]{64}$/.test(input.recipientHash)) {
+    throw new Error("WHATSAPP_RECIPIENT_HASH_INVALID");
+  }
   return createHash("sha256")
     .update(
       JSON.stringify({
         merchantId: input.merchantId,
-        recipient: normalizeWhatsAppRecipient(input.recipient),
+        recipientHash: input.recipientHash,
         senderPhoneNumberId: input.senderPhoneNumberId,
         catalogId: input.catalogId,
         format: input.format ?? "product_list",
@@ -553,10 +691,10 @@ export function decideNativeProductListClaim(input: {
   const attempts = Number(existing?.attempts ?? 0);
   if (attempts >= input.maxAttempts) return { action: "failed" };
   const nextAttemptAtMs = Number(existing?.nextAttemptAtMs ?? 0);
-  const retryAtMs = Math.max(
-    nextAttemptAtMs,
-    existing ? 0 : input.recipientNextAllowedAtMs,
-  );
+  // Pair-limit and cooldown state applies to every attempt, including a retry
+  // of an existing delivery. Otherwise a short per-delivery backoff could
+  // bypass the recipient-wide 131056 pause.
+  const retryAtMs = Math.max(nextAttemptAtMs, input.recipientNextAllowedAtMs);
   if (retryAtMs > input.nowMs) {
     return { action: "retry_later", retryAfterMs: retryAtMs - input.nowMs };
   }

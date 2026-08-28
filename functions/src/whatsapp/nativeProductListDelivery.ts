@@ -11,6 +11,7 @@ import {
   buildMetaWhatsAppProductCarouselPayload,
   buildMetaWhatsAppProductListPayload,
   buildMetaWhatsAppSingleProductPayload,
+  currentControlledWhatsAppRecipientDigest,
   decideNativeProductListClaim,
   normalizeWhatsAppRecipient,
   opaqueProductListId,
@@ -18,7 +19,7 @@ import {
   productListRetryDelayMs,
   selectNativeCatalogPage,
   sendMetaWhatsAppCatalogWithFallback,
-  whatsappProductListMerchantAllowed,
+  whatsappNativeCatalogAccessReason,
   whatsappProductListRuntimeConfig,
 } from "./nativeProductList";
 
@@ -151,6 +152,13 @@ export function mappingMatchesCurrentProjection(input: {
   );
 }
 
+export function merchantAvailableForNativeCatalog(input: {
+  exists: boolean;
+  isPaused: unknown;
+}): boolean {
+  return input.exists && input.isPaused !== true;
+}
+
 /**
  * Rebuild the exact merchant-owned projection at send time. Requiring its
  * revision to match Meta's applied revision prevents stale prices, pictures,
@@ -171,6 +179,14 @@ async function customerVisibleMappings(
   const merchantData = merchantDocument.exists
     ? (merchantDocument.data() ?? {})
     : {};
+  if (
+    !merchantAvailableForNativeCatalog({
+      exists: merchantDocument.exists,
+      isPaused: merchantData.isPaused,
+    })
+  ) {
+    return [];
+  }
   return mappings.filter((item, index) => {
     const product = products[index];
     return mappingMatchesCurrentProjection({
@@ -293,6 +309,9 @@ async function finishDelivery(input: {
   format?: WhatsAppCatalogDeliveryFormat;
   errorCode?: string;
   nextAttemptAtMs?: number;
+  recipientId?: string;
+  recipientPauseUntilMs?: number;
+  recipientPauseReason?: string;
 }): Promise<void> {
   const ref = db.doc(`${WHATSAPP_PRODUCT_LIST_DELIVERIES}/${input.deliveryId}`);
   await db.runTransaction(async (tx) => {
@@ -313,25 +332,22 @@ async function finishDelivery(input: {
       },
       { merge: true },
     );
+    if (
+      input.recipientId &&
+      Number(input.recipientPauseUntilMs ?? 0) > Date.now()
+    ) {
+      tx.set(
+        db.doc(`${WHATSAPP_PRODUCT_LIST_RECIPIENT_STATE}/${input.recipientId}`),
+        {
+          nextAllowedAtMs: input.recipientPauseUntilMs,
+          pauseReason: input.recipientPauseReason?.slice(0, 100) ?? null,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedAtMs: Date.now(),
+        },
+        { merge: true },
+      );
+    }
   });
-}
-
-async function pauseRecipient(input: {
-  recipientId: string;
-  untilMs: number;
-  reason: string;
-}): Promise<void> {
-  await db
-    .doc(`${WHATSAPP_PRODUCT_LIST_RECIPIENT_STATE}/${input.recipientId}`)
-    .set(
-      {
-        nextAllowedAtMs: input.untilMs,
-        pauseReason: input.reason.slice(0, 100),
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedAtMs: Date.now(),
-      },
-      { merge: true },
-    );
 }
 
 function fallback(
@@ -340,7 +356,12 @@ function fallback(
   detail: Record<string, unknown> = {},
   statusCode = 200,
 ): void {
-  res.status(statusCode).json({ outcome: "fallback", reason, ...detail });
+  res.status(statusCode).json({
+    outcome: "fallback",
+    reason,
+    ...(statusCode >= 400 ? { code: reason.toUpperCase() } : {}),
+    ...detail,
+  });
 }
 
 /**
@@ -349,7 +370,11 @@ function fallback(
  */
 export const sendMerchantWhatsAppCatalogBotHttp = functions
   .runWith({
-    secrets: ["PASELLA_BOT_TOKEN", "META_WHATSAPP_ACCESS_TOKEN"],
+    secrets: [
+      "PASELLA_BOT_TOKEN",
+      "META_WHATSAPP_ACCESS_TOKEN",
+      "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+    ],
     timeoutSeconds: 30,
     memory: "256MB",
     maxInstances: 1,
@@ -392,8 +417,13 @@ export const sendMerchantWhatsAppCatalogBotHttp = functions
       fallback(res, "configuration_blocked");
       return;
     }
-    if (!whatsappProductListMerchantAllowed(config, requestedMerchantId)) {
-      fallback(res, "merchant_not_allowed");
+    const accessReason = whatsappNativeCatalogAccessReason(
+      config,
+      requestedMerchantId,
+      recipient,
+    );
+    if (accessReason) {
+      fallback(res, accessReason);
       return;
     }
     const senderPhoneNumberId = String(
@@ -426,9 +456,10 @@ export const sendMerchantWhatsAppCatalogBotHttp = functions
     }
 
     const retailerIds = pageDecision.items.map((item) => item.retailerId);
+    const recipientId = currentControlledWhatsAppRecipientDigest(recipient);
     const fingerprint = productListDeliveryFingerprint({
       merchantId: requestedMerchantId,
-      recipient,
+      recipientHash: recipientId,
       senderPhoneNumberId,
       catalogId: config.catalogId,
       format: pageDecision.format,
@@ -440,7 +471,6 @@ export const sendMerchantWhatsAppCatalogBotHttp = functions
     const deliveryId = opaqueProductListId(
       `${requestedMerchantId}:${idempotencyKey}`,
     );
-    const recipientId = opaqueProductListId(recipient);
     const claim = await acquireDelivery({
       deliveryId,
       recipientId,
@@ -533,6 +563,13 @@ export const sendMerchantWhatsAppCatalogBotHttp = functions
         provider.retryAfterMs,
         productListRetryDelayMs(claim.attempt),
       );
+      const isPairLimit = provider.providerCode.includes("_131056_");
+      const effectiveRetryDelay = isPairLimit
+        ? Math.max(config.pairLimitPauseMs, retryDelay)
+        : retryDelay;
+      const recipientPauseUntilMs = isPairLimit
+        ? Date.now() + effectiveRetryDelay
+        : 0;
       const status = provider.ambiguous
         ? "needs_review"
         : provider.retryable && claim.attempt < config.maxAttempts
@@ -543,15 +580,16 @@ export const sendMerchantWhatsAppCatalogBotHttp = functions
         claimToken: claim.claimToken,
         status,
         errorCode: provider.providerCode,
-        nextAttemptAtMs: status === "retry_wait" ? Date.now() + retryDelay : 0,
+        nextAttemptAtMs:
+          status === "retry_wait" ? Date.now() + effectiveRetryDelay : 0,
+        ...(isPairLimit
+          ? {
+              recipientId,
+              recipientPauseUntilMs,
+              recipientPauseReason: provider.providerCode,
+            }
+          : {}),
       });
-      if (provider.providerCode.includes("_131056_")) {
-        await pauseRecipient({
-          recipientId,
-          untilMs: Date.now() + Math.max(config.pairLimitPauseMs, retryDelay),
-          reason: provider.providerCode,
-        });
-      }
       console.warn("[whatsapp-native-catalog] send blocked", {
         merchantId: requestedMerchantId,
         deliveryId,
@@ -563,7 +601,9 @@ export const sendMerchantWhatsAppCatalogBotHttp = functions
         outcome: status === "retry_wait" ? "retry_later" : status,
         ...metadata,
         reason: provider.providerCode,
-        ...(status === "retry_wait" ? { retryAfterMs: retryDelay } : {}),
+        ...(status === "retry_wait"
+          ? { retryAfterMs: effectiveRetryDelay }
+          : {}),
       });
     }
   });
@@ -575,7 +615,7 @@ export const sendMerchantWhatsAppCatalogBotHttp = functions
  */
 export const resolveMerchantWhatsAppCatalogProductBotHttp = functions
   .runWith({
-    secrets: ["PASELLA_BOT_TOKEN"],
+    secrets: ["PASELLA_BOT_TOKEN", "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY"],
     timeoutSeconds: 15,
     memory: "256MB",
     maxInstances: 2,
@@ -588,10 +628,23 @@ export const resolveMerchantWhatsAppCatalogProductBotHttp = functions
     }
     const requestedMerchantId = merchantId(req.body?.merchantId);
     const requestedRetailerId = retailerId(req.body?.retailerId);
+    let recipient: string;
+    try {
+      recipient = normalizeWhatsAppRecipient(req.body?.recipientPhone);
+    } catch (_) {
+      res.status(400).json({
+        outcome: "unavailable",
+        reason: "invalid_recipient",
+        code: "INVALID_RECIPIENT",
+      });
+      return;
+    }
     if (!requestedMerchantId || !requestedRetailerId) {
-      res
-        .status(400)
-        .json({ outcome: "unavailable", reason: "invalid_request" });
+      res.status(400).json({
+        outcome: "unavailable",
+        reason: "invalid_request",
+        code: "INVALID_REQUEST",
+      });
       return;
     }
     let config;
@@ -604,17 +657,30 @@ export const resolveMerchantWhatsAppCatalogProductBotHttp = functions
       });
       return;
     }
-    if (!whatsappProductListMerchantAllowed(config, requestedMerchantId)) {
-      res
-        .status(200)
-        .json({ outcome: "unavailable", reason: "merchant_not_allowed" });
+    const accessReason = whatsappNativeCatalogAccessReason(
+      config,
+      requestedMerchantId,
+      recipient,
+    );
+    if (accessReason) {
+      res.status(200).json({ outcome: "unavailable", reason: accessReason });
       return;
     }
     const requestedCatalogId = String(req.body?.catalogId ?? "").trim();
-    if (requestedCatalogId && requestedCatalogId !== config.catalogId) {
+    if (requestedCatalogId !== config.catalogId) {
       res
         .status(200)
         .json({ outcome: "unavailable", reason: "catalog_mismatch" });
+      return;
+    }
+    const senderPhoneNumberId = String(
+      req.body?.senderPhoneNumberId ?? "",
+    ).trim();
+    if (senderPhoneNumberId !== config.phoneNumberId) {
+      res.status(200).json({
+        outcome: "unavailable",
+        reason: "sender_mismatch",
+      });
       return;
     }
 
@@ -657,6 +723,18 @@ export const resolveMerchantWhatsAppCatalogProductBotHttp = functions
       ? (productDocument.data() ?? {})
       : undefined;
     if (
+      !merchantAvailableForNativeCatalog({
+        exists: merchantDocument.exists,
+        isPaused: merchantData.isPaused,
+      })
+    ) {
+      res.status(200).json({
+        outcome: "unavailable",
+        reason: "merchant_unavailable",
+      });
+      return;
+    }
+    if (
       !mappingMatchesCurrentProjection({
         requestedMerchantId,
         mappingMerchantId: mapping.merchantId,
@@ -689,6 +767,7 @@ export const resolveMerchantWhatsAppCatalogProductBotHttp = functions
         description: decision.projection.description,
         imageUrl: decision.projection.imageUrl,
         price: decision.projection.priceMinor / 100,
+        priceMinor: decision.projection.priceMinor,
         currency: decision.projection.currency,
         availability: decision.projection.availability,
       },

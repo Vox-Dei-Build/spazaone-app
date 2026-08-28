@@ -25,6 +25,10 @@ import {
   executePaystackRefundV2,
   openRefundCaseInTransactionV2,
 } from "../payments/v2/refunds";
+import {
+  WHATSAPP_CATALOG_CART_STATES,
+  nativeCatalogCartStateDocumentId,
+} from "./replaceWhatsAppCatalogCart";
 
 const ALLOWED = new Set([
   "ACCEPT_ORDER",
@@ -188,6 +192,12 @@ async function finalizeInventoryOnce(opts: {
     .doc(merchantId)
     .collection("carts")
     .doc(customerId);
+  const nativeCartStateRef = db.doc(
+    `${WHATSAPP_CATALOG_CART_STATES}/${nativeCatalogCartStateDocumentId({
+      merchantId,
+      customerId,
+    })}`,
+  );
 
   const preflight = await saleRef.get();
   if (!preflight.exists) throw new Error("SALE_NOT_FOUND");
@@ -253,12 +263,19 @@ async function finalizeInventoryOnce(opts: {
       cartDoc,
       {
         total: 0,
+        totalMinor: 0,
         itemsCount: 0,
+        lineCount: 0,
         lock: FieldValue.delete(),
+        source: FieldValue.delete(),
+        catalogId: FieldValue.delete(),
+        catalogCartFingerprint: FieldValue.delete(),
+        nativeCartFingerprint: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
+    tx.delete(nativeCartStateRef);
 
     // 3) Mark sale as inventory finalized
     tx.update(saleRef, {

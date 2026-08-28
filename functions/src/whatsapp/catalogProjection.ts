@@ -147,7 +147,9 @@ function productImage(product: Record<string, unknown>): {
   };
 }
 
-function productPriceMinor(product: Record<string, unknown>): number | null {
+export function merchantProductSellPriceMinor(
+  product: Record<string, unknown>,
+): number | null {
   if (product.sellPriceMinor !== undefined) {
     const minor = Number(product.sellPriceMinor);
     return Number.isSafeInteger(minor) && minor > 0 && minor <= 100_000_000
@@ -258,7 +260,7 @@ export function evaluateMerchantProductEligibility(
   }
   const reasons: CatalogEligibilityReason[] = [];
   const name = firstText(value, ["name", "productName", "title"], 150);
-  const priceMinor = productPriceMinor(value);
+  const priceMinor = merchantProductSellPriceMinor(value);
   const image = productImage(value);
   if (isExplicitlyInternal(value)) reasons.push("internal_product");
   else if (!isWhatsAppListed(value)) reasons.push("not_whatsapp_listed");

@@ -103,7 +103,12 @@ export const getWhatsAppProductListDeliveryStatusBotHttp = functions
  * stable event name without this worker sending a customer or support message.
  */
 export const monitorWhatsAppProductListDeliveries = functions
-  .runWith({ timeoutSeconds: 60, memory: "256MB", maxInstances: 1 })
+  .runWith({
+    secrets: ["WHATSAPP_CATALOG_RECIPIENT_HASH_KEY"],
+    timeoutSeconds: 60,
+    memory: "256MB",
+    maxInstances: 1,
+  })
   .pubsub.schedule("every 5 minutes")
   .timeZone("Africa/Johannesburg")
   .onRun(async () => {

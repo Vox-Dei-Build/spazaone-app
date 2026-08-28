@@ -36,7 +36,10 @@ export const requireBotRequest = (
   console.warn("[requestAuth] rejected unauthenticated bot request", {
     function: req.path,
   });
-  res.status(401).json({ error: "Authentication required." });
+  res.status(401).json({
+    error: "Authentication required.",
+    code: "AUTHENTICATION_REQUIRED",
+  });
   return false;
 };
 
@@ -50,7 +53,10 @@ export const authenticateFirebaseRequest = async (
 ): Promise<string | null> => {
   const token = bearerToken(req.get("Authorization"));
   if (!token) {
-    res.status(401).json({ error: "Authentication required." });
+    res.status(401).json({
+      error: "Authentication required.",
+      code: "AUTHENTICATION_REQUIRED",
+    });
     return null;
   }
 
@@ -59,7 +65,10 @@ export const authenticateFirebaseRequest = async (
     uid = (await admin.auth().verifyIdToken(token)).uid;
   } catch (error) {
     console.warn("[requestAuth] invalid Firebase ID token");
-    res.status(401).json({ error: "Authentication required." });
+    res.status(401).json({
+      error: "Authentication required.",
+      code: "AUTHENTICATION_REQUIRED",
+    });
     return null;
   }
 
@@ -74,11 +83,17 @@ export const authenticateFirebaseRequest = async (
       await admin.appCheck().verifyToken(appCheckToken);
     } catch (error) {
       console.warn("[requestAuth] invalid App Check token", { uid });
-      res.status(401).json({ error: "App verification failed." });
+      res.status(401).json({
+        error: "App verification failed.",
+        code: "APP_CHECK_FAILED",
+      });
       return null;
     }
   } else if (options.requireAppCheck) {
-    res.status(401).json({ error: "App verification required." });
+    res.status(401).json({
+      error: "App verification required.",
+      code: "APP_CHECK_REQUIRED",
+    });
     return null;
   }
 

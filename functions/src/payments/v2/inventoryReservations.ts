@@ -1,6 +1,7 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../../config/main";
 import { requirePositiveMinorUnits, stableDocumentId } from "./domain";
+import { merchantProductSellPriceMinor } from "../../whatsapp/catalogProjection";
 
 type ReservedItem = {
   productId: string;
@@ -117,15 +118,27 @@ export async function reserveOwnedInventoryForSale(input: {
       if (!Number.isSafeInteger(available) || available < requested) {
         throw new Error("INVENTORY_UNAVAILABLE");
       }
-      const currentUnitMinor = unitMinor(productData);
+      const nativeCatalogSale =
+        String(saleData.cartSource ?? "") === "whatsapp_native_catalog";
+      const nativeUnitMinor = nativeCatalogSale
+        ? merchantProductSellPriceMinor(productData)
+        : null;
+      if (nativeCatalogSale && nativeUnitMinor === null) {
+        throw new Error("INVENTORY_PRICE_CHANGED");
+      }
+      const currentUnitMinor = nativeCatalogSale
+        ? (nativeUnitMinor ?? unitMinor(productData))
+        : unitMinor(productData);
       const saleItem = saleItems.find(
         (item: any) => String(item?.productId ?? "") === productId,
       );
-      const quotedUnitMinor = Math.round(
-        Number(
-          saleItem?.details?.sellingPrice ?? saleItem?.details?.price ?? 0,
-        ) * 100,
-      );
+      const quotedUnitMinor = nativeCatalogSale
+        ? Number(saleItem?.priceMinor ?? 0)
+        : Math.round(
+            Number(
+              saleItem?.details?.sellingPrice ?? saleItem?.details?.price ?? 0,
+            ) * 100,
+          );
       if (quotedUnitMinor !== currentUnitMinor) {
         throw new Error("INVENTORY_PRICE_CHANGED");
       }
@@ -138,9 +151,10 @@ export async function reserveOwnedInventoryForSale(input: {
         availableAfter: available - requested,
       });
     }
-    const saleAmountMinor = Math.round(
-      Number(saleData.amount ?? saleData.total ?? 0) * 100,
-    );
+    const saleAmountMinor =
+      String(saleData.cartSource ?? "") === "whatsapp_native_catalog"
+        ? Number(saleData.subtotalMinor ?? 0)
+        : Math.round(Number(saleData.amount ?? saleData.total ?? 0) * 100);
     if (totalAmountMinor !== saleAmountMinor) {
       throw new Error("SALE_TOTAL_CHANGED");
     }
