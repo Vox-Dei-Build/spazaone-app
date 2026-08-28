@@ -95,10 +95,45 @@ performs a partial cart write.
 
 ## Required platform evidence
 
-Before deployment, configure and verify a Firestore TTL policy for collection
-group `whatsappCatalogCartReplacements` on field `expiresAt`. Correctness and
-access control do not depend on TTL deletion, but the 30-day idempotency receipt
-retention policy does.
+Before deployment, configure and verify all three Firestore TTL policies below
+from fresh platform metadata in production database `(default)`:
+
+- collection group `whatsappCatalogCartReplacements`, field `expiresAt`;
+- collection group `whatsappProductListDeliveries`, field `expiresAt`;
+- collection group `whatsappProductListRecipientState`, field `expiresAt`.
+
+All three records carry a future 30-day expiry. Correctness and access control
+do not depend on TTL deletion, but the cart-idempotency, native-delivery ledger,
+and recipient cooldown/pause retention policies do. An `expiresAt` field in a
+document is not evidence that the corresponding Firestore TTL policy is
+active. The evidence must show `ACTIVE` for these exact resources; a matching
+policy in another database is a failure:
+
+```text
+projects/pasella-ledger/databases/(default)/collectionGroups/whatsappCatalogCartReplacements/fields/expiresAt
+projects/pasella-ledger/databases/(default)/collectionGroups/whatsappProductListDeliveries/fields/expiresAt
+projects/pasella-ledger/databases/(default)/collectionGroups/whatsappProductListRecipientState/fields/expiresAt
+```
+
+`firestore.indexes.json` is the checked policy source. From the registered Vox
+Dei authority checkout, validate it without writing, then obtain separate
+action-time authorization before removing `--dry-run`:
+
+```bash
+/Users/admin/.codex/identity-governance/bin/codex-guard \
+  firebase-deploy --project spaza-one --dry-run -- \
+  --only firestore:indexes
+```
+
+After the authorized index-policy deployment finishes, capture fresh read-only
+metadata with the project and database explicit:
+
+```bash
+gcloud firestore fields ttls list \
+  --project pasella-ledger \
+  --database='(default)' \
+  --format='table(name,ttlConfig.state)'
+```
 
 Run the focused contract suite and the Firestore-emulator integration suite:
 

@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { FieldPath, FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, functions } from "../config/main";
 import { merchantBotFeatureDecision } from "../ecommerce/merchantBotFeatureAccess";
 import { requireBotRequest } from "../security/requestAuth";
@@ -36,6 +36,23 @@ export const WHATSAPP_PRODUCT_LIST_DELIVERIES = "whatsappProductListDeliveries";
 export const WHATSAPP_PRODUCT_LIST_RECIPIENT_STATE =
   "whatsappProductListRecipientState";
 const DELIVERY_LEASE_MS = 30_000;
+export const WHATSAPP_PRODUCT_LIST_DELIVERY_RETENTION_MS =
+  30 * 24 * 60 * 60 * 1_000;
+
+export function whatsappProductListDeliveryExpiresAt(nowMs: number): Timestamp {
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0) {
+    throw new Error("WHATSAPP_PRODUCT_LIST_DELIVERY_TIME_INVALID");
+  }
+  return Timestamp.fromMillis(
+    nowMs + WHATSAPP_PRODUCT_LIST_DELIVERY_RETENTION_MS,
+  );
+}
+
+export function whatsappProductListRecipientStateExpiresAt(
+  nowMs: number,
+): Timestamp {
+  return whatsappProductListDeliveryExpiresAt(nowMs);
+}
 
 type Mapping = {
   merchantId: string;
@@ -351,6 +368,7 @@ async function acquireDelivery(input: {
     `${WHATSAPP_PRODUCT_LIST_RECIPIENT_STATE}/${input.recipientId}`,
   );
   const nowMs = Date.now();
+  const expiresAt = whatsappProductListDeliveryExpiresAt(nowMs);
   return db.runTransaction(async (tx) => {
     const [delivery, recipient] = await Promise.all([
       tx.get(deliveryRef),
@@ -378,6 +396,7 @@ async function acquireDelivery(input: {
             leaseUntilMs: 0,
             claimToken: null,
             lastErrorCode: "DELIVERY_LEASE_EXPIRED_OUTCOME_UNKNOWN",
+            expiresAt,
             updatedAt: FieldValue.serverTimestamp(),
             updatedAtMs: nowMs,
           },
@@ -410,6 +429,7 @@ async function acquireDelivery(input: {
         claimToken,
         leaseUntilMs: nowMs + DELIVERY_LEASE_MS,
         nextAttemptAtMs: 0,
+        expiresAt,
         updatedAt: FieldValue.serverTimestamp(),
         updatedAtMs: nowMs,
         ...(!delivery.exists
@@ -422,6 +442,7 @@ async function acquireDelivery(input: {
       recipientRef,
       {
         nextAllowedAtMs: nowMs + input.cooldownMs,
+        expiresAt: whatsappProductListRecipientStateExpiresAt(nowMs),
         updatedAt: FieldValue.serverTimestamp(),
         updatedAtMs: nowMs,
       },
@@ -444,6 +465,7 @@ async function finishDelivery(input: {
   recipientPauseReason?: string;
 }): Promise<void> {
   const ref = db.doc(`${WHATSAPP_PRODUCT_LIST_DELIVERIES}/${input.deliveryId}`);
+  const nowMs = Date.now();
   await db.runTransaction(async (tx) => {
     const current = await tx.get(ref);
     if (current.data()?.claimToken !== input.claimToken) return;
@@ -457,22 +479,21 @@ async function finishDelivery(input: {
         nextAttemptAtMs: input.nextAttemptAtMs ?? 0,
         claimToken: null,
         leaseUntilMs: 0,
+        expiresAt: whatsappProductListDeliveryExpiresAt(nowMs),
         updatedAt: FieldValue.serverTimestamp(),
-        updatedAtMs: Date.now(),
+        updatedAtMs: nowMs,
       },
       { merge: true },
     );
-    if (
-      input.recipientId &&
-      Number(input.recipientPauseUntilMs ?? 0) > Date.now()
-    ) {
+    if (input.recipientId && Number(input.recipientPauseUntilMs ?? 0) > nowMs) {
       tx.set(
         db.doc(`${WHATSAPP_PRODUCT_LIST_RECIPIENT_STATE}/${input.recipientId}`),
         {
           nextAllowedAtMs: input.recipientPauseUntilMs,
           pauseReason: input.recipientPauseReason?.slice(0, 100) ?? null,
+          expiresAt: whatsappProductListRecipientStateExpiresAt(nowMs),
           updatedAt: FieldValue.serverTimestamp(),
-          updatedAtMs: Date.now(),
+          updatedAtMs: nowMs,
         },
         { merge: true },
       );

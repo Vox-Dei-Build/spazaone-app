@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -49,6 +50,9 @@ import {
   nativeCatalogSupplierListingMatches,
   resolvedMerchantWhatsAppCatalogProductResponse,
   runNativeCatalogPreDispatch,
+  WHATSAPP_PRODUCT_LIST_DELIVERY_RETENTION_MS,
+  whatsappProductListDeliveryExpiresAt,
+  whatsappProductListRecipientStateExpiresAt,
 } from "../lib/whatsapp/nativeProductListDelivery.js";
 import {
   collectAllNativeCatalogMappingPages,
@@ -1337,6 +1341,102 @@ test("delivery claim prevents duplicates and never retries an unknown outcome", 
   assert.deepEqual(
     [1, 2, 3, 10].map(productListRetryDelayMs),
     [7_000, 14_000, 28_000, 28_000],
+  );
+});
+
+test("native delivery and recipient-state expiry is a future 30-day Firestore timestamp on every write path", () => {
+  const nowMs = Date.parse("2026-08-28T08:00:00.000Z");
+  const expiresAt = whatsappProductListDeliveryExpiresAt(nowMs);
+  assert.equal(
+    expiresAt.toMillis(),
+    nowMs + WHATSAPP_PRODUCT_LIST_DELIVERY_RETENTION_MS,
+  );
+  assert.equal(
+    WHATSAPP_PRODUCT_LIST_DELIVERY_RETENTION_MS,
+    30 * 24 * 60 * 60 * 1_000,
+  );
+  assert.throws(
+    () => whatsappProductListDeliveryExpiresAt(-1),
+    /WHATSAPP_PRODUCT_LIST_DELIVERY_TIME_INVALID/,
+  );
+  assert.equal(
+    whatsappProductListRecipientStateExpiresAt(nowMs).toMillis(),
+    expiresAt.toMillis(),
+  );
+
+  const source = readFileSync(
+    join(sourceRoot, "nativeProductListDelivery.ts"),
+    "utf8",
+  );
+  assert.equal((source.match(/expiresAt,/g) ?? []).length, 2);
+  assert.equal(
+    (
+      source.match(
+        /expiresAt:\s*whatsappProductListDeliveryExpiresAt\(nowMs\)/g,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      source.match(
+        /expiresAt:\s*whatsappProductListRecipientStateExpiresAt\(nowMs\)/g,
+      ) ?? []
+    ).length,
+    2,
+  );
+});
+
+test("Firestore index config preserves every existing entry and declares all native-catalog TTL policies", () => {
+  const config = JSON.parse(
+    readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "..",
+        "firestore.indexes.json",
+      ),
+      "utf8",
+    ),
+  );
+  const digest = (value) =>
+    createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const ttlPolicies = config.fieldOverrides.filter(
+    (field) => field.ttl === true,
+  );
+  const existingFieldOverrides = config.fieldOverrides.filter(
+    (field) => field.ttl !== true,
+  );
+
+  assert.deepEqual(ttlPolicies, [
+    {
+      collectionGroup: "whatsappCatalogCartReplacements",
+      fieldPath: "expiresAt",
+      ttl: true,
+      indexes: [],
+    },
+    {
+      collectionGroup: "whatsappProductListDeliveries",
+      fieldPath: "expiresAt",
+      ttl: true,
+      indexes: [],
+    },
+    {
+      collectionGroup: "whatsappProductListRecipientState",
+      fieldPath: "expiresAt",
+      ttl: true,
+      indexes: [],
+    },
+  ]);
+  assert.equal(config.indexes.length, 22);
+  assert.equal(existingFieldOverrides.length, 7);
+  assert.equal(
+    digest(config.indexes),
+    "1af74a6ed8e73d9cfb1fd7f66c4c649f0c53651169d8a850b4f6ce2d38a10ecf",
+  );
+  assert.equal(
+    digest(existingFieldOverrides),
+    "999b81113ca772777f626296ec2107d119057f05bf9b85f763cc38a761779f48",
   );
 });
 
