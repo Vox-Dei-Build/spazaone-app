@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "firebaseProjectId": "pasella-ledger",
+  "firebaseAccount": "tsepo.ntsaba@thedelta.io",
+  "functionRegions": ["us-central1"],
+  "catalogId": "9415654481779933",
+  "senderPhoneNumberId": "343481258858230",
+  "graphApiVersion": "v25.0",
+  "immutableTargetConfiguration": {
+    "schemaVersion": 1,
+    "SPAZAONE_ENVIRONMENT": "production",
+    "SPAZAONE_FIREBASE_PROJECT_ID": "pasella-ledger",
+    "WHATSAPP_CATALOG_ID": "9415654481779933",
+    "WHATSAPP_CATALOG_MAX_BATCH_SIZE": "10",
+    "META_GRAPH_API_VERSION": "v25.0",
+    "WHATSAPP_SENDER_NUMBER_ID": "343481258858230",
+    "WHATSAPP_PRODUCT_LIST_RECIPIENT_COOLDOWN_MS": "7000",
+    "WHATSAPP_PRODUCT_LIST_MAX_ATTEMPTS": "3",
+    "WHATSAPP_CATALOG_PAIR_LIMIT_PAUSE_MS": "86400000"
+  },
+  "targetConfigurationDigestSha256": "eb62a7cb261e9d3a12b2f4f68b483a3c8fcb76324e272e6e75e3ab51b8dca4f5",
+  "operatorModulePath": "functions/scripts/whatsapp-catalog-production-target.mjs",
+  "runtimeModulePath": "functions/src/whatsapp/catalogProductionTarget.ts"
+}

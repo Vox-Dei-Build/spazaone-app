@@ -1,8 +1,14 @@
 {
   "firestore": {
+    "predeploy": [
+      "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+    ],
     "rules": "firestore.rules"
   },
   "storage": {
+    "predeploy": [
+      "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+    ],
     "rules": "storage.rules"
   },
   "emulators": {

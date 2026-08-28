@@ -8,7 +8,18 @@ import {
 } from "../lib/whatsapp/catalogProjection.js";
 import { controlledWhatsAppRecipientDigest } from "../lib/whatsapp/nativeProductList.js";
 import { resolveMerchantWhatsAppCatalogProductBotHandler } from "../lib/whatsapp/nativeProductListDelivery.js";
-import { runWhatsAppCatalogFullReconciliationPage } from "../lib/whatsapp/catalogReconciliation.js";
+import {
+  WHATSAPP_CATALOG_RECEIPT_MAX_FUTURE_SKEW_MS,
+  WHATSAPP_CATALOG_RECONCILIATION_RUN_RETENTION_MS,
+  cleanupExpiredWhatsAppCatalogReconciliationRuns,
+  runWhatsAppCatalogFullReconciliationPage,
+  runWhatsAppCatalogFullReconciliationBotHttp,
+  whatsappCatalogReconciliationCleanupEvidenceDigest,
+} from "../lib/whatsapp/catalogReconciliation.js";
+import {
+  currentWhatsAppCatalogDeploymentBinding,
+  whatsappCatalogTargetConfigurationDigestSha256,
+} from "../lib/whatsapp/catalogProductionTarget.js";
 import { reconcileMerchantWhatsAppCatalogCompleteness } from "../lib/whatsapp/catalogCompleteness.js";
 import {
   WhatsAppCatalogCartValidationError,
@@ -254,7 +265,402 @@ async function invokeCatalogResolve(body, authenticated = true) {
   return { status, body: responseBody };
 }
 
+async function invokeReconciliationOperator(body, authenticated = true) {
+  let status = 200;
+  let responseBody;
+  const response = {
+    status(code) {
+      status = code;
+      return this;
+    },
+    json(value) {
+      responseBody = value;
+      return this;
+    },
+  };
+  const request = {
+    method: "POST",
+    path: "/runWhatsAppCatalogFullReconciliationBotHttp",
+    body,
+    get(name) {
+      return authenticated && name.toLowerCase() === "x-pasella-bot-token"
+        ? emulatorBotProof
+        : undefined;
+    },
+  };
+  await runWhatsAppCatalogFullReconciliationBotHttp(request, response);
+  return { status, body: responseBody };
+}
+
 beforeEach(clear);
+
+const stabilityAppCommit = "c".repeat(40);
+const stabilityTargetEnvironment = Object.freeze({
+  BUILD_COMMIT: stabilityAppCommit,
+  WHATSAPP_CATALOG_MAX_BATCH_SIZE: "10",
+  META_GRAPH_API_VERSION: "v25.0",
+  WHATSAPP_PRODUCT_LIST_RECIPIENT_COOLDOWN_MS: "7000",
+  WHATSAPP_PRODUCT_LIST_MAX_ATTEMPTS: "3",
+  WHATSAPP_CATALOG_PAIR_LIMIT_PAUSE_MS: "86400000",
+  WHATSAPP_CATALOG_FULL_ROLLOUT_ENABLED: "true",
+  WHATSAPP_CATALOG_CANARY_MERCHANT_IDS: "",
+  WHATSAPP_PRODUCT_LIST_ENABLED: "false",
+});
+
+async function completeBoundSyntheticReconciliation() {
+  const binding = currentWhatsAppCatalogDeploymentBinding();
+  assert.equal(
+    binding.targetConfigurationDigestSha256,
+    whatsappCatalogTargetConfigurationDigestSha256(),
+  );
+  let page = await runWhatsAppCatalogFullReconciliationPage({
+    pageSize: 200,
+    deploymentBinding: binding,
+  });
+  const cycleId = page.cycleId;
+  let safety = 0;
+  while (page.outcome !== "complete") {
+    safety += 1;
+    assert.ok(safety < 30, "bound reconciliation did not stabilize");
+    if (page.outcome === "scan_complete") {
+      await acceptAllSyntheticCatalogJobs();
+    }
+    page = await runWhatsAppCatalogFullReconciliationPage({
+      cycleId,
+      cursorPath: page.nextCursorPath ?? undefined,
+      pageSize: 200,
+      deploymentBinding: binding,
+    });
+  }
+  assert.match(page.completionDigest, /^[a-f0-9]{64}$/);
+  assert.match(page.mutationGenerationDigestSha256, /^[a-f0-9]{64}$/);
+  return { binding, page };
+}
+
+async function firestoreWriteFingerprint() {
+  const entries = [];
+  async function visitCollection(collection) {
+    const snapshot = await collection.get();
+    for (const document of snapshot.docs) {
+      entries.push(
+        `${document.ref.path}:${document.updateTime.toMillis()}:${document.createTime.toMillis()}`,
+      );
+      const children = await document.ref.listCollections();
+      for (const child of children) await visitCollection(child);
+    }
+  }
+  const roots = await db.listCollections();
+  for (const root of roots) await visitCollection(root);
+  return entries.sort();
+}
+
+function currentStabilityRequest(binding, page) {
+  return {
+    operation: "inspect_current_stability",
+    expectedAppCommit: binding.deployedAppCommit,
+    expectedTargetConfigurationDigestSha256:
+      binding.targetConfigurationDigestSha256,
+    expectedCycleId: page.cycleId,
+    expectedCompletionReceiptHashSha256: page.completionDigest,
+    expectedMutationGenerationDigestSha256: page.mutationGenerationDigestSha256,
+  };
+}
+
+async function seedReconciliationCleanupRun(
+  cycleId,
+  {
+    status = "complete",
+    phase = status === "complete" ? "complete" : "products",
+    completedAtMs = Date.now() -
+      WHATSAPP_CATALOG_RECONCILIATION_RUN_RETENTION_MS -
+      60_000,
+    markerCount = 0,
+    includeCompletionTimestamp = true,
+  } = {},
+) {
+  const runRef = db.doc(`whatsappCatalogReconciliationRuns/${cycleId}`);
+  await runRef.set({
+    cycleId,
+    status,
+    phase,
+    cycleCompletedAtMs: completedAtMs,
+    ...(includeCompletionTimestamp
+      ? {
+          cycleCompletedAt: admin.firestore.Timestamp.fromMillis(completedAtMs),
+        }
+      : {}),
+    schemaVersion: 1,
+  });
+  await Promise.all(
+    Array.from({ length: markerCount }, (_, index) =>
+      runRef
+        .collection("merchants")
+        .doc(`merchant_${index}`)
+        .set({
+          complete: true,
+          eligibleProducts: index + 1,
+        }),
+    ),
+  );
+  return runRef;
+}
+
+async function seedCurrentReconciliationCycle(cycleId) {
+  await db.doc("whatsappCatalogSyncState/fullProductReconciliation").set({
+    cycleId,
+    status: "complete",
+    phase: "complete",
+    schemaVersion: 1,
+  });
+}
+
+test("reconciliation cleanup deletes only old terminal non-current runs and stores aggregate evidence", async () => {
+  const activeCycleId = "1".repeat(32);
+  const currentCycleId = "2".repeat(32);
+  const newTerminalCycleId = "3".repeat(32);
+  const expiredTerminalCycleId = "4".repeat(32);
+  const ambiguousCycleId = "5".repeat(32);
+  await seedCurrentReconciliationCycle(currentCycleId);
+  const [active, current, fresh, expired, ambiguous] = await Promise.all([
+    seedReconciliationCleanupRun(activeCycleId, {
+      status: "running",
+      phase: "products",
+      markerCount: 1,
+    }),
+    seedReconciliationCleanupRun(currentCycleId, { markerCount: 1 }),
+    seedReconciliationCleanupRun(newTerminalCycleId, {
+      completedAtMs: Date.now() - 60_000,
+      markerCount: 1,
+    }),
+    seedReconciliationCleanupRun(expiredTerminalCycleId, { markerCount: 2 }),
+    seedReconciliationCleanupRun(ambiguousCycleId, {
+      includeCompletionTimestamp: false,
+      markerCount: 1,
+    }),
+  ]);
+
+  const result = await cleanupExpiredWhatsAppCatalogReconciliationRuns({
+    maxRunInspections: 10,
+    maxRunDeletes: 10,
+    maxMerchantMarkerDeletes: 20,
+  });
+  assert.deepEqual(
+    {
+      outcome: result.outcome,
+      inspectedRuns: result.inspectedRuns,
+      deletedRuns: result.deletedRuns,
+      deletedMerchantMarkers: result.deletedMerchantMarkers,
+      skippedCurrentRuns: result.skippedCurrentRuns,
+      skippedIneligibleRuns: result.skippedIneligibleRuns,
+      skippedAmbiguousRuns: result.skippedAmbiguousRuns,
+    },
+    {
+      outcome: "complete",
+      inspectedRuns: 5,
+      deletedRuns: 1,
+      deletedMerchantMarkers: 2,
+      skippedCurrentRuns: 1,
+      skippedIneligibleRuns: 2,
+      skippedAmbiguousRuns: 1,
+    },
+  );
+  assert.equal((await active.get()).exists, true);
+  assert.equal((await current.get()).exists, true);
+  assert.equal((await fresh.get()).exists, true);
+  assert.equal((await ambiguous.get()).exists, true);
+  assert.equal((await expired.get()).exists, false);
+  assert.equal((await active.collection("merchants").get()).size, 1);
+  assert.equal((await current.collection("merchants").get()).size, 1);
+
+  const cleanupState = await db
+    .doc("whatsappCatalogSyncState/reconciliationRunCleanup")
+    .get();
+  const aggregate = cleanupState.get("lastCleanupEvidence");
+  assert.deepEqual(Object.keys(aggregate).sort(), [
+    "deletedMerchantMarkers",
+    "deletedRuns",
+    "inspectedRuns",
+    "outcome",
+    "retentionMs",
+    "skippedAmbiguousRuns",
+    "skippedCurrentRuns",
+    "skippedIneligibleRuns",
+  ]);
+  assert.equal(
+    cleanupState.get("lastCleanupEvidenceDigestSha256"),
+    whatsappCatalogReconciliationCleanupEvidenceDigest(aggregate),
+  );
+  assert.equal(cleanupState.get("totalDeletedRuns"), 1);
+  assert.equal(cleanupState.get("totalDeletedMerchantMarkers"), 2);
+  assert.equal(cleanupState.get("activeCycleId"), null);
+  assert.equal(cleanupState.get("cursorCycleId"), null);
+  assert.match(result.evidenceDigestSha256, /^[a-f0-9]{64}$/);
+});
+
+test("reconciliation cleanup resumes partial marker deletion and honors every work bound", async () => {
+  const expiredCycleId = "a".repeat(32);
+  await seedCurrentReconciliationCycle("f".repeat(32));
+  const expired = await seedReconciliationCleanupRun(expiredCycleId, {
+    markerCount: 3,
+  });
+  const options = {
+    maxRunInspections: 1,
+    maxRunDeletes: 1,
+    maxMerchantMarkerDeletes: 1,
+  };
+
+  for (const remaining of [2, 1, 0]) {
+    const page = await cleanupExpiredWhatsAppCatalogReconciliationRuns(options);
+    assert.equal(page.outcome, "partial");
+    assert.equal(page.inspectedRuns, 1);
+    assert.equal(page.deletedRuns, 0);
+    assert.equal(page.deletedMerchantMarkers, 1);
+    assert.equal((await expired.get()).exists, true);
+    assert.equal((await expired.collection("merchants").get()).size, remaining);
+  }
+  const parentPage =
+    await cleanupExpiredWhatsAppCatalogReconciliationRuns(options);
+  assert.equal(parentPage.outcome, "partial");
+  assert.equal(parentPage.deletedRuns, 1);
+  assert.equal(parentPage.deletedMerchantMarkers, 0);
+  assert.equal((await expired.get()).exists, false);
+  const completed =
+    await cleanupExpiredWhatsAppCatalogReconciliationRuns(options);
+  assert.equal(completed.outcome, "complete");
+  assert.equal(completed.deletedRuns, 0);
+  const cleanupState = await db
+    .doc("whatsappCatalogSyncState/reconciliationRunCleanup")
+    .get();
+  assert.equal(cleanupState.get("totalDeletedRuns"), 1);
+  assert.equal(cleanupState.get("totalDeletedMerchantMarkers"), 3);
+});
+
+test("reconciliation cleanup rechecks the current cycle after selection before deleting", async () => {
+  const candidateCycleId = "b".repeat(32);
+  await seedCurrentReconciliationCycle("f".repeat(32));
+  const candidate = await seedReconciliationCleanupRun(candidateCycleId, {
+    markerCount: 1,
+  });
+  let hookCalls = 0;
+  const result = await cleanupExpiredWhatsAppCatalogReconciliationRuns(
+    {
+      maxRunInspections: 10,
+      maxRunDeletes: 10,
+      maxMerchantMarkerDeletes: 10,
+    },
+    {
+      beforeCandidateRecheck: async (cycleId) => {
+        hookCalls += 1;
+        await seedCurrentReconciliationCycle(cycleId);
+      },
+    },
+  );
+  assert.equal(hookCalls, 1);
+  assert.equal(result.deletedRuns, 0);
+  assert.equal(result.deletedMerchantMarkers, 0);
+  assert.equal(result.skippedCurrentRuns, 1);
+  assert.equal((await candidate.get()).exists, true);
+  assert.equal((await candidate.collection("merchants").get()).size, 1);
+});
+
+test("reconciliation cleanup lease makes overlapping invocations idempotent", async () => {
+  const candidateCycleId = "6".repeat(32);
+  await seedCurrentReconciliationCycle("f".repeat(32));
+  const candidate = await seedReconciliationCleanupRun(candidateCycleId);
+  let releaseSelection;
+  let selectionObserved;
+  const selected = new Promise((resolve) => {
+    selectionObserved = resolve;
+  });
+  const release = new Promise((resolve) => {
+    releaseSelection = resolve;
+  });
+  const first = cleanupExpiredWhatsAppCatalogReconciliationRuns(
+    {
+      maxRunInspections: 10,
+      maxRunDeletes: 10,
+      maxMerchantMarkerDeletes: 10,
+    },
+    {
+      beforeCandidateRecheck: async () => {
+        selectionObserved();
+        await release;
+      },
+    },
+  );
+  await selected;
+  const overlap = await cleanupExpiredWhatsAppCatalogReconciliationRuns();
+  assert.equal(overlap.outcome, "in_progress");
+  assert.equal(overlap.inspectedRuns, 0);
+  assert.equal(overlap.deletedRuns, 0);
+  releaseSelection();
+  const completed = await first;
+  assert.equal(completed.deletedRuns, 1);
+  assert.equal((await candidate.get()).exists, false);
+  const cleanupState = await db
+    .doc("whatsappCatalogSyncState/reconciliationRunCleanup")
+    .get();
+  assert.equal(cleanupState.get("totalDeletedRuns"), 1);
+});
+
+test("reconciliation cleanup never exceeds the run-deletion limit", async () => {
+  await seedCurrentReconciliationCycle("f".repeat(32));
+  const runs = await Promise.all(
+    ["c", "d", "e"].map((character) =>
+      seedReconciliationCleanupRun(character.repeat(32)),
+    ),
+  );
+  const first = await cleanupExpiredWhatsAppCatalogReconciliationRuns({
+    maxRunInspections: 2,
+    maxRunDeletes: 1,
+    maxMerchantMarkerDeletes: 10,
+  });
+  assert.equal(first.outcome, "partial");
+  assert.equal(first.inspectedRuns, 1);
+  assert.equal(first.deletedRuns, 1);
+  assert.equal(first.deletedMerchantMarkers, 0);
+  assert.equal(
+    (await Promise.all(runs.map((run) => run.get()))).filter(
+      (run) => run.exists,
+    ).length,
+    2,
+  );
+});
+
+test("full reconciliation cycle creation has one transactional winner", async () => {
+  await withEnvironment(
+    {
+      WHATSAPP_CATALOG_FULL_ROLLOUT_ENABLED: "true",
+      WHATSAPP_CATALOG_CANARY_MERCHANT_IDS: "",
+      WHATSAPP_PRODUCT_LIST_ENABLED: "false",
+    },
+    async () => {
+      const attempts = await Promise.allSettled([
+        runWhatsAppCatalogFullReconciliationPage({ pageSize: 1 }),
+        runWhatsAppCatalogFullReconciliationPage({ pageSize: 1 }),
+      ]);
+      const fulfilled = attempts.filter(
+        (attempt) => attempt.status === "fulfilled",
+      );
+      const rejected = attempts.filter(
+        (attempt) => attempt.status === "rejected",
+      );
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, 1);
+      assert.equal(rejected[0].reason.code, "RECONCILIATION_IN_PROGRESS");
+
+      const state = await db
+        .doc("whatsappCatalogSyncState/fullProductReconciliation")
+        .get();
+      const runs = await db
+        .collection("whatsappCatalogReconciliationRuns")
+        .get();
+      assert.equal(runs.size, 1);
+      assert.equal(runs.docs[0].id, state.get("cycleId"));
+      assert.equal(state.get("status"), "running");
+    },
+  );
+});
 
 test("full reconciliation resumes across products and mappings, then rechecks after drain", async () => {
   await withEnvironment(
@@ -397,9 +803,14 @@ test("full reconciliation resumes across products and mappings, then rechecks af
       let mutatedEarlyVerifiedMerchant = false;
       let sawRescanAfterConcurrentChange = false;
       let concurrentChangeScanPass = 0;
+      let mutatedAfterStableBarrier = false;
+      let stableMutationScanPass = 0;
+      let sawRescanAfterStableMutation = false;
+      let mutatedOutboxAfterStableBarrier = false;
+      let sawVerificationAfterOutboxMutation = false;
       do {
         safety += 1;
-        assert.ok(safety < 50, "reconciliation did not stabilize");
+        assert.ok(safety < 70, "reconciliation did not stabilize");
         page = await runWhatsAppCatalogFullReconciliationPage({
           cycleId,
           cursorPath: page.nextCursorPath ?? undefined,
@@ -450,6 +861,24 @@ test("full reconciliation resumes across products and mappings, then rechecks af
         if (page.outcome === "scan_complete") {
           await acceptAllSyntheticCatalogJobs();
         }
+        const reconciliationState = await db
+          .doc("whatsappCatalogSyncState/fullProductReconciliation")
+          .get();
+        const stableMutationGeneration = String(
+          reconciliationState.get("stableMutationGenerationDigestSha256") ?? "",
+        );
+        if (
+          !mutatedAfterStableBarrier &&
+          /^[a-f0-9]{64}$/.test(stableMutationGeneration)
+        ) {
+          mutatedAfterStableBarrier = true;
+          stableMutationScanPass = page.scanPass;
+          // This field is deliberately outside the catalogue projection. The
+          // server-owned document update time must still invalidate the proof.
+          await db
+            .doc("users/merchant_a/products/preexisting_1")
+            .update({ reconciliationAuditNote: "late-product-mutation" });
+        }
         if (
           (insertedBehindCursor || mutatedEarlyVerifiedMerchant) &&
           page.phase === "products" &&
@@ -457,10 +886,49 @@ test("full reconciliation resumes across products and mappings, then rechecks af
         ) {
           sawRescanAfterConcurrentChange = true;
         }
+        if (
+          mutatedAfterStableBarrier &&
+          page.phase === "products" &&
+          page.scanPass > stableMutationScanPass
+        ) {
+          sawRescanAfterStableMutation = true;
+        }
+        if (
+          mutatedOutboxAfterStableBarrier &&
+          page.outcome === "verification_incomplete" &&
+          page.phase === "verify"
+        ) {
+          sawVerificationAfterOutboxMutation = true;
+        }
+        if (
+          !mutatedOutboxAfterStableBarrier &&
+          mutatedAfterStableBarrier &&
+          sawRescanAfterStableMutation &&
+          page.outcome === "verification_incomplete" &&
+          page.phase === "verify" &&
+          page.scanPass > stableMutationScanPass &&
+          /^[a-f0-9]{64}$/.test(stableMutationGeneration)
+        ) {
+          const outbox = await db
+            .collection("whatsappCatalogOutbox")
+            .limit(1)
+            .get();
+          assert.equal(outbox.empty, false);
+          mutatedOutboxAfterStableBarrier = true;
+          // A terminal-row metadata update must force one more stable verify
+          // pass even though its terminal status and aggregate counts match.
+          await outbox.docs[0].ref.update({
+            reconciliationAuditNote: "late-outbox-mutation",
+          });
+        }
       } while (page.outcome !== "complete");
       assert.equal(insertedBehindCursor, true);
       assert.equal(mutatedEarlyVerifiedMerchant, true);
       assert.equal(sawRescanAfterConcurrentChange, true);
+      assert.equal(mutatedAfterStableBarrier, true);
+      assert.equal(sawRescanAfterStableMutation, true);
+      assert.equal(mutatedOutboxAfterStableBarrier, true);
+      assert.equal(sawVerificationAfterOutboxMutation, true);
       assert.equal(page.outcome, "complete");
       assert.equal(page.phase, "complete");
       assert.equal(page.catalogComplete, true);
@@ -469,6 +937,16 @@ test("full reconciliation resumes across products and mappings, then rechecks af
       assert.equal(page.incompleteMerchants, 0);
       assert.equal(page.malformedMappings, 0);
       assert.equal(page.pendingOutboxJobs, 0);
+      assert.equal(page.outboxCountsVerified, true);
+      assert.equal(page.outboxStatusCounts?.unknown, 0);
+      assert.equal(
+        page.totalOutboxDocuments,
+        Object.values(page.outboxStatusCounts ?? {}).reduce(
+          (sum, count) => sum + count,
+          0,
+        ),
+      );
+      assert.ok((page.outboxStatusCounts?.active ?? 0) > 0);
       assert.equal(page.sourceCountsVerified, true);
       assert.equal(page.stabilityVerified, true);
       assert.match(page.completionDigest, /^[a-f0-9]{64}$/);
@@ -481,8 +959,22 @@ test("full reconciliation resumes across products and mappings, then rechecks af
       assert.equal(receipt.get("activeAcceptedProducts"), 6);
       assert.equal(receipt.get("completionDigest"), page.completionDigest);
       assert.equal(receipt.get("outboxDrained"), true);
+      assert.equal(receipt.get("outboxCountsVerified"), true);
+      assert.equal(receipt.get("outboxStatusCounts.unknown"), 0);
+      assert.equal(
+        receipt.get("totalOutboxDocuments"),
+        page.totalOutboxDocuments,
+      );
       assert.equal(receipt.get("sourceCountsVerified"), true);
       assert.equal(receipt.get("stabilityVerified"), true);
+      assert.match(
+        receipt.get("mutationGenerationDigestSha256"),
+        /^[a-f0-9]{64}$/,
+      );
+      assert.equal(
+        page.mutationGenerationDigestSha256,
+        receipt.get("mutationGenerationDigestSha256"),
+      );
 
       const duplicate = await runWhatsAppCatalogFullReconciliationPage({
         cycleId,
@@ -492,6 +984,201 @@ test("full reconciliation resumes across products and mappings, then rechecks af
       assert.equal(duplicate.completionDigest, page.completionDigest);
     },
   );
+});
+
+test("authenticated current-stability inspection is fresh, redacted, and performs zero writes", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    await seed(2);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    const request = currentStabilityRequest(binding, page);
+    const before = await firestoreWriteFingerprint();
+
+    const unauthenticated = await invokeReconciliationOperator(request, false);
+    assert.equal(unauthenticated.status, 401);
+    assert.equal(unauthenticated.body.code, "AUTHENTICATION_REQUIRED");
+
+    const wrongBinding = await invokeReconciliationOperator({
+      ...request,
+      expectedAppCommit: "d".repeat(40),
+    });
+    assert.equal(wrongBinding.status, 409);
+    assert.equal(
+      wrongBinding.body.code,
+      "WHATSAPP_CATALOG_DEPLOYMENT_BINDING_MISMATCH",
+    );
+
+    const response = await invokeReconciliationOperator(request);
+    const after = await firestoreWriteFingerprint();
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.outcome, "current_stability");
+    assert.equal(response.body.cycleId, page.cycleId);
+    assert.equal(
+      response.body.completionReceiptHashSha256,
+      page.completionDigest,
+    );
+    assert.equal(
+      response.body.mutationGenerationDigestSha256,
+      page.mutationGenerationDigestSha256,
+    );
+    assert.ok(response.body.readAtMs >= response.body.cycleCompletedAtMs);
+    assert.equal(response.body.pendingOutboxJobs, 0);
+    assert.equal(response.body.nonterminalOutboxDocuments, 0);
+    assert.equal(
+      response.body.terminalOutboxDocuments,
+      response.body.totalOutboxDocuments,
+    );
+    assert.deepEqual(after, before);
+    assert.doesNotMatch(
+      JSON.stringify(response.body),
+      /merchant_a|customer_1|product_1|recipientPhone|users\//i,
+    );
+  });
+});
+
+test("current-stability proof fails closed after a live product change", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    await seed(2);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    await db.doc(`users/${merchantId}/products/product_1`).update({
+      reconciliationAuditNote: "changed-after-completion",
+    });
+    const response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    assert.equal(response.status, 409);
+    assert.equal(response.body.code, "RECONCILIATION_CURRENT_STABILITY_STALE");
+  });
+});
+
+test("current-stability proof fails closed after a live mapping change", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    const { items } = await seed(2);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    await db.doc(`whatsappCatalogMappings/${items[0].retailerId}`).update({
+      reconciliationAuditNote: "changed-after-completion",
+    });
+    const response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    assert.equal(response.status, 409);
+    assert.equal(response.body.code, "RECONCILIATION_CURRENT_STABILITY_STALE");
+  });
+});
+
+test("current-stability proof fails closed after terminal or nonterminal outbox changes", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    await seed(2);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    const outbox = await db.collection("whatsappCatalogOutbox").limit(1).get();
+    assert.equal(outbox.empty, false);
+    await outbox.docs[0].ref.update({
+      reconciliationAuditNote: "changed-after-completion",
+    });
+    let response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    assert.equal(response.status, 409);
+    assert.equal(response.body.code, "RECONCILIATION_CURRENT_STABILITY_STALE");
+
+    await outbox.docs[0].ref.update({ status: "pending" });
+    response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    assert.equal(response.status, 409);
+    assert.equal(response.body.code, "RECONCILIATION_CURRENT_STABILITY_STALE");
+  });
+});
+
+test("current-stability proof rejects a current-cycle swap", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    await seed(1);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    await db.doc("whatsappCatalogSyncState/fullProductReconciliation").update({
+      cycleId: "f".repeat(32),
+    });
+    const response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    assert.equal(response.status, 409);
+    assert.equal(response.body.code, "RECONCILIATION_CURRENT_STABILITY_STALE");
+  });
+});
+
+test("current-stability proof rejects missing completion timestamp evidence without writing", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    await seed(1);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    await db
+      .doc(`whatsappCatalogReconciliationRuns/${page.cycleId}`)
+      .update({ cycleCompletedAt: admin.firestore.FieldValue.delete() });
+    const before = await firestoreWriteFingerprint();
+    const response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    const after = await firestoreWriteFingerprint();
+    assert.equal(response.status, 409);
+    assert.equal(
+      response.body.code,
+      "RECONCILIATION_CURRENT_STABILITY_NOT_AVAILABLE",
+    );
+    assert.deepEqual(after, before);
+  });
+});
+
+test("current-stability proof rejects future-skewed completion timestamps without writing", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    await seed(1);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    const futureCompletedAtMs =
+      Date.now() + WHATSAPP_CATALOG_RECEIPT_MAX_FUTURE_SKEW_MS + 60_000;
+    const futureCompletedAt =
+      admin.firestore.Timestamp.fromMillis(futureCompletedAtMs);
+    const batch = db.batch();
+    for (const path of [
+      "whatsappCatalogSyncState/fullProductReconciliation",
+      `whatsappCatalogReconciliationRuns/${page.cycleId}`,
+    ]) {
+      batch.update(db.doc(path), {
+        cycleCompletedAtMs: futureCompletedAtMs,
+        cycleCompletedAt: futureCompletedAt,
+      });
+    }
+    await batch.commit();
+    const before = await firestoreWriteFingerprint();
+    const response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    const after = await firestoreWriteFingerprint();
+    assert.equal(response.status, 409);
+    assert.equal(
+      response.body.code,
+      "RECONCILIATION_CURRENT_STABILITY_NOT_AVAILABLE",
+    );
+    assert.deepEqual(after, before);
+  });
+});
+
+test("current-stability proof reads at most the evidence limit plus one sentinel", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    await seed(1);
+    const { binding, page } = await completeBoundSyntheticReconciliation();
+    const bulkWriter = db.bulkWriter();
+    for (let index = 0; index < 5_000; index += 1) {
+      bulkWriter.set(
+        db.doc(
+          `users/evidence_limit/products/product_${String(index).padStart(5, "0")}`,
+        ),
+        { whatsappListed: true },
+      );
+    }
+    await bulkWriter.close();
+
+    const response = await invokeReconciliationOperator(
+      currentStabilityRequest(binding, page),
+    );
+    assert.equal(response.status, 409);
+    assert.equal(response.body.code, "RECONCILIATION_EVIDENCE_LIMIT_EXCEEDED");
+  });
 });
 
 test("authenticated native resolve serializes the exact ordinary product contract", async () => {

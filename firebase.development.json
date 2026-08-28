@@ -31,6 +31,9 @@
     {
       "source": "functions",
       "codebase": "default",
+      "predeploy": [
+        "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+      ],
       "ignore": [
         "node_modules",
         ".git",
@@ -40,13 +43,22 @@
     }
   ],
   "firestore": {
+    "predeploy": [
+      "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+    ],
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
   "storage": {
+    "predeploy": [
+      "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+    ],
     "rules": "storage.rules"
   },
   "remoteconfig": {
+    "predeploy": [
+      "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+    ],
     "template": "remoteconfig.development.template.json"
   }
 }

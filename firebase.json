@@ -31,16 +31,23 @@
         "firebase-debug.*.log"
       ],
       "predeploy": [
+        "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\"",
         "npm --prefix \"$RESOURCE_DIR\" run lint",
         "npm --prefix \"$RESOURCE_DIR\" run build"
       ]
     }
   ],
   "firestore": {
+    "predeploy": [
+      "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+    ],
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
   "storage": {
+    "predeploy": [
+      "/usr/bin/env -i PATH=/usr/bin:/bin /opt/homebrew/bin/node \"$PROJECT_DIR/functions/scripts/block-raw-production-functions-deploy.mjs\""
+    ],
     "rules": "storage.rules"
   }
 }
