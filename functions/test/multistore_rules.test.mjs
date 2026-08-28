@@ -213,7 +213,7 @@ test("legacy owner keeps access to own nested data but not another store", async
   await assertFails(getDoc(doc(db, "users/storeB/customers/customerB")));
 });
 
-test("supplier catalogue internals remain server-only", async () => {
+test("supplier and WhatsApp catalogue internals remain server-only", async () => {
   for (const db of [
     env.authenticatedContext("storeA").firestore(),
     env.authenticatedContext("admin-user", { isAdmin: true }).firestore(),
@@ -224,6 +224,17 @@ test("supplier catalogue internals remain server-only", async () => {
     await assertFails(getDoc(doc(db, "supplierCatalogDemand/queryA")));
     await assertFails(
       getDoc(doc(db, "supplierIntegrationState/cjRequestGate")),
+    );
+    await assertFails(getDoc(doc(db, "whatsappCatalogMappings/spz_item")));
+    await assertFails(getDoc(doc(db, "whatsappCatalogOutbox/spz_item")));
+    await assertFails(
+      getDoc(doc(db, "whatsappCatalogSyncState/productReconciliation")),
+    );
+    await assertFails(
+      getDoc(doc(db, "whatsappProductListDeliveries/deliveryA")),
+    );
+    await assertFails(
+      getDoc(doc(db, "whatsappProductListRecipientState/recipientA")),
     );
   }
 });

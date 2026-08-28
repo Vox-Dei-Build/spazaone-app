@@ -323,6 +323,29 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // WhatsApp catalogue mappings, durable provider work and reconciliation
+    // cursors are server-owned. Merchants receive only the narrow status
+    // projection returned by an authenticated callable.
+    match /whatsappCatalogMappings/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /whatsappCatalogOutbox/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /whatsappCatalogSyncState/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /whatsappProductListDeliveries/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /whatsappProductListRecipientState/{document=**} {
+      allow read, write: if false;
+    }
+
     // Capability cache contains phone-number delivery capability but no
     // customer ledger data. Keep authenticated compatibility until it moves
     // behind a callable; unauthenticated access is denied.

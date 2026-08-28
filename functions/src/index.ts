@@ -175,6 +175,22 @@ export { commerceCheckout } from "./commerce/checkoutPage";
 export { updateCommerceOrder } from "./commerce/updateCommerceOrder";
 export { retryCommerceOrderNotifications } from "./commerce/commerceNotificationWorker";
 export { heartbeatMerchantApp } from "./utils/heartbeatMerchantApp";
+/* ---- WhatsApp merchant catalogue projection ---- */
+export { onMerchantProductCatalogChange } from "./whatsapp/catalogQueue";
+export { syncWhatsAppMerchantCatalog } from "./whatsapp/catalogWorker";
+export { reconcileWhatsAppMerchantCatalog } from "./whatsapp/catalogReconciliation";
+export {
+  getMerchantWhatsAppProductListBotHttp,
+  getWhatsAppCatalogSyncStatusV1,
+} from "./whatsapp/catalogStatus";
+export {
+  resolveMerchantWhatsAppCatalogProductBotHttp,
+  sendMerchantWhatsAppCatalogBotHttp,
+} from "./whatsapp/nativeProductListDelivery";
+export {
+  getWhatsAppProductListDeliveryStatusBotHttp,
+  monitorWhatsAppProductListDeliveries,
+} from "./whatsapp/nativeProductListStatus";
 /* ---- Multi-store access ---- */
 export * from "./stores/storeManagement";
 /* import { fixProductsContentType } from './utils/fix-content-type'

@@ -7,6 +7,7 @@
  */
 import { db, functions } from "../config/main";
 import { requireBotRequest } from "../security/requestAuth";
+import { isMerchantProductCustomerVisible } from "../whatsapp/catalogProjection";
 import { merchantBotFeatureDecision } from "./merchantBotFeatureAccess";
 
 type CatalogProduct = {
@@ -41,14 +42,6 @@ function cleanPrice(value: unknown): number | undefined {
   return Number.isFinite(price) && price >= 0 ? price : undefined;
 }
 
-function isWhatsAppListed(data: Record<string, unknown>): boolean {
-  return (
-    data.whatsappListed === true ||
-    data.whatsappEnabled === true ||
-    data.availableOnWhatsApp === true
-  );
-}
-
 export const getMerchantCatalogBotHttp = functions
   .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
   .https.onRequest(async (req, res) => {
@@ -73,7 +66,7 @@ export const getMerchantCatalogBotHttp = functions
       const catalog: CatalogProduct[] = snap.docs
         .map((doc) => {
           const data = doc.data() || {};
-          if (!isWhatsAppListed(data)) return null;
+          if (!isMerchantProductCustomerVisible(data)) return null;
           const name =
             cleanString(data.name) ||
             cleanString(data.productName) ||
