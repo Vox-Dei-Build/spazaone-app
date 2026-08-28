@@ -97,6 +97,14 @@ function canonicalJson(value) {
     .join(",")}}`;
 }
 
+function deepFreeze(value) {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 export function canonicalProductionCandidateManifestBytes(document) {
   return Buffer.from(`${canonicalJson(document)}\n`, "utf8");
 }
@@ -265,6 +273,7 @@ export async function loadAndValidateProductionCandidateManifest({
   if (actualTree !== document.gitTreeSha1) {
     fail("PRODUCTION_CANDIDATE_GIT_TREE_MISMATCH");
   }
+  const authenticatedManifest = deepFreeze(structuredClone(document));
   return {
     manifestSha256: expectedManifestSha256,
     appCommit: document.appCommit,
@@ -277,5 +286,6 @@ export async function loadAndValidateProductionCandidateManifest({
     receiptSetSha256: createHash("sha256")
       .update(receiptDigests.join("\n"))
       .digest("hex"),
+    authenticatedManifest,
   };
 }

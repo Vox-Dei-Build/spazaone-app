@@ -16,6 +16,7 @@ import test from "node:test";
 
 import * as receiptModule from "../scripts/production-write-receipt.mjs";
 import {
+  PINNED_NODE_RUNTIME,
   PINNED_FIREBASE_CLI,
   PINNED_GCLOUD_CLI,
   ProductionReceiptError,
@@ -39,6 +40,8 @@ import {
 const commit = "c".repeat(40);
 const sourceSha256 = appCommitSourceSha256(commit);
 const operationInputSha256 = "4".repeat(64);
+const actionAuthorizationSha256 = "5".repeat(64);
+const actionAuthorizationClaimSha256 = "6".repeat(64);
 const selector = [
   "onMerchantProductCatalogChange",
   "syncWhatsAppMerchantCatalog",
@@ -100,7 +103,79 @@ function rawFunctionEvidence() {
     secretReferencesMatch: true,
     environmentDigestSha256: "6".repeat(64),
     expectedEnvironmentDigestSha256: "6".repeat(64),
+    candidateSourceBindingMatches: true,
+    candidateSourceContractSha256: "7".repeat(64),
+    candidateSourceFileCount: 400,
+    candidateGeneratedFileCount: 324,
+    candidateProviderBindingSetSha256: "8".repeat(64),
   };
+}
+
+function finalizedReconciliationArtifact() {
+  const artifact = {
+    schemaVersion: 1,
+    kind: "spazaone_catalog_full_reconciliation",
+    verifiedAt: "2026-08-28T09:30:00.000Z",
+    startedAt: "2026-08-28T09:00:00.000Z",
+    completedAt: "2026-08-28T09:29:00.000Z",
+    firebaseProjectId: "pasella-ledger",
+    catalogId: PRODUCTION_NATIVE_CATALOG_TARGET.catalogId,
+    senderPhoneNumberId: PRODUCTION_NATIVE_CATALOG_TARGET.senderPhoneNumberId,
+    appCommit: commit,
+    targetConfigurationDigestSha256:
+      nativeCatalogTargetConfigurationDigestSha256(),
+    cycleId: "a".repeat(32),
+    deliveryEnabled: false,
+    syncEnabled: true,
+    scanScope: "all_eligible_merchants",
+    cycleComplete: true,
+    productScanComplete: true,
+    mappingScanComplete: true,
+    stabilityVerified: true,
+    sourceCountsVerified: true,
+    outboxDrained: true,
+    outboxPendingCount: 0,
+    outboxRetryCount: 0,
+    outboxProcessingCount: 0,
+    outboxSubmittedCount: 0,
+    outboxActiveCount: 7,
+    outboxDeletedCount: 2,
+    outboxRejectedCount: 0,
+    outboxUnknownCount: 0,
+    outboxTotalCount: 9,
+    outboxCountsVerified: true,
+    catalogComplete: true,
+    setEqualityVerified: true,
+    mutationGenerationDigestSha256: "a".repeat(64),
+    completionDigest: "b".repeat(64),
+    incompleteMerchantCount: 0,
+    malformedMappingCount: 0,
+  };
+  return {
+    ...artifact,
+    redactedReceiptSha256: canonicalSha256(artifact),
+  };
+}
+
+function reconciliationNeedsReviewInput() {
+  const input = needsReviewInput({
+    kind: "spazaone_catalog_full_reconciliation",
+    lane: "full-reconciliation",
+    selector: "functions:runWhatsAppCatalogFullReconciliationBotHttp",
+    cleanupStatus: "not_applicable",
+    remoteEvidence: {
+      kind: "full_reconciliation",
+      artifact: finalizedReconciliationArtifact(),
+    },
+  });
+  input.candidateManifest.operation = {
+    kind: "full_reconciliation",
+    lane: input.lane,
+    selector: input.selector,
+    inputSha256: input.operationInputSha256,
+  };
+  input.candidateManifestSha256 = manifestDigest(input.candidateManifest);
+  return input;
 }
 
 function needsReviewInput(overrides = {}) {
@@ -117,6 +192,8 @@ function needsReviewInput(overrides = {}) {
     sourceSha256,
     configurationSha256: nativeCatalogTargetConfigurationDigestSha256(),
     operationInputSha256,
+    actionAuthorizationSha256,
+    actionAuthorizationClaimSha256,
     commandExitZero: false,
     readbackStatus: "needs_review",
     cleanupStatus: "deleted",
@@ -179,12 +256,53 @@ test("needs-review receipt is closed, redacted, sealed, and never retryable", ()
     outcome: "needs_review",
   });
   assert.equal(receipt.remoteWriteAttempted, true);
+  assert.deepEqual(receipt.lineage, {
+    mode: "direct_write",
+    priorReceiptSha256: null,
+  });
   assert.equal(receipt.needsReview, true);
   assert.equal(receipt.retryAllowed, false);
   assert.equal(receipt.result.remoteEvidence, null);
   assert.equal(receipt.target.firebaseProjectId, "pasella-ledger");
   assert.equal(receipt.authority.repository, "Vox-Dei-Build/spazaone-app");
+  assert.equal(
+    receipt.operation.actionAuthorizationSha256,
+    actionAuthorizationSha256,
+  );
+  assert.equal(
+    receipt.operation.actionAuthorizationClaimSha256,
+    actionAuthorizationClaimSha256,
+  );
+  assert.equal(receipt.operation.operatorAuditOnly, true);
   assert.match(receipt.redactedReceiptSha256, /^[a-f0-9]{64}$/);
+});
+
+test("caller action receipt digests remain operator audit only", () => {
+  const missing = needsReviewInput();
+  delete missing.actionAuthorizationSha256;
+  assert.throws(
+    () => buildNeedsReviewProductionWriteReceipt(missing),
+    (error) =>
+      error instanceof ProductionReceiptError &&
+      error.code === "PRODUCTION_RECEIPT_INPUT_KEYSET_INVALID",
+  );
+  const missingClaim = needsReviewInput();
+  delete missingClaim.actionAuthorizationClaimSha256;
+  assert.throws(
+    () => buildNeedsReviewProductionWriteReceipt(missingClaim),
+    (error) =>
+      error instanceof ProductionReceiptError &&
+      error.code === "PRODUCTION_RECEIPT_INPUT_KEYSET_INVALID",
+  );
+  assert.throws(
+    () =>
+      buildNeedsReviewProductionWriteReceipt(
+        needsReviewInput({ actionAuthorizationSha256: "invalid" }),
+      ),
+    (error) =>
+      error instanceof ProductionReceiptError &&
+      error.code === "ACTION_AUTHORIZATION_SHA256_INVALID",
+  );
 });
 
 test("structural validation is not production attestation", async () => {
@@ -236,6 +354,20 @@ test("candidate manifest and operation binding are still fail-closed", () => {
     (error) =>
       error instanceof ProductionReceiptError &&
       error.code === "PRODUCTION_RECEIPT_CANDIDATE_BINDING_INVALID",
+  );
+});
+
+test("function receipt evidence cannot omit reviewed candidate source binding", () => {
+  const evidence = rawFunctionEvidence();
+  delete evidence.candidateSourceContractSha256;
+  assert.throws(
+    () =>
+      buildNeedsReviewProductionWriteReceipt(
+        needsReviewInput({ remoteEvidence: evidence }),
+      ),
+    (error) =>
+      error instanceof ProductionReceiptError &&
+      error.code === "FUNCTION_REMOTE_EVIDENCE_KEYSET_INVALID",
   );
 });
 
@@ -339,6 +471,7 @@ test("production toolchain pins executable identities and explicit account/proje
   });
   assert.equal(toolchain.firebaseCliVersion, PINNED_FIREBASE_CLI.version);
   assert.equal(toolchain.gcloudCliVersion, PINNED_GCLOUD_CLI.version);
+  assert.equal(toolchain.nodeVersion, PINNED_NODE_RUNTIME.version);
   assert.equal(calls.length, 4);
   assert.ok(calls.every((call) => path.isAbsolute(call.command)));
   assert.ok(
@@ -358,4 +491,53 @@ test("receipt operation stays bound to the immutable native catalogue target", (
   );
   assert.match(PRODUCTION_NATIVE_CATALOG_TARGET.catalogId, /^\d+$/);
   assert.match(PRODUCTION_NATIVE_CATALOG_TARGET.senderPhoneNumberId, /^\d+$/);
+});
+
+test("reconciliation provider timestamps are independent from local executor timestamps", () => {
+  const receipt = buildNeedsReviewProductionWriteReceipt(
+    reconciliationNeedsReviewInput(),
+  );
+  assert.equal(receipt.actionStartedAt, "2026-08-28T10:00:00.000Z");
+  assert.equal(
+    receipt.result.remoteEvidence.summary.artifact.startedAt,
+    "2026-08-28T09:00:00.000Z",
+  );
+  assert.deepEqual(validateProductionWriteReceipt(receipt), {
+    structurallyValid: true,
+    outcome: "needs_review",
+  });
+});
+
+test("a recovered read-only closure must carry prior ambiguous receipt lineage", () => {
+  const base = buildNeedsReviewProductionWriteReceipt(
+    reconciliationNeedsReviewInput(),
+  );
+  const recovered = structuredClone(base);
+  recovered.outcome = "recovered_verified";
+  recovered.remoteWriteAttempted = false;
+  recovered.needsReview = false;
+  recovered.lineage = {
+    mode: "recovered_readback",
+    priorReceiptSha256: "9".repeat(64),
+  };
+  recovered.result.commandExitZero = null;
+  recovered.result.readbackStatus = "verified";
+  recovered.result.errorCode = null;
+  delete recovered.redactedReceiptSha256;
+  recovered.redactedReceiptSha256 = canonicalSha256(recovered);
+  assert.deepEqual(validateProductionWriteReceipt(recovered), {
+    structurallyValid: true,
+    outcome: "recovered_verified",
+  });
+
+  const unlinked = structuredClone(recovered);
+  unlinked.lineage.priorReceiptSha256 = null;
+  delete unlinked.redactedReceiptSha256;
+  unlinked.redactedReceiptSha256 = canonicalSha256(unlinked);
+  assert.throws(
+    () => validateProductionWriteReceipt(unlinked),
+    (error) =>
+      error instanceof ProductionReceiptError &&
+      error.code === "PRODUCTION_RECEIPT_PRIOR_RECEIPT_SHA256_INVALID",
+  );
 });

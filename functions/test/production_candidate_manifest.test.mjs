@@ -91,6 +91,13 @@ test("candidate manifest canonically binds reviewed commit, tree, target, operat
       "independentProductionReviewReceiptSha256",
     ]);
     assert.match(result.receiptSetSha256, /^[a-f0-9]{64}$/);
+    assert.deepEqual(result.authenticatedManifest, manifest());
+    assert.equal(Object.isFrozen(result.authenticatedManifest), true);
+    assert.equal(Object.isFrozen(result.authenticatedManifest.operation), true);
+    assert.equal(Object.isFrozen(result.authenticatedManifest.receipts), true);
+    assert.throws(() => {
+      result.authenticatedManifest.operation.lane = "existing-code";
+    }, TypeError);
   } finally {
     await rm(reference.root, { recursive: true, force: true });
   }

@@ -1053,6 +1053,8 @@ test("runner arguments expose only an explicit reviewed recovery switch", () => 
       expectedAppCommit: commit,
       expectedCurrentMainCommit: FROZEN_APP_MAIN_COMMIT,
       reviewedResume: false,
+      priorNeedsReviewReceiptPath: null,
+      expectedPriorNeedsReviewReceiptSha256: null,
       pageSize: 100,
       pollMs: 65_000,
       maxSteps: 10_000,
@@ -1082,8 +1084,51 @@ test("runner arguments expose only an explicit reviewed recovery switch", () => 
       candidateManifestPath,
       "--expected-candidate-manifest-sha256",
       candidateManifestSha256,
+      "--prior-needs-review-receipt-path",
+      "/tmp/prior-needs-review-reconciliation-receipt.json",
+      "--expected-prior-needs-review-receipt-sha256",
+      "9".repeat(64),
     ]).reviewedResume,
     true,
+  );
+  assert.throws(
+    () =>
+      parseRunnerArguments([
+        "--expected-app-commit",
+        commit,
+        "--expected-current-main-commit",
+        FROZEN_APP_MAIN_COMMIT,
+        "--reviewed-resume",
+        "--execute",
+        "--receipt-path",
+        "/tmp/test-reconciliation-receipt.json",
+        "--candidate-manifest-path",
+        candidateManifestPath,
+        "--expected-candidate-manifest-sha256",
+        candidateManifestSha256,
+      ]),
+    (error) => error.code === "OPERATOR_RECEIPT_EXECUTION_INVALID",
+  );
+  assert.throws(
+    () =>
+      parseRunnerArguments([
+        "--expected-app-commit",
+        commit,
+        "--expected-current-main-commit",
+        FROZEN_APP_MAIN_COMMIT,
+        "--execute",
+        "--receipt-path",
+        "/tmp/test-reconciliation-receipt.json",
+        "--candidate-manifest-path",
+        candidateManifestPath,
+        "--expected-candidate-manifest-sha256",
+        candidateManifestSha256,
+        "--prior-needs-review-receipt-path",
+        "/tmp/prior-needs-review-reconciliation-receipt.json",
+        "--expected-prior-needs-review-receipt-sha256",
+        "9".repeat(64),
+      ]),
+    (error) => error.code === "OPERATOR_RECEIPT_EXECUTION_INVALID",
   );
   assert.throws(
     () =>

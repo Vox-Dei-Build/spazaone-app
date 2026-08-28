@@ -1509,8 +1509,9 @@ async function runGuardedCatalogPolicyDeployment({
       ...source,
       readback,
       readbackStatus: "verified",
-      closedPolicyReceipt: true,
-      receiptStatus: "verified",
+      closedPolicyReceipt: false,
+      receiptStatus: "readback_evidence_only",
+      requiresPriorReceiptLineage: true,
       retryAllowed: false,
     };
   }

@@ -1110,6 +1110,8 @@ export function parseRunnerArguments(argv) {
     "candidate-manifest-path",
     "expected-candidate-manifest-sha256",
     "receipt-path",
+    "prior-needs-review-receipt-path",
+    "expected-prior-needs-review-receipt-sha256",
     "page-size",
     "poll-ms",
     "max-steps",
@@ -1141,6 +1143,12 @@ export function parseRunnerArguments(argv) {
   const expectedCandidateManifestSha256 = String(
     values.get("expected-candidate-manifest-sha256") ?? "",
   );
+  const priorNeedsReviewReceiptPath = String(
+    values.get("prior-needs-review-receipt-path") ?? "",
+  );
+  const expectedPriorNeedsReviewReceiptSha256 = String(
+    values.get("expected-prior-needs-review-receipt-sha256") ?? "",
+  );
   if (
     (execute &&
       (!receiptPath ||
@@ -1151,9 +1159,25 @@ export function parseRunnerArguments(argv) {
         path.resolve(candidateManifestPath) !== candidateManifestPath ||
         candidateManifestPath === receiptPath ||
         !/^[a-f0-9]{64}$/.test(expectedCandidateManifestSha256))) ||
+    (execute &&
+      reviewedResume &&
+      (!priorNeedsReviewReceiptPath ||
+        !path.isAbsolute(priorNeedsReviewReceiptPath) ||
+        path.resolve(priorNeedsReviewReceiptPath) !==
+          priorNeedsReviewReceiptPath ||
+        priorNeedsReviewReceiptPath === receiptPath ||
+        priorNeedsReviewReceiptPath === candidateManifestPath ||
+        !/^[a-f0-9]{64}$/.test(expectedPriorNeedsReviewReceiptSha256))) ||
+    (execute &&
+      !reviewedResume &&
+      (priorNeedsReviewReceiptPath || expectedPriorNeedsReviewReceiptSha256)) ||
     (!execute && receiptPath) ||
     (!execute && reviewedResume) ||
-    (!execute && (candidateManifestPath || expectedCandidateManifestSha256))
+    (!execute &&
+      (candidateManifestPath ||
+        expectedCandidateManifestSha256 ||
+        priorNeedsReviewReceiptPath ||
+        expectedPriorNeedsReviewReceiptSha256))
   ) {
     throw new ReconciliationOperatorError("OPERATOR_RECEIPT_EXECUTION_INVALID");
   }
@@ -1168,6 +1192,12 @@ export function parseRunnerArguments(argv) {
     expectedAppCommit,
     expectedCurrentMainCommit,
     reviewedResume,
+    priorNeedsReviewReceiptPath: reviewedResume
+      ? priorNeedsReviewReceiptPath
+      : null,
+    expectedPriorNeedsReviewReceiptSha256: reviewedResume
+      ? expectedPriorNeedsReviewReceiptSha256
+      : null,
     pageSize: positiveInteger(values.get("page-size") ?? 200, "PAGE_SIZE", {
       maximum: 200,
     }),

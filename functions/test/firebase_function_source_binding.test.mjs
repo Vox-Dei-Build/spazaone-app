@@ -262,6 +262,20 @@ test("candidate contract binds Git blobs, exact generated inventory, and package
     assert.equal(contract.packagedFileCount, 5);
     assert.equal(contract.generatedFileCount, 2);
     assert.equal(contract.firebaseParamsModuleReferenceCount, 0);
+    assert.equal(contract.packageFileEvidence.length, 5);
+    assert.equal(Object.isFrozen(contract.packageFileEvidence), true);
+    assert.ok(
+      contract.packageFileEvidence.every(
+        (entry) =>
+          Object.isFrozen(entry) &&
+          /^[a-f0-9]{64}$/.test(entry.sha256) &&
+          typeof entry.relativePath === "string",
+      ),
+    );
+    assert.deepEqual(
+      contract.packageFileEvidence.map((entry) => entry.relativePath),
+      pinnedFiles,
+    );
 
     await writeFile(
       path.join(functionsDirectory, "firestore-debug.log"),

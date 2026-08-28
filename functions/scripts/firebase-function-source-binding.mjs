@@ -457,6 +457,11 @@ export async function computeCandidateFirebaseSourceContract({
     // Private operational inputs: callers must never serialize these fields.
     sourceV1HashSha1,
     sourceV2HashSha1: sourceBaseHashSha1,
+    packageFileEvidence: Object.freeze(
+      fileEvidence.map(([relativePath, fileSha256]) =>
+        Object.freeze({ relativePath, sha256: fileSha256 }),
+      ),
+    ),
   };
 }
 

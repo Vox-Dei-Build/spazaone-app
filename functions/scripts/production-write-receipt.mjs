@@ -27,6 +27,14 @@ import {
 
 const execFile = promisify(nodeExecFile);
 
+export const PINNED_NODE_RUNTIME = Object.freeze({
+  executablePath: "/opt/homebrew/bin/node",
+  executableRealpath: "/opt/homebrew/Cellar/node/24.4.1/bin/node",
+  executableSha256:
+    "0747ad5579627f4c31f899bc980979aeb082a38b02415a749c9ee6e061370b01",
+  version: "v24.4.1",
+});
+
 export const PINNED_FIREBASE_CLI = Object.freeze({
   executablePath: "/opt/homebrew/bin/firebase",
   executableRealpath:
@@ -79,6 +87,7 @@ const RECEIPT_KEYS = [
   "toolchain",
   "appCommit",
   "operation",
+  "lineage",
   "result",
   "remoteWriteAttempted",
   "needsReview",
@@ -86,6 +95,10 @@ const RECEIPT_KEYS = [
   "redactedReceiptSha256",
 ];
 const TOOLCHAIN_KEYS = [
+  "nodeExecutablePath",
+  "nodeExecutableRealpath",
+  "nodeExecutableSha256",
+  "nodeVersion",
   "firebaseCliExecutablePath",
   "firebaseCliExecutableRealpath",
   "firebaseCliExecutableSha256",
@@ -102,7 +115,11 @@ const OPERATION_KEYS = [
   "configurationSha256",
   "candidateManifestSha256",
   "operationInputSha256",
+  "actionAuthorizationSha256",
+  "actionAuthorizationClaimSha256",
+  "operatorAuditOnly",
 ];
+const LINEAGE_KEYS = ["mode", "priorReceiptSha256"];
 const RESULT_KEYS = [
   "commandExitZero",
   "readbackStatus",
@@ -137,6 +154,8 @@ const BUILD_RECEIPT_INPUT_KEYS = [
   "candidateManifest",
   "candidateManifestSha256",
   "operationInputSha256",
+  "actionAuthorizationSha256",
+  "actionAuthorizationClaimSha256",
   "commandExitZero",
   "readbackStatus",
   "cleanupStatus",
@@ -157,6 +176,11 @@ const FUNCTION_EVIDENCE_KEYS = [
   "secretReferencesMatch",
   "environmentDigestSha256",
   "expectedEnvironmentDigestSha256",
+  "candidateSourceBindingMatches",
+  "candidateSourceContractSha256",
+  "candidateSourceFileCount",
+  "candidateGeneratedFileCount",
+  "candidateProviderBindingSetSha256",
 ];
 const FIRESTORE_RULES_EVIDENCE_KEYS = [
   "kind",
@@ -630,6 +654,24 @@ function normalizeFunctionEvidence(remoteEvidence, context) {
     "FUNCTION_REMOTE_EVIDENCE_EXPECTED_ENVIRONMENT_SHA256",
     SHA256,
   );
+  const candidateSourceContractSha256 = string(
+    remoteEvidence.candidateSourceContractSha256,
+    "FUNCTION_REMOTE_EVIDENCE_SOURCE_CONTRACT_SHA256",
+    SHA256,
+  );
+  const candidateProviderBindingSetSha256 = string(
+    remoteEvidence.candidateProviderBindingSetSha256,
+    "FUNCTION_REMOTE_EVIDENCE_PROVIDER_BINDING_SHA256",
+    SHA256,
+  );
+  const candidateSourceFileCount = nonNegativeInteger(
+    remoteEvidence.candidateSourceFileCount,
+    "FUNCTION_REMOTE_EVIDENCE_SOURCE_FILE_COUNT",
+  );
+  const candidateGeneratedFileCount = nonNegativeInteger(
+    remoteEvidence.candidateGeneratedFileCount,
+    "FUNCTION_REMOTE_EVIDENCE_GENERATED_FILE_COUNT",
+  );
   if (
     remoteEvidence.kind !== "function_deployment" ||
     remoteEvidence.lane !== context.lane ||
@@ -658,6 +700,17 @@ function normalizeFunctionEvidence(remoteEvidence, context) {
     remoteEvidence.secretReferencesMatch,
     "FUNCTION_REMOTE_EVIDENCE_SECRET_REFERENCES_MATCH",
   );
+  trueValue(
+    remoteEvidence.candidateSourceBindingMatches,
+    "FUNCTION_REMOTE_EVIDENCE_SOURCE_BINDING_MATCHES",
+  );
+  if (
+    candidateSourceFileCount < 1 ||
+    candidateGeneratedFileCount < 1 ||
+    candidateGeneratedFileCount > candidateSourceFileCount
+  ) {
+    fail("FUNCTION_REMOTE_EVIDENCE_SOURCE_COUNTS_INVALID");
+  }
   return {
     lane: remoteEvidence.lane,
     selector: remoteEvidence.selector,
@@ -671,6 +724,11 @@ function normalizeFunctionEvidence(remoteEvidence, context) {
     secretReferencesMatch: true,
     environmentDigestSha256,
     expectedEnvironmentDigestSha256,
+    candidateSourceBindingMatches: true,
+    candidateSourceContractSha256,
+    candidateSourceFileCount,
+    candidateGeneratedFileCount,
+    candidateProviderBindingSetSha256,
   };
 }
 
@@ -819,9 +877,8 @@ function normalizeReconciliationEvidence(remoteEvidence, context) {
     context.selector !==
       "functions:runWhatsAppCatalogFullReconciliationBotHttp" ||
     context.sourceSha256 !== appCommitSourceSha256(context.appCommit) ||
-    remoteEvidence.artifact.startedAt !== context.actionStartedAt ||
-    remoteEvidence.artifact.completedAt !== context.actionCompletedAt ||
-    remoteEvidence.artifact.verifiedAt !== context.verifiedAt
+    Date.parse(remoteEvidence.artifact.verifiedAt) >
+      Date.parse(context.verifiedAt)
   ) {
     fail("RECONCILIATION_REMOTE_EVIDENCE_BINDING_INVALID");
   }
@@ -911,9 +968,37 @@ function assertOperationCrossBinding(receipt) {
     "PRODUCTION_RECEIPT_OPERATION_INPUT_SHA256",
     SHA256,
   );
-  if (receipt.outcome !== "verified") return;
+  string(
+    receipt.operation.actionAuthorizationSha256,
+    "PRODUCTION_RECEIPT_ACTION_AUTHORIZATION_SHA256",
+    SHA256,
+  );
+  string(
+    receipt.operation.actionAuthorizationClaimSha256,
+    "PRODUCTION_RECEIPT_ACTION_AUTHORIZATION_CLAIM_SHA256",
+    SHA256,
+  );
+  if (receipt.operation.operatorAuditOnly !== true) {
+    fail("PRODUCTION_RECEIPT_OPERATOR_AUDIT_ROLE_INVALID");
+  }
+  if (
+    !new Set(["verified", "recovered_verified", "readback_verified"]).has(
+      receipt.outcome,
+    )
+  ) {
+    return;
+  }
   if (!receipt.result.remoteEvidence) {
     fail("PRODUCTION_RECEIPT_REMOTE_EVIDENCE_REQUIRED");
+  }
+  if (
+    receipt.outcome === "readback_verified" ||
+    receipt.outcome === "recovered_verified"
+  ) {
+    if (receipt.result.cleanupStatus !== "not_applicable") {
+      fail("PRODUCTION_RECEIPT_READBACK_CLEANUP_INVALID");
+    }
+    return;
   }
   if (receipt.kind === "spazaone_catalog_full_reconciliation") {
     if (receipt.result.cleanupStatus !== "not_applicable") {
@@ -982,6 +1067,7 @@ export async function assertPinnedProductionToolchain({
   environment = process.env,
   fsImpl,
 } = {}) {
+  await assertExecutableIdentity(PINNED_NODE_RUNTIME, fsImpl);
   await assertExecutableIdentity(PINNED_FIREBASE_CLI, fsImpl);
   await assertExecutableIdentity(PINNED_GCLOUD_CLI, fsImpl);
   const safeNames = new Set([
@@ -1131,7 +1217,7 @@ function assertRedacted(value) {
 
 export function validateProductionWriteReceipt(receipt) {
   exactKeys(receipt, RECEIPT_KEYS, "PRODUCTION_RECEIPT");
-  if (receipt.schemaVersion !== 2) fail("PRODUCTION_RECEIPT_VERSION_INVALID");
+  if (receipt.schemaVersion !== 4) fail("PRODUCTION_RECEIPT_VERSION_INVALID");
   if (
     !new Set([
       "spazaone_catalog_function_deployment",
@@ -1141,7 +1227,14 @@ export function validateProductionWriteReceipt(receipt) {
   ) {
     fail("PRODUCTION_RECEIPT_KIND_INVALID");
   }
-  if (receipt.outcome !== "verified" && receipt.outcome !== "needs_review") {
+  if (
+    !new Set([
+      "verified",
+      "needs_review",
+      "recovered_verified",
+      "readback_verified",
+    ]).has(receipt.outcome)
+  ) {
     fail("PRODUCTION_RECEIPT_OUTCOME_INVALID");
   }
   assertChronology(receipt);
@@ -1149,6 +1242,13 @@ export function validateProductionWriteReceipt(receipt) {
   exactObject(receipt.target, PRODUCTION_WRITE_TARGET, "TARGET");
   exactKeys(receipt.toolchain, TOOLCHAIN_KEYS, "TOOLCHAIN");
   if (
+    receipt.toolchain.nodeExecutablePath !==
+      PINNED_NODE_RUNTIME.executablePath ||
+    receipt.toolchain.nodeExecutableRealpath !==
+      PINNED_NODE_RUNTIME.executableRealpath ||
+    receipt.toolchain.nodeExecutableSha256 !==
+      PINNED_NODE_RUNTIME.executableSha256 ||
+    receipt.toolchain.nodeVersion !== PINNED_NODE_RUNTIME.version ||
     receipt.toolchain.firebaseCliExecutablePath !==
       PINNED_FIREBASE_CLI.executablePath ||
     receipt.toolchain.firebaseCliExecutableRealpath !==
@@ -1189,8 +1289,33 @@ export function validateProductionWriteReceipt(receipt) {
     "OPERATION_INPUT_SHA256",
     SHA256,
   );
+  exactKeys(receipt.lineage, LINEAGE_KEYS, "LINEAGE");
+  if (
+    !new Set([
+      "direct_write",
+      "reviewed_resume_write",
+      "recovered_readback",
+      "policy_readback",
+    ]).has(receipt.lineage.mode)
+  ) {
+    fail("PRODUCTION_RECEIPT_LINEAGE_MODE_INVALID");
+  }
+  if (receipt.lineage.mode === "direct_write") {
+    if (receipt.lineage.priorReceiptSha256 !== null) {
+      fail("PRODUCTION_RECEIPT_LINEAGE_INVALID");
+    }
+  } else {
+    string(
+      receipt.lineage.priorReceiptSha256,
+      "PRODUCTION_RECEIPT_PRIOR_RECEIPT_SHA256",
+      SHA256,
+    );
+  }
   exactKeys(receipt.result, RESULT_KEYS, "RESULT");
-  if (typeof receipt.result.commandExitZero !== "boolean") {
+  if (
+    receipt.result.commandExitZero !== null &&
+    typeof receipt.result.commandExitZero !== "boolean"
+  ) {
     fail("RESULT_COMMAND_EXIT_INVALID");
   }
   if (
@@ -1227,11 +1352,15 @@ export function validateProductionWriteReceipt(receipt) {
   ) {
     fail("RESULT_ERROR_CODE_INVALID");
   }
-  if (receipt.remoteWriteAttempted !== true || receipt.retryAllowed !== false) {
+  if (
+    typeof receipt.remoteWriteAttempted !== "boolean" ||
+    receipt.retryAllowed !== false
+  ) {
     fail("PRODUCTION_RECEIPT_WRITE_POLICY_INVALID");
   }
   if (receipt.outcome === "verified") {
     if (
+      receipt.remoteWriteAttempted !== true ||
       receipt.needsReview !== false ||
       receipt.result.commandExitZero !== true ||
       receipt.result.readbackStatus !== "verified" ||
@@ -1240,11 +1369,51 @@ export function validateProductionWriteReceipt(receipt) {
     ) {
       fail("PRODUCTION_RECEIPT_VERIFIED_RESULT_INVALID");
     }
-  } else if (
-    receipt.needsReview !== true ||
-    receipt.result.errorCode === null
-  ) {
-    fail("PRODUCTION_RECEIPT_REVIEW_RESULT_INVALID");
+    if (
+      (receipt.lineage.mode === "reviewed_resume_write" &&
+        receipt.kind !== "spazaone_catalog_full_reconciliation") ||
+      !new Set(["direct_write", "reviewed_resume_write"]).has(
+        receipt.lineage.mode,
+      )
+    ) {
+      fail("PRODUCTION_RECEIPT_VERIFIED_LINEAGE_INVALID");
+    }
+  } else if (receipt.outcome === "needs_review") {
+    if (
+      receipt.remoteWriteAttempted !== true ||
+      receipt.needsReview !== true ||
+      receipt.result.errorCode === null
+    ) {
+      fail("PRODUCTION_RECEIPT_REVIEW_RESULT_INVALID");
+    }
+    if (
+      !new Set(["direct_write", "reviewed_resume_write"]).has(
+        receipt.lineage.mode,
+      ) ||
+      (receipt.lineage.mode === "reviewed_resume_write" &&
+        receipt.kind !== "spazaone_catalog_full_reconciliation")
+    ) {
+      fail("PRODUCTION_RECEIPT_REVIEW_LINEAGE_INVALID");
+    }
+  } else {
+    const recovered = receipt.outcome === "recovered_verified";
+    if (
+      receipt.remoteWriteAttempted !== false ||
+      receipt.needsReview !== false ||
+      receipt.result.commandExitZero !== null ||
+      receipt.result.readbackStatus !== "verified" ||
+      receipt.result.cleanupStatus !== "not_applicable" ||
+      receipt.result.errorCode !== null ||
+      !receipt.result.remoteEvidence ||
+      (recovered &&
+        (receipt.kind !== "spazaone_catalog_full_reconciliation" ||
+          receipt.lineage.mode !== "recovered_readback")) ||
+      (!recovered &&
+        (receipt.kind !== "spazaone_catalog_policy_deployment" ||
+          receipt.lineage.mode !== "policy_readback"))
+    ) {
+      fail("PRODUCTION_RECEIPT_READBACK_RESULT_INVALID");
+    }
   }
   string(receipt.redactedReceiptSha256, "PRODUCTION_RECEIPT_SHA256", SHA256);
   if (
@@ -1268,7 +1437,7 @@ function sealProductionWriteReceipt(receipt) {
   // one. A future reviewed executor must keep its attestation and closure
   // operation module-private and bind it to the real candidate loader and
   // remote collectors before this gate can be changed.
-  if (record.outcome === "verified") {
+  if (record.outcome !== "needs_review") {
     fail("PRODUCTION_RECEIPT_ATTESTATION_REQUIRED");
   }
   if (Object.hasOwn(record, "redactedReceiptSha256")) {
@@ -1284,6 +1453,10 @@ function sealProductionWriteReceipt(receipt) {
 
 export function productionReceiptToolchain() {
   return {
+    nodeExecutablePath: PINNED_NODE_RUNTIME.executablePath,
+    nodeExecutableRealpath: PINNED_NODE_RUNTIME.executableRealpath,
+    nodeExecutableSha256: PINNED_NODE_RUNTIME.executableSha256,
+    nodeVersion: PINNED_NODE_RUNTIME.version,
     firebaseCliExecutablePath: PINNED_FIREBASE_CLI.executablePath,
     firebaseCliExecutableRealpath: PINNED_FIREBASE_CLI.executableRealpath,
     firebaseCliExecutableSha256: PINNED_FIREBASE_CLI.executableSha256,
@@ -1315,6 +1488,8 @@ export function buildNeedsReviewProductionWriteReceipt(input) {
     candidateManifest,
     candidateManifestSha256,
     operationInputSha256,
+    actionAuthorizationSha256,
+    actionAuthorizationClaimSha256,
     commandExitZero,
     readbackStatus,
     cleanupStatus,
@@ -1324,6 +1499,12 @@ export function buildNeedsReviewProductionWriteReceipt(input) {
   string(appCommit, "APP_COMMIT", COMMIT);
   string(candidateManifestSha256, "CANDIDATE_MANIFEST_SHA256", SHA256);
   string(operationInputSha256, "OPERATION_INPUT_SHA256", SHA256);
+  string(actionAuthorizationSha256, "ACTION_AUTHORIZATION_SHA256", SHA256);
+  string(
+    actionAuthorizationClaimSha256,
+    "ACTION_AUTHORIZATION_CLAIM_SHA256",
+    SHA256,
+  );
   validateCandidateManifestBinding({
     candidateManifest,
     candidateManifestSha256,
@@ -1349,7 +1530,7 @@ export function buildNeedsReviewProductionWriteReceipt(input) {
           verifiedAt,
         });
   return sealProductionWriteReceipt({
-    schemaVersion: 2,
+    schemaVersion: 4,
     kind,
     outcome,
     actionStartedAt,
@@ -1367,6 +1548,13 @@ export function buildNeedsReviewProductionWriteReceipt(input) {
       configurationSha256,
       candidateManifestSha256,
       operationInputSha256,
+      actionAuthorizationSha256,
+      actionAuthorizationClaimSha256,
+      operatorAuditOnly: true,
+    },
+    lineage: {
+      mode: "direct_write",
+      priorReceiptSha256: null,
     },
     result: {
       commandExitZero,
