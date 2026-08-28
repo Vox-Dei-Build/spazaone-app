@@ -7,7 +7,7 @@
  */
 import { db, functions } from "../config/main";
 import { requireBotRequest } from "../security/requestAuth";
-import { isMerchantProductCustomerVisible } from "../whatsapp/catalogProjection";
+import { merchantBotCatalogVisibilityFilter } from "./botCatalogVisibility";
 import { merchantBotFeatureDecision } from "./merchantBotFeatureAccess";
 
 type CatalogProduct = {
@@ -43,7 +43,9 @@ function cleanPrice(value: unknown): number | undefined {
 }
 
 export const getMerchantCatalogBotHttp = functions
-  .runWith({ secrets: ["PASELLA_BOT_TOKEN"] })
+  .runWith({
+    secrets: ["PASELLA_BOT_TOKEN", "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY"],
+  })
   .https.onRequest(async (req, res) => {
     if (!requireBotRequest(req, res)) return;
     if (req.method !== "POST") {
@@ -58,6 +60,7 @@ export const getMerchantCatalogBotHttp = functions
     }
 
     try {
+      const productVisible = merchantBotCatalogVisibilityFilter();
       const [snap, supplierAccess] = await Promise.all([
         db.collection("users").doc(merchantId).collection("products").get(),
         merchantBotFeatureDecision(merchantId, "supplierOrders"),
@@ -66,7 +69,7 @@ export const getMerchantCatalogBotHttp = functions
       const catalog: CatalogProduct[] = snap.docs
         .map((doc) => {
           const data = doc.data() || {};
-          if (!isMerchantProductCustomerVisible(data)) return null;
+          if (!productVisible(data)) return null;
           const name =
             cleanString(data.name) ||
             cleanString(data.productName) ||

@@ -12,6 +12,11 @@ import {
   isMerchantProductCustomerVisible,
 } from "../lib/whatsapp/catalogProjection.js";
 import {
+  isMerchantProductVisibleInBotCatalog,
+  merchantBotCatalogVisibilityFilter,
+  nativeProductListDeliveryEnabled,
+} from "../lib/ecommerce/botCatalogVisibility.js";
+import {
   buildMetaCatalogBatchRequests,
   parseMetaCatalogBatchStatus,
 } from "../lib/whatsapp/metaCatalogClient.js";
@@ -77,6 +82,7 @@ const sourceRoot = join(
   "src",
   "whatsapp",
 );
+const ecommerceSourceRoot = join(sourceRoot, "..", "ecommerce");
 
 const product = {
   name: "Maize Meal 5 kg",
@@ -331,6 +337,134 @@ test("explicit internal state overrides a stale WhatsApp listing flag", () => {
       dropshipListingState: "active",
     }).eligible,
     true,
+  );
+});
+
+test("dark native delivery preserves legacy bot catalogue visibility", () => {
+  for (const configured of [undefined, "", "false", "1"]) {
+    withEnvironment({ WHATSAPP_PRODUCT_LIST_ENABLED: configured }, () => {
+      assert.equal(nativeProductListDeliveryEnabled(), false);
+      assert.equal(
+        isMerchantProductVisibleInBotCatalog({
+          whatsappListed: true,
+          dropshipListingState: "internal",
+          customerVisible: false,
+          archived: true,
+        }),
+        true,
+      );
+      assert.equal(
+        isMerchantProductVisibleInBotCatalog({
+          whatsappEnabled: true,
+          visibility: "hidden",
+        }),
+        true,
+      );
+      assert.equal(
+        isMerchantProductVisibleInBotCatalog({
+          availableOnWhatsApp: true,
+          listingState: "draft",
+        }),
+        true,
+      );
+      assert.equal(
+        isMerchantProductVisibleInBotCatalog({
+          whatsappListed: "true",
+          whatsappEnabled: false,
+          availableOnWhatsApp: false,
+        }),
+        false,
+      );
+    });
+  }
+});
+
+test("enabled native delivery applies customer-visible bot catalogue filtering", () => {
+  withEnvironment(
+    {
+      ...productionCatalogFullScope,
+      WHATSAPP_PRODUCT_LIST_ENABLED: " TRUE ",
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "live",
+      WHATSAPP_CATALOG_ID: "1234567890",
+      WHATSAPP_SENDER_NUMBER_ID: "9876543210",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "true",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: "",
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
+      GCLOUD_PROJECT: undefined,
+      GOOGLE_CLOUD_PROJECT: undefined,
+    },
+    () => {
+      assert.equal(nativeProductListDeliveryEnabled(), true);
+      const productVisible = merchantBotCatalogVisibilityFilter();
+      assert.equal(
+        productVisible({
+          whatsappListed: true,
+          dropshipListingState: "active",
+        }),
+        true,
+      );
+      for (const internalMarker of [
+        { dropshipListingState: "internal" },
+        { internalOnly: true },
+        { visibility: "hidden" },
+        { customerVisible: false },
+      ]) {
+        assert.equal(
+          productVisible({
+            whatsappListed: true,
+            ...internalMarker,
+          }),
+          false,
+        );
+      }
+    },
+  );
+});
+
+test("enabled native visibility fails closed on incomplete runtime configuration", () => {
+  withEnvironment(
+    {
+      ...productionCatalogFullScope,
+      SPAZAONE_ENVIRONMENT: "production",
+      SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+      WHATSAPP_PRODUCT_LIST_ENABLED: "true",
+      WHATSAPP_CATALOG_SYNC_ENABLED: "false",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "live",
+      WHATSAPP_CATALOG_ID: "1234567890",
+      WHATSAPP_SENDER_NUMBER_ID: "9876543210",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "true",
+      WHATSAPP_CATALOG_CONTROLLED_RECIPIENT_HASHES: "",
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: controlledRecipientHashKey,
+      GCLOUD_PROJECT: undefined,
+      GOOGLE_CLOUD_PROJECT: undefined,
+    },
+    () => {
+      assert.throws(
+        merchantBotCatalogVisibilityFilter,
+        /WHATSAPP_CATALOG_SYNC_REQUIRED/,
+      );
+    },
+  );
+});
+
+test("merchant bot endpoint resolves the validated visibility filter once per request", () => {
+  const source = readFileSync(
+    join(ecommerceSourceRoot, "getMerchantCatalogBotHttp.ts"),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /const productVisible = merchantBotCatalogVisibilityFilter\(\);/,
+  );
+  assert.match(source, /if \(!productVisible\(data\)\) return null;/);
+  assert.match(source, /"WHATSAPP_CATALOG_RECIPIENT_HASH_KEY"/);
+  assert.equal(
+    (source.match(/merchantBotCatalogVisibilityFilter\(\)/g) ?? []).length,
+    1,
   );
 });
 
