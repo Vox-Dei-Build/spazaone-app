@@ -14,6 +14,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import * as deploymentGuardModule from "../scripts/guard-whatsapp-catalog-functions-deploy.mjs";
 import * as reconciliationRunnerModule from "../scripts/run-whatsapp-catalog-full-reconciliation.mjs";
@@ -73,24 +74,206 @@ import {
 } from "../lib/whatsapp/catalogReconciliation.js";
 
 const commit = "c".repeat(40);
-// These aliases intentionally resolve to undefined. The old execution tests
-// below remain skipped as historical specifications; active assertions prove
-// that no importable write core exists while the CLI executors are disabled.
-const runFullCatalogReconciliation =
-  reconciliationRunnerModule.runFullCatalogReconciliation;
 const runGuardedCatalogDeployment =
   deploymentGuardModule.runGuardedCatalogDeployment;
 const runGuardedCatalogPolicyDeployment =
   deploymentGuardModule.runGuardedCatalogPolicyDeployment;
+const executorPath = path.resolve(
+  "scripts/execute-whatsapp-catalog-production.mjs",
+);
 
-test("disabled production CLIs export no write-capable execution core", () => {
-  assert.equal(runFullCatalogReconciliation, undefined);
+async function withPrivateReconciliationTransport(callback) {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "private-reconciliation-transport-"),
+  );
+  const harnessPath = path.join(root, "executor-transport-harness.mjs");
+  try {
+    const scriptsRoot = path.dirname(executorPath);
+    const source = (await readFile(executorPath, "utf8")).replace(
+      /from "(\.\/[^"\n]+)"/g,
+      (_, specifier) =>
+        `from ${JSON.stringify(
+          pathToFileURL(path.resolve(scriptsRoot, specifier)).href,
+        )}`,
+    );
+    await writeFile(
+      harnessPath,
+      `${source}\nexport { runPrivateFullCatalogReconciliation };\n`,
+      { flag: "wx", mode: 0o600 },
+    );
+    const harness = await import(pathToFileURL(harnessPath).href);
+    return await callback(harness.runPrivateFullCatalogReconciliation);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("legacy production CLIs stay disabled while the high-level executor owns dispatch", async () => {
+  assert.equal(
+    reconciliationRunnerModule.runFullCatalogReconciliation,
+    undefined,
+  );
   assert.equal(
     reconciliationRunnerModule.finalizeRedactedReconciliationReceipt,
     undefined,
   );
   assert.equal(runGuardedCatalogDeployment, undefined);
   assert.equal(runGuardedCatalogPolicyDeployment, undefined);
+});
+
+function reconciliationClientOptions(overrides = {}) {
+  return {
+    ...reconciliationExecution,
+    expectedAppCommit: commit,
+    pageSize: 200,
+    pollMs: 1,
+    maxSteps: 10,
+    maxElapsedMs: 60_000,
+    requestTimeoutMs: 10_000,
+    resolveSecret: async () => Buffer.from("test-bot-secret-value", "utf8"),
+    resolveCommit: async () => commit,
+    sleep: async () => {},
+    clock: () => new Date(),
+    ...overrides,
+  };
+}
+
+function completedReconciliationPage() {
+  return page({
+    outcome: "complete",
+    phase: "complete",
+    continuationStateDigestSha256: "",
+    cycleComplete: true,
+    catalogComplete: true,
+    stabilityVerified: true,
+    sourceCountsVerified: true,
+    mutationGenerationDigestSha256: mutationGenerationDigest,
+    completionDigest,
+  });
+}
+
+test("reconciliation transport calls its one-shot dispatch hook once and never blindly retries ambiguity", async () => {
+  await withPrivateReconciliationTransport(async (runReconciliation) => {
+    let dispatchCalls = 0;
+    let requestCalls = 0;
+    const responses = [
+      page({ outcome: "product_scan_complete", phase: "mappings" }),
+      page({ outcome: "scan_complete", phase: "verify" }),
+      completedReconciliationPage(),
+    ];
+    const artifact = await runReconciliation(
+      reconciliationClientOptions({
+        fetchImpl: async () => {
+          requestCalls += 1;
+          return jsonResponse(responses.shift());
+        },
+        onBeforeFirstWrite: async () => {
+          dispatchCalls += 1;
+        },
+      }),
+    );
+    assert.equal(dispatchCalls, 1);
+    assert.equal(requestCalls, 3);
+    assert.equal(artifact.kind, "spazaone_catalog_full_reconciliation");
+    assert.equal(artifact.redactedReceiptSha256.length, 64);
+
+    dispatchCalls = 0;
+    requestCalls = 0;
+    await assert.rejects(
+      runReconciliation(
+        reconciliationClientOptions({
+          fetchImpl: async () => {
+            requestCalls += 1;
+            if (requestCalls === 1) {
+              return jsonResponse(
+                page({ outcome: "product_scan_complete", phase: "mappings" }),
+              );
+            }
+            throw new Error("lost response");
+          },
+          onBeforeFirstWrite: async () => {
+            dispatchCalls += 1;
+          },
+        }),
+      ),
+      (error) =>
+        error.code === "RECONCILIATION_HTTP_AMBIGUOUS" &&
+        error.needsReview === true,
+    );
+    assert.equal(dispatchCalls, 1);
+    assert.equal(requestCalls, 2);
+  });
+});
+
+test("reviewed reconciliation is inspection-only until exact continuation facts are authorized", async () => {
+  await withPrivateReconciliationTransport(async (runReconciliation) => {
+    let requestBody;
+    const recovery = await runReconciliation(
+      reconciliationClientOptions({
+        reviewedResume: true,
+        fetchImpl: async (_url, init) => {
+          requestBody = JSON.parse(init.body);
+          return jsonResponse({
+            outcome: "recovery_state",
+            phase: "mappings",
+            cycleId,
+            acknowledgedPages: 2,
+            productScanComplete: true,
+            mappingScanComplete: false,
+            continuationStateDigestSha256: continuationDigest,
+            deployedAppCommit: commit,
+            targetConfigurationDigestSha256: targetDigest,
+            firebaseProjectId: PRODUCTION_FIREBASE_PROJECT_ID,
+            catalogId: PRODUCTION_NATIVE_CATALOG_TARGET.catalogId,
+            senderPhoneNumberId:
+              PRODUCTION_NATIVE_CATALOG_TARGET.senderPhoneNumberId,
+          });
+        },
+      }),
+    );
+    assert.equal(requestBody.operation, "inspect_recovery");
+    assert.deepEqual(recovery, {
+      outcome: "continuation_authorization_required",
+      cycleId,
+      continuationStateDigestSha256: continuationDigest,
+      acknowledgedPages: 2,
+      productScanComplete: true,
+      mappingScanComplete: false,
+    });
+
+    let dispatchCalls = 0;
+    const bodies = [];
+    const responses = [
+      page({ outcome: "scan_complete", phase: "verify" }),
+      completedReconciliationPage(),
+    ];
+    const artifact = await runReconciliation(
+      reconciliationClientOptions({
+        reviewedResume: true,
+        continuationState: {
+          cycleId,
+          continuationStateDigestSha256: continuationDigest,
+          acknowledgedPages: 2,
+          productScanComplete: true,
+          mappingScanComplete: false,
+        },
+        fetchImpl: async (_url, init) => {
+          bodies.push(JSON.parse(init.body));
+          return jsonResponse(responses.shift());
+        },
+        onBeforeFirstWrite: async () => {
+          dispatchCalls += 1;
+        },
+      }),
+    );
+    assert.equal(dispatchCalls, 1);
+    assert.equal(bodies[0].operation, "continue");
+    assert.equal(
+      bodies[0].expectedContinuationStateDigestSha256,
+      continuationDigest,
+    );
+    assert.equal(artifact.kind, "spazaone_catalog_full_reconciliation");
+  });
 });
 
 const candidateManifestPath = "/tmp/spazaone-reviewed-candidate.json";

@@ -580,6 +580,7 @@ function redactedRecoveryState(value) {
     return null;
   }
   return {
+    cycleId: String(value.cycleId),
     phase,
     acknowledgedPages,
     productScanComplete,
@@ -700,9 +701,58 @@ function finalizeRedactedReconciliationReceipt(input) {
  * the immutable deployment binding before continuing. Network, timeout, or
  * malformed-success ambiguity stops immediately and is never blindly retried.
  */
-// Module-private by design. The CLI stops before this path while execution is
-// disabled, preventing an importer from substituting dependency-injected
-// responses for production reconciliation evidence.
+// Module-private by design. The legacy CLI stops before this path. The enabled
+// writer owns its separate private copy inside the zero-export high-level
+// executor, so an importer cannot substitute dependency-injected responses for
+// attested production reconciliation evidence.
+export function reconciliationOperationInputSha256({
+  pageSize = 200,
+  pollMs = 65_000,
+  maxSteps = 10_000,
+  maxElapsedMs = 24 * 60 * 60 * 1000,
+  requestTimeoutMs = 570_000,
+} = {}) {
+  return sha256(
+    JSON.stringify({
+      pageSize,
+      pollMs,
+      maxSteps,
+      maxElapsedMs,
+      requestTimeoutMs,
+    }),
+  );
+}
+
+function exactContinuationState(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const expectedKeys = [
+    "acknowledgedPages",
+    "continuationStateDigestSha256",
+    "cycleId",
+    "mappingScanComplete",
+    "productScanComplete",
+  ];
+  if (
+    JSON.stringify(Object.keys(value).sort()) !==
+      JSON.stringify(expectedKeys) ||
+    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    !/^[a-f0-9]{64}$/.test(String(value.continuationStateDigestSha256 ?? "")) ||
+    nonNegativeInteger(value.acknowledgedPages) === null ||
+    typeof value.productScanComplete !== "boolean" ||
+    typeof value.mappingScanComplete !== "boolean" ||
+    (value.mappingScanComplete && !value.productScanComplete)
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    cycleId: value.cycleId,
+    continuationStateDigestSha256: value.continuationStateDigestSha256,
+    acknowledgedPages: value.acknowledgedPages,
+    productScanComplete: value.productScanComplete,
+    mappingScanComplete: value.mappingScanComplete,
+  });
+}
+
 async function runFullCatalogReconciliation({
   execute = false,
   expectedAppCommit,
@@ -715,6 +765,8 @@ async function runFullCatalogReconciliation({
   maxSteps = 10_000,
   maxElapsedMs = 24 * 60 * 60 * 1000,
   requestTimeoutMs = 570_000,
+  continuationState = null,
+  onBeforeFirstWrite,
   fetchImpl = global.fetch,
   verifyToolchain = assertPinnedProductionToolchain,
   verifyCandidateManifest = loadAndValidateProductionCandidateManifest,
@@ -736,6 +788,25 @@ async function runFullCatalogReconciliation({
   ) {
     throw new ReconciliationOperatorError(
       "EXPECTED_CURRENT_MAIN_COMMIT_INVALID",
+    );
+  }
+  const continuation =
+    continuationState === null
+      ? null
+      : exactContinuationState(continuationState);
+  if (
+    (continuationState !== null && !continuation) ||
+    (continuation !== null && reviewedResume !== true) ||
+    (continuation === null &&
+      reviewedResume !== true &&
+      typeof onBeforeFirstWrite !== "function") ||
+    (continuation !== null && typeof onBeforeFirstWrite !== "function") ||
+    (continuation === null &&
+      reviewedResume === true &&
+      onBeforeFirstWrite !== undefined)
+  ) {
+    throw new ReconciliationOperatorError(
+      "RECONCILIATION_EXECUTION_CAPABILITY_INVALID",
     );
   }
   if (
@@ -774,16 +845,14 @@ async function runFullCatalogReconciliation({
       "PRODUCTION_TOOLCHAIN_PREFLIGHT_FAILED",
     );
   }
-  const operationInputSha256 = sha256(
-    JSON.stringify({
-      reviewedResume,
-      pageSize,
-      pollMs,
-      maxSteps,
-      maxElapsedMs,
-      requestTimeoutMs,
-    }),
-  );
+  const operationInputSha256 = reconciliationOperationInputSha256({
+    reviewedResume,
+    pageSize,
+    pollMs,
+    maxSteps,
+    maxElapsedMs,
+    requestTimeoutMs,
+  });
 
   const resolveExactCommit = async () => {
     const resolvedCommit = await resolveCommit({
@@ -823,11 +892,13 @@ async function runFullCatalogReconciliation({
     throw new ReconciliationOperatorError("BOT_SECRET_RESOLUTION_INVALID");
   }
 
-  let cycleId = "";
-  let continuationStateDigestSha256 = "";
-  let acknowledgedPages = 0;
-  let productScanComplete = false;
-  let mappingScanComplete = false;
+  let cycleId = continuation?.cycleId ?? "";
+  let continuationStateDigestSha256 =
+    continuation?.continuationStateDigestSha256 ?? "";
+  let acknowledgedPages = continuation?.acknowledgedPages ?? 0;
+  let productScanComplete = continuation?.productScanComplete ?? false;
+  let mappingScanComplete = continuation?.mappingScanComplete ?? false;
+  let firstWriteStarted = false;
   const serverStateRequiresReview = () =>
     reviewedResume || acknowledgedPages > 0;
   try {
@@ -835,7 +906,7 @@ async function runFullCatalogReconciliation({
       expectedAppCommit: appCommit,
       expectedTargetConfigurationDigestSha256: targetConfigurationDigestSha256,
     };
-    if (reviewedResume) {
+    if (reviewedResume && continuation === null) {
       let recovery;
       try {
         if ((await resolveExactCommit()) !== appCommit) {
@@ -910,14 +981,17 @@ async function runFullCatalogReconciliation({
           outboxStatusCounts: completion.outboxStatusCounts,
         });
       }
-      // A reviewed resume is inspection-only. If remote completion cannot be
-      // proven, this invocation must stop before the first continuation write.
-      // A new, same-process capability must bind this exact readback and be
-      // freshly authorized before a later continuation attempt.
-      throw new ReconciliationOperatorError(
-        "FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED",
-        { ambiguous: false, needsReview: true },
-      );
+      // Inspection is deliberately write-free. The high-level executor binds
+      // these exact facts into a private capability and obtains a fresh TTY
+      // authorization before invoking the continuation path.
+      return Object.freeze({
+        outcome: "continuation_authorization_required",
+        cycleId: recovery.cycleId,
+        continuationStateDigestSha256: recovery.continuationStateDigestSha256,
+        acknowledgedPages: recovery.acknowledgedPages,
+        productScanComplete: recovery.productScanComplete,
+        mappingScanComplete: recovery.mappingScanComplete,
+      });
     }
     for (let step = 0; step < maxSteps; step += 1) {
       if (Date.now() - startedAtMs > maxElapsedMs) {
@@ -958,6 +1032,10 @@ async function runFullCatalogReconciliation({
       }
       let page;
       try {
+        if (!firstWriteStarted) {
+          await onBeforeFirstWrite();
+          firstWriteStarted = true;
+        }
         page = await requestPage({
           fetchImpl,
           token,

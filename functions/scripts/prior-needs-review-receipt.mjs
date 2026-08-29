@@ -295,6 +295,23 @@ async function revalidateLoadedReceipt(state, loadedReceipt) {
   }
 }
 
+/**
+ * Rechecks the exact held inode and bytes without minting a resume claim. The
+ * high-level production executor uses this immediately before its private
+ * continuation capability is consumed.
+ */
+export async function revalidateLoadedPriorNeedsReviewReceipt(loadedReceipt) {
+  const state = loadedReceipts.get(loadedReceipt);
+  if (!state) fail("PRIOR_NEEDS_REVIEW_RECEIPT_NOT_LOADED");
+  await revalidateLoadedReceipt(state, loadedReceipt);
+  return Object.freeze({
+    outcome: "revalidated",
+    priorReceiptSha256: loadedReceipt.priorReceiptSha256,
+    operationBindingSha256: loadedReceipt.operationBindingSha256,
+    authorizesReviewedResume: false,
+  });
+}
+
 function claimPathFor(parentPath, priorReceiptSha256) {
   return path.join(
     parentPath,

@@ -32,6 +32,7 @@
     "deploy": "node scripts/block-raw-production-functions-deploy.mjs",
     "logs": "firebase functions:log",
     "catalog:audit": "npm run build && node scripts/audit-whatsapp-catalog-products.mjs",
+    "catalog:candidate:create": "node scripts/create-whatsapp-catalog-production-candidate.mjs",
     "catalog:reconcile:production": "node scripts/run-whatsapp-catalog-full-reconciliation.mjs",
     "catalog:deploy:guard": "node scripts/guard-whatsapp-catalog-functions-deploy.mjs",
     "seed:qa": "npm run build && node scripts/seed-local-qa.mjs",

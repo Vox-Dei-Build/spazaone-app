@@ -5,9 +5,18 @@ import {
   spawn as nodeSpawn,
 } from "node:child_process";
 import { createHash } from "node:crypto";
-import { fstatSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeSync,
+} from "node:fs";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
+import { isatty } from "node:tty";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -30,12 +39,16 @@ import {
 } from "./guard-whatsapp-catalog-functions-deploy.mjs";
 import {
   APP_REPOSITORY_ROOT,
+  FROZEN_APP_MAIN_COMMIT,
   ReconciliationOperatorError,
   parseRunnerArguments,
+  reconciliationOperationInputSha256,
   resolveAuthorityAppCommit,
+  resolvePasellaBotToken,
   scrubCredentialEnvironment,
 } from "./run-whatsapp-catalog-full-reconciliation.mjs";
 import {
+  FINALIZED_RECONCILIATION_ARTIFACT_KEYS,
   PINNED_FIREBASE_CLI,
   PINNED_NODE_RUNTIME,
   PRODUCTION_WRITE_AUTHORITY,
@@ -45,6 +58,7 @@ import {
   canonicalJson,
   canonicalSha256,
   productionReceiptToolchain,
+  validateFinalizedReconciliationArtifact,
   validateProductionWriteReceipt,
 } from "./production-write-receipt.mjs";
 import {
@@ -56,6 +70,10 @@ import {
   computeCandidateFirebaseSourceContract,
 } from "./firebase-function-source-binding.mjs";
 import { createDurableArtifactTransaction } from "./durable-artifact-transaction.mjs";
+import {
+  loadPriorNeedsReviewReceipt,
+  revalidateLoadedPriorNeedsReviewReceipt,
+} from "./prior-needs-review-receipt.mjs";
 import {
   cleanupExactCommitFirebasePackage,
   cleanupFirebaseProviderWorkspace,
@@ -71,6 +89,8 @@ import {
 import {
   PRODUCTION_FIREBASE_ACCOUNT,
   PRODUCTION_FIREBASE_PROJECT_ID,
+  PRODUCTION_NATIVE_CATALOG_TARGET,
+  RECONCILIATION_FUNCTION_URL,
   nativeCatalogTargetConfigurationDigestSha256,
 } from "./whatsapp-catalog-production-target.mjs";
 
@@ -87,6 +107,10 @@ const LEGACY_RECONCILIATION_SCRIPT = path.join(
 );
 const MAX_DOTENV_BYTES = 16 * 1024;
 const MAX_READBACK_BYTES = 10 * 1024 * 1024;
+const MAX_RECONCILIATION_RESPONSE_BYTES = 5 * 1024 * 1024;
+const MAX_TTY_RESPONSE_BYTES = 512;
+const ACTION_AUTHORIZATION_WINDOW_MS = 5 * 60 * 1000;
+const CONTROLLING_TTY_PATH = "/dev/tty";
 const SHA256 = /^[a-f0-9]{64}$/;
 const authorityAttestations = new WeakMap();
 const preparedLiveSessions = new WeakMap();
@@ -99,7 +123,7 @@ const CLEAN_LAUNCHER = Object.freeze({
     FUNCTIONS_DIRECTORY,
     "scripts/launch-whatsapp-catalog-production.sh",
   ),
-  sha256: "c8b035e9da2d88ba7486ab879e2b7077e06b9865b534db800f1f321be04608c3",
+  sha256: "a1dd74131ca74bcbebac23cba2c24b1efbaf0bb6619f8f7cdac5aae3d1cf8e80",
   fd: 3,
 });
 
@@ -119,13 +143,6 @@ class ProductionExecutorError extends Error {
 
 function fail(code, details) {
   throw new ProductionExecutorError(code, details);
-}
-
-function assertExecutorActivationAuthorized() {
-  // Credential provisioning did not authorize enabling a production write
-  // transport. Keep the reviewed body unreachable until a separate change
-  // explicitly replaces this hard stop after adversarial review.
-  fail("PRODUCTION_EXECUTOR_ACTIVATION_NOT_AUTHORIZED");
 }
 
 function sha256(value) {
@@ -476,9 +493,14 @@ async function prepareProductionLiveSession({
         bindingSha256,
         expiresAt,
         appCommit: context.expectedAppCommit,
+        governedMainCommit: context.expectedCurrentMainCommit,
         gitTreeSha1: candidate.gitTreeSha1,
         gitArchiveSha256: packageDescriptor.gitArchiveSha256,
         packageInventorySha256: packageDescriptor.packageInventorySha256,
+        candidateManifestSha256: candidate.manifestSha256,
+        reviewedEvidenceReceiptSetSha256: candidate.receiptSetSha256,
+        targetConfigurationDigestSha256:
+          nativeCatalogTargetConfigurationDigestSha256(),
         operation: Object.freeze({ ...binding.operation }),
         recoveryMode: recoveryBinding.mode,
         receiptPathSha256: binding.receiptPathSha256,
@@ -725,12 +747,24 @@ function exactRecoveryReadback(value) {
   const expectedKeys =
     value.outcome === "complete"
       ? ["cycleId", "outcome"]
-      : ["continuationStateDigestSha256", "cycleId", "outcome"];
+      : [
+          "acknowledgedPages",
+          "continuationStateDigestSha256",
+          "cycleId",
+          "mappingScanComplete",
+          "outcome",
+          "productScanComplete",
+        ];
   if (
     canonicalJson(Object.keys(value).sort()) !== canonicalJson(expectedKeys) ||
     !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
     (value.outcome === "incomplete" &&
-      !SHA256.test(String(value.continuationStateDigestSha256 ?? "")))
+      (!SHA256.test(String(value.continuationStateDigestSha256 ?? "")) ||
+        !Number.isSafeInteger(value.acknowledgedPages) ||
+        value.acknowledgedPages < 0 ||
+        typeof value.productScanComplete !== "boolean" ||
+        typeof value.mappingScanComplete !== "boolean" ||
+        (value.mappingScanComplete && !value.productScanComplete)))
   ) {
     fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
   }
@@ -896,6 +930,7 @@ async function mintFreshReconciliationContinuationCapability(
     binding: continuationBinding,
     bindingSha256: canonicalSha256(continuationBinding),
     consumed: false,
+    continuationReadback: validatedReadback,
     recoveryReadback: undefined,
     recoveryReadbackSha256: undefined,
     recoveryReadbackProvider: undefined,
@@ -1065,6 +1100,983 @@ async function readStandardInput() {
   const result = bytes.toString("utf8");
   bytes.fill(0);
   return result;
+}
+
+function nonNegativeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+const RECONCILIATION_OUTBOX_STATUS_KEYS = Object.freeze([
+  "pending",
+  "retry",
+  "processing",
+  "submitted",
+  "active",
+  "deleted",
+  "rejected",
+  "unknown",
+]);
+
+function pendingOutboxStatusCount(counts) {
+  return counts.pending + counts.retry + counts.processing + counts.submitted;
+}
+
+function drainedOutboxEvidence(value) {
+  const counts = value?.outboxStatusCounts;
+  return (
+    value?.outboxCountsVerified === true &&
+    nonNegativeInteger(value?.totalOutboxDocuments) !== null &&
+    counts &&
+    canonicalJson(Object.keys(counts).sort()) ===
+      canonicalJson([...RECONCILIATION_OUTBOX_STATUS_KEYS].sort()) &&
+    RECONCILIATION_OUTBOX_STATUS_KEYS.every(
+      (key) => nonNegativeInteger(counts[key]) !== null,
+    ) &&
+    pendingOutboxStatusCount(counts) === 0 &&
+    counts.unknown === 0 &&
+    RECONCILIATION_OUTBOX_STATUS_KEYS.reduce(
+      (sum, key) => sum + counts[key],
+      0,
+    ) === value.totalOutboxDocuments
+  );
+}
+
+function redactedReconciliationPage(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const outcomes = new Set([
+    "page",
+    "product_scan_complete",
+    "scan_complete",
+    "verification_incomplete",
+    "complete",
+  ]);
+  const phases = new Set(["products", "mappings", "verify", "complete"]);
+  const cycleId = String(value.cycleId ?? "");
+  const outcome = String(value.outcome ?? "");
+  const phase = String(value.phase ?? "");
+  const continuationStateDigestSha256 = String(
+    value.continuationStateDigestSha256 ?? "",
+  );
+  const pendingOutboxJobs = nonNegativeInteger(value.pendingOutboxJobs);
+  const totalOutboxDocuments = nonNegativeInteger(value.totalOutboxDocuments);
+  const outboxCountsVerified = value.outboxCountsVerified === true;
+  const incompleteMerchants = nonNegativeInteger(value.incompleteMerchants);
+  const malformedMappings = nonNegativeInteger(value.malformedMappings);
+  const deployedAppCommit = String(value.deployedAppCommit ?? "");
+  const targetConfigurationDigestSha256 = String(
+    value.targetConfigurationDigestSha256 ?? "",
+  );
+  const firebaseProjectId = String(value.firebaseProjectId ?? "");
+  const catalogId = String(value.catalogId ?? "");
+  const senderPhoneNumberId = String(value.senderPhoneNumberId ?? "");
+  const counts = value.outboxStatusCounts;
+  const outboxStatusCounts =
+    counts && typeof counts === "object" && !Array.isArray(counts)
+      ? Object.fromEntries(
+          RECONCILIATION_OUTBOX_STATUS_KEYS.map((key) => [
+            key,
+            nonNegativeInteger(counts[key]),
+          ]),
+        )
+      : null;
+  const terminal = outcome === "complete";
+  const cycleStartedAt = String(value.cycleStartedAt ?? "");
+  const cycleCompletedAt = String(value.cycleCompletedAt ?? "");
+  const mutationGenerationDigestSha256 = String(
+    value.mutationGenerationDigestSha256 ?? "",
+  );
+  const validTerminalTimes =
+    Number.isFinite(Date.parse(cycleStartedAt)) &&
+    Number.isFinite(Date.parse(cycleCompletedAt)) &&
+    Date.parse(cycleStartedAt) <= Date.parse(cycleCompletedAt);
+  const completeOutboxCounts =
+    outboxStatusCounts &&
+    canonicalJson(Object.keys(counts).sort()) ===
+      canonicalJson([...RECONCILIATION_OUTBOX_STATUS_KEYS].sort()) &&
+    Object.values(outboxStatusCounts).every((count) => count !== null);
+  const hasOutboxEvidence =
+    value.outboxStatusCounts !== undefined ||
+    value.totalOutboxDocuments !== undefined ||
+    value.outboxCountsVerified !== undefined;
+  if (
+    !outcomes.has(outcome) ||
+    !phases.has(phase) ||
+    !/^[a-f0-9]{32}$/.test(cycleId) ||
+    (!terminal && !SHA256.test(continuationStateDigestSha256)) ||
+    (terminal && continuationStateDigestSha256) ||
+    (terminal && !validTerminalTimes) ||
+    (terminal && !SHA256.test(mutationGenerationDigestSha256)) ||
+    (!terminal && mutationGenerationDigestSha256) ||
+    pendingOutboxJobs === null ||
+    incompleteMerchants === null ||
+    malformedMappings === null ||
+    (hasOutboxEvidence &&
+      (!completeOutboxCounts || totalOutboxDocuments === null)) ||
+    (terminal &&
+      (!completeOutboxCounts ||
+        totalOutboxDocuments === null ||
+        !outboxCountsVerified)) ||
+    !/^[a-f0-9]{40}$/.test(deployedAppCommit) ||
+    !SHA256.test(targetConfigurationDigestSha256) ||
+    firebaseProjectId !== PRODUCTION_FIREBASE_PROJECT_ID ||
+    catalogId !== PRODUCTION_NATIVE_CATALOG_TARGET.catalogId ||
+    senderPhoneNumberId !==
+      PRODUCTION_NATIVE_CATALOG_TARGET.senderPhoneNumberId ||
+    (completeOutboxCounts &&
+      Object.values(outboxStatusCounts).reduce(
+        (sum, count) => sum + count,
+        0,
+      ) !== totalOutboxDocuments) ||
+    (completeOutboxCounts &&
+      pendingOutboxStatusCount(outboxStatusCounts) !== pendingOutboxJobs)
+  ) {
+    return null;
+  }
+  return {
+    outcome,
+    phase,
+    cycleId,
+    continuationStateDigestSha256,
+    pendingOutboxJobs,
+    incompleteMerchants,
+    malformedMappings,
+    cycleComplete: value.cycleComplete === true,
+    catalogComplete: value.catalogComplete === true,
+    stabilityVerified: value.stabilityVerified === true,
+    sourceCountsVerified: value.sourceCountsVerified === true,
+    ...(completeOutboxCounts
+      ? { totalOutboxDocuments, outboxCountsVerified }
+      : {}),
+    completionDigest: String(value.completionDigest ?? ""),
+    ...(terminal
+      ? {
+          cycleStartedAt,
+          cycleCompletedAt,
+          mutationGenerationDigestSha256,
+        }
+      : {}),
+    deployedAppCommit,
+    targetConfigurationDigestSha256,
+    firebaseProjectId,
+    catalogId,
+    senderPhoneNumberId,
+    ...(completeOutboxCounts ? { outboxStatusCounts } : {}),
+  };
+}
+
+function safeReconciliationProviderCode(value) {
+  const code = String(value ?? "").toUpperCase();
+  return /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : "UNCLASSIFIED";
+}
+
+async function readReconciliationResponseJson(response) {
+  const responseAmbiguous =
+    response.ok ||
+    response.status >= 500 ||
+    [408, 425, 429].includes(response.status);
+  const declaredLength = Number(response.headers?.get?.("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > MAX_RECONCILIATION_RESPONSE_BYTES
+  ) {
+    throw new ReconciliationOperatorError("RECONCILIATION_RESPONSE_TOO_LARGE", {
+      ambiguous: responseAmbiguous,
+    });
+  }
+  let responseText = "";
+  try {
+    responseText = await response.text();
+  } catch (_) {
+    throw new ReconciliationOperatorError(
+      "RECONCILIATION_RESPONSE_UNREADABLE",
+      { ambiguous: responseAmbiguous },
+    );
+  }
+  if (
+    Buffer.byteLength(responseText, "utf8") > MAX_RECONCILIATION_RESPONSE_BYTES
+  ) {
+    responseText = "";
+    throw new ReconciliationOperatorError("RECONCILIATION_RESPONSE_TOO_LARGE", {
+      ambiguous: responseAmbiguous,
+    });
+  }
+  try {
+    const parsed = JSON.parse(responseText);
+    responseText = "";
+    return parsed;
+  } catch (_) {
+    responseText = "";
+    throw new ReconciliationOperatorError("RECONCILIATION_RESPONSE_INVALID", {
+      ambiguous: responseAmbiguous,
+    });
+  }
+}
+
+async function requestPrivateReconciliationJson({
+  fetchImpl,
+  token,
+  body,
+  requestTimeoutMs,
+}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+  let response;
+  let headerValue = "";
+  try {
+    headerValue = token.toString("utf8");
+    response = await fetchImpl(RECONCILIATION_FUNCTION_URL, {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        "content-type": "application/json",
+        "x-pasella-bot-token": headerValue,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (_) {
+    throw new ReconciliationOperatorError("RECONCILIATION_HTTP_AMBIGUOUS", {
+      ambiguous: true,
+    });
+  } finally {
+    headerValue = "";
+    clearTimeout(timer);
+  }
+  const payload = await readReconciliationResponseJson(response);
+  if (!response.ok) {
+    const providerCode = safeReconciliationProviderCode(payload?.code);
+    const ambiguous =
+      response.status >= 500 || [408, 425, 429].includes(response.status);
+    throw new ReconciliationOperatorError(
+      `RECONCILIATION_HTTP_${response.status}_${providerCode}`,
+      { ambiguous },
+    );
+  }
+  return payload;
+}
+
+async function requestPrivateReconciliationPage(options) {
+  const page = redactedReconciliationPage(
+    await requestPrivateReconciliationJson(options),
+  );
+  if (!page) {
+    throw new ReconciliationOperatorError("RECONCILIATION_RESPONSE_INVALID", {
+      ambiguous: true,
+    });
+  }
+  return page;
+}
+
+function redactedReconciliationRecoveryState(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const phase = String(value.phase ?? "");
+  const acknowledgedPages = nonNegativeInteger(value.acknowledgedPages);
+  const continuationStateDigestSha256 = String(
+    value.continuationStateDigestSha256 ?? "",
+  );
+  const deployedAppCommit = String(value.deployedAppCommit ?? "");
+  const targetConfigurationDigestSha256 = String(
+    value.targetConfigurationDigestSha256 ?? "",
+  );
+  const productScanComplete = value.productScanComplete;
+  const mappingScanComplete = value.mappingScanComplete;
+  const completion =
+    phase === "complete"
+      ? redactedReconciliationPage({
+          ...value,
+          outcome: "complete",
+          phase: "complete",
+          continuationStateDigestSha256: "",
+        })
+      : null;
+  if (
+    value.outcome !== "recovery_state" ||
+    !new Set(["products", "mappings", "verify", "complete"]).has(phase) ||
+    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    acknowledgedPages === null ||
+    !SHA256.test(continuationStateDigestSha256) ||
+    !/^[a-f0-9]{40}$/.test(deployedAppCommit) ||
+    !SHA256.test(targetConfigurationDigestSha256) ||
+    typeof productScanComplete !== "boolean" ||
+    typeof mappingScanComplete !== "boolean" ||
+    (mappingScanComplete && !productScanComplete) ||
+    (phase === "complete" &&
+      (!completion || !productScanComplete || !mappingScanComplete)) ||
+    value.firebaseProjectId !== PRODUCTION_FIREBASE_PROJECT_ID ||
+    value.catalogId !== PRODUCTION_NATIVE_CATALOG_TARGET.catalogId ||
+    value.senderPhoneNumberId !==
+      PRODUCTION_NATIVE_CATALOG_TARGET.senderPhoneNumberId
+  ) {
+    return null;
+  }
+  return {
+    cycleId: value.cycleId,
+    phase,
+    acknowledgedPages,
+    productScanComplete,
+    mappingScanComplete,
+    continuationStateDigestSha256,
+    deployedAppCommit,
+    targetConfigurationDigestSha256,
+    ...(completion ? { completion } : {}),
+  };
+}
+
+async function requestPrivateReconciliationRecoveryState(options) {
+  const state = redactedReconciliationRecoveryState(
+    await requestPrivateReconciliationJson(options),
+  );
+  if (!state) {
+    throw new ReconciliationOperatorError(
+      "RECONCILIATION_RECOVERY_RESPONSE_INVALID",
+      { ambiguous: false, needsReview: true },
+    );
+  }
+  return state;
+}
+
+function reconciliationIso(clock) {
+  const value = clock();
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    throw new ReconciliationOperatorError("OPERATOR_CLOCK_INVALID");
+  }
+  return date.toISOString();
+}
+
+function finalizePrivateReconciliationArtifact(input) {
+  const startedAtMs = Date.parse(input.startedAt);
+  const completedAtMs = Date.parse(input.completedAt);
+  const verifiedAtMs = Date.parse(input.verifiedAt);
+  if (
+    !Number.isFinite(startedAtMs) ||
+    !Number.isFinite(completedAtMs) ||
+    !Number.isFinite(verifiedAtMs) ||
+    startedAtMs > completedAtMs ||
+    completedAtMs > verifiedAtMs ||
+    !/^[a-f0-9]{40}$/.test(input.appCommit) ||
+    !SHA256.test(input.targetConfigurationDigestSha256) ||
+    !/^[a-f0-9]{32}$/.test(input.cycleId) ||
+    !SHA256.test(input.mutationGenerationDigestSha256) ||
+    !SHA256.test(input.completionDigest) ||
+    input.productScanComplete !== true ||
+    input.mappingScanComplete !== true ||
+    !drainedOutboxEvidence(input)
+  ) {
+    throw new ReconciliationOperatorError("RECONCILIATION_RECEIPT_INVALID");
+  }
+  const receipt = {
+    schemaVersion: 1,
+    kind: "spazaone_catalog_full_reconciliation",
+    verifiedAt: input.verifiedAt,
+    startedAt: input.startedAt,
+    completedAt: input.completedAt,
+    firebaseProjectId: PRODUCTION_FIREBASE_PROJECT_ID,
+    catalogId: PRODUCTION_NATIVE_CATALOG_TARGET.catalogId,
+    senderPhoneNumberId: PRODUCTION_NATIVE_CATALOG_TARGET.senderPhoneNumberId,
+    appCommit: input.appCommit,
+    targetConfigurationDigestSha256: input.targetConfigurationDigestSha256,
+    cycleId: input.cycleId,
+    deliveryEnabled: false,
+    syncEnabled: true,
+    scanScope: "all_eligible_merchants",
+    cycleComplete: true,
+    productScanComplete: true,
+    mappingScanComplete: true,
+    stabilityVerified: true,
+    sourceCountsVerified: true,
+    outboxDrained: true,
+    outboxPendingCount: input.outboxStatusCounts.pending,
+    outboxRetryCount: input.outboxStatusCounts.retry,
+    outboxProcessingCount: input.outboxStatusCounts.processing,
+    outboxSubmittedCount: input.outboxStatusCounts.submitted,
+    outboxActiveCount: input.outboxStatusCounts.active,
+    outboxDeletedCount: input.outboxStatusCounts.deleted,
+    outboxRejectedCount: input.outboxStatusCounts.rejected,
+    outboxUnknownCount: input.outboxStatusCounts.unknown,
+    outboxTotalCount: input.totalOutboxDocuments,
+    outboxCountsVerified: true,
+    catalogComplete: true,
+    setEqualityVerified: true,
+    mutationGenerationDigestSha256: input.mutationGenerationDigestSha256,
+    completionDigest: input.completionDigest,
+    incompleteMerchantCount: 0,
+    malformedMappingCount: 0,
+  };
+  const finalized = {
+    ...receipt,
+    redactedReceiptSha256: canonicalSha256(receipt),
+  };
+  if (
+    canonicalJson(Object.keys(finalized)) !==
+    canonicalJson(FINALIZED_RECONCILIATION_ARTIFACT_KEYS)
+  ) {
+    throw new ReconciliationOperatorError("RECONCILIATION_RECEIPT_INVALID");
+  }
+  try {
+    validateFinalizedReconciliationArtifact(finalized, {
+      expectedAppCommit: input.appCommit,
+      expectedTargetConfigurationDigestSha256:
+        input.targetConfigurationDigestSha256,
+    });
+  } catch (_) {
+    throw new ReconciliationOperatorError("RECONCILIATION_RECEIPT_INVALID");
+  }
+  return finalized;
+}
+
+function exactReconciliationContinuationState(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const expectedKeys = [
+    "acknowledgedPages",
+    "continuationStateDigestSha256",
+    "cycleId",
+    "mappingScanComplete",
+    "productScanComplete",
+  ];
+  if (
+    canonicalJson(Object.keys(value).sort()) !== canonicalJson(expectedKeys) ||
+    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    !SHA256.test(String(value.continuationStateDigestSha256 ?? "")) ||
+    nonNegativeInteger(value.acknowledgedPages) === null ||
+    typeof value.productScanComplete !== "boolean" ||
+    typeof value.mappingScanComplete !== "boolean" ||
+    (value.mappingScanComplete && !value.productScanComplete)
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    cycleId: value.cycleId,
+    continuationStateDigestSha256: value.continuationStateDigestSha256,
+    acknowledgedPages: value.acknowledgedPages,
+    productScanComplete: value.productScanComplete,
+    mappingScanComplete: value.mappingScanComplete,
+  });
+}
+
+async function runPrivateFullCatalogReconciliation({
+  execute = false,
+  expectedAppCommit,
+  expectedCurrentMainCommit,
+  candidateManifestPath,
+  expectedCandidateManifestSha256,
+  reviewedResume = false,
+  pageSize = 200,
+  pollMs = 65_000,
+  maxSteps = 10_000,
+  maxElapsedMs = 24 * 60 * 60 * 1000,
+  requestTimeoutMs = 570_000,
+  continuationState = null,
+  onBeforeFirstWrite,
+  fetchImpl = global.fetch,
+  verifyToolchain = assertPinnedProductionToolchain,
+  verifyCandidateManifest = loadAndValidateProductionCandidateManifest,
+  resolveSecret = resolvePasellaBotToken,
+  resolveCommit = resolveAuthorityAppCommit,
+  sleep = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  clock = () => new Date(),
+} = {}) {
+  if (execute !== true) {
+    throw new ReconciliationOperatorError("RECONCILIATION_EXECUTE_REQUIRED");
+  }
+  if (!/^[a-f0-9]{40}$/.test(String(expectedAppCommit ?? ""))) {
+    throw new ReconciliationOperatorError("EXPECTED_APP_COMMIT_INVALID");
+  }
+  if (
+    !/^[a-f0-9]{40}$/.test(String(expectedCurrentMainCommit ?? "")) ||
+    expectedCurrentMainCommit !== FROZEN_APP_MAIN_COMMIT
+  ) {
+    throw new ReconciliationOperatorError(
+      "EXPECTED_CURRENT_MAIN_COMMIT_INVALID",
+    );
+  }
+  const continuation =
+    continuationState === null
+      ? null
+      : exactReconciliationContinuationState(continuationState);
+  if (
+    (continuationState !== null && !continuation) ||
+    (continuation !== null && reviewedResume !== true) ||
+    (continuation === null &&
+      reviewedResume !== true &&
+      typeof onBeforeFirstWrite !== "function") ||
+    (continuation !== null && typeof onBeforeFirstWrite !== "function") ||
+    (continuation === null &&
+      reviewedResume === true &&
+      onBeforeFirstWrite !== undefined)
+  ) {
+    throw new ReconciliationOperatorError(
+      "RECONCILIATION_EXECUTION_CAPABILITY_INVALID",
+    );
+  }
+  if (
+    typeof candidateManifestPath !== "string" ||
+    !path.isAbsolute(candidateManifestPath) ||
+    path.resolve(candidateManifestPath) !== candidateManifestPath ||
+    !SHA256.test(String(expectedCandidateManifestSha256 ?? ""))
+  ) {
+    throw new ReconciliationOperatorError(
+      "PRODUCTION_CANDIDATE_MANIFEST_REFERENCE_INVALID",
+    );
+  }
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 200) {
+    throw new ReconciliationOperatorError("RECONCILIATION_PAGE_SIZE_INVALID");
+  }
+  if (
+    !Number.isSafeInteger(maxSteps) ||
+    maxSteps < 1 ||
+    !Number.isSafeInteger(maxElapsedMs) ||
+    maxElapsedMs < 1 ||
+    !Number.isSafeInteger(requestTimeoutMs) ||
+    requestTimeoutMs < 1 ||
+    !Number.isSafeInteger(pollMs) ||
+    pollMs < 0 ||
+    typeof fetchImpl !== "function"
+  ) {
+    throw new ReconciliationOperatorError(
+      "RECONCILIATION_OPERATOR_CONFIG_INVALID",
+    );
+  }
+  try {
+    await verifyToolchain();
+  } catch (_) {
+    throw new ReconciliationOperatorError(
+      "PRODUCTION_TOOLCHAIN_PREFLIGHT_FAILED",
+    );
+  }
+  const operationInputSha256 = reconciliationOperationInputSha256({
+    pageSize,
+    pollMs,
+    maxSteps,
+    maxElapsedMs,
+    requestTimeoutMs,
+  });
+  const resolveExactCommit = async () => {
+    const resolvedCommit = await resolveCommit({
+      expectedCandidateCommit: expectedAppCommit,
+      expectedCurrentMainCommit,
+    });
+    try {
+      await verifyCandidateManifest({
+        manifestPath: candidateManifestPath,
+        expectedManifestSha256: expectedCandidateManifestSha256,
+        expectedAppCommit,
+        expectedCurrentMainCommit,
+        expectedOperation: {
+          kind: "full_reconciliation",
+          lane: "full-reconciliation",
+          selector: "functions:runWhatsAppCatalogFullReconciliationBotHttp",
+          inputSha256: operationInputSha256,
+        },
+      });
+    } catch (_) {
+      throw new ReconciliationOperatorError(
+        "PRODUCTION_CANDIDATE_MANIFEST_INVALID",
+      );
+    }
+    return resolvedCommit;
+  };
+  const appCommit = await resolveExactCommit();
+  if (appCommit !== expectedAppCommit) {
+    throw new ReconciliationOperatorError("EXPECTED_APP_COMMIT_MISMATCH");
+  }
+  const startedAt = reconciliationIso(clock);
+  const startedAtMs = Date.parse(startedAt);
+  const targetConfigurationDigestSha256 =
+    nativeCatalogTargetConfigurationDigestSha256();
+  const token = await resolveSecret();
+  if (!Buffer.isBuffer(token)) {
+    throw new ReconciliationOperatorError("BOT_SECRET_RESOLUTION_INVALID");
+  }
+
+  let cycleId = continuation?.cycleId ?? "";
+  let continuationStateDigestSha256 =
+    continuation?.continuationStateDigestSha256 ?? "";
+  let acknowledgedPages = continuation?.acknowledgedPages ?? 0;
+  let productScanComplete = continuation?.productScanComplete ?? false;
+  let mappingScanComplete = continuation?.mappingScanComplete ?? false;
+  let firstWriteStarted = false;
+  const serverStateRequiresReview = () =>
+    reviewedResume || acknowledgedPages > 0;
+  try {
+    const deploymentBinding = {
+      expectedAppCommit: appCommit,
+      expectedTargetConfigurationDigestSha256: targetConfigurationDigestSha256,
+    };
+    if (reviewedResume && continuation === null) {
+      let recovery;
+      try {
+        if ((await resolveExactCommit()) !== appCommit)
+          throw new Error("changed");
+        recovery = await requestPrivateReconciliationRecoveryState({
+          fetchImpl,
+          token,
+          body: { ...deploymentBinding, operation: "inspect_recovery" },
+          requestTimeoutMs,
+        });
+      } catch (error) {
+        const code =
+          error instanceof ReconciliationOperatorError
+            ? error.code
+            : "RECONCILIATION_RECOVERY_INSPECTION_NEEDS_REVIEW";
+        throw new ReconciliationOperatorError(code, {
+          ambiguous:
+            error instanceof ReconciliationOperatorError
+              ? error.ambiguous
+              : false,
+          needsReview: true,
+        });
+      }
+      if (
+        recovery.deployedAppCommit !== appCommit ||
+        recovery.targetConfigurationDigestSha256 !==
+          targetConfigurationDigestSha256
+      ) {
+        throw new ReconciliationOperatorError(
+          "RECONCILIATION_RECOVERY_BINDING_NEEDS_REVIEW",
+          { ambiguous: false, needsReview: true },
+        );
+      }
+      continuationStateDigestSha256 = recovery.continuationStateDigestSha256;
+      acknowledgedPages = recovery.acknowledgedPages;
+      productScanComplete = recovery.productScanComplete;
+      mappingScanComplete = recovery.mappingScanComplete;
+      if (recovery.completion) {
+        const completion = recovery.completion;
+        if (
+          completion.cycleComplete !== true ||
+          completion.catalogComplete !== true ||
+          completion.stabilityVerified !== true ||
+          completion.sourceCountsVerified !== true ||
+          completion.pendingOutboxJobs !== 0 ||
+          !drainedOutboxEvidence(completion) ||
+          completion.incompleteMerchants !== 0 ||
+          completion.malformedMappings !== 0 ||
+          !SHA256.test(completion.mutationGenerationDigestSha256) ||
+          !SHA256.test(completion.completionDigest)
+        ) {
+          throw new ReconciliationOperatorError(
+            "RECONCILIATION_RECOVERED_COMPLETION_EVIDENCE_INVALID",
+            { ambiguous: false, needsReview: true },
+          );
+        }
+        return finalizePrivateReconciliationArtifact({
+          verifiedAt: reconciliationIso(clock),
+          startedAt: completion.cycleStartedAt,
+          completedAt: completion.cycleCompletedAt,
+          appCommit,
+          targetConfigurationDigestSha256,
+          cycleId: completion.cycleId,
+          mutationGenerationDigestSha256:
+            completion.mutationGenerationDigestSha256,
+          completionDigest: completion.completionDigest,
+          productScanComplete,
+          mappingScanComplete,
+          totalOutboxDocuments: completion.totalOutboxDocuments,
+          outboxCountsVerified: completion.outboxCountsVerified,
+          outboxStatusCounts: completion.outboxStatusCounts,
+        });
+      }
+      return Object.freeze({
+        outcome: "continuation_authorization_required",
+        cycleId: recovery.cycleId,
+        continuationStateDigestSha256: recovery.continuationStateDigestSha256,
+        acknowledgedPages: recovery.acknowledgedPages,
+        productScanComplete: recovery.productScanComplete,
+        mappingScanComplete: recovery.mappingScanComplete,
+      });
+    }
+
+    for (let step = 0; step < maxSteps; step += 1) {
+      if (Date.now() - startedAtMs > maxElapsedMs) {
+        throw new ReconciliationOperatorError(
+          serverStateRequiresReview()
+            ? "RECONCILIATION_ELAPSED_LIMIT_NEEDS_REVIEW"
+            : "RECONCILIATION_ELAPSED_LIMIT_REACHED",
+          {
+            ambiguous: serverStateRequiresReview(),
+            needsReview: serverStateRequiresReview(),
+          },
+        );
+      }
+      const body = continuationStateDigestSha256
+        ? {
+            ...deploymentBinding,
+            operation: "continue",
+            expectedContinuationStateDigestSha256:
+              continuationStateDigestSha256,
+          }
+        : { ...deploymentBinding, operation: "start", pageSize };
+      try {
+        if ((await resolveExactCommit()) !== appCommit)
+          throw new Error("changed");
+      } catch (_) {
+        throw new ReconciliationOperatorError(
+          serverStateRequiresReview()
+            ? "RECONCILIATION_AUTHORITY_RECHECK_NEEDS_REVIEW"
+            : "APP_AUTHORITY_CHANGED",
+          {
+            ambiguous: serverStateRequiresReview(),
+            needsReview: serverStateRequiresReview(),
+          },
+        );
+      }
+      let page;
+      try {
+        if (!firstWriteStarted) {
+          await onBeforeFirstWrite();
+          firstWriteStarted = true;
+        }
+        page = await requestPrivateReconciliationPage({
+          fetchImpl,
+          token,
+          body,
+          requestTimeoutMs,
+        });
+      } catch (error) {
+        if (serverStateRequiresReview()) {
+          throw new ReconciliationOperatorError(
+            error instanceof ReconciliationOperatorError
+              ? error.code
+              : "RECONCILIATION_PAGE_NEEDS_REVIEW",
+            { ambiguous: true, needsReview: true },
+          );
+        }
+        throw error;
+      }
+      if (
+        page.deployedAppCommit !== appCommit ||
+        page.targetConfigurationDigestSha256 !==
+          targetConfigurationDigestSha256 ||
+        page.firebaseProjectId !== PRODUCTION_FIREBASE_PROJECT_ID ||
+        page.catalogId !== PRODUCTION_NATIVE_CATALOG_TARGET.catalogId ||
+        page.senderPhoneNumberId !==
+          PRODUCTION_NATIVE_CATALOG_TARGET.senderPhoneNumberId
+      ) {
+        throw new ReconciliationOperatorError(
+          "RECONCILIATION_DEPLOYMENT_BINDING_MISMATCH",
+          { ambiguous: true },
+        );
+      }
+      if (cycleId && page.cycleId !== cycleId) {
+        throw new ReconciliationOperatorError("RECONCILIATION_CYCLE_CHANGED", {
+          ambiguous: true,
+        });
+      }
+      cycleId = page.cycleId;
+      continuationStateDigestSha256 = page.continuationStateDigestSha256;
+      acknowledgedPages += 1;
+      if (page.outcome === "product_scan_complete") {
+        productScanComplete = true;
+      }
+      if (page.outcome === "scan_complete") mappingScanComplete = true;
+
+      if (page.outcome === "complete") {
+        if (
+          page.phase !== "complete" ||
+          page.cycleComplete !== true ||
+          page.catalogComplete !== true ||
+          page.stabilityVerified !== true ||
+          page.sourceCountsVerified !== true ||
+          page.pendingOutboxJobs !== 0 ||
+          !drainedOutboxEvidence(page) ||
+          page.incompleteMerchants !== 0 ||
+          page.malformedMappings !== 0 ||
+          !productScanComplete ||
+          !mappingScanComplete ||
+          !SHA256.test(page.mutationGenerationDigestSha256) ||
+          !SHA256.test(page.completionDigest)
+        ) {
+          throw new ReconciliationOperatorError(
+            "RECONCILIATION_COMPLETION_EVIDENCE_INVALID",
+            { ambiguous: true },
+          );
+        }
+        return finalizePrivateReconciliationArtifact({
+          verifiedAt: reconciliationIso(clock),
+          startedAt: page.cycleStartedAt,
+          completedAt: page.cycleCompletedAt,
+          appCommit,
+          targetConfigurationDigestSha256,
+          cycleId,
+          mutationGenerationDigestSha256: page.mutationGenerationDigestSha256,
+          completionDigest: page.completionDigest,
+          productScanComplete,
+          mappingScanComplete,
+          totalOutboxDocuments: page.totalOutboxDocuments,
+          outboxCountsVerified: page.outboxCountsVerified,
+          outboxStatusCounts: page.outboxStatusCounts,
+        });
+      }
+      if (
+        page.outcome === "verification_incomplete" ||
+        page.pendingOutboxJobs > 0
+      ) {
+        await sleep(pollMs);
+      }
+    }
+    throw new ReconciliationOperatorError(
+      serverStateRequiresReview()
+        ? "RECONCILIATION_STEP_LIMIT_NEEDS_REVIEW"
+        : "RECONCILIATION_STEP_LIMIT_REACHED",
+      {
+        ambiguous: serverStateRequiresReview(),
+        needsReview: serverStateRequiresReview(),
+      },
+    );
+  } finally {
+    cycleId = "";
+    continuationStateDigestSha256 = "";
+    token.fill(0);
+  }
+}
+
+function readControllingTtyLine(display) {
+  let fd;
+  const bytes = Buffer.alloc(MAX_TTY_RESPONSE_BYTES);
+  let length = 0;
+  try {
+    fd = openSync(
+      CONTROLLING_TTY_PATH,
+      fsConstants.O_RDWR | fsConstants.O_NOFOLLOW | (fsConstants.O_NOCTTY ?? 0),
+    );
+    if (!isatty(fd)) fail("PRODUCTION_ACTION_CONTROLLING_TTY_REQUIRED");
+    const output = Buffer.from(
+      `${JSON.stringify(display, null, 2)}\nType the exact authorization challenge, then press Return:\n> `,
+      "utf8",
+    );
+    try {
+      writeSync(fd, output);
+    } finally {
+      output.fill(0);
+    }
+    const one = Buffer.alloc(1);
+    try {
+      while (length < bytes.length) {
+        const count = readSync(fd, one, 0, 1, null);
+        if (count !== 1) fail("PRODUCTION_ACTION_TTY_RESPONSE_INVALID");
+        if (one[0] === 0x0a) break;
+        bytes[length] = one[0];
+        length += 1;
+      }
+    } finally {
+      one.fill(0);
+    }
+    if (length === bytes.length) {
+      fail("PRODUCTION_ACTION_TTY_RESPONSE_INVALID");
+    }
+    if (length > 0 && bytes[length - 1] === 0x0d) length -= 1;
+    const response = bytes.subarray(0, length).toString("utf8");
+    if (
+      Buffer.byteLength(response, "utf8") !== length ||
+      /[\u0000-\u001f\u007f]/u.test(response)
+    ) {
+      fail("PRODUCTION_ACTION_TTY_RESPONSE_INVALID");
+    }
+    return response;
+  } catch (error) {
+    if (error instanceof ProductionExecutorError) throw error;
+    fail("PRODUCTION_ACTION_CONTROLLING_TTY_REQUIRED", { cause: error });
+  } finally {
+    bytes.fill(0);
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch (_) {
+        // Preserve the primary authorization result.
+      }
+    }
+  }
+}
+
+function productionActionChallenge(bindingSha256) {
+  if (!SHA256.test(String(bindingSha256 ?? ""))) {
+    fail("PRODUCTION_ACTION_BINDING_INVALID");
+  }
+  return `AUTHORIZE SPAZA ONE PRODUCTION ${bindingSha256}`;
+}
+
+async function conductProductionActionCeremony({
+  prepared,
+  authorize,
+  extraBinding = null,
+  ttyExchange = readControllingTtyLine,
+  clock = () => new Date(),
+}) {
+  if (
+    !prepared?.capability ||
+    !SHA256.test(String(prepared?.summary?.bindingSha256 ?? "")) ||
+    typeof authorize !== "function" ||
+    typeof ttyExchange !== "function"
+  ) {
+    fail("PRODUCTION_ACTION_CEREMONY_INVALID");
+  }
+  const presentedAt = clock();
+  const presentedAtMs =
+    presentedAt instanceof Date ? presentedAt.getTime() : Number.NaN;
+  const sessionExpiresAtMs = Date.parse(prepared.summary.expiresAt);
+  if (!Number.isFinite(presentedAtMs) || !Number.isFinite(sessionExpiresAtMs)) {
+    fail("PRODUCTION_ACTION_CEREMONY_CLOCK_INVALID");
+  }
+  const deadline = new Date(
+    Math.min(
+      sessionExpiresAtMs,
+      presentedAtMs + ACTION_AUTHORIZATION_WINDOW_MS,
+    ),
+  ).toISOString();
+  if (Date.parse(deadline) <= presentedAtMs) {
+    fail("PRODUCTION_ACTION_CEREMONY_EXPIRED");
+  }
+  const challengeBindingSha256 = canonicalSha256({
+    liveSessionBindingSha256: prepared.summary.bindingSha256,
+    deadline,
+    extraBinding,
+  });
+  const challenge = productionActionChallenge(challengeBindingSha256);
+  const display = deepFreeze({
+    schemaVersion: 1,
+    kind: "spazaone_production_action_authorization",
+    authority: { ...PRODUCTION_WRITE_AUTHORITY },
+    target: { ...PRODUCTION_WRITE_TARGET },
+    bindingSha256: prepared.summary.bindingSha256,
+    candidate: {
+      appCommit: prepared.summary.appCommit,
+      governedMainCommit: prepared.summary.governedMainCommit,
+      gitTreeSha1: prepared.summary.gitTreeSha1,
+      gitArchiveSha256: prepared.summary.gitArchiveSha256,
+      packageInventorySha256: prepared.summary.packageInventorySha256,
+      candidateManifestSha256: prepared.summary.candidateManifestSha256,
+      reviewedEvidenceReceiptSetSha256:
+        prepared.summary.reviewedEvidenceReceiptSetSha256,
+      targetConfigurationDigestSha256:
+        prepared.summary.targetConfigurationDigestSha256,
+    },
+    operation: { ...prepared.summary.operation },
+    receiptPathSha256: prepared.summary.receiptPathSha256,
+    sourceKernelReadOnly: prepared.summary.sourceKernelReadOnly,
+    recoveryMode: prepared.summary.recoveryMode,
+    ...(extraBinding === null ? {} : { extraBinding }),
+    deadline,
+    challenge,
+    productionWriteAttempted: false,
+  });
+  const response = await ttyExchange(display);
+  if (response !== challenge) {
+    fail("PRODUCTION_ACTION_CHALLENGE_REJECTED");
+  }
+  const authorizedAt = clock();
+  if (
+    !(authorizedAt instanceof Date) ||
+    !Number.isFinite(authorizedAt.getTime())
+  ) {
+    fail("PRODUCTION_ACTION_CEREMONY_CLOCK_INVALID");
+  }
+  return authorize({
+    authorizedAt: authorizedAt.toISOString(),
+    deadline,
+    clock: () => authorizedAt,
+  });
 }
 
 function waitForSpawn(command, args, options) {
@@ -1319,7 +2331,7 @@ function intentBytes(input) {
       priorReceiptSha256: input.priorReceiptSha256,
       receiptPathSha256: sha256(input.receiptPath),
       actionStartedAt: input.actionStartedAt,
-      remoteWritePlanned: true,
+      remoteWritePlanned: input.remoteWritePlanned !== false,
       retryAllowed: false,
     })}\n`,
     "utf8",
@@ -1492,7 +2504,7 @@ function policyRemoteEvidence(lane, source, readback) {
   };
 }
 
-async function executeDeployment(sessionCapability, options, dotenvText) {
+async function deploymentExecutionContext(options, dotenvText) {
   const kind = operationKindForLane(options.lane);
   const selector = manifestSelectorForLane(options.lane);
   const policyLane = CATALOG_POLICY_LANES.includes(options.lane);
@@ -1527,6 +2539,12 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
     sourceSha256: source.sourceSha256,
     priorReceiptSha256: null,
   };
+  return { context, kind, policyLane, selector, source, validated };
+}
+
+async function executeDeployment(sessionCapability, options, dotenvText) {
+  const { context, kind, policyLane, selector, source, validated } =
+    await deploymentExecutionContext(options, dotenvText);
   await revalidateAuthorityAndCandidate(context);
   const inspectedSession = await inspectAuthorizedProductionLiveSession(
     sessionCapability,
@@ -1621,8 +2639,9 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
     await verifyMountedExactCommitFirebasePackage(session.mountedPackage);
     await verifyFirebaseProductionSessionWorkspace(session.workspace);
     assertLiveSessionDispatchDeadline(session);
-    dispatchStartedAt = now();
+    const markedAt = now();
     transaction.markDispatchStarted();
+    dispatchStartedAt = markedAt;
     try {
       await waitForSpawn(
         CODEX_GUARD,
@@ -1804,10 +2823,518 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
   }
 }
 
-async function executeReconciliation() {
-  // Enabling the write-capable reconciliation transport requires an explicit
-  // implementation authorization separate from credential provisioning.
-  fail("PRODUCTION_RECONCILIATION_EXECUTOR_NOT_ENABLED");
+function reconciliationExecutionContext(options) {
+  const operationInputSha256 = reconciliationOperationInputSha256(options);
+  return {
+    ...options,
+    kind: "spazaone_catalog_full_reconciliation",
+    lane: "full-reconciliation",
+    selector: "functions:runWhatsAppCatalogFullReconciliationBotHttp",
+    operationInputSha256,
+    sourceSha256: appCommitSourceSha256(options.expectedAppCommit),
+    priorReceiptSha256: options.reviewedResume
+      ? options.expectedPriorNeedsReviewReceiptSha256
+      : null,
+  };
+}
+
+function priorReconciliationOperation(context) {
+  return {
+    lane: context.lane,
+    selector: context.selector,
+    sourceSha256: context.sourceSha256,
+    configurationSha256: nativeCatalogTargetConfigurationDigestSha256(),
+    candidateManifestSha256: context.expectedCandidateManifestSha256,
+    operationInputSha256: context.operationInputSha256,
+  };
+}
+
+async function loadReviewedReconciliationReceipt(options, context) {
+  if (!options.reviewedResume) return null;
+  try {
+    return await loadPriorNeedsReviewReceipt({
+      receiptPath: options.priorNeedsReviewReceiptPath,
+      expectedPriorReceiptSha256: options.expectedPriorNeedsReviewReceiptSha256,
+      expectedAppCommit: options.expectedAppCommit,
+      expectedOperation: priorReconciliationOperation(context),
+    });
+  } catch (error) {
+    fail("PRIOR_NEEDS_REVIEW_RECEIPT_REJECTED", { cause: error });
+  }
+}
+
+async function executeReconciliation(
+  sessionCapability,
+  options,
+  { loadedPriorReceipt = null } = {},
+) {
+  await assertPinnedProductionToolchain();
+  const context = reconciliationExecutionContext(options);
+  await revalidateAuthorityAndCandidate(context);
+  const inspectedSession = await inspectAuthorizedProductionLiveSession(
+    sessionCapability,
+    context,
+  );
+  if (options.reviewedResume) {
+    if (
+      !loadedPriorReceipt ||
+      loadedPriorReceipt.priorReceiptSha256 !== context.priorReceiptSha256
+    ) {
+      fail("PRIOR_NEEDS_REVIEW_RECEIPT_REJECTED");
+    }
+    await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+  } else if (loadedPriorReceipt !== null) {
+    fail("PRIOR_NEEDS_REVIEW_RECEIPT_REJECTED");
+  }
+  await verifyMountedExactCommitFirebasePackage(
+    inspectedSession.mountedPackage,
+  );
+  await verifyFirebaseProductionSessionWorkspace(inspectedSession.workspace);
+  const continuationFacts = inspectedSession.continuationReadback ?? null;
+  if (
+    (options.reviewedResume &&
+      (continuationFacts?.outcome !== "incomplete" ||
+        canonicalSha256(continuationFacts) !==
+          inspectedSession.binding.recovery.recoveryReadbackSha256)) ||
+    (!options.reviewedResume && continuationFacts !== null)
+  ) {
+    fail("PRODUCTION_RECONCILIATION_CONTINUATION_BINDING_INVALID");
+  }
+  const session = await consumeProductionLiveSessionCapability(
+    sessionCapability,
+    context,
+  );
+  context.actionAuthorizationSha256 = session.bindingSha256;
+  context.actionAuthorizationClaimSha256 = session.consumptionSha256;
+  context.liveSessionExpiresAt = session.binding.expiresAt;
+  context.liveSessionRecoverySha256 = canonicalSha256(session.binding.recovery);
+  context.remoteWritePlanned = true;
+  const continuationState = continuationFacts
+    ? {
+        cycleId: continuationFacts.cycleId,
+        continuationStateDigestSha256:
+          continuationFacts.continuationStateDigestSha256,
+        acknowledgedPages: continuationFacts.acknowledgedPages,
+        productScanComplete: continuationFacts.productScanComplete,
+        mappingScanComplete: continuationFacts.mappingScanComplete,
+      }
+    : null;
+
+  const actionStartedAt = now();
+  context.actionStartedAt = actionStartedAt;
+  let transaction;
+  let dispatchStartedAt;
+  let sessionCleaned = false;
+  const cleanupSession = async () => {
+    if (sessionCleaned) return;
+    await disposeConsumedProductionLiveSession(session);
+    sessionCleaned = true;
+  };
+  try {
+    transaction = await beginIntent(context);
+    await transaction.verifyReadyForDispatch();
+    const artifact = await runPrivateFullCatalogReconciliation({
+      ...options,
+      continuationState,
+      onBeforeFirstWrite: async () => {
+        if (dispatchStartedAt) {
+          fail("PRODUCTION_RECONCILIATION_MULTIPLE_DISPATCH_CALLBACKS");
+        }
+        await revalidateAuthorityAndCandidate(context);
+        if (loadedPriorReceipt) {
+          await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+        }
+        await verifyMountedExactCommitFirebasePackage(session.mountedPackage);
+        await verifyFirebaseProductionSessionWorkspace(session.workspace);
+        assertLiveSessionDispatchDeadline(session);
+        await transaction.verifyReadyForDispatch();
+        const markedAt = now();
+        transaction.markDispatchStarted();
+        dispatchStartedAt = markedAt;
+      },
+    });
+    if (
+      !dispatchStartedAt ||
+      artifact?.kind !== "spazaone_catalog_full_reconciliation"
+    ) {
+      fail("RECONCILIATION_COMPLETION_EVIDENCE_INVALID", {
+        needsReview: Boolean(dispatchStartedAt),
+      });
+    }
+    await revalidateAuthorityAndCandidate(context);
+    if (loadedPriorReceipt) {
+      await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+    }
+    await verifyMountedExactCommitFirebasePackage(session.mountedPackage);
+    await verifyFirebaseProductionSessionWorkspace(session.workspace, {
+      allowScratchChanges: true,
+    });
+    await cleanupSession();
+    const completedAt = now();
+    const receipt = receiptRecord({
+      ...context,
+      outcome: "verified",
+      actionStartedAt,
+      dispatchStartedAt,
+      actionCompletedAt: completedAt,
+      verifiedAt: completedAt,
+      lineageMode: options.reviewedResume
+        ? "reviewed_resume_write"
+        : "direct_write",
+      commandExitZero: true,
+      readbackStatus: "verified",
+      cleanupStatus: "not_applicable",
+      providerScratchEvidence: null,
+      remoteEvidence: { kind: "full_reconciliation", artifact },
+      errorCode: null,
+      remoteWriteAttempted: true,
+    });
+    const finalCandidate = await authenticateCandidate(context);
+    const attestation = issueAuthorityAttestation(
+      receipt,
+      finalCandidate,
+      transaction,
+    );
+    const persisted = await persistWithPrivateAttestation(
+      attestation,
+      receipt,
+      transaction,
+    );
+    return {
+      outcome: "verified",
+      kind: context.kind,
+      lane: context.lane,
+      receiptPath: persisted.path,
+      receiptSha256: receipt.redactedReceiptSha256,
+      retryAllowed: false,
+    };
+  } catch (error) {
+    if (!dispatchStartedAt) {
+      try {
+        await transaction?.cancelBeforeDispatch();
+      } catch (_) {
+        fail("PRODUCTION_WRITE_INTENT_CANCELLATION_UNCERTAIN");
+      }
+      try {
+        await cleanupSession();
+      } catch (_) {
+        fail("PRODUCTION_RECONCILIATION_SESSION_CLEANUP_UNCERTAIN");
+      }
+      if (error?.needsReview === true || error?.ambiguous === true) {
+        const safePredispatchCode = /^[A-Z][A-Z0-9_]{0,95}$/.test(
+          String(error?.code ?? ""),
+        )
+          ? error.code
+          : "PRODUCTION_RECONCILIATION_PREDISPATCH_BLOCKED";
+        throw new ProductionExecutorError(safePredispatchCode, {
+          needsReview: false,
+          cause: error,
+        });
+      }
+      throw error;
+    }
+    try {
+      await cleanupSession();
+    } catch (_) {
+      // The remote reconciliation remains needs_review regardless of cleanup.
+    }
+    const completedAt = now();
+    const safeCode = /^[A-Z][A-Z0-9_]{0,95}$/.test(String(error?.code ?? ""))
+      ? error.code
+      : "RECONCILIATION_EXECUTION_NEEDS_REVIEW";
+    const receipt = receiptRecord({
+      ...context,
+      outcome: "needs_review",
+      actionStartedAt,
+      dispatchStartedAt,
+      actionCompletedAt: completedAt,
+      verifiedAt: completedAt,
+      lineageMode: options.reviewedResume
+        ? "reviewed_resume_write"
+        : "direct_write",
+      commandExitZero: false,
+      readbackStatus: "needs_review",
+      cleanupStatus: "not_applicable",
+      providerScratchEvidence: null,
+      remoteEvidence: null,
+      errorCode: safeCode,
+      remoteWriteAttempted: true,
+    });
+    try {
+      await persistNeedsReview(receipt, transaction);
+    } catch (persistError) {
+      throw new ProductionExecutorError(
+        "PRODUCTION_RECEIPT_PERSISTENCE_UNCERTAIN",
+        {
+          needsReview: true,
+          targetMayExist: persistError?.targetMayExist === true,
+          cause: persistError,
+        },
+      );
+    }
+    throw new ProductionExecutorError(safeCode, { needsReview: true });
+  }
+}
+
+async function persistRecoveredReconciliation({
+  context,
+  preparedSummary,
+  recoveryReadbackSha256,
+  artifact,
+  loadedPriorReceipt,
+}) {
+  await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+  let finalCandidate = await revalidateAuthorityAndCandidate(context);
+  const actionStartedAt = now();
+  const receiptContext = {
+    ...context,
+    actionAuthorizationSha256: preparedSummary.bindingSha256,
+    actionAuthorizationClaimSha256: recoveryReadbackSha256,
+    liveSessionExpiresAt: preparedSummary.expiresAt,
+    liveSessionRecoverySha256: canonicalSha256({
+      mode: "readback_first",
+      priorReceiptSha256: context.priorReceiptSha256,
+    }),
+    actionStartedAt,
+    remoteWritePlanned: false,
+  };
+  let transaction;
+  let persistenceStartedAt;
+  try {
+    transaction = await beginIntent(receiptContext);
+    await transaction.verifyReadyForDispatch();
+    await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+    finalCandidate = await revalidateAuthorityAndCandidate(context);
+    const markedAt = now();
+    transaction.markDispatchStarted();
+    persistenceStartedAt = markedAt;
+    const completedAt = now();
+    const receipt = receiptRecord({
+      ...receiptContext,
+      outcome: "recovered_verified",
+      actionStartedAt,
+      dispatchStartedAt: persistenceStartedAt,
+      actionCompletedAt: completedAt,
+      verifiedAt: completedAt,
+      lineageMode: "recovered_readback",
+      commandExitZero: null,
+      readbackStatus: "verified",
+      cleanupStatus: "not_applicable",
+      providerScratchEvidence: null,
+      remoteEvidence: { kind: "full_reconciliation", artifact },
+      errorCode: null,
+      remoteWriteAttempted: false,
+    });
+    const attestation = issueAuthorityAttestation(
+      receipt,
+      finalCandidate,
+      transaction,
+    );
+    const persisted = await persistWithPrivateAttestation(
+      attestation,
+      receipt,
+      transaction,
+    );
+    return {
+      outcome: "recovered_verified",
+      kind: context.kind,
+      lane: context.lane,
+      receiptPath: persisted.path,
+      receiptSha256: receipt.redactedReceiptSha256,
+      remoteWriteAttempted: false,
+      retryAllowed: false,
+    };
+  } catch (error) {
+    if (!persistenceStartedAt) {
+      try {
+        await transaction?.cancelBeforeDispatch();
+      } catch (cancelError) {
+        throw new ProductionExecutorError(
+          "PRODUCTION_WRITE_INTENT_CANCELLATION_UNCERTAIN",
+          { needsReview: true, cause: cancelError },
+        );
+      }
+      throw error;
+    }
+    throw new ProductionExecutorError(
+      "PRODUCTION_RECOVERED_RECEIPT_PERSISTENCE_UNCERTAIN",
+      {
+        needsReview: true,
+        targetMayExist: error?.targetMayExist === true,
+        cause: error,
+      },
+    );
+  }
+}
+
+async function authorizeDirectPreparedSession(prepared) {
+  try {
+    return await conductProductionActionCeremony({
+      prepared,
+      authorize: (authorization) =>
+        authorizePreparedProductionLiveSession(
+          prepared.capability,
+          authorization,
+        ),
+    });
+  } catch (error) {
+    try {
+      await disposePreparedProductionLiveSession(prepared.capability);
+    } catch (_) {
+      // The original authorization failure remains authoritative.
+    }
+    throw error;
+  }
+}
+
+async function runDeploymentWithActionCeremony(options, dotenvText) {
+  const { context } = await deploymentExecutionContext(options, dotenvText);
+  const candidate = await revalidateAuthorityAndCandidate(context);
+  const prepared = await prepareProductionLiveSession({
+    context,
+    candidate,
+    dotenvText,
+    recovery: { mode: "direct" },
+  });
+  const authorized = await authorizeDirectPreparedSession(prepared);
+  try {
+    return await executeDeployment(authorized.capability, options, dotenvText);
+  } finally {
+    try {
+      await disposeAuthorizedProductionLiveSession(authorized.capability);
+    } catch (error) {
+      if (error?.code !== "PRODUCTION_AUTHORIZED_SESSION_NOT_ACTIVE") {
+        throw error;
+      }
+    }
+  }
+}
+
+async function runReconciliationWithActionCeremony(options) {
+  const context = reconciliationExecutionContext(options);
+  const candidate = await revalidateAuthorityAndCandidate(context);
+  const loadedPriorReceipt = await loadReviewedReconciliationReceipt(
+    options,
+    context,
+  );
+  if (!options.reviewedResume) {
+    const prepared = await prepareProductionLiveSession({
+      context,
+      candidate,
+      dotenvText: "",
+      recovery: { mode: "direct" },
+    });
+    const authorized = await authorizeDirectPreparedSession(prepared);
+    try {
+      return await executeReconciliation(authorized.capability, options);
+    } finally {
+      try {
+        await disposeAuthorizedProductionLiveSession(authorized.capability);
+      } catch (error) {
+        if (error?.code !== "PRODUCTION_AUTHORIZED_SESSION_NOT_ACTIVE") {
+          throw error;
+        }
+      }
+    }
+  }
+
+  let recoveredArtifact = null;
+  let continuationReadback = null;
+  const prepared = await prepareProductionLiveSession({
+    context,
+    candidate,
+    dotenvText: "",
+    recovery: {
+      mode: "readback_first",
+      priorReceiptSha256: loadedPriorReceipt.priorReceiptSha256,
+    },
+    recoveryReadbackProvider: async () => {
+      await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+      const result = await runPrivateFullCatalogReconciliation({
+        ...options,
+        continuationState: null,
+        onBeforeFirstWrite: undefined,
+      });
+      if (result?.kind === "spazaone_catalog_full_reconciliation") {
+        recoveredArtifact = result;
+        return { outcome: "complete", cycleId: result.cycleId };
+      }
+      if (result?.outcome !== "continuation_authorization_required") {
+        fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
+      }
+      continuationReadback = Object.freeze({
+        outcome: "incomplete",
+        cycleId: result.cycleId,
+        continuationStateDigestSha256: result.continuationStateDigestSha256,
+        acknowledgedPages: result.acknowledgedPages,
+        productScanComplete: result.productScanComplete,
+        mappingScanComplete: result.mappingScanComplete,
+      });
+      return continuationReadback;
+    },
+  });
+  const inspection = await recordRecoveryInspection(prepared.capability);
+  if (inspection.outcome === "recovered_readback") {
+    if (recoveredArtifact?.kind !== "spazaone_catalog_full_reconciliation") {
+      fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
+    }
+    return persistRecoveredReconciliation({
+      context,
+      preparedSummary: prepared.summary,
+      recoveryReadbackSha256: inspection.recoveryReadbackSha256,
+      artifact: recoveredArtifact,
+      loadedPriorReceipt,
+    });
+  }
+  if (
+    inspection.outcome !== "continuation_authorization_required" ||
+    !continuationReadback ||
+    canonicalSha256(continuationReadback) !== inspection.recoveryReadbackSha256
+  ) {
+    try {
+      await disposeRecoveryInspectionLiveSession(prepared.capability);
+    } catch (_) {
+      // Preserve the binding failure.
+    }
+    fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
+  }
+  let authorized;
+  try {
+    authorized = await conductProductionActionCeremony({
+      prepared,
+      extraBinding: Object.freeze({
+        priorReceiptSha256: loadedPriorReceipt.priorReceiptSha256,
+        recoveryReadbackSha256: inspection.recoveryReadbackSha256,
+        continuationStateDigestSha256:
+          continuationReadback.continuationStateDigestSha256,
+      }),
+      authorize: (authorization) =>
+        mintFreshReconciliationContinuationCapability(
+          prepared.capability,
+          authorization,
+        ),
+    });
+  } catch (error) {
+    try {
+      await disposeRecoveryInspectionLiveSession(prepared.capability);
+    } catch (_) {
+      // Preserve the original challenge or authorization failure.
+    }
+    throw error;
+  }
+  try {
+    return await executeReconciliation(authorized.capability, options, {
+      loadedPriorReceipt,
+    });
+  } finally {
+    try {
+      await disposeAuthorizedProductionLiveSession(authorized.capability);
+    } catch (error) {
+      if (error?.code !== "PRODUCTION_AUTHORIZED_SESSION_NOT_ACTIVE") {
+        throw error;
+      }
+    }
+  }
 }
 
 async function main() {
@@ -1825,7 +3352,6 @@ async function main() {
         await runLegacyReadOnly(LEGACY_DEPLOYMENT_SCRIPT, args);
         return;
       }
-      assertExecutorActivationAuthorized();
       const policyLane = CATALOG_POLICY_LANES.includes(options.lane);
       if (
         !policyLane &&
@@ -1836,13 +3362,9 @@ async function main() {
       }
       const dotenvText =
         policyLane || process.stdin.isTTY ? "" : await readStandardInput();
-      // The future enabled orchestrator must prepare the reviewed package,
-      // pause for action-time authority, authorize its private handle, and
-      // pass that same-process object to executeDeployment. A CLI argument is
-      // deliberately incapable of filling this slot.
-      void options;
-      void dotenvText;
-      fail("FRESH_PRODUCTION_ACTION_AUTHORIZATION_REQUIRED");
+      const result = await runDeploymentWithActionCeremony(options, dotenvText);
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return;
     }
     if (mode === "reconciliation") {
       const options = parseRunnerArguments(authorizationArguments.remaining);
@@ -1850,9 +3372,7 @@ async function main() {
         await runLegacyReadOnly(LEGACY_RECONCILIATION_SCRIPT, args);
         return;
       }
-      // The reconciliation loop is defined below in the same zero-export
-      // module so no importer can reach its write-capable transport.
-      const result = await executeReconciliation(options);
+      const result = await runReconciliationWithActionCeremony(options);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return;
     }

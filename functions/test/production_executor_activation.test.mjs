@@ -13,7 +13,6 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
-import { FROZEN_APP_MAIN_COMMIT } from "../scripts/production-candidate-manifest.mjs";
 import {
   PINNED_NODE_RUNTIME,
   canonicalSha256,
@@ -32,8 +31,6 @@ const reconciliationPath = path.resolve(
   "scripts/run-whatsapp-catalog-full-reconciliation.mjs",
 );
 const packagePath = path.resolve("package.json");
-const appCommit = "c".repeat(40);
-const manifestSha256 = "d".repeat(64);
 
 function directExecutorEnvironment() {
   return {
@@ -147,6 +144,7 @@ export {
   assertLiveSessionDispatchDeadline,
   authorizePreparedProductionLiveSession,
   consumeProductionLiveSessionCapability,
+  conductProductionActionCeremony,
   disposeAuthorizedProductionLiveSession,
   disposeConsumedProductionLiveSession,
   disposePreparedProductionLiveSession,
@@ -246,7 +244,7 @@ test("production executor is a zero-export module with private attestation state
   assert.doesNotMatch(source, /await executeDeployment\(options, dotenvText\)/);
 });
 
-test("disabled deployment body uses only a sealed authenticated package through dispatch", async () => {
+test("deployment body uses only a sealed authenticated package through dispatch", async () => {
   const source = await readFile(executorPath, "utf8");
   assert.match(source, /prepareExactCommitFirebasePackage/);
   assert.match(source, /mountExactCommitFirebasePackageReadOnly/);
@@ -265,7 +263,7 @@ test("disabled deployment body uses only a sealed authenticated package through 
   );
 });
 
-test("reviewed recovery is readback-first and requires fresh continuation authority", async () => {
+test("reviewed recovery returns exact readback facts before fresh continuation authority", async () => {
   const [executorSource, reconciliationSource] = await Promise.all([
     readFile(executorPath, "utf8"),
     readFile(reconciliationPath, "utf8"),
@@ -277,15 +275,14 @@ test("reviewed recovery is readback-first and requires fresh continuation author
     /recoveryReadbackSha256:\s*state\.recoveryReadbackSha256/,
   );
   assert.match(executorSource, /exactRecoveryReadback\(await provider\(\)\)/);
-  assert.match(
-    reconciliationSource,
-    /FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED/,
-  );
+  assert.match(reconciliationSource, /continuation_authorization_required/);
   assert.ok(
     reconciliationSource.indexOf(
-      '"FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED"',
+      "if (reviewedResume && continuation === null)",
     ) < reconciliationSource.indexOf("for (let step = 0; step < maxSteps"),
   );
+  assert.match(executorSource, /conductProductionActionCeremony/);
+  assert.match(executorSource, /recoveryReadbackSha256/);
 });
 
 test("private lifecycle validators reject malformed recovery and expired dispatch", async () => {
@@ -317,6 +314,9 @@ test("private lifecycle validators reject malformed recovery and expired dispatc
         outcome: "incomplete",
         cycleId: "a".repeat(32),
         continuationStateDigestSha256: "c".repeat(64),
+        acknowledgedPages: 2,
+        productScanComplete: true,
+        mappingScanComplete: false,
       };
       const valid = exactRecoveryReadback(validFacts);
       assert.equal(Object.isFrozen(valid), true);
@@ -408,6 +408,81 @@ test("private live session executes prepare-authorize-consume once and rejects w
     );
     assert.equal(cleanupEventCount(infrastructure, "cleanup-workspace"), 1);
     assert.equal(cleanupEventCount(infrastructure, "cleanup-package"), 1);
+  });
+});
+
+test("TTY ceremony displays the sealed binding and accepts only its exact one-shot challenge", async () => {
+  await withInstrumentedExecutor(async (executor) => {
+    const { context, candidate } = lifecycleFixture();
+    const preparedAt = new Date("2026-08-29T08:00:00.000Z");
+    const prepared = await executor.prepareProductionLiveSession({
+      context,
+      candidate,
+      dotenvText: "",
+      recovery: { mode: "direct" },
+      clock: () => preparedAt,
+    });
+    let displayed;
+    const authorized = await executor.conductProductionActionCeremony({
+      prepared,
+      ttyExchange: (value) => {
+        displayed = value;
+        return value.challenge;
+      },
+      clock: () => new Date("2026-08-29T08:00:01.000Z"),
+      authorize: (authorization) =>
+        executor.authorizePreparedProductionLiveSession(
+          prepared.capability,
+          authorization,
+        ),
+    });
+    assert.equal(displayed.bindingSha256, prepared.summary.bindingSha256);
+    assert.deepEqual(displayed.candidate, {
+      appCommit: prepared.summary.appCommit,
+      governedMainCommit: prepared.summary.governedMainCommit,
+      gitTreeSha1: prepared.summary.gitTreeSha1,
+      gitArchiveSha256: prepared.summary.gitArchiveSha256,
+      packageInventorySha256: prepared.summary.packageInventorySha256,
+      candidateManifestSha256: prepared.summary.candidateManifestSha256,
+      reviewedEvidenceReceiptSetSha256:
+        prepared.summary.reviewedEvidenceReceiptSetSha256,
+      targetConfigurationDigestSha256:
+        prepared.summary.targetConfigurationDigestSha256,
+    });
+    assert.deepEqual(displayed.operation, prepared.summary.operation);
+    assert.equal(displayed.productionWriteAttempted, false);
+    assert.match(
+      displayed.challenge,
+      /^AUTHORIZE SPAZA ONE PRODUCTION [a-f0-9]{64}$/,
+    );
+    assert.equal(authorized.summary.serializableCapability, false);
+    await executor.disposeAuthorizedProductionLiveSession(
+      authorized.capability,
+    );
+
+    const rejectedPrepared = await executor.prepareProductionLiveSession({
+      context,
+      candidate,
+      dotenvText: "",
+      recovery: { mode: "direct" },
+      clock: () => preparedAt,
+    });
+    await assert.rejects(
+      executor.conductProductionActionCeremony({
+        prepared: rejectedPrepared,
+        ttyExchange: (value) => `${value.challenge} `,
+        clock: () => new Date("2026-08-29T08:00:01.000Z"),
+        authorize: (authorization) =>
+          executor.authorizePreparedProductionLiveSession(
+            rejectedPrepared.capability,
+            authorization,
+          ),
+      }),
+      (error) => error.code === "PRODUCTION_ACTION_CHALLENGE_REJECTED",
+    );
+    await executor.disposePreparedProductionLiveSession(
+      rejectedPrepared.capability,
+    );
   });
 });
 
@@ -505,6 +580,9 @@ test("prepared, authorized, recovery, and expired live sessions clean their exac
         outcome: "incomplete",
         cycleId: "7".repeat(32),
         continuationStateDigestSha256: "6".repeat(64),
+        acknowledgedPages: 3,
+        productScanComplete: true,
+        mappingScanComplete: false,
       }),
     });
     await executor.recordRecoveryInspection(continuationInspection.capability, {
@@ -558,6 +636,9 @@ test("recovery invokes its bound provider once, derives the readback digest, and
       outcome: "incomplete",
       cycleId: "7".repeat(32),
       continuationStateDigestSha256: "6".repeat(64),
+      acknowledgedPages: 4,
+      productScanComplete: true,
+      mappingScanComplete: true,
     };
     let providerCalls = 0;
     const inspection = await executor.prepareProductionLiveSession({
@@ -694,17 +775,15 @@ test("direct executor invocation is rejected before any writer gate", () => {
   );
 });
 
-test("external launcher blocks in shell before Node, executor paths, or NODE_OPTIONS preload", async () => {
+test("external launcher pins the executor and strips NODE_OPTIONS before Node", async () => {
   const source = await readFile(launcherPath, "utf8");
   const stat = await lstat(launcherPath);
   assert.equal(stat.isFile(), true);
   assert.equal(stat.mode & 0o111, 0o111);
-  assert.match(source, /PRODUCTION_LIVE_SESSION_CAPABILITY_NOT_AUTHORIZED/);
-  assert.doesNotMatch(source, /\/opt\/homebrew\/bin\/node|EXECUTOR_PATH/);
-  assert.doesNotMatch(
-    source,
-    /NODE_OPTIONS|FIREBASE_TOKEN|GOOGLE_APPLICATION_CREDENTIALS/,
-  );
+  assert.match(source, /\/usr\/bin\/env -i/);
+  assert.match(source, /\/opt\/homebrew\/bin\/node "\$EXECUTOR_PATH"/);
+  assert.match(source, /exec 3<"\$LAUNCHER_PATH"/);
+  assert.doesNotMatch(source, /NODE_OPTIONS|FIREBASE_TOKEN/);
 
   const root = await realpath(
     await mkdtemp(path.join(os.tmpdir(), "executor-node-options-")),
@@ -729,7 +808,7 @@ test("external launcher blocks in shell before Node, executor paths, or NODE_OPT
     assert.equal(result.status, 1);
     assert.equal(
       JSON.parse(result.stderr).code,
-      "PRODUCTION_LIVE_SESSION_CAPABILITY_NOT_AUTHORIZED",
+      "PRODUCTION_EXECUTOR_MODE_INVALID",
     );
     await assert.rejects(lstat(sentinelPath), { code: "ENOENT" });
   } finally {
@@ -737,55 +816,20 @@ test("external launcher blocks in shell before Node, executor paths, or NODE_OPT
   }
 });
 
-test("launcher and dormant executor retain independent write hard stops", async () => {
-  const common = [
-    "--expected-app-commit",
-    appCommit,
-    "--expected-current-main-commit",
-    FROZEN_APP_MAIN_COMMIT,
-    "--execute",
-    "--receipt-path",
-    "/tmp/not-created-production-receipt.json",
-    "--candidate-manifest-path",
-    "/tmp/not-read-production-candidate.json",
-    "--expected-candidate-manifest-sha256",
-    manifestSha256,
-  ];
-  const deployment = spawnSync(
-    launcherPath,
-    ["deployment", "--lane", "firestore-rules", ...common],
-    {
-      cwd: path.resolve("."),
-      encoding: "utf8",
-      env: process.env,
-    },
-  );
-  assert.equal(deployment.status, 1);
-  assert.equal(
-    JSON.parse(deployment.stderr).code,
-    "PRODUCTION_LIVE_SESSION_CAPABILITY_NOT_AUTHORIZED",
-  );
-
-  const reconciliation = spawnSync(
-    launcherPath,
-    ["reconciliation", ...common],
-    {
-      cwd: path.resolve("."),
-      encoding: "utf8",
-      env: process.env,
-    },
-  );
-  assert.equal(reconciliation.status, 1);
-  assert.equal(
-    JSON.parse(reconciliation.stderr).code,
-    "PRODUCTION_LIVE_SESSION_CAPABILITY_NOT_AUTHORIZED",
-  );
+test("only the high-level launcher wires deployment and reconciliation writes", async () => {
   const executorSource = await readFile(executorPath, "utf8");
-  assert.match(executorSource, /PRODUCTION_EXECUTOR_ACTIVATION_NOT_AUTHORIZED/);
-  assert.match(
+  assert.doesNotMatch(
+    executorSource,
+    /PRODUCTION_EXECUTOR_ACTIVATION_NOT_AUTHORIZED/,
+  );
+  assert.doesNotMatch(
     executorSource,
     /PRODUCTION_RECONCILIATION_EXECUTOR_NOT_ENABLED/,
   );
+  assert.match(executorSource, /runDeploymentWithActionCeremony/);
+  assert.match(executorSource, /runReconciliationWithActionCeremony/);
+  assert.match(executorSource, /consumeProductionLiveSessionCapability/);
+  assert.match(executorSource, /PRODUCTION_ACTION_CHALLENGE_REJECTED/);
 });
 
 test("legacy execute gates and package commands remain unrelaxed", async () => {

@@ -3,36 +3,29 @@
 The native catalogue backend is dark by default. It never derives or accepts a
 merchant, Meta catalogue, or sender identity from a client-side cart line.
 
-> **Current executor status (2026-08-28): disabled.** The checked helpers are
-> local validation surfaces only. Their CLIs require the future write syntax
-> (`--execute`, the exact reviewed candidate and frozen current-main commits,
-> an absolute no-replace receipt path, and an absolute canonical candidate
-> manifest path plus its expected SHA-256), then stop with
-> `PRODUCTION_CATALOG_DEPLOY_EXECUTOR_NOT_ENABLED` or
-> `PRODUCTION_RECONCILIATION_EXECUTOR_NOT_ENABLED`. No deployment or
-> reconciliation dispatch and no executor-triggered verified receipt
-> persistence is wired under the current no-sync authorization. Every execute
-> command later in this
-> runbook is a planned, separately authorized future step, not an available
-> command today.
+> **Current executor status (2026-08-29): locally wired, externally dormant.**
+> No deployment or reconciliation was performed by this migration. The only
+> write-capable entry point is the checked high-level launcher
+> `functions/scripts/launch-whatsapp-catalog-production.sh`. It requires the
+> exact reviewed candidate and frozen current-main commits, an absolute
+> no-replace receipt path, an absolute canonical candidate manifest and its
+> SHA-256, then a fresh exact challenge on the controlling TTY for that one
+> action. Every Firebase deployment lane and reconciliation run remains a
+> separately authorized external action. The legacy
+> `catalog:deploy:guard` and `catalog:reconcile:production` CLIs remain
+> execute-disabled and are read-only validation surfaces.
 >
-> Receipt schema v4 structural validation is locally implemented but is not
-> production attestation. While both executors are disabled, the module exports
-> no verified-receipt constructor, seal, or persister. Importers can create and
-> atomically persist only `needs_review` records. The dormant executor now has
-> one module-private high-level closure that loads the real candidate manifest,
-> owns the real remote action/readback, and carries an opaque attestation through
-> receipt persistence. It is not reachable from the launcher or CLI. A future
-> reviewed enablement may wire only its same-process capability pause; a
-> dependency-injected output or caller-supplied self-consistent object/hash must
-> never acquire that attestation. Executor enablement, dispatch, and verified
-> receipt persistence remain separate blocked work.
+> Receipt schema v4 structural validation alone is not production attestation.
+> The zero-export executor owns the real action/readback and carries an opaque
+> module-private attestation through receipt persistence. No dependency-injected
+> output, imported legacy transport, serialized authorization, or
+> caller-supplied self-consistent object/hash can acquire that attestation.
 
-### Same-process production session (implemented locally, still disabled)
+### Same-process one-shot production session
 
-The dormant writer no longer accepts an authorization receipt, digest, path,
-environment variable, or other serialized value as production authority. A
-future enablement must keep one process alive while it:
+The writer does not accept an authorization receipt, digest, path, environment
+variable, or other serialized value as production authority. The high-level
+launcher keeps one process alive while it:
 
 1. authenticates the exact Vox Dei candidate manifest and commit/tree;
 2. rebuilds that commit from `git archive` with pinned tools and offline
@@ -41,12 +34,13 @@ future enablement must keep one process alive while it:
    second kernel-read-only image whose source paths point only into the reviewed
    package mount; the only writable path is a separately bounded provider
    `TMPDIR`;
-4. pauses and presents the non-secret operation, target, archive/package
-   digests, receipt-path digest, recovery lineage, and deadline for explicit
-   action-time approval; and
+4. pauses on `/dev/tty` and presents the exact candidate manifest, candidate and
+   governed-main commits, target, operation input, archive/package/evidence-set
+   digests, receipt-path digest, recovery lineage, and deadline; and
 5. mints an unforgeable module-private object only after that approval. The
-   object is deleted from its private `WeakMap` before the durable intent and
-   can be used once before its deadline.
+   operator must type the complete displayed challenge exactly. The object is
+   deleted from its private `WeakMap` before the durable intent and can be used
+   once before its deadline.
 
 The package, pending handle, and authorized handle are process memory only.
 They are not written to a file, stdout, environment, command argument, or
@@ -56,12 +50,12 @@ existing two authorization-digest fields for schema compatibility; they now
 contain only the private session binding and one-shot consumption digests, not
 a reusable or serialized capability.
 
-Local code review, builds, tests, the exact-package preparation path, and the
-hard-disabled orchestration can be authorized together. Each future external
-write remains a distinct approval: integration publication, each Firestore or
-Functions deployment lane, full catalogue reconciliation, Botpress deploy,
-WhatsApp cutover, and the controlled live test. Catalogue reconciliation does
-not imply Botpress/WhatsApp cutover authority.
+Local code review, builds, tests, and exact-package preparation do not authorize
+an external action. Each external write remains a distinct approval:
+integration publication, each Firestore or Functions deployment lane, full
+catalogue reconciliation, Botpress deploy, WhatsApp cutover, and the controlled
+live test. Catalogue reconciliation does not imply Botpress/WhatsApp cutover
+authority.
 
 ## Rollout gates
 
@@ -83,27 +77,30 @@ it does not alter catalogue or customer data.
 
 ## Scoped function deployment and environment isolation
 
-Use the checked production helper for native-catalog function deployments. It
-pins the exact Firebase CLI and gcloud paths, realpaths, SHA-256 digests, and
-versions, verifies the explicit Firebase account/project and a clean Vox Dei
-authority checkout, selects project `pasella-ledger` through the registered
-`spaza-one` deployment target, and rejects any source-tree deployment dotenv.
-Its default is a local/pre-dispatch validation. The
+Use the legacy guard for read-only validation and the checked high-level
+launcher for an authorized native-catalog write. Together they pin the exact
+Firebase CLI and gcloud paths, realpaths, SHA-256 digests, and versions, and
+verify the explicit Firebase account/project and a clean Vox Dei authority
+checkout. They select project `pasella-ledger` through the registered
+`spaza-one` deployment target and reject any source-tree deployment dotenv.
+The guard's default is local/pre-dispatch validation. The
 `codex-guard firebase-deploy --dry-run` mode prints a governed command but does
 not launch Firebase or exercise Firebase predeploy hooks, so independent
 lint/build and generated-config tests remain mandatory.
 
 Every helper invocation requires `--expected-app-commit` and
-`--expected-current-main-commit` and rejects any value
-other than its exact clean 40-character `HEAD`. The authority check also
+`--expected-current-main-commit`. It rejects a candidate value other than its
+exact clean 40-character `HEAD`, or a current-main value other than the frozen
+governed revision. The authority check also
 requires that commit to descend from frozen app-main base
 `1672538112fc4b725cd74169df9ae72802db69eb`. Before an authorized write, the
-helper itself queries governed GitHub metadata through the registered Vox Dei
-authority and requires current remote `main` to equal that frozen base, then
-repeats the check immediately before every write-capable command. The retained
-production evidence must independently record the same governed revision.
+high-level executor itself queries governed GitHub metadata through the
+registered Vox Dei authority and requires current remote `main` to equal that
+frozen base, then repeats the check immediately before every write-capable
+command. The retained production evidence must independently record the same
+governed revision.
 
-Every future execute also requires a canonical, LF-terminated candidate
+Every execute also requires a canonical, LF-terminated candidate
 manifest. It binds the exact app commit, frozen governed main, Git tree SHA-1,
 immutable target digest, action kind/lane/selector, action-input SHA-256, and
 three distinct named SHA-256 receipts for app build/lint, catalogue tests, and
@@ -112,8 +109,46 @@ owner-controlled regular file with one link and no group/world write bit. The
 expected manifest SHA-256 covers its exact canonical bytes including the final
 LF. Action-time approval must name that hash and the intended action. The core
 resolves authority first, then reopens and validates the manifest as its last
-await before every future spawn or reconciliation request; a caller-supplied
+await before every spawn or reconciliation request; a caller-supplied
 candidate commit alone is never sufficient.
+
+Create that manifest only with `catalog:candidate:create`. The creator resolves
+the clean exact Vox Dei candidate and current `main`, reads the three distinct
+owner-only mode-`0600` evidence files itself, hashes their exact bytes, derives
+the operation-input hash from the exact source bytes, and creates the manifest
+once with mode `0600`. It accepts receipt **paths**, never receipt digests, and
+does not replace an existing manifest. The three path arguments are the exact
+app build/lint, WhatsApp-catalog test, and independent-production-review
+receipts:
+
+Allowed operation kinds are `function_deployment`, `policy_deployment`, and
+`full_reconciliation`; the lane determines the exact selector.
+
+```bash
+npm --prefix functions run catalog:candidate:create -- \
+  --operation-kind <exact-operation-kind> \
+  --lane <exact-lane> \
+  --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit> \
+  --output-path <absolute-new-candidate-manifest-path> \
+  --app-build-lint-receipt-path <absolute-owner-only-build-lint-receipt> \
+  --app-whatsapp-catalog-tests-receipt-path <absolute-owner-only-test-receipt> \
+  --independent-production-review-receipt-path <absolute-owner-only-review-receipt>
+```
+
+For a configured Functions lane, pipe the exact non-secret dotenv bytes used by
+the deployment into the creator. `existing-code` and policy lanes derive their
+input bytes from the checked source and accept no piped bytes. For full
+reconciliation, pipe exactly one compact JSON object in this key order, without
+a trailing newline; use the same values in the later executor arguments:
+
+```text
+{"pageSize":200,"pollMs":65000,"maxSteps":10000,"maxElapsedMs":86400000,"requestTimeoutMs":570000}
+```
+
+Candidate creation is local evidence preparation. It does not authorize or
+perform a deployment, reconciliation request, catalogue sync, or customer
+message.
 
 New native-catalog functions and modified existing functions are deliberately
 separate lanes:
@@ -200,17 +235,18 @@ The dry-run and authorized execution entry points are:
 npm --prefix functions run catalog:deploy:guard -- \
   --lane dark-new --expected-app-commit <clean-authority-commit> \
   --expected-current-main-commit <frozen-current-main-commit>
-npm --prefix functions run catalog:deploy:guard -- \
+functions/scripts/launch-whatsapp-catalog-production.sh deployment \
   --lane dark-new --expected-app-commit <clean-authority-commit> \
   --expected-current-main-commit <frozen-current-main-commit> \
   --execute --receipt-path <absolute-new-receipt-path> \
   --candidate-manifest-path <absolute-canonical-manifest-path> \
-  --expected-candidate-manifest-sha256 <approved-manifest-sha256>
+  --expected-candidate-manifest-sha256 <approved-manifest-sha256> \
+  < /absolute/path/to/reviewed-non-secret.env
 
 npm --prefix functions run catalog:deploy:guard -- \
   --lane existing-code --expected-app-commit <clean-authority-commit> \
   --expected-current-main-commit <frozen-current-main-commit>
-npm --prefix functions run catalog:deploy:guard -- \
+functions/scripts/launch-whatsapp-catalog-production.sh deployment \
   --lane existing-code --expected-app-commit <clean-authority-commit> \
   --expected-current-main-commit <frozen-current-main-commit> \
   --execute --receipt-path <absolute-new-receipt-path> \
@@ -234,10 +270,12 @@ this matrix; every unlisted key remains byte-for-byte identical:
 Here “queue/sync/catalog full” means all three of
 `WHATSAPP_CATALOG_QUEUE_ENABLED`, `WHATSAPP_CATALOG_SYNC_ENABLED`, and
 `WHATSAPP_CATALOG_FULL_ROLLOUT_ENABLED`. Run every lane once without
-`--execute`; retain that dry-run receipt, obtain action-time authorization,
-then repeat the exact command and stdin with `--execute`. A write-capable
-nonzero exit, signal, or process error is `needs_review` with
-`retryAllowed=false`; inspect the remote state and do not repeat the lane.
+`--execute` through its legacy validation CLI; retain that dry-run result, then
+use the high-level launcher with the exact candidate and operation input. The
+launcher displays and accepts the action-time TTY challenge itself. After it
+crosses the write dispatch boundary, any nonzero exit, signal, or process error
+is `needs_review` with `retryAllowed=false`; inspect the remote state and do not
+repeat the lane.
 
 The successful `dark-new` result includes the exact selector, clean app commit,
 dotenv key names, full dotenv SHA-256, and immutable
@@ -303,7 +341,7 @@ exact 15.21.0 algorithm is:
    SHA-1 again for the base source hash. Paths and modes are not hash inputs.
 2. For Gen 1, append `.` plus the SHA-1 of Firebase's recursively key-sorted
    `{firebase: adminSdkConfig, ...legacyRuntimeConfig}` serialization. The guard
-   reads those values only inside the future authorized closure, clears command
+   reads those values only inside the authorized closure, clears command
    buffers, and retains only this opaque component. Gen 2 uses the base hash.
 3. SHA-1 the exact insertion-ordered codebase-level
    `wantBackend.environmentVariables` JSON and the exact source-ordered
@@ -356,7 +394,7 @@ digests and counts, and the exhaustive remote TTL count in `ACTIVE` state. Any
 hash-only object, missing or extra evidence key, mismatched count or digest, or
 evidence tag from another action fails before a receipt can be sealed.
 
-The future attested reconciliation evidence input must be the complete finalized
+The attested reconciliation evidence input must be the complete finalized
 redacted artifact collected inside that high-level closure, not a caller-provided
 artifact or hash. Its exact keyset and canonical seal bind the app commit,
 immutable target digest, Firebase project, Meta catalogue and sender IDs,
@@ -425,9 +463,15 @@ authenticated, resumable full reconciliation while delivery is dark:
 
    ```bash
    npm --prefix functions run catalog:deploy:guard -- \
-     --lane sync-enable --expected-app-commit <clean-authority-commit>
-   npm --prefix functions run catalog:deploy:guard -- \
-     --lane sync-enable --expected-app-commit <clean-authority-commit> --execute
+     --lane sync-enable --expected-app-commit <clean-authority-commit> \
+     --expected-current-main-commit <frozen-current-main-commit>
+   functions/scripts/launch-whatsapp-catalog-production.sh deployment \
+     --lane sync-enable --expected-app-commit <clean-authority-commit> \
+     --expected-current-main-commit <frozen-current-main-commit> \
+     --execute --receipt-path <absolute-new-receipt-path> \
+     --candidate-manifest-path <absolute-canonical-manifest-path> \
+     --expected-candidate-manifest-sha256 <approved-manifest-sha256> \
+     < /absolute/path/to/reviewed-non-secret.env
    ```
 
    Retain the successful non-dry-run `sync-enable` result separately. It binds
@@ -443,7 +487,14 @@ authenticated, resumable full reconciliation while delivery is dark:
 
    ```bash
    npm --prefix functions run catalog:reconcile:production -- \
-     --expected-app-commit <clean-authority-commit>
+     --expected-app-commit <clean-authority-commit> \
+     --expected-current-main-commit <frozen-current-main-commit>
+   functions/scripts/launch-whatsapp-catalog-production.sh reconciliation \
+     --expected-app-commit <clean-authority-commit> \
+     --expected-current-main-commit <frozen-current-main-commit> \
+     --execute --receipt-path <absolute-new-receipt-path> \
+     --candidate-manifest-path <absolute-canonical-manifest-path> \
+     --expected-candidate-manifest-sha256 <approved-manifest-sha256>
    ```
 
    It resolves `PASELLA_BOT_TOKEN` internally from Secret Manager using the
@@ -476,25 +527,39 @@ authenticated, resumable full reconciliation while delivery is dark:
    reviewed recovery switch:
 
    ```bash
-   npm --prefix functions run catalog:reconcile:production -- \
-     --expected-app-commit <clean-authority-commit> --reviewed-resume
+   functions/scripts/launch-whatsapp-catalog-production.sh reconciliation \
+     --expected-app-commit <clean-authority-commit> \
+     --expected-current-main-commit <frozen-current-main-commit> \
+     --reviewed-resume --execute \
+     --prior-needs-review-receipt-path <absolute-prior-receipt-path> \
+     --expected-prior-needs-review-receipt-sha256 <prior-receipt-sha256> \
+     --receipt-path <absolute-new-receipt-path> \
+     --candidate-manifest-path <absolute-canonical-manifest-path> \
+     --expected-candidate-manifest-sha256 <approved-manifest-sha256>
    ```
 
-   This performs only an authenticated `inspect_recovery`. The same-process
-   session binds a private readback provider before inspection; it accepts no
-   caller-supplied recovery object or digest. The provider is invoked once, its
+   The recovery phase first performs only an authenticated `inspect_recovery`.
+   The same-process session binds a private readback provider before inspection
+   and accepts no caller-supplied recovery object or digest. The provider is
+   invoked once, its
    exact minimal facts are canonicalized, and the executor derives the SHA-256
    before deciding either completion or continuation. If the server already
    committed `status=complete`, inspection validates both stored bindings and
    the exact zeroed outbox/completion proof, then seals the receipt from the
    original stored cycle start/completion timestamps without another write.
    If the cycle is incomplete—including the important zero-page case in which
-   initialization committed but the first page response was lost—the reviewed
-   resume stops with
-   `FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED`. A later
-   continuation requires a newly authorized same-process capability bound to
-   that exact recovery readback and continuation-state digest; restarting the
-   process or reusing the old approval cannot continue it.
+   initialization committed but the first page response was lost—the same
+   invocation displays a new TTY challenge bound to the exact recovery readback
+   and continuation-state digest. Only that fresh one-shot capability can send
+   `continue`; restarting the process or reusing an old challenge cannot
+   continue it. If recovery proves the cycle already complete, the executor
+   persists a `recovered_verified` receipt with
+   `remoteWriteAttempted=false` and sends no continuation request.
+   Direct, inspected-recovery, and continued runs share the same candidate
+   operation-input hash; recovery mode, prior receipt, exact readback, and
+   continuation digest are bound separately in the private session and receipt
+   lineage. This prevents a caller from self-attesting a different recovery
+   candidate.
    The CLI accepts no cycle, cursor, target digest, merchant, recipient, or
    credential argument.
    The authority checkout and governed current-main binding are rechecked
@@ -649,14 +714,24 @@ separate action-time authorization for each `--execute`:
 
 ```bash
 npm --prefix functions run catalog:deploy:guard -- \
-  --lane firestore-rules --expected-app-commit <clean-authority-commit>
+  --lane firestore-rules --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit>
 npm --prefix functions run catalog:deploy:guard -- \
-  --lane firestore-indexes --expected-app-commit <clean-authority-commit>
+  --lane firestore-indexes --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit>
 
-npm --prefix functions run catalog:deploy:guard -- \
-  --lane firestore-rules --expected-app-commit <clean-authority-commit> --execute
-npm --prefix functions run catalog:deploy:guard -- \
-  --lane firestore-indexes --expected-app-commit <clean-authority-commit> --execute
+functions/scripts/launch-whatsapp-catalog-production.sh deployment \
+  --lane firestore-rules --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit> \
+  --execute --receipt-path <absolute-new-receipt-path> \
+  --candidate-manifest-path <absolute-canonical-manifest-path> \
+  --expected-candidate-manifest-sha256 <approved-manifest-sha256>
+functions/scripts/launch-whatsapp-catalog-production.sh deployment \
+  --lane firestore-indexes --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit> \
+  --execute --receipt-path <absolute-new-receipt-path> \
+  --candidate-manifest-path <absolute-canonical-manifest-path> \
+  --expected-candidate-manifest-sha256 <approved-manifest-sha256>
 ```
 
 Every policy execute is write-capable: a nonzero exit or process uncertainty is
@@ -671,9 +746,11 @@ still provisioning or unavailable, the execute receipt says
 ```bash
 npm --prefix functions run catalog:deploy:guard -- \
   --lane firestore-rules --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit> \
   --readback-only
 npm --prefix functions run catalog:deploy:guard -- \
   --lane firestore-indexes --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit> \
   --readback-only
 ```
 

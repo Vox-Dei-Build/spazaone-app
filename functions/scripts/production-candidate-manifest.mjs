@@ -3,7 +3,7 @@
 import { execFile as nodeExecFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
+import { lstat, open, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -24,6 +24,8 @@ export const PRODUCTION_CANDIDATE_RECEIPT_NAMES = Object.freeze([
 const SHA1 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const MAX_MANIFEST_BYTES = 64 * 1024;
+const MAX_EVIDENCE_RECEIPT_BYTES = 16 * 1024 * 1024;
+const SAFE_OWNER_FILE_MODE = 0o600;
 const MANIFEST_KEYS = Object.freeze([
   "schemaVersion",
   "kind",
@@ -40,6 +42,12 @@ const OPERATION_KEYS = Object.freeze([
   "selector",
   "inputSha256",
 ]);
+const CANDIDATE_CREATION_OPERATION_KEYS = Object.freeze([
+  "kind",
+  "lane",
+  "selector",
+]);
+const defaultFs = Object.freeze({ lstat, open, realpath, unlink });
 
 export class ProductionCandidateManifestError extends Error {
   constructor(code) {
@@ -107,6 +115,305 @@ function deepFreeze(value) {
 
 export function canonicalProductionCandidateManifestBytes(document) {
   return Buffer.from(`${canonicalJson(document)}\n`, "utf8");
+}
+
+function canonicalAbsolutePath(value, label) {
+  if (
+    typeof value !== "string" ||
+    !path.isAbsolute(value) ||
+    path.resolve(value) !== value ||
+    !path.basename(value)
+  ) {
+    fail(`${label}_INVALID`);
+  }
+  return value;
+}
+
+function ownerUid(value) {
+  const uid = value ?? process.geteuid?.();
+  if (!Number.isSafeInteger(uid) || uid < 0) {
+    fail("PRODUCTION_CANDIDATE_OWNER_UNAVAILABLE");
+  }
+  return uid;
+}
+
+function safeOwnerFile(stat, uid, maximumBytes) {
+  return (
+    stat.isFile() &&
+    !stat.isSymbolicLink() &&
+    stat.uid === uid &&
+    stat.nlink === 1 &&
+    (stat.mode & 0o777) === SAFE_OWNER_FILE_MODE &&
+    stat.size >= 1 &&
+    stat.size <= maximumBytes
+  );
+}
+
+function sameIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+async function readExactOwnerEvidenceReceipt({ receiptPath, uid, fsImpl }) {
+  canonicalAbsolutePath(receiptPath, "PRODUCTION_CANDIDATE_EVIDENCE_PATH");
+  let handle;
+  let bytes;
+  try {
+    const before = await fsImpl.lstat(receiptPath);
+    if (
+      !safeOwnerFile(before, uid, MAX_EVIDENCE_RECEIPT_BYTES) ||
+      (await fsImpl.realpath(receiptPath)) !== receiptPath
+    ) {
+      fail("PRODUCTION_CANDIDATE_EVIDENCE_FILE_UNSAFE");
+    }
+    handle = await fsImpl.open(
+      receiptPath,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    );
+    const opened = await handle.stat();
+    bytes = await handle.readFile();
+    const after = await handle.stat();
+    const pathAfter = await fsImpl.lstat(receiptPath);
+    if (
+      !safeOwnerFile(opened, uid, MAX_EVIDENCE_RECEIPT_BYTES) ||
+      !safeOwnerFile(after, uid, MAX_EVIDENCE_RECEIPT_BYTES) ||
+      !safeOwnerFile(pathAfter, uid, MAX_EVIDENCE_RECEIPT_BYTES) ||
+      !sameIdentity(before, opened) ||
+      !sameIdentity(before, after) ||
+      !sameIdentity(before, pathAfter) ||
+      opened.size !== bytes.length ||
+      after.size !== bytes.length ||
+      pathAfter.size !== bytes.length
+    ) {
+      fail("PRODUCTION_CANDIDATE_EVIDENCE_FILE_CHANGED");
+    }
+    return createHash("sha256").update(bytes).digest("hex");
+  } catch (error) {
+    if (error instanceof ProductionCandidateManifestError) throw error;
+    fail("PRODUCTION_CANDIDATE_EVIDENCE_FILE_UNREADABLE");
+  } finally {
+    try {
+      await handle?.close();
+    } catch (_) {
+      // Preserve the primary validation result.
+    }
+    bytes?.fill?.(0);
+  }
+}
+
+async function defaultResolveCandidateAuthority(input) {
+  const { resolveAuthorityAppCommit } = await import(
+    "./run-whatsapp-catalog-full-reconciliation.mjs"
+  );
+  return resolveAuthorityAppCommit(input);
+}
+
+/**
+ * Creates the only canonical production candidate format from exact evidence
+ * files and exact operation-input bytes. Receipt digests and the operation
+ * input digest are deliberately not accepted from the caller.
+ */
+export async function createCanonicalProductionCandidateManifest({
+  manifestPath,
+  expectedAppCommit,
+  expectedCurrentMainCommit,
+  operation,
+  operationInputBytes,
+  evidenceReceiptPaths,
+  resolveAuthority = defaultResolveCandidateAuthority,
+  resolveGitTree = resolveProductionCandidateGitTreeSha1,
+  fsImpl = defaultFs,
+  expectedOwnerUid,
+} = {}) {
+  canonicalAbsolutePath(manifestPath, "PRODUCTION_CANDIDATE_OUTPUT_PATH");
+  if (
+    !SHA1.test(String(expectedAppCommit ?? "")) ||
+    expectedCurrentMainCommit !== FROZEN_APP_MAIN_COMMIT ||
+    typeof resolveAuthority !== "function" ||
+    typeof resolveGitTree !== "function"
+  ) {
+    fail("PRODUCTION_CANDIDATE_CREATION_EXPECTATION_INVALID");
+  }
+  exactKeys(
+    operation,
+    CANDIDATE_CREATION_OPERATION_KEYS,
+    "PRODUCTION_CANDIDATE_CREATION_OPERATION",
+  );
+  if (
+    !new Set([
+      "function_deployment",
+      "policy_deployment",
+      "full_reconciliation",
+    ]).has(operation.kind) ||
+    typeof operation.lane !== "string" ||
+    !/^[a-z][a-z0-9-]{1,63}$/.test(operation.lane) ||
+    typeof operation.selector !== "string" ||
+    !/^[A-Za-z0-9:,._-]{1,2000}$/.test(operation.selector) ||
+    (!Buffer.isBuffer(operationInputBytes) &&
+      !(operationInputBytes instanceof Uint8Array)) ||
+    operationInputBytes.byteLength < 1 ||
+    operationInputBytes.byteLength > MAX_MANIFEST_BYTES
+  ) {
+    fail("PRODUCTION_CANDIDATE_CREATION_INPUT_INVALID");
+  }
+  exactKeys(
+    evidenceReceiptPaths,
+    PRODUCTION_CANDIDATE_RECEIPT_NAMES,
+    "PRODUCTION_CANDIDATE_EVIDENCE_PATHS",
+  );
+  const receiptPaths = PRODUCTION_CANDIDATE_RECEIPT_NAMES.map((name) =>
+    canonicalAbsolutePath(
+      evidenceReceiptPaths[name],
+      "PRODUCTION_CANDIDATE_EVIDENCE_PATH",
+    ),
+  );
+  if (
+    new Set(receiptPaths).size !== receiptPaths.length ||
+    receiptPaths.includes(manifestPath)
+  ) {
+    fail("PRODUCTION_CANDIDATE_EVIDENCE_PATHS_INVALID");
+  }
+  const uid = ownerUid(expectedOwnerUid);
+  let authorityCommit;
+  try {
+    authorityCommit = await resolveAuthority({
+      expectedCandidateCommit: expectedAppCommit,
+      expectedCurrentMainCommit,
+    });
+  } catch (_) {
+    fail("PRODUCTION_CANDIDATE_AUTHORITY_UNVERIFIED");
+  }
+  if (authorityCommit !== expectedAppCommit) {
+    fail("PRODUCTION_CANDIDATE_AUTHORITY_UNVERIFIED");
+  }
+  const gitTreeSha1 = await resolveGitTree({ appCommit: expectedAppCommit });
+  const receiptEntries = await Promise.all(
+    PRODUCTION_CANDIDATE_RECEIPT_NAMES.map(async (name) => [
+      name,
+      await readExactOwnerEvidenceReceipt({
+        receiptPath: evidenceReceiptPaths[name],
+        uid,
+        fsImpl,
+      }),
+    ]),
+  );
+  const receipts = Object.fromEntries(receiptEntries);
+  if (new Set(Object.values(receipts)).size !== receiptEntries.length) {
+    fail("PRODUCTION_CANDIDATE_EVIDENCE_DIGESTS_INVALID");
+  }
+  const operationInputSnapshot = Buffer.from(operationInputBytes);
+  const document = {
+    schemaVersion: 1,
+    kind: "spazaone_native_catalog_production_candidate",
+    appCommit: expectedAppCommit,
+    governedMainCommit: expectedCurrentMainCommit,
+    gitTreeSha1,
+    immutableTargetConfigurationSha256:
+      nativeCatalogTargetConfigurationDigestSha256(),
+    operation: {
+      ...operation,
+      inputSha256: createHash("sha256")
+        .update(operationInputSnapshot)
+        .digest("hex"),
+    },
+    receipts,
+  };
+  operationInputSnapshot.fill(0);
+  const bytes = canonicalProductionCandidateManifestBytes(document);
+  const manifestSha256 = createHash("sha256").update(bytes).digest("hex");
+  let handle;
+  let parentHandle;
+  let created = false;
+  try {
+    const parentPath = path.dirname(manifestPath);
+    const parentBefore = await fsImpl.lstat(parentPath);
+    if (
+      !parentBefore.isDirectory() ||
+      parentBefore.isSymbolicLink() ||
+      parentBefore.uid !== uid ||
+      (parentBefore.mode & 0o022) !== 0 ||
+      (await fsImpl.realpath(parentPath)) !== parentPath
+    ) {
+      fail("PRODUCTION_CANDIDATE_OUTPUT_PARENT_UNSAFE");
+    }
+    parentHandle = await fsImpl.open(
+      parentPath,
+      fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
+    );
+    const parentOpened = await parentHandle.stat();
+    if (
+      !parentOpened.isDirectory() ||
+      parentOpened.uid !== uid ||
+      !sameIdentity(parentBefore, parentOpened)
+    ) {
+      fail("PRODUCTION_CANDIDATE_OUTPUT_PARENT_UNSAFE");
+    }
+    handle = await fsImpl.open(
+      manifestPath,
+      fsConstants.O_CREAT |
+        fsConstants.O_EXCL |
+        fsConstants.O_RDWR |
+        fsConstants.O_NOFOLLOW,
+      SAFE_OWNER_FILE_MODE,
+    );
+    created = true;
+    await handle.writeFile(bytes);
+    await handle.chmod(SAFE_OWNER_FILE_MODE);
+    await handle.sync();
+    const createdStat = await handle.stat();
+    const pathStat = await fsImpl.lstat(manifestPath);
+    if (
+      !safeOwnerFile(createdStat, uid, MAX_MANIFEST_BYTES) ||
+      !safeOwnerFile(pathStat, uid, MAX_MANIFEST_BYTES) ||
+      !sameIdentity(createdStat, pathStat) ||
+      createdStat.size !== bytes.length ||
+      (await fsImpl.realpath(manifestPath)) !== manifestPath
+    ) {
+      fail("PRODUCTION_CANDIDATE_OUTPUT_VERIFICATION_FAILED");
+    }
+    await parentHandle.sync();
+  } catch (error) {
+    if (created) {
+      try {
+        await fsImpl.unlink(manifestPath);
+      } catch (_) {
+        // The original fail-closed creation error remains authoritative.
+      }
+    }
+    if (error instanceof ProductionCandidateManifestError) throw error;
+    fail("PRODUCTION_CANDIDATE_OUTPUT_WRITE_FAILED");
+  } finally {
+    try {
+      await handle?.close();
+    } catch (_) {
+      // Preserve the primary result.
+    }
+    try {
+      await parentHandle?.close();
+    } catch (_) {
+      // Preserve the primary result.
+    }
+    bytes.fill(0);
+  }
+  const authenticated = await loadAndValidateProductionCandidateManifest({
+    manifestPath,
+    expectedManifestSha256: manifestSha256,
+    expectedAppCommit,
+    expectedCurrentMainCommit,
+    expectedOperation: document.operation,
+    resolveGitTree,
+    fsImpl,
+  });
+  return Object.freeze({
+    outcome: "created",
+    manifestPath,
+    manifestSha256,
+    appCommit: authenticated.appCommit,
+    governedMainCommit: authenticated.governedMainCommit,
+    gitTreeSha1: authenticated.gitTreeSha1,
+    operation: Object.freeze({ ...authenticated.operation }),
+    receiptSetSha256: authenticated.receiptSetSha256,
+    remoteWriteAttempted: false,
+  });
 }
 
 function strictEnvironment(environment = process.env) {
