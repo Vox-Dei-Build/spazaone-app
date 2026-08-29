@@ -807,7 +807,8 @@ readback resolves the active `cloud.firestore` release/ruleset and hashes its
 exact `firestore.rules` content. Index readback requires the exact remote TTL
 field contract and all three resources in `ACTIVE`. If immediate readback is
 still provisioning or unavailable, the execute receipt says
-`readbackStatus=needs_review`; repeat only the read-only check later:
+`readbackStatus=needs_review`. Do not repeat the policy write. The legacy
+`--readback-only` commands below may be used later only as diagnostic evidence:
 
 ```bash
 npm --prefix functions run catalog:deploy:guard -- \
@@ -820,7 +821,17 @@ npm --prefix functions run catalog:deploy:guard -- \
   --readback-only
 ```
 
-For either the immediate or later readback, retain the policy receipt only when
+Even when they match, these commands deliberately return
+`closedPolicyReceipt=false`, `receiptStatus=readback_evidence_only`, and
+`requiresPriorReceiptLineage=true`; their output cannot close or replace the
+original receipt. Once the diagnostic readback matches, run the high-level
+`--recover-needs-review` deployment command shown in the rollout/recovery
+section with the exact original policy lane, reported recovery fields, original
+candidate manifest, and a fresh receipt path. That recovery performs another
+readback, binds the original ambiguous receipt lineage, writes no remote policy,
+and is complete only when its persisted receipt has `outcome=recovered_verified`,
+`readbackStatus=verified`, and `remoteWriteAttempted=false`. An immediate
+successful policy execution is complete only when its receipt has
 `readbackStatus=verified`, `closedPolicyReceipt=true`, and
 `receiptStatus=verified`.
 
