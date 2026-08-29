@@ -34,6 +34,7 @@ function loadCheckedTargetDocument() {
     [
       "schemaVersion",
       "firebaseProjectId",
+      "firebaseProjectNumber",
       "firebaseAccount",
       "functionRegions",
       "catalogId",
@@ -68,6 +69,7 @@ function loadCheckedTargetDocument() {
   if (
     document.schemaVersion !== 1 ||
     document.firebaseProjectId !== "pasella-ledger" ||
+    document.firebaseProjectNumber !== "716158514645" ||
     document.firebaseAccount !== "tsepo.ntsaba@thedelta.io" ||
     JSON.stringify(document.functionRegions) !==
       JSON.stringify(["us-central1"]) ||
@@ -101,6 +103,8 @@ export const PRODUCTION_TARGET_DOCUMENT = loadCheckedTargetDocument();
 
 export const PRODUCTION_FIREBASE_PROJECT_ID =
   PRODUCTION_TARGET_DOCUMENT.firebaseProjectId;
+export const PRODUCTION_FIREBASE_PROJECT_NUMBER =
+  PRODUCTION_TARGET_DOCUMENT.firebaseProjectNumber;
 export const PRODUCTION_FIREBASE_ACCOUNT =
   PRODUCTION_TARGET_DOCUMENT.firebaseAccount;
 export const RECONCILIATION_FUNCTION_URL = `https://${PRODUCTION_TARGET_DOCUMENT.functionRegions[0]}-${PRODUCTION_FIREBASE_PROJECT_ID}.cloudfunctions.net/runWhatsAppCatalogFullReconciliationBotHttp`;

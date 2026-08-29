@@ -180,6 +180,17 @@ separate lanes:
   `cancelOrder`, `finalizeOnlinePaid`, and `updateOrderPayment`. It accepts no
   dotenv. Before it can run, the guard verifies both Firebase CLI `15.21.0` and
   that installed CLI's `inferDetailsFromExisting` remote-environment merge.
+  It also reads the complete environment and resolved secret references for all
+  five functions before dispatch. Four functions must have the exact reviewed
+  final secret set already. `getMerchantCatalogBotHttp` may be in exactly one
+  of two states: the predecessor state with only `PASELLA_BOT_TOKEN`, or the
+  already-migrated state with that binding plus
+  `WHATSAPP_CATALOG_RECIPIENT_HASH_KEY`. The post-deploy state must contain the
+  exact final source-declared set. Every pre-existing environment value and
+  secret reference, including its resolved version, must be byte-for-byte
+  unchanged; the only permitted delta is adding that one hash-key binding to
+  that one function. Any other missing, added, moved, renamed, or version-
+  changed reference blocks receipt closure.
   It then seals a mode-`0600` Firebase config with no dotenv or `configDir`
   into the same one-invocation read-only provider-input image. If either the
   source dotenv check or pinned-CLI preservation contract cannot be proved,
@@ -311,11 +322,17 @@ and compare the exact 20 deployment variables on every selected function;
 `BUILD_COMMIT` therefore binds the runtime configuration to the reviewed app
 revision. They also require the exact per-function Secret Manager references
 declared by source and reject any extra user environment variable or secret
-reference. The `existing-code` lane instead captures a pre-write digest of each
+reference. The pinned Firebase CLI `15.21.0` production readback contract is
+also exact: every secret entry must contain the bare checked key in both `key`
+and `secret`, the resolved positive-integer version, and the frozen Firebase
+project number `716158514645` in `projectId`. Missing, slug-form, resource-form,
+or any other project identity fails closed. The `existing-code` lane instead
+captures a pre-write digest of each
 selected function's complete non-platform environment and secret references,
-then requires the post-write digest to be identical. Readback returns only
-counts, selector, region, and digests—never environment values or secret
-references. A receipt is closed only when
+then verifies either exact preservation or the one exact
+`getMerchantCatalogBotHttp` hash-key secret addition described above. Readback
+returns only counts, selector, region, transition mode, and digests—never
+environment values or secret references. A receipt is closed only when
 `closedDeploymentReceipt=true`, `readbackStatus=verified`, and (for dotenv
 lanes) `cleanupStatus=deleted`. A zero deploy
 exit followed by unavailable or mismatched readback is `needs_review`; do not
@@ -374,7 +391,7 @@ only `FIREBASE_CONFIG` followed by `GCLOUD_PROJECT`. Eventarc's source value and
 the existing-code lane's preserved remote endpoint variables are added or
 merged after Firebase establishes the codebase-level backend environment; they
 are therefore not provider-label inputs. They remain independently covered by
-the exact endpoint-environment preservation/readback assertion. The candidate
+the exact endpoint environment/secret transition assertion. The candidate
 source contract rejects any `firebase-functions/params` module reference: a
 future non-internal resolved parameter would add another backend hash input and
 must first be modeled and reviewed explicitly. Secret order is the checked
@@ -422,6 +439,14 @@ outbox status partition. The structural validator already derives and
 cross-binds the artifact receipt digest, completion digest, and enclosing
 evidence digest, but that validation alone is deliberately insufficient to
 persist a verified receipt.
+
+Before the `existing-code` write, retain a read-only `functions:list` check that
+shows which of the two accepted `getMerchantCatalogBotHttp` states is live. The
+executor repeats that read itself and records only the pre/post digests and
+transition mode. A predecessor state requires
+`exact_catalog_recipient_hash_secret_addition`; an already-bound state requires
+`exact_environment_preservation`. Do not manually add, rotate, or remove the
+binding between that read and the lane.
 
 Each helper result is truthful per-invocation evidence, not a composite remote
 deployment receipt. Retain the distinct authorized `dark-new` and

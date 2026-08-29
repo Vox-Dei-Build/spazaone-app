@@ -30,6 +30,7 @@ import {
   resolveAuthorityAppCommit,
   resolvePasellaBotToken,
 } from "../scripts/run-whatsapp-catalog-full-reconciliation.mjs";
+import { PRODUCTION_FIREBASE_PROJECT_NUMBER } from "../scripts/whatsapp-catalog-production-target.mjs";
 import {
   CATALOG_POLICY_LANES,
   IMMUTABLE_TARGET_CONFIGURATION,
@@ -54,6 +55,8 @@ import {
   parseDeploymentGuardArguments,
   parseStrictDotenv,
   validateCatalogDeploymentDotenv,
+  verifyExistingCodeEnvironmentBaseline,
+  verifyExistingCodeEnvironmentTransition,
 } from "../scripts/guard-whatsapp-catalog-functions-deploy.mjs";
 import { firebaseEndpointHashSha1 } from "../scripts/firebase-function-source-binding.mjs";
 import {
@@ -1891,6 +1894,7 @@ test("function readback closes configured receipts without exposing scope values
       id
     ].map((key, secretIndex) => ({
       key,
+      projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
       secret: key,
       version: String(secretIndex + 1),
     }));
@@ -1962,6 +1966,36 @@ test("function readback closes configured receipts without exposing scope values
   ]);
   assert.equal(invocation.options.env.META_WHATSAPP_ACCESS_TOKEN, undefined);
 
+  for (const mutate of [
+    (entry) => {
+      delete entry.projectId;
+    },
+    (entry) => {
+      entry.projectId = PRODUCTION_FIREBASE_PROJECT_ID;
+    },
+    (entry) => {
+      entry.projectId = "999999999999";
+    },
+    (entry) => {
+      entry.secret = `projects/${PRODUCTION_FIREBASE_PROJECT_ID}/secrets/${entry.key}`;
+    },
+  ]) {
+    const changed = structuredClone(endpoints);
+    mutate(changed[0].secretEnvironmentVariables[0]);
+    const rejectedSecretIdentity = await collectCatalogFunctionReadback(
+      {
+        lane: "controlled-delivery-enable",
+        validated,
+        candidateSourceContract: sourceContract,
+      },
+      {
+        execFileImpl: async () => ({ stdout: JSON.stringify(changed) }),
+      },
+    );
+    assert.equal(rejectedSecretIdentity.secretReferencesMatch, false);
+    assert.equal(rejectedSecretIdentity.environmentMatches, false);
+  }
+
   endpoints[0].environmentVariables.WHATSAPP_PRODUCT_LIST_ENABLED = "false";
   const drifted = await collectCatalogFunctionReadback(
     {
@@ -2016,6 +2050,7 @@ test("function readback closes configured receipts without exposing scope values
     endpoints[1].id
   ].map((key, secretIndex) => ({
     key,
+    projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
     secret: key,
     version: String(secretIndex + 1),
   }));
@@ -2033,7 +2068,7 @@ test("function readback closes configured receipts without exposing scope values
   assert.equal(missingProviderBuildIdentity.environmentMatches, false);
 });
 
-test("existing-function readback proves the complete remote env stayed unchanged", async () => {
+test("existing-function readback permits only the exact catalog hash-key secret migration", async () => {
   const sourceContract = candidateSourceContractFixture();
   const firebaseConfig = JSON.stringify({
     projectId: PRODUCTION_FIREBASE_PROJECT_ID,
@@ -2054,6 +2089,7 @@ test("existing-function readback proves the complete remote env stayed unchanged
       NATIVE_CATALOG_EXISTING_FUNCTION_SECRET_REFS[id].map(
         (key, secretIndex) => ({
           key,
+          projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
           secret: key,
           version: String(secretIndex + 1),
         }),
@@ -2071,17 +2107,78 @@ test("existing-function readback proves the complete remote env stayed unchanged
       }),
     };
   });
+  const preDeployEndpoints = structuredClone(endpoints);
+  const migrationEndpoint = preDeployEndpoints.find(
+    (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
+  );
+  migrationEndpoint.secretEnvironmentVariables =
+    migrationEndpoint.secretEnvironmentVariables.filter(
+      (entry) => entry.key !== "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+    );
   const existingEnvironmentBaselines = Object.fromEntries(
-    endpoints.map((endpoint) => [
+    preDeployEndpoints.map((endpoint) => [
       endpoint.id,
-      { environmentVariables: { ...endpoint.environmentVariables } },
+      {
+        environmentVariables: { ...endpoint.environmentVariables },
+        secretEnvironmentVariables: endpoint.secretEnvironmentVariables.map(
+          (entry) => ({ ...entry }),
+        ),
+      },
     ]),
   );
-  const execFileImpl = async () => ({ stdout: JSON.stringify(endpoints) });
+  const preDeployExec = async () => ({
+    stdout: JSON.stringify(preDeployEndpoints),
+  });
   const before = await collectCatalogFunctionReadback(
     { lane: "existing-code", validated: null },
-    { execFileImpl },
+    { execFileImpl: preDeployExec },
   );
+  const baseline = verifyExistingCodeEnvironmentBaseline({
+    functionNames: NATIVE_CATALOG_EXISTING_FUNCTIONS,
+    existingEnvironmentBaselines,
+  });
+  assert.equal(baseline.baselineMatches, true);
+  assert.equal(
+    baseline.transitionMode,
+    "exact_catalog_recipient_hash_secret_addition",
+  );
+  assert.equal(
+    baseline.preDeployEnvironmentDigestSha256,
+    before.environmentDigestSha256,
+  );
+  for (const mutate of [
+    (rows) => {
+      delete rows.getMerchantCatalogBotHttp.secretEnvironmentVariables[0]
+        .projectId;
+    },
+    (rows) => {
+      rows.getMerchantCatalogBotHttp.secretEnvironmentVariables[0].projectId =
+        PRODUCTION_FIREBASE_PROJECT_ID;
+    },
+    (rows) => {
+      rows.getMerchantCatalogBotHttp.secretEnvironmentVariables[0].projectId =
+        "999999999999";
+    },
+    (rows) => {
+      rows.checkoutCart.secretEnvironmentVariables.push({
+        key: "UNEXPECTED_SECRET",
+        projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
+        secret: "UNEXPECTED_SECRET",
+        version: "1",
+      });
+    },
+  ]) {
+    const changed = structuredClone(existingEnvironmentBaselines);
+    mutate(changed);
+    assert.equal(
+      verifyExistingCodeEnvironmentBaseline({
+        functionNames: NATIVE_CATALOG_EXISTING_FUNCTIONS,
+        existingEnvironmentBaselines: changed,
+      }).baselineMatches,
+      false,
+    );
+  }
+  const execFileImpl = async () => ({ stdout: JSON.stringify(endpoints) });
   const after = await collectCatalogFunctionReadback(
     {
       lane: "existing-code",
@@ -2093,9 +2190,102 @@ test("existing-function readback proves the complete remote env stayed unchanged
     { execFileImpl },
   );
   assert.equal(after.environmentMatches, true);
-  assert.equal(after.environmentDigestSha256, before.environmentDigestSha256);
+  assert.equal(
+    after.environmentTransitionMode,
+    "exact_catalog_recipient_hash_secret_addition",
+  );
+  assert.match(after.environmentTransitionDigestSha256, /^[a-f0-9]{64}$/);
+  assert.notEqual(after.environmentDigestSha256, before.environmentDigestSha256);
+  assert.equal(
+    after.expectedEnvironmentDigestSha256,
+    after.environmentDigestSha256,
+  );
   assert.doesNotMatch(JSON.stringify(after), /value-getMerchantCatalogBotHttp/);
   assert.doesNotMatch(JSON.stringify(after), /existing-secret-resource/);
+
+  const preservedBaselines = Object.fromEntries(
+    endpoints.map((endpoint) => [
+      endpoint.id,
+      {
+        environmentVariables: { ...endpoint.environmentVariables },
+        secretEnvironmentVariables: endpoint.secretEnvironmentVariables.map(
+          (entry) => ({ ...entry }),
+        ),
+      },
+    ]),
+  );
+  const preservedBefore = await collectCatalogFunctionReadback(
+    { lane: "existing-code", validated: null },
+    { execFileImpl },
+  );
+  const preserved = verifyExistingCodeEnvironmentTransition({
+    functionNames: NATIVE_CATALOG_EXISTING_FUNCTIONS,
+    existingEnvironmentBaselines: preservedBaselines,
+    endpoints,
+    expectedPreDeployEnvironmentDigestSha256:
+      preservedBefore.environmentDigestSha256,
+  });
+  assert.equal(preserved.transitionMatches, true);
+  assert.equal(preserved.transitionMode, "exact_environment_preservation");
+
+  for (const mutate of [
+    (rows) => {
+      rows.find(
+        (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
+      ).environmentVariables.UNEXPECTED_USER_ENV = "changed";
+    },
+    (rows) => {
+      rows.find(
+        (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
+      ).secretEnvironmentVariables.find(
+        (entry) => entry.key === "PASELLA_BOT_TOKEN",
+      ).version = "99";
+    },
+    (rows) => {
+      rows.find(
+        (endpoint) => endpoint.id === "checkoutCart",
+      ).secretEnvironmentVariables.push({
+        key: "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+        projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
+        secret: "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+        version: "1",
+      });
+    },
+    (rows) => {
+      rows.find(
+        (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
+      ).secretEnvironmentVariables.find(
+        (entry) => entry.key === "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+      ).secret = "projects/pasella-ledger/secrets/WRONG_SECRET";
+    },
+    (rows) => {
+      rows.find(
+        (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
+      ).secretEnvironmentVariables.find(
+        (entry) => entry.key === "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+      ).projectId = "999999999999";
+    },
+    (rows) => {
+      const endpoint = rows.find(
+        (candidate) => candidate.id === "getMerchantCatalogBotHttp",
+      );
+      endpoint.secretEnvironmentVariables =
+        endpoint.secretEnvironmentVariables.filter(
+          (entry) => entry.key !== "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+        );
+    },
+  ]) {
+    const changed = structuredClone(endpoints);
+    mutate(changed);
+    const rejected = verifyExistingCodeEnvironmentTransition({
+      functionNames: NATIVE_CATALOG_EXISTING_FUNCTIONS,
+      existingEnvironmentBaselines,
+      endpoints: changed,
+      expectedPreDeployEnvironmentDigestSha256:
+        before.environmentDigestSha256,
+    });
+    assert.equal(rejected.transitionMatches, false);
+  }
 });
 
 test("source dotenv guard permits only the checked example", async () => {

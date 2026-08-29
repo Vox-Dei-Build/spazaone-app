@@ -36,6 +36,7 @@ import {
   collectCatalogPolicyReadback,
   parseDeploymentGuardArguments,
   validateCatalogDeploymentDotenv,
+  verifyExistingCodeEnvironmentBaseline,
 } from "./guard-whatsapp-catalog-functions-deploy.mjs";
 import {
   APP_REPOSITORY_ROOT,
@@ -2565,7 +2566,14 @@ async function collectExistingEnvironmentBaselines(lane) {
   return Object.fromEntries(
     selected.map((row) => [
       String(row.id),
-      { environmentVariables: { ...(row.environmentVariables ?? {}) } },
+      {
+        environmentVariables: { ...(row.environmentVariables ?? {}) },
+        secretEnvironmentVariables: Array.isArray(
+          row.secretEnvironmentVariables,
+        )
+          ? row.secretEnvironmentVariables.map((entry) => ({ ...entry }))
+          : row.secretEnvironmentVariables,
+      },
     ]),
   );
 }
@@ -2611,6 +2619,11 @@ function functionRemoteEvidence(lane, selector, readback) {
     secretReferencesMatch: readback.secretReferencesMatch,
     environmentDigestSha256: readback.environmentDigestSha256,
     expectedEnvironmentDigestSha256: readback.expectedEnvironmentDigestSha256,
+    environmentTransitionMode: readback.environmentTransitionMode,
+    preDeployEnvironmentDigestSha256:
+      readback.preDeployEnvironmentDigestSha256,
+    environmentTransitionDigestSha256:
+      readback.environmentTransitionDigestSha256,
     candidateSourceBindingMatches: readback.candidateSourceBindingMatches,
     candidateSourceContractSha256: readback.candidateSourceContractSha256,
     candidateSourceFileCount: readback.candidateSourceFileCount,
@@ -2762,10 +2775,19 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
           existingEnvironmentBaselines,
         })
       : null;
+  const existingBaselineContract = before
+    ? verifyExistingCodeEnvironmentBaseline({
+        functionNames: Object.keys(existingEnvironmentBaselines),
+        existingEnvironmentBaselines,
+      })
+    : null;
   if (
     before &&
     (!SHA256.test(String(before.environmentDigestSha256 ?? "")) ||
-      before.environmentShapesValid !== true)
+      before.environmentShapesValid !== true ||
+      existingBaselineContract?.baselineMatches !== true ||
+      existingBaselineContract.preDeployEnvironmentDigestSha256 !==
+        before.environmentDigestSha256)
   ) {
     fail("CATALOG_FUNCTION_READBACK_FAILED");
   }

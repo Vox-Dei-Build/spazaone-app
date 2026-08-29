@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "firebaseProjectId": "pasella-ledger",
+  "firebaseProjectNumber": "716158514645",
   "firebaseAccount": "tsepo.ntsaba@thedelta.io",
   "functionRegions": ["us-central1"],
   "catalogId": "9415654481779933",

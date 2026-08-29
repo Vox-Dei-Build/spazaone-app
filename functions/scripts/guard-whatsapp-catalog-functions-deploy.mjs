@@ -30,6 +30,7 @@ import {
 import {
   IMMUTABLE_TARGET_CONFIGURATION,
   PRODUCTION_FIREBASE_PROJECT_ID,
+  PRODUCTION_FIREBASE_PROJECT_NUMBER,
   PRODUCTION_NATIVE_CATALOG_TARGET,
   nativeCatalogTargetConfigurationDigestSha256,
 } from "./whatsapp-catalog-production-target.mjs";
@@ -155,6 +156,11 @@ export const NATIVE_CATALOG_EXISTING_FUNCTION_SECRET_REFS = Object.freeze({
   cancelOrder: Object.freeze(["PASELLA_BOT_TOKEN", "PAYSTACK_SECRET_KEY"]),
   finalizeOnlinePaid: Object.freeze([]),
   updateOrderPayment: Object.freeze([]),
+});
+
+export const EXISTING_CODE_SECRET_MIGRATION = Object.freeze({
+  functionName: "getMerchantCatalogBotHttp",
+  addedSecretKey: "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
 });
 
 export const CATALOG_FUNCTION_LANES = Object.freeze([
@@ -927,6 +933,11 @@ async function collectCatalogFunctionHashInputs(
       String(endpoint.id),
       {
         environmentVariables: { ...(endpoint.environmentVariables ?? {}) },
+        secretEnvironmentVariables: Array.isArray(
+          endpoint.secretEnvironmentVariables,
+        )
+          ? endpoint.secretEnvironmentVariables.map((entry) => ({ ...entry }))
+          : endpoint.secretEnvironmentVariables,
       },
     ]),
   );
@@ -1003,16 +1014,255 @@ function expectedConfiguredEnvironmentDigest(functionNames, validated) {
 }
 
 function expectedSecretReferenceMatches(entry, expectedKey) {
-  const secret = String(entry?.secret ?? "");
-  const projectId = String(entry?.projectId ?? "");
   return (
     String(entry?.key ?? "") === expectedKey &&
-    (secret === expectedKey ||
-      secret ===
-        `projects/${PRODUCTION_FIREBASE_PROJECT_ID}/secrets/${expectedKey}`) &&
-    (!projectId || projectId === PRODUCTION_FIREBASE_PROJECT_ID) &&
-    String(entry?.version ?? "").length > 0
+    String(entry?.secret ?? "") === expectedKey &&
+    String(entry?.projectId ?? "") === PRODUCTION_FIREBASE_PROJECT_NUMBER &&
+    /^[1-9][0-9]*$/.test(String(entry?.version ?? ""))
   );
+}
+
+function exactSecretReferenceMatches(entry, expectedKey) {
+  return expectedSecretReferenceMatches(entry, expectedKey);
+}
+
+function canonicalEnvironmentSet(functionNames, endpointsByName) {
+  if (
+    !endpointsByName ||
+    typeof endpointsByName !== "object" ||
+    Array.isArray(endpointsByName) ||
+    JSON.stringify(Object.keys(endpointsByName).sort()) !==
+      JSON.stringify([...functionNames].sort())
+  ) {
+    return null;
+  }
+  const rows = [];
+  for (const functionName of [...functionNames].sort()) {
+    const environment = canonicalFunctionEnvironment(
+      endpointsByName[functionName],
+    );
+    if (
+      environment.shapeValid !== true ||
+      new Set(environment.secretEnvironment.map((entry) => entry.key)).size !==
+        environment.secretEnvironment.length
+    ) {
+      return null;
+    }
+    rows.push([
+      functionName,
+      {
+        entries: environment.entries,
+        secretEnvironment: environment.secretEnvironment,
+      },
+    ]);
+  }
+  return {
+    rows,
+    digestSha256: sha256(JSON.stringify(rows)),
+    byName: Object.fromEntries(rows),
+  };
+}
+
+export function verifyExistingCodeEnvironmentBaseline({
+  functionNames,
+  existingEnvironmentBaselines,
+} = {}) {
+  if (!Array.isArray(functionNames)) {
+    return {
+      baselineMatches: false,
+      preDeployEnvironmentDigestSha256: null,
+      transitionMode: null,
+    };
+  }
+  const baseline = canonicalEnvironmentSet(
+    functionNames,
+    existingEnvironmentBaselines,
+  );
+  if (!baseline) {
+    return {
+      baselineMatches: false,
+      preDeployEnvironmentDigestSha256: null,
+      transitionMode: null,
+    };
+  }
+  let additionRequired = false;
+  for (const functionName of [...functionNames].sort()) {
+    const before = baseline.byName[functionName];
+    const finalKeys = [
+      ...(NATIVE_CATALOG_EXISTING_FUNCTION_SECRET_REFS[functionName] ?? []),
+    ].sort();
+    const migrationTarget =
+      functionName === EXISTING_CODE_SECRET_MIGRATION.functionName;
+    const predecessorKeys = migrationTarget
+      ? finalKeys.filter(
+          (key) => key !== EXISTING_CODE_SECRET_MIGRATION.addedSecretKey,
+        )
+      : finalKeys;
+    const beforeKeys = before.secretEnvironment.map((entry) => entry.key);
+    const beforeIsPredecessor =
+      JSON.stringify(beforeKeys) === JSON.stringify(predecessorKeys);
+    const beforeIsFinal =
+      JSON.stringify(beforeKeys) === JSON.stringify(finalKeys);
+    if (
+      (!beforeIsPredecessor && !beforeIsFinal) ||
+      before.secretEnvironment.some(
+        (entry) => !exactSecretReferenceMatches(entry, entry.key),
+      )
+    ) {
+      return {
+        baselineMatches: false,
+        preDeployEnvironmentDigestSha256: baseline.digestSha256,
+        transitionMode: null,
+      };
+    }
+    if (beforeIsPredecessor && !beforeIsFinal) {
+      if (!migrationTarget || additionRequired) {
+        return {
+          baselineMatches: false,
+          preDeployEnvironmentDigestSha256: baseline.digestSha256,
+          transitionMode: null,
+        };
+      }
+      additionRequired = true;
+    }
+  }
+  return {
+    baselineMatches: true,
+    preDeployEnvironmentDigestSha256: baseline.digestSha256,
+    transitionMode: additionRequired
+      ? "exact_catalog_recipient_hash_secret_addition"
+      : "exact_environment_preservation",
+  };
+}
+
+/**
+ * The reviewed existing-code release adds exactly one Secret Manager binding:
+ * WHATSAPP_CATALOG_RECIPIENT_HASH_KEY on getMerchantCatalogBotHttp. Everything
+ * else is a strict preservation contract. The pre-deploy endpoint may already
+ * carry that binding (for example after an earlier reviewed migration); in that
+ * case the entire environment, including its resolved secret version, must be
+ * unchanged.
+ */
+export function verifyExistingCodeEnvironmentTransition({
+  functionNames,
+  existingEnvironmentBaselines,
+  endpoints,
+  expectedPreDeployEnvironmentDigestSha256,
+} = {}) {
+  if (
+    !Array.isArray(functionNames) ||
+    !Array.isArray(endpoints) ||
+    !/^[a-f0-9]{64}$/.test(
+      String(expectedPreDeployEnvironmentDigestSha256 ?? ""),
+    )
+  ) {
+    return {
+      transitionMatches: false,
+      preDeployEnvironmentDigestSha256: null,
+      postDeployEnvironmentDigestSha256: null,
+      transitionMode: null,
+    };
+  }
+  const baselineContract = verifyExistingCodeEnvironmentBaseline({
+    functionNames,
+    existingEnvironmentBaselines,
+  });
+  const baseline = canonicalEnvironmentSet(
+    functionNames,
+    existingEnvironmentBaselines,
+  );
+  const post = canonicalEnvironmentSet(
+    functionNames,
+    Object.fromEntries(
+      endpoints.map((endpoint) => [String(endpoint?.id ?? ""), endpoint]),
+    ),
+  );
+  if (
+    !baseline ||
+    !post ||
+    baselineContract.baselineMatches !== true ||
+    baseline.digestSha256 !== expectedPreDeployEnvironmentDigestSha256
+  ) {
+    return {
+      transitionMatches: false,
+      preDeployEnvironmentDigestSha256: baseline?.digestSha256 ?? null,
+      postDeployEnvironmentDigestSha256: post?.digestSha256 ?? null,
+      transitionMode: null,
+    };
+  }
+
+  let additionRequired = false;
+  for (const functionName of [...functionNames].sort()) {
+    const before = baseline.byName[functionName];
+    const after = post.byName[functionName];
+    const finalKeys = [
+      ...(NATIVE_CATALOG_EXISTING_FUNCTION_SECRET_REFS[functionName] ?? []),
+    ].sort();
+    const beforeKeys = before.secretEnvironment.map((entry) => entry.key);
+    const afterKeys = after.secretEnvironment.map((entry) => entry.key);
+    const migrationTarget =
+      functionName === EXISTING_CODE_SECRET_MIGRATION.functionName;
+    const predecessorKeys = migrationTarget
+      ? finalKeys.filter(
+          (key) => key !== EXISTING_CODE_SECRET_MIGRATION.addedSecretKey,
+        )
+      : finalKeys;
+    const beforeIsPredecessor =
+      JSON.stringify(beforeKeys) === JSON.stringify(predecessorKeys);
+    const beforeIsFinal =
+      JSON.stringify(beforeKeys) === JSON.stringify(finalKeys);
+    if (
+      JSON.stringify(afterKeys) !== JSON.stringify(finalKeys) ||
+      (!beforeIsPredecessor && !beforeIsFinal) ||
+      JSON.stringify(before.entries) !== JSON.stringify(after.entries) ||
+      before.secretEnvironment.some(
+        (entry) =>
+          !exactSecretReferenceMatches(entry, entry.key) ||
+          JSON.stringify(entry) !==
+            JSON.stringify(
+              after.secretEnvironment.find((candidate) => candidate.key === entry.key),
+            ),
+      ) ||
+      after.secretEnvironment.some(
+        (entry) => !exactSecretReferenceMatches(entry, entry.key),
+      )
+    ) {
+      return {
+        transitionMatches: false,
+        preDeployEnvironmentDigestSha256: baseline.digestSha256,
+        postDeployEnvironmentDigestSha256: post.digestSha256,
+        transitionMode: null,
+      };
+    }
+    if (beforeIsPredecessor && !beforeIsFinal) {
+      if (!migrationTarget || additionRequired) {
+        return {
+          transitionMatches: false,
+          preDeployEnvironmentDigestSha256: baseline.digestSha256,
+          postDeployEnvironmentDigestSha256: post.digestSha256,
+          transitionMode: null,
+        };
+      }
+      additionRequired = true;
+    }
+  }
+
+  const transitionMode = additionRequired
+    ? "exact_catalog_recipient_hash_secret_addition"
+    : "exact_environment_preservation";
+  return {
+    transitionMatches: true,
+    preDeployEnvironmentDigestSha256: baseline.digestSha256,
+    postDeployEnvironmentDigestSha256: post.digestSha256,
+    transitionMode,
+    transitionDigestSha256: sha256(
+      JSON.stringify([
+        transitionMode,
+        baseline.digestSha256,
+        post.digestSha256,
+      ]),
+    ),
+  };
 }
 
 function safeBuildSourceIdentity(endpoint) {
@@ -1168,9 +1418,40 @@ export async function collectCatalogFunctionReadback(
         .sort(([left], [right]) => String(left).localeCompare(String(right))),
     ),
   );
+  const existingTransition = configuredOnly
+    ? null
+    : existingEnvironmentBaselines
+      ? verifyExistingCodeEnvironmentTransition({
+          functionNames,
+          existingEnvironmentBaselines,
+          endpoints: selected,
+          expectedPreDeployEnvironmentDigestSha256:
+            expectedPreservationDigestSha256,
+        })
+      : null;
+  if (existingTransition) {
+    secretReferencesMatch = existingTransition.transitionMatches;
+  }
   const expectedDigestSha256 = configuredOnly
     ? expectedConfiguredEnvironmentDigest(functionNames, validated)
-    : expectedPreservationDigestSha256;
+    : existingTransition?.transitionMatches
+      ? existingTransition.postDeployEnvironmentDigestSha256
+      : expectedPreservationDigestSha256;
+  const environmentTransitionMode = configuredOnly
+    ? "configured_exact"
+    : existingTransition?.transitionMode ?? null;
+  const preDeployEnvironmentDigestSha256 = configuredOnly
+    ? null
+    : existingTransition?.preDeployEnvironmentDigestSha256 ?? null;
+  const environmentTransitionDigestSha256 = configuredOnly
+    ? sha256(
+        JSON.stringify([
+          environmentTransitionMode,
+          preDeployEnvironmentDigestSha256,
+          environmentDigestSha256,
+        ]),
+      )
+    : existingTransition?.transitionDigestSha256 ?? null;
   let candidateSourceBinding;
   try {
     candidateSourceBinding = verifyCandidateFirebaseFunctionHashes({
@@ -1212,9 +1493,13 @@ export async function collectCatalogFunctionReadback(
       environmentShapesValid &&
       secretReferencesMatch &&
       buildIdentitiesComplete &&
-      candidateSourceBinding.candidateSourceBindingMatches,
+      candidateSourceBinding.candidateSourceBindingMatches &&
+      (configuredOnly || existingTransition?.transitionMatches === true),
     environmentShapesValid,
     secretReferencesMatch,
+    environmentTransitionMode,
+    environmentTransitionDigestSha256,
+    preDeployEnvironmentDigestSha256,
     buildIdentitiesComplete,
     buildIdentitySetSha256,
     ...candidateSourceBinding,
@@ -1753,10 +2038,19 @@ async function runGuardedCatalogDeployment({
     const before = dryRun
       ? null
       : await collectFunctionReadback({ lane, validated: null });
+    const existingBaselineContract = dryRun
+      ? null
+      : verifyExistingCodeEnvironmentBaseline({
+          functionNames: Object.keys(existingEnvironmentBaselines),
+          existingEnvironmentBaselines,
+        });
     if (
       before &&
       (!/^[a-f0-9]{64}$/.test(String(before.environmentDigestSha256 ?? "")) ||
-        before.environmentShapesValid !== true)
+        before.environmentShapesValid !== true ||
+        existingBaselineContract?.baselineMatches !== true ||
+        existingBaselineContract.preDeployEnvironmentDigestSha256 !==
+          before.environmentDigestSha256)
     ) {
       throw new CatalogDeploymentGuardError("CATALOG_FUNCTION_READBACK_FAILED");
     }

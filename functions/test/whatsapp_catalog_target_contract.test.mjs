@@ -7,6 +7,7 @@ import {
   IMMUTABLE_TARGET_CONFIGURATION,
   PRODUCTION_FIREBASE_ACCOUNT,
   PRODUCTION_FIREBASE_PROJECT_ID,
+  PRODUCTION_FIREBASE_PROJECT_NUMBER,
   PRODUCTION_NATIVE_CATALOG_TARGET,
   nativeCatalogTargetConfigurationDigestSha256,
 } from "../scripts/whatsapp-catalog-production-target.mjs";
@@ -27,6 +28,10 @@ const target = JSON.parse(
 
 test("operator MJS and runtime TS match the checked production target JSON", () => {
   assert.equal(PRODUCTION_FIREBASE_PROJECT_ID, target.firebaseProjectId);
+  assert.equal(
+    PRODUCTION_FIREBASE_PROJECT_NUMBER,
+    target.firebaseProjectNumber,
+  );
   assert.equal(PRODUCTION_FIREBASE_ACCOUNT, target.firebaseAccount);
   assert.deepEqual(PRODUCTION_NATIVE_CATALOG_TARGET, {
     catalogId: target.catalogId,

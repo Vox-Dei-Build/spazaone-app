@@ -89,6 +89,8 @@ function manifestDigest(document) {
 }
 
 function rawFunctionEvidence() {
+  const environmentDigestSha256 = "6".repeat(64);
+  const environmentTransitionMode = "configured_exact";
   return {
     kind: "function_deployment",
     lane: "dark-new",
@@ -101,8 +103,19 @@ function rawFunctionEvidence() {
     environmentShapesValid: true,
     environmentMatches: true,
     secretReferencesMatch: true,
-    environmentDigestSha256: "6".repeat(64),
-    expectedEnvironmentDigestSha256: "6".repeat(64),
+    environmentDigestSha256,
+    expectedEnvironmentDigestSha256: environmentDigestSha256,
+    environmentTransitionMode,
+    preDeployEnvironmentDigestSha256: null,
+    environmentTransitionDigestSha256: createHash("sha256")
+      .update(
+        JSON.stringify([
+          environmentTransitionMode,
+          null,
+          environmentDigestSha256,
+        ]),
+      )
+      .digest("hex"),
     candidateSourceBindingMatches: true,
     candidateSourceContractSha256: "7".repeat(64),
     candidateSourceFileCount: 400,
@@ -408,6 +421,74 @@ test("function receipt evidence cannot omit reviewed candidate source binding", 
       error instanceof ProductionReceiptError &&
       error.code === "FUNCTION_REMOTE_EVIDENCE_KEYSET_INVALID",
   );
+});
+
+test("existing-code receipt binds the exact pre-to-post secret migration", () => {
+  const existingSelector = [
+    "getMerchantCatalogBotHttp",
+    "checkoutCart",
+    "cancelOrder",
+    "finalizeOnlinePaid",
+    "updateOrderPayment",
+  ]
+    .map((name) => `functions:${name}`)
+    .join(",");
+  const preDeployEnvironmentDigestSha256 = "9".repeat(64);
+  const postDeployEnvironmentDigestSha256 = "a".repeat(64);
+  const environmentTransitionMode =
+    "exact_catalog_recipient_hash_secret_addition";
+  const evidence = {
+    ...rawFunctionEvidence(),
+    lane: "existing-code",
+    selector: existingSelector,
+    functionCount: 5,
+    environmentDigestSha256: postDeployEnvironmentDigestSha256,
+    expectedEnvironmentDigestSha256: postDeployEnvironmentDigestSha256,
+    environmentTransitionMode,
+    preDeployEnvironmentDigestSha256,
+    environmentTransitionDigestSha256: createHash("sha256")
+      .update(
+        JSON.stringify([
+          environmentTransitionMode,
+          preDeployEnvironmentDigestSha256,
+          postDeployEnvironmentDigestSha256,
+        ]),
+      )
+      .digest("hex"),
+  };
+  assert.doesNotThrow(() =>
+    buildNeedsReviewProductionWriteReceipt(
+      needsReviewInput({
+        lane: "existing-code",
+        selector: existingSelector,
+        remoteEvidence: evidence,
+      }),
+    ),
+  );
+
+  for (const mutation of [
+    (value) => {
+      value.environmentTransitionMode = "configured_exact";
+    },
+    (value) => {
+      value.preDeployEnvironmentDigestSha256 = null;
+    },
+    (value) => {
+      value.environmentTransitionDigestSha256 = "b".repeat(64);
+    },
+  ]) {
+    const changed = structuredClone(evidence);
+    mutation(changed);
+    assert.throws(() =>
+      buildNeedsReviewProductionWriteReceipt(
+        needsReviewInput({
+          lane: "existing-code",
+          selector: existingSelector,
+          remoteEvidence: changed,
+        }),
+      ),
+    );
+  }
 });
 
 test("needs-review receipt persists with atomic no-replace inode and mode 0600", async () => {

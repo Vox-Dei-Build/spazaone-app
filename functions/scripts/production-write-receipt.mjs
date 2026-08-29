@@ -182,6 +182,9 @@ const FUNCTION_EVIDENCE_KEYS = [
   "secretReferencesMatch",
   "environmentDigestSha256",
   "expectedEnvironmentDigestSha256",
+  "environmentTransitionMode",
+  "preDeployEnvironmentDigestSha256",
+  "environmentTransitionDigestSha256",
   "candidateSourceBindingMatches",
   "candidateSourceContractSha256",
   "candidateSourceFileCount",
@@ -680,6 +683,24 @@ function normalizeFunctionEvidence(remoteEvidence, context) {
     "FUNCTION_REMOTE_EVIDENCE_EXPECTED_ENVIRONMENT_SHA256",
     SHA256,
   );
+  const environmentTransitionMode = string(
+    remoteEvidence.environmentTransitionMode,
+    "FUNCTION_REMOTE_EVIDENCE_TRANSITION_MODE",
+    /^(configured_exact|exact_catalog_recipient_hash_secret_addition|exact_environment_preservation)$/,
+  );
+  const preDeployEnvironmentDigestSha256 =
+    remoteEvidence.preDeployEnvironmentDigestSha256 === null
+      ? null
+      : string(
+          remoteEvidence.preDeployEnvironmentDigestSha256,
+          "FUNCTION_REMOTE_EVIDENCE_PREDEPLOY_ENVIRONMENT_SHA256",
+          SHA256,
+        );
+  const environmentTransitionDigestSha256 = string(
+    remoteEvidence.environmentTransitionDigestSha256,
+    "FUNCTION_REMOTE_EVIDENCE_TRANSITION_SHA256",
+    SHA256,
+  );
   const candidateSourceContractSha256 = string(
     remoteEvidence.candidateSourceContractSha256,
     "FUNCTION_REMOTE_EVIDENCE_SOURCE_CONTRACT_SHA256",
@@ -706,7 +727,20 @@ function normalizeFunctionEvidence(remoteEvidence, context) {
     remoteEvidence.region !== PRODUCTION_TARGET_DOCUMENT.functionRegions[0] ||
     functionCount !== expectedFunctionCount ||
     functionCount < 1 ||
-    environmentDigestSha256 !== expectedEnvironmentDigestSha256
+    environmentDigestSha256 !== expectedEnvironmentDigestSha256 ||
+    (context.lane === "existing-code"
+      ? preDeployEnvironmentDigestSha256 === null ||
+        environmentTransitionMode === "configured_exact"
+      : preDeployEnvironmentDigestSha256 !== null ||
+        environmentTransitionMode !== "configured_exact") ||
+    environmentTransitionDigestSha256 !==
+      sha256(
+        JSON.stringify([
+          environmentTransitionMode,
+          preDeployEnvironmentDigestSha256,
+          environmentDigestSha256,
+        ]),
+      )
   ) {
     fail("FUNCTION_REMOTE_EVIDENCE_BINDING_INVALID");
   }
@@ -750,6 +784,9 @@ function normalizeFunctionEvidence(remoteEvidence, context) {
     secretReferencesMatch: true,
     environmentDigestSha256,
     expectedEnvironmentDigestSha256,
+    environmentTransitionMode,
+    preDeployEnvironmentDigestSha256,
+    environmentTransitionDigestSha256,
     candidateSourceBindingMatches: true,
     candidateSourceContractSha256,
     candidateSourceFileCount,
