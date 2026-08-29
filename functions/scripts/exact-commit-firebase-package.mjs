@@ -836,6 +836,7 @@ export async function createFirebaseProviderWorkspace({
 const PRODUCTION_SESSION_LANES = Object.freeze([
   "firestore-rules",
   "firestore-indexes",
+  "full-reconciliation",
   "dark-new",
   "existing-code",
   "sync-enable",
@@ -872,10 +873,12 @@ export async function createFirebaseProductionSessionWorkspace({
   }
   const normalizedDotenv = exactDotenv(dotenvText);
   const policyLane = lane === "firestore-rules" || lane === "firestore-indexes";
-  const configuredFunctionLane = !policyLane && lane !== "existing-code";
+  const readOnlySourceLane =
+    lane === "existing-code" || lane === "full-reconciliation";
+  const configuredFunctionLane = !policyLane && !readOnlySourceLane;
   if (
     (policyLane && normalizedDotenv.length !== 0) ||
-    (lane === "existing-code" && normalizedDotenv.length !== 0) ||
+    (readOnlySourceLane && normalizedDotenv.length !== 0) ||
     (configuredFunctionLane && normalizedDotenv.length === 0)
   ) {
     fail("FIREBASE_PRODUCTION_SESSION_DOTENV_INVALID");

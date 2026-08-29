@@ -92,6 +92,7 @@ const authorityAttestations = new WeakMap();
 const preparedLiveSessions = new WeakMap();
 const liveSessionCapabilities = new WeakMap();
 const recoveryInspectionCapabilities = new WeakMap();
+const consumedLiveSessions = new WeakSet();
 const LIVE_SESSION_MAX_AGE_MS = 10 * 60 * 1000;
 const CLEAN_LAUNCHER = Object.freeze({
   path: path.join(
@@ -180,33 +181,128 @@ function liveSessionRecoveryBinding(value = {}) {
 
 async function cleanupLiveSessionState(state) {
   if (!state || state.cleaned === true) return;
-  let cleanupError = null;
-  try {
-    if (state.workspace && state.workspaceCleaned !== true) {
-      await cleanupFirebaseProviderWorkspace(state.workspace);
-      state.workspaceCleaned = true;
+  if (state.cleanupPromise) return state.cleanupPromise;
+  state.cleanupPromise = (async () => {
+    if (state.expiryTimer) {
+      clearTimeout(state.expiryTimer);
+      state.expiryTimer = undefined;
     }
-  } catch (error) {
-    cleanupError = error;
+    let cleanupError = null;
+    try {
+      if (state.workspace && state.workspaceCleaned !== true) {
+        await cleanupFirebaseProviderWorkspace(state.workspace);
+        state.workspaceCleaned = true;
+      }
+    } catch (error) {
+      cleanupError = error;
+    }
+    try {
+      if (
+        (state.mountedPackage || state.packageDescriptor) &&
+        state.packageCleaned !== true
+      ) {
+        await cleanupExactCommitFirebasePackage({
+          mountedPackage: state.mountedPackage,
+          packageDescriptor: state.packageDescriptor,
+        });
+        state.packageCleaned = true;
+      }
+    } catch (error) {
+      cleanupError ??= error;
+    }
+    if (cleanupError) throw cleanupError;
+    state.cleaned = true;
+  })();
+  return state.cleanupPromise;
+}
+
+function detachLiveSessionCapability(registry, capability, state) {
+  if (state?.expiryTimer) {
+    clearTimeout(state.expiryTimer);
+    state.expiryTimer = undefined;
   }
-  try {
-    if (
-      (state.mountedPackage || state.packageDescriptor) &&
-      state.packageCleaned !== true
-    ) {
-      await cleanupExactCommitFirebasePackage({
-        mountedPackage: state.mountedPackage,
-        packageDescriptor: state.packageDescriptor,
+  if (registry.get(capability) === state) registry.delete(capability);
+}
+
+function registerLiveSessionCapability(registry, capability, state) {
+  const expiresAtMs = Date.parse(state?.binding?.expiresAt ?? "");
+  if (!Number.isFinite(expiresAtMs)) {
+    fail("PRODUCTION_LIVE_SESSION_EXPIRY_INVALID");
+  }
+  registry.set(capability, state);
+  const expiryTimer = setTimeout(
+    () => {
+      if (registry.get(capability) !== state) return;
+      registry.delete(capability);
+      state.expiryTimer = undefined;
+      state.consumed = true;
+      void cleanupLiveSessionState(state).catch(() => {
+        state.cleanupFailed = true;
       });
-      state.packageCleaned = true;
-    }
+    },
+    Math.max(0, expiresAtMs - Date.now()),
+  );
+  expiryTimer.unref?.();
+  state.expiryTimer = expiryTimer;
+}
+
+async function rejectAndCleanupExpiredLiveSession({
+  registry,
+  capability,
+  state,
+  currentMs,
+  code,
+}) {
+  if (
+    !state ||
+    !Number.isFinite(currentMs) ||
+    currentMs < Date.parse(state.binding.expiresAt)
+  ) {
+    return false;
+  }
+  detachLiveSessionCapability(registry, capability, state);
+  state.consumed = true;
+  try {
+    await cleanupLiveSessionState(state);
   } catch (error) {
-    cleanupError ??= error;
+    fail("PRODUCTION_LIVE_SESSION_EXPIRY_CLEANUP_FAILED", { cause: error });
   }
-  if (cleanupError) {
-    throw cleanupError;
+  fail(code);
+}
+
+async function disposeActiveLiveSession({
+  registry,
+  capability,
+  inactiveCode,
+}) {
+  const state = registry.get(capability);
+  if (!state || state.consumed) fail(inactiveCode);
+  detachLiveSessionCapability(registry, capability, state);
+  state.consumed = true;
+  try {
+    await cleanupLiveSessionState(state);
+  } catch (error) {
+    fail("PRODUCTION_LIVE_SESSION_DISPOSAL_FAILED", { cause: error });
   }
-  state.cleaned = true;
+  return Object.freeze({
+    outcome: "disposed",
+    bindingSha256: state.bindingSha256,
+    remoteWriteAttempted: false,
+  });
+}
+
+async function invalidateLiveSessionCapability({
+  registry,
+  capability,
+  state,
+}) {
+  detachLiveSessionCapability(registry, capability, state);
+  state.consumed = true;
+  try {
+    await cleanupLiveSessionState(state);
+  } catch (error) {
+    fail("PRODUCTION_LIVE_SESSION_DISPOSAL_FAILED", { cause: error });
+  }
 }
 
 async function prepareProductionLiveSession({
@@ -214,6 +310,7 @@ async function prepareProductionLiveSession({
   candidate,
   dotenvText,
   recovery,
+  recoveryReadbackProvider,
   clock = () => new Date(),
 }) {
   if (
@@ -229,8 +326,24 @@ async function prepareProductionLiveSession({
   ) {
     fail("PRODUCTION_LIVE_SESSION_CANDIDATE_INVALID");
   }
+  const recoveryBinding = liveSessionRecoveryBinding(recovery);
+  const recoveryInspection = recoveryBinding.mode === "readback_first";
+  if (
+    recoveryBinding.mode === "continuation" ||
+    (recoveryInspection &&
+      (context.kind !== "spazaone_catalog_full_reconciliation" ||
+        context.lane !== "full-reconciliation" ||
+        typeof recoveryReadbackProvider !== "function")) ||
+    (!recoveryInspection && recoveryReadbackProvider !== undefined)
+  ) {
+    fail("PRODUCTION_RECOVERY_READBACK_PROVIDER_INVALID");
+  }
   const policyLane = CATALOG_POLICY_LANES.includes(context.lane);
-  if (policyLane || context.lane === "existing-code") {
+  if (
+    policyLane ||
+    context.lane === "existing-code" ||
+    context.lane === "full-reconciliation"
+  ) {
     if (dotenvText !== "") fail("PRODUCTION_LIVE_SESSION_DOTENV_INVALID");
   } else {
     let validatedDotenv;
@@ -279,7 +392,6 @@ async function prepareProductionLiveSession({
     const expiresAt = new Date(
       preparedAt.getTime() + LIVE_SESSION_MAX_AGE_MS,
     ).toISOString();
-    const recoveryBinding = liveSessionRecoveryBinding(recovery);
     const binding = deepFreeze({
       schemaVersion: 1,
       kind: "spazaone_production_live_session",
@@ -342,13 +454,20 @@ async function prepareProductionLiveSession({
       mountedPackage,
       workspace,
       context: structuredClone(context),
+      recoveryReadbackProvider: recoveryInspection
+        ? recoveryReadbackProvider
+        : undefined,
       consumed: false,
       cleaned: false,
     };
     if (recoveryBinding.mode === "readback_first") {
-      recoveryInspectionCapabilities.set(capability, state);
+      registerLiveSessionCapability(
+        recoveryInspectionCapabilities,
+        capability,
+        state,
+      );
     } else {
-      preparedLiveSessions.set(capability, state);
+      registerLiveSessionCapability(preparedLiveSessions, capability, state);
     }
     return {
       capability,
@@ -388,6 +507,13 @@ async function authorizePreparedProductionLiveSession(
   const deadlineMs = Date.parse(deadline);
   const current = clock();
   const nowMs = current instanceof Date ? current.getTime() : Number.NaN;
+  await rejectAndCleanupExpiredLiveSession({
+    registry: preparedLiveSessions,
+    capability: preparedCapability,
+    state,
+    currentMs: nowMs,
+    code: "FRESH_PRODUCTION_ACTION_AUTHORIZATION_REQUIRED",
+  });
   if (
     !state ||
     state.consumed ||
@@ -400,15 +526,23 @@ async function authorizePreparedProductionLiveSession(
     deadlineMs <= nowMs ||
     deadlineMs <= authorizedAtMs ||
     deadlineMs - authorizedAtMs > LIVE_SESSION_MAX_AGE_MS ||
-    deadlineMs > Date.parse(state.binding.expiresAt) ||
-    nowMs >= Date.parse(state.binding.expiresAt)
+    deadlineMs > Date.parse(state.binding.expiresAt)
   ) {
     fail("FRESH_PRODUCTION_ACTION_AUTHORIZATION_REQUIRED");
   }
-  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
-  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  try {
+    await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+    await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  } catch (error) {
+    await invalidateLiveSessionCapability({
+      registry: preparedLiveSessions,
+      capability: preparedCapability,
+      state,
+    });
+    throw error;
+  }
+  detachLiveSessionCapability(preparedLiveSessions, preparedCapability, state);
   state.consumed = true;
-  preparedLiveSessions.delete(preparedCapability);
   const authorizedBinding = deepFreeze({
     ...state.binding,
     authorizedAt,
@@ -421,7 +555,11 @@ async function authorizePreparedProductionLiveSession(
     bindingSha256: canonicalSha256(authorizedBinding),
     consumed: false,
   };
-  liveSessionCapabilities.set(capability, authorizedState);
+  registerLiveSessionCapability(
+    liveSessionCapabilities,
+    capability,
+    authorizedState,
+  );
   return {
     capability,
     summary: Object.freeze({
@@ -437,13 +575,44 @@ async function authorizePreparedProductionLiveSession(
 }
 
 async function disposePreparedProductionLiveSession(preparedCapability) {
-  const state = preparedLiveSessions.get(preparedCapability);
-  if (!state || state.consumed) {
-    fail("PRODUCTION_PREPARED_SESSION_NOT_ACTIVE");
+  return disposeActiveLiveSession({
+    registry: preparedLiveSessions,
+    capability: preparedCapability,
+    inactiveCode: "PRODUCTION_PREPARED_SESSION_NOT_ACTIVE",
+  });
+}
+
+async function disposeAuthorizedProductionLiveSession(capability) {
+  return disposeActiveLiveSession({
+    registry: liveSessionCapabilities,
+    capability,
+    inactiveCode: "PRODUCTION_AUTHORIZED_SESSION_NOT_ACTIVE",
+  });
+}
+
+async function disposeRecoveryInspectionLiveSession(inspectionCapability) {
+  return disposeActiveLiveSession({
+    registry: recoveryInspectionCapabilities,
+    capability: inspectionCapability,
+    inactiveCode: "PRODUCTION_RECOVERY_SESSION_NOT_ACTIVE",
+  });
+}
+
+async function disposeConsumedProductionLiveSession(session) {
+  if (!consumedLiveSessions.has(session)) {
+    fail("PRODUCTION_CONSUMED_SESSION_NOT_ACTIVE");
   }
-  await cleanupLiveSessionState(state);
-  state.consumed = true;
-  preparedLiveSessions.delete(preparedCapability);
+  consumedLiveSessions.delete(session);
+  try {
+    await cleanupLiveSessionState(session);
+  } catch (error) {
+    fail("PRODUCTION_LIVE_SESSION_DISPOSAL_FAILED", { cause: error });
+  }
+  return Object.freeze({
+    outcome: "disposed",
+    bindingSha256: session.bindingSha256,
+    remoteWriteAttempted: false,
+  });
 }
 
 async function consumeProductionLiveSessionCapability(
@@ -453,24 +622,36 @@ async function consumeProductionLiveSessionCapability(
 ) {
   const state = liveSessionCapabilities.get(capability);
   const consumedAt = clock();
+  const consumedAtMs =
+    consumedAt instanceof Date ? consumedAt.getTime() : Number.NaN;
+  await rejectAndCleanupExpiredLiveSession({
+    registry: liveSessionCapabilities,
+    capability,
+    state,
+    currentMs: consumedAtMs,
+    code: "PRODUCTION_LIVE_SESSION_CAPABILITY_REJECTED",
+  });
   if (
     !state ||
     state.consumed ||
     !(consumedAt instanceof Date) ||
-    !Number.isFinite(consumedAt.getTime()) ||
-    consumedAt.getTime() >= Date.parse(state.binding.expiresAt) ||
+    !Number.isFinite(consumedAtMs) ||
     canonicalSha256(state.context) !== canonicalSha256(expectedContext) ||
     state.binding.recovery.mode === "readback_first"
   ) {
     fail("PRODUCTION_LIVE_SESSION_CAPABILITY_REJECTED");
   }
+  detachLiveSessionCapability(liveSessionCapabilities, capability, state);
   state.consumed = true;
-  liveSessionCapabilities.delete(capability);
   try {
     await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
     await verifyFirebaseProductionSessionWorkspace(state.workspace);
   } catch (error) {
-    await cleanupLiveSessionState(state);
+    await invalidateLiveSessionCapability({
+      registry: liveSessionCapabilities,
+      capability,
+      state,
+    });
     throw error;
   }
   const consumptionFacts = {
@@ -482,11 +663,13 @@ async function consumeProductionLiveSessionCapability(
     recoverySha256: canonicalSha256(state.binding.recovery),
     oneShot: true,
   };
-  return {
+  const consumedSession = {
     ...state,
     consumedAt: consumptionFacts.consumedAt,
     consumptionSha256: canonicalSha256(consumptionFacts),
   };
+  consumedLiveSessions.add(consumedSession);
+  return consumedSession;
 }
 
 async function inspectAuthorizedProductionLiveSession(
@@ -496,19 +679,36 @@ async function inspectAuthorizedProductionLiveSession(
 ) {
   const state = liveSessionCapabilities.get(capability);
   const inspectedAt = clock();
+  const inspectedAtMs =
+    inspectedAt instanceof Date ? inspectedAt.getTime() : Number.NaN;
+  await rejectAndCleanupExpiredLiveSession({
+    registry: liveSessionCapabilities,
+    capability,
+    state,
+    currentMs: inspectedAtMs,
+    code: "PRODUCTION_LIVE_SESSION_CAPABILITY_REJECTED",
+  });
   if (
     !state ||
     state.consumed ||
     !(inspectedAt instanceof Date) ||
-    !Number.isFinite(inspectedAt.getTime()) ||
-    inspectedAt.getTime() >= Date.parse(state.binding.expiresAt) ||
+    !Number.isFinite(inspectedAtMs) ||
     canonicalSha256(state.context) !== canonicalSha256(expectedContext) ||
     state.binding.recovery.mode === "readback_first"
   ) {
     fail("PRODUCTION_LIVE_SESSION_CAPABILITY_REJECTED");
   }
-  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
-  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  try {
+    await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+    await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  } catch (error) {
+    await invalidateLiveSessionCapability({
+      registry: liveSessionCapabilities,
+      capability,
+      state,
+    });
+    throw error;
+  }
   return state;
 }
 
@@ -524,66 +724,102 @@ function exactRecoveryReadback(value) {
   }
   const expectedKeys =
     value.outcome === "complete"
-      ? ["cycleId", "outcome", "readbackSha256"]
-      : [
-          "continuationStateDigestSha256",
-          "cycleId",
-          "outcome",
-          "readbackSha256",
-        ];
+      ? ["cycleId", "outcome"]
+      : ["continuationStateDigestSha256", "cycleId", "outcome"];
   if (
     canonicalJson(Object.keys(value).sort()) !== canonicalJson(expectedKeys) ||
     !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
-    !SHA256.test(String(value.readbackSha256 ?? "")) ||
     (value.outcome === "incomplete" &&
       !SHA256.test(String(value.continuationStateDigestSha256 ?? "")))
   ) {
     fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
   }
-  return deepFreeze(structuredClone(value));
+  const facts = deepFreeze(structuredClone(value));
+  return deepFreeze({
+    facts,
+    readbackSha256: canonicalSha256(facts),
+  });
 }
 
 async function recordRecoveryInspection(
   inspectionCapability,
-  recoveryReadback,
   { clock = () => new Date() } = {},
 ) {
   const state = recoveryInspectionCapabilities.get(inspectionCapability);
   const inspectedAt = clock();
-  const validatedReadback = exactRecoveryReadback(recoveryReadback);
+  const inspectedAtMs =
+    inspectedAt instanceof Date ? inspectedAt.getTime() : Number.NaN;
+  await rejectAndCleanupExpiredLiveSession({
+    registry: recoveryInspectionCapabilities,
+    capability: inspectionCapability,
+    state,
+    currentMs: inspectedAtMs,
+    code: "PRODUCTION_RECOVERY_READBACK_REJECTED",
+  });
   if (
     !state ||
     state.consumed ||
     state.binding.recovery.mode !== "readback_first" ||
     state.recoveryReadback !== undefined ||
+    state.recoveryInspectionStarted === true ||
+    typeof state.recoveryReadbackProvider !== "function" ||
     !(inspectedAt instanceof Date) ||
-    inspectedAt.getTime() >= Date.parse(state.binding.expiresAt) ||
-    !validatedReadback
+    !Number.isFinite(inspectedAtMs)
   ) {
     fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
   }
-  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
-  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  try {
+    await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+    await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  } catch (error) {
+    await invalidateLiveSessionCapability({
+      registry: recoveryInspectionCapabilities,
+      capability: inspectionCapability,
+      state,
+    });
+    throw error;
+  }
+  const provider = state.recoveryReadbackProvider;
+  state.recoveryInspectionStarted = true;
+  state.recoveryReadbackProvider = undefined;
+  let canonicalReadback;
+  try {
+    canonicalReadback = exactRecoveryReadback(await provider());
+  } catch (error) {
+    await invalidateLiveSessionCapability({
+      registry: recoveryInspectionCapabilities,
+      capability: inspectionCapability,
+      state,
+    });
+    if (error instanceof ProductionExecutorError) throw error;
+    fail("PRODUCTION_RECOVERY_READBACK_REJECTED", { cause: error });
+  }
+  const validatedReadback = canonicalReadback.facts;
   state.recoveryReadback = validatedReadback;
+  state.recoveryReadbackSha256 = canonicalReadback.readbackSha256;
   state.recoveryInspectedAt = inspectedAt.toISOString();
   if (validatedReadback.outcome === "complete") {
     const result = Object.freeze({
       outcome: "recovered_readback",
       bindingSha256: state.bindingSha256,
-      recoveryReadbackSha256: validatedReadback.readbackSha256,
+      recoveryReadbackSha256: state.recoveryReadbackSha256,
       priorReceiptSha256: state.binding.recovery.priorReceiptSha256,
       remoteWriteAttempted: false,
       continuationAuthorizationRequired: false,
     });
-    await cleanupLiveSessionState(state);
+    detachLiveSessionCapability(
+      recoveryInspectionCapabilities,
+      inspectionCapability,
+      state,
+    );
     state.consumed = true;
-    recoveryInspectionCapabilities.delete(inspectionCapability);
+    await cleanupLiveSessionState(state);
     return result;
   }
   return Object.freeze({
     outcome: "continuation_authorization_required",
     bindingSha256: state.bindingSha256,
-    recoveryReadbackSha256: validatedReadback.readbackSha256,
+    recoveryReadbackSha256: state.recoveryReadbackSha256,
     priorReceiptSha256: state.binding.recovery.priorReceiptSha256,
     remoteWriteAttempted: false,
     continuationAuthorizationRequired: true,
@@ -595,24 +831,23 @@ async function mintFreshReconciliationContinuationCapability(
   { authorizedAt, deadline, clock = () => new Date() },
 ) {
   const state = recoveryInspectionCapabilities.get(inspectionCapability);
-  let validatedReadback = null;
-  try {
-    if (state?.recoveryReadback) {
-      validatedReadback = exactRecoveryReadback(state.recoveryReadback);
-    }
-  } catch (_) {
-    fail("FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED");
-  }
+  const validatedReadback = state?.recoveryReadback ?? null;
   const authorizedAtMs = Date.parse(authorizedAt);
   const deadlineMs = Date.parse(deadline);
   const current = clock();
   const nowMs = current instanceof Date ? current.getTime() : Number.NaN;
+  await rejectAndCleanupExpiredLiveSession({
+    registry: recoveryInspectionCapabilities,
+    capability: inspectionCapability,
+    state,
+    currentMs: nowMs,
+    code: "FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED",
+  });
   if (
     !state ||
     state.consumed ||
     validatedReadback?.outcome !== "incomplete" ||
-    canonicalSha256(validatedReadback) !==
-      canonicalSha256(state.recoveryReadback) ||
+    canonicalSha256(validatedReadback) !== state.recoveryReadbackSha256 ||
     !Number.isFinite(authorizedAtMs) ||
     !Number.isFinite(deadlineMs) ||
     !Number.isFinite(nowMs) ||
@@ -621,15 +856,27 @@ async function mintFreshReconciliationContinuationCapability(
     deadlineMs <= nowMs ||
     deadlineMs <= authorizedAtMs ||
     deadlineMs - authorizedAtMs > LIVE_SESSION_MAX_AGE_MS ||
-    deadlineMs > Date.parse(state.binding.expiresAt) ||
-    nowMs >= Date.parse(state.binding.expiresAt)
+    deadlineMs > Date.parse(state.binding.expiresAt)
   ) {
     fail("FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED");
   }
-  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
-  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  try {
+    await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+    await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  } catch (error) {
+    await invalidateLiveSessionCapability({
+      registry: recoveryInspectionCapabilities,
+      capability: inspectionCapability,
+      state,
+    });
+    throw error;
+  }
+  detachLiveSessionCapability(
+    recoveryInspectionCapabilities,
+    inspectionCapability,
+    state,
+  );
   state.consumed = true;
-  recoveryInspectionCapabilities.delete(inspectionCapability);
   const continuationBinding = deepFreeze({
     ...state.binding,
     authorizedAt,
@@ -640,7 +887,7 @@ async function mintFreshReconciliationContinuationCapability(
       cycleId: validatedReadback.cycleId,
       continuationStateDigestSha256:
         validatedReadback.continuationStateDigestSha256,
-      recoveryReadbackSha256: validatedReadback.readbackSha256,
+      recoveryReadbackSha256: state.recoveryReadbackSha256,
     },
   });
   const capability = Object.freeze(Object.create(null));
@@ -650,9 +897,16 @@ async function mintFreshReconciliationContinuationCapability(
     bindingSha256: canonicalSha256(continuationBinding),
     consumed: false,
     recoveryReadback: undefined,
+    recoveryReadbackSha256: undefined,
+    recoveryReadbackProvider: undefined,
     recoveryInspectedAt: undefined,
+    recoveryInspectionStarted: undefined,
   };
-  liveSessionCapabilities.set(capability, continuationState);
+  registerLiveSessionCapability(
+    liveSessionCapabilities,
+    capability,
+    continuationState,
+  );
   return {
     capability,
     summary: Object.freeze({
@@ -954,6 +1208,7 @@ function receiptRecord(input) {
       commandExitZero: input.commandExitZero,
       readbackStatus: input.readbackStatus,
       cleanupStatus: input.cleanupStatus,
+      providerScratchEvidence: input.providerScratchEvidence ?? null,
       remoteEvidence: input.remoteEvidence
         ? storedRemoteEvidence(input.remoteEvidence)
         : null,
@@ -1348,11 +1603,12 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
   let dispatchStartedAt;
   let commandExitZero = false;
   let cleanupStatus = "deleted";
+  let providerScratchEvidence = null;
   let sessionCleaned = false;
   const cleanupSession = async () => {
     if (sessionCleaned) return;
     try {
-      await cleanupLiveSessionState(session);
+      await disposeConsumedProductionLiveSession(session);
       sessionCleaned = true;
     } catch (_) {
       cleanupStatus = "needs_review";
@@ -1405,7 +1661,15 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
         verifiedWorkspace.sourceKernelReadOnly === true &&
         verifiedWorkspace.providerInputKernelReadOnly === true &&
         SHA256.test(scratch.providerScratchInventorySha256) &&
-        Number.isSafeInteger(scratch.providerScratchEntryCount);
+        Number.isSafeInteger(scratch.providerScratchEntryCount) &&
+        Number.isSafeInteger(scratch.providerScratchTotalBytes);
+      if (packageIntegrityVerified) {
+        providerScratchEvidence = Object.freeze({
+          inventorySha256: scratch.providerScratchInventorySha256,
+          entryCount: scratch.providerScratchEntryCount,
+          totalBytes: scratch.providerScratchTotalBytes,
+        });
+      }
     } catch (_) {
       packageIntegrityVerified = false;
     }
@@ -1463,6 +1727,7 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
       commandExitZero: true,
       readbackStatus: "verified",
       cleanupStatus,
+      providerScratchEvidence,
       remoteEvidence: rawEvidence,
       errorCode: null,
       remoteWriteAttempted: true,
@@ -1516,6 +1781,7 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
         commandExitZero,
         readbackStatus: "needs_review",
         cleanupStatus,
+        providerScratchEvidence,
         remoteEvidence: null,
         errorCode: safeCode,
         remoteWriteAttempted: true,

@@ -169,6 +169,44 @@ test("exact Git commit is rebuilt offline with a pinned production dependency cl
       ),
       { code: "EROFS" },
     );
+    await cleanupFirebaseProviderWorkspace(workspace);
+    workspace = null;
+
+    workspace = await createFirebaseProductionSessionWorkspace({
+      mountedPackage: mounted,
+      projectId: "pasella-ledger",
+      lane: "full-reconciliation",
+      dotenvText: "",
+      temporaryRoot: await realpath(os.tmpdir()),
+    });
+    const reconciliationConfig = JSON.parse(
+      await readFile(
+        firebaseProviderWorkspacePath(workspace, "config"),
+        "utf8",
+      ),
+    );
+    assert.equal(reconciliationConfig.functions.length, 1);
+    assert.equal(
+      reconciliationConfig.functions[0].source,
+      firebaseProviderWorkspacePath(workspace, "functions-source"),
+    );
+    assert.equal(
+      Object.hasOwn(reconciliationConfig.functions[0], "configDir"),
+      false,
+    );
+    assert.equal(workspace.dotenvSha256, null);
+    await assert.rejects(
+      createFirebaseProductionSessionWorkspace({
+        mountedPackage: mounted,
+        projectId: "pasella-ledger",
+        lane: "full-reconciliation",
+        dotenvText: "SPAZAONE_ENVIRONMENT=production\n",
+        temporaryRoot: await realpath(os.tmpdir()),
+      }),
+      (error) =>
+        error instanceof ExactCommitFirebasePackageError &&
+        error.code === "FIREBASE_PRODUCTION_SESSION_DOTENV_INVALID",
+    );
   } finally {
     if (workspace) await cleanupFirebaseProviderWorkspace(workspace);
     if (prepared) {
@@ -226,6 +264,8 @@ test("provider image and local probe contract pins exact tools and audit-only ev
   assert.match(source, /workspace\.projectId\.startsWith\("demo-"\)/);
   assert.match(source, /createFirebaseProductionSessionWorkspace/);
   assert.match(source, /PRODUCTION_SESSION_LANES/);
+  assert.match(source, /"full-reconciliation"/);
+  assert.match(source, /const readOnlySourceLane/);
   assert.match(source, /source:\s*image\.functionsPath/);
   assert.match(source, /path\.join\(image\.mountRoot, "firestore\.rules"\)/);
   assert.match(

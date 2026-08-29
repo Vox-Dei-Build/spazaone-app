@@ -30,7 +30,19 @@ import {
   nativeCatalogCheckoutHandler,
 } from "../lib/ecommerce/checkoutCart.js";
 
-const projectId = process.env.GCLOUD_PROJECT || "demo-spazaone-native-cart";
+const emulatorHost = String(process.env.FIRESTORE_EMULATOR_HOST ?? "").trim();
+const emulatorHostMatch =
+  /^(?:127\.0\.0\.1|localhost|\[::1\]):([1-9][0-9]{0,4})$/.exec(emulatorHost);
+if (
+  !emulatorHostMatch ||
+  Number(emulatorHostMatch[1]) > 65_535 ||
+  process.env.GCLOUD_PROJECT !== "demo-spazaone-native-cart"
+) {
+  throw new Error(
+    "WHATSAPP_CATALOG_CART_INTEGRATION_REQUIRES_LOCAL_FIRESTORE_EMULATOR",
+  );
+}
+const projectId = process.env.GCLOUD_PROJECT;
 if (!admin.apps.length) admin.initializeApp({ projectId });
 const db = admin.firestore();
 const merchantId = "merchant_a";

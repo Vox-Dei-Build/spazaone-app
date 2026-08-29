@@ -219,6 +219,11 @@ function structurallyValidButUnattestedVerifiedReceipt() {
   forged.needsReview = false;
   forged.result.commandExitZero = true;
   forged.result.readbackStatus = "verified";
+  forged.result.providerScratchEvidence = {
+    inventorySha256: "f".repeat(64),
+    entryCount: 3,
+    totalBytes: 4_096,
+  };
   forged.result.errorCode = null;
   delete forged.redactedReceiptSha256;
   forged.redactedReceiptSha256 = canonicalSha256(forged);
@@ -263,6 +268,7 @@ test("needs-review receipt is closed, redacted, sealed, and never retryable", ()
   assert.equal(receipt.needsReview, true);
   assert.equal(receipt.retryAllowed, false);
   assert.equal(receipt.result.remoteEvidence, null);
+  assert.equal(receipt.result.providerScratchEvidence, null);
   assert.equal(receipt.target.firebaseProjectId, "pasella-ledger");
   assert.equal(receipt.authority.repository, "Vox-Dei-Build/spazaone-app");
   assert.equal(
@@ -275,6 +281,39 @@ test("needs-review receipt is closed, redacted, sealed, and never retryable", ()
   );
   assert.equal(receipt.operation.operatorAuditOnly, true);
   assert.match(receipt.redactedReceiptSha256, /^[a-f0-9]{64}$/);
+});
+
+test("provider scratch audit evidence is redacted and bounded", () => {
+  const receipt = structurallyValidButUnattestedVerifiedReceipt();
+  assert.deepEqual(receipt.result.providerScratchEvidence, {
+    inventorySha256: "f".repeat(64),
+    entryCount: 3,
+    totalBytes: 4_096,
+  });
+
+  for (const providerScratchEvidence of [
+    {
+      inventorySha256: "invalid",
+      entryCount: 3,
+      totalBytes: 4_096,
+    },
+    {
+      inventorySha256: "f".repeat(64),
+      entryCount: 2_049,
+      totalBytes: 4_096,
+    },
+    {
+      inventorySha256: "f".repeat(64),
+      entryCount: 3,
+      totalBytes: 256 * 1024 * 1024 + 1,
+    },
+  ]) {
+    const invalid = structuredClone(receipt);
+    invalid.result.providerScratchEvidence = providerScratchEvidence;
+    delete invalid.redactedReceiptSha256;
+    invalid.redactedReceiptSha256 = canonicalSha256(invalid);
+    assert.throws(() => validateProductionWriteReceipt(invalid));
+  }
 });
 
 test("caller action receipt digests remain operator audit only", () => {

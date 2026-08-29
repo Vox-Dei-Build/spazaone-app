@@ -124,8 +124,14 @@ const RESULT_KEYS = [
   "commandExitZero",
   "readbackStatus",
   "cleanupStatus",
+  "providerScratchEvidence",
   "remoteEvidence",
   "errorCode",
+];
+const PROVIDER_SCRATCH_EVIDENCE_KEYS = [
+  "inventorySha256",
+  "entryCount",
+  "totalBytes",
 ];
 const REMOTE_EVIDENCE_KEYS = ["kind", "evidenceSha256", "summary"];
 const CANDIDATE_MANIFEST_KEYS = [
@@ -375,6 +381,26 @@ function exactObject(value, expected, label) {
   exactKeys(value, Object.keys(expected), label);
   for (const [key, expectedValue] of Object.entries(expected)) {
     if (value[key] !== expectedValue) fail(`${label}_MISMATCH`);
+  }
+}
+
+function validateProviderScratchEvidence(value) {
+  exactKeys(value, PROVIDER_SCRATCH_EVIDENCE_KEYS, "PROVIDER_SCRATCH_EVIDENCE");
+  string(
+    value.inventorySha256,
+    "PROVIDER_SCRATCH_EVIDENCE_INVENTORY_SHA256",
+    SHA256,
+  );
+  const entryCount = nonNegativeInteger(
+    value.entryCount,
+    "PROVIDER_SCRATCH_EVIDENCE_ENTRY_COUNT",
+  );
+  const totalBytes = nonNegativeInteger(
+    value.totalBytes,
+    "PROVIDER_SCRATCH_EVIDENCE_TOTAL_BYTES",
+  );
+  if (entryCount > 2_048 || totalBytes > 256 * 1024 * 1024) {
+    fail("PROVIDER_SCRATCH_EVIDENCE_UNBOUNDED");
   }
 }
 
@@ -1332,6 +1358,19 @@ export function validateProductionWriteReceipt(receipt) {
   ) {
     fail("RESULT_CLEANUP_STATUS_INVALID");
   }
+  if (receipt.result.providerScratchEvidence !== null) {
+    validateProviderScratchEvidence(receipt.result.providerScratchEvidence);
+  }
+  if (
+    receipt.outcome === "verified" &&
+    new Set([
+      "spazaone_catalog_function_deployment",
+      "spazaone_catalog_policy_deployment",
+    ]).has(receipt.kind) &&
+    receipt.result.providerScratchEvidence === null
+  ) {
+    fail("PRODUCTION_RECEIPT_PROVIDER_SCRATCH_EVIDENCE_REQUIRED");
+  }
   if (receipt.result.remoteEvidence !== null) {
     validateStoredRemoteEvidence(receipt.result.remoteEvidence, {
       kind: receipt.kind,
@@ -1560,6 +1599,7 @@ export function buildNeedsReviewProductionWriteReceipt(input) {
       commandExitZero,
       readbackStatus,
       cleanupStatus,
+      providerScratchEvidence: null,
       remoteEvidence: normalizedRemoteEvidence,
       errorCode,
     },

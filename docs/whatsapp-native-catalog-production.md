@@ -16,7 +16,7 @@ merchant, Meta catalogue, or sender identity from a client-side cart line.
 > runbook is a planned, separately authorized future step, not an available
 > command today.
 >
-> Receipt schema v2 structural validation is locally implemented but is not
+> Receipt schema v4 structural validation is locally implemented but is not
 > production attestation. While both executors are disabled, the module exports
 > no verified-receipt constructor, seal, or persister. Importers can create and
 > atomically persist only `needs_review` records. The dormant executor now has
@@ -37,8 +37,10 @@ future enablement must keep one process alive while it:
 1. authenticates the exact Vox Dei candidate manifest and commit/tree;
 2. rebuilds that commit from `git archive` with pinned tools and offline
    dependencies, then mounts the resulting provider package kernel read-only;
-3. creates and inventories a per-session Firebase config/dotenv scratch
-   directory whose deployable source paths point only into that mount;
+3. seals the per-session Firebase config and any lane-specific dotenv into a
+   second kernel-read-only image whose source paths point only into the reviewed
+   package mount; the only writable path is a separately bounded provider
+   `TMPDIR`;
 4. pauses and presents the non-secret operation, target, archive/package
    digests, receipt-path digest, recovery lineage, and deadline for explicit
    action-time approval; and
@@ -277,7 +279,9 @@ after the command; a difference is `needs_review`, never a retry signal.
 The governed wrapper must run from the registered authority checkout, so the
 executor preserves the authenticated Firebase `HOME`. It redirects the child
 process `TMPDIR` to the session's bounded scratch directory and inventories it
-after provider exit. A fresh clean-authority recheck catches any provider file
+after provider exit. The audit receipt retains only that bounded inventory's
+SHA-256, entry count, and total byte count—not filenames or file contents. A
+fresh clean-authority recheck catches any provider file
 written into the checkout. Credential-store state is not copied into the
 session and is never treated as deployable input evidence.
 Only the pinned Firebase ignores are applied. In particular, a local
@@ -476,7 +480,11 @@ authenticated, resumable full reconciliation while delivery is dark:
      --expected-app-commit <clean-authority-commit> --reviewed-resume
    ```
 
-   This performs only an authenticated `inspect_recovery`. If the server already
+   This performs only an authenticated `inspect_recovery`. The same-process
+   session binds a private readback provider before inspection; it accepts no
+   caller-supplied recovery object or digest. The provider is invoked once, its
+   exact minimal facts are canonicalized, and the executor derives the SHA-256
+   before deciding either completion or continuation. If the server already
    committed `status=complete`, inspection validates both stored bindings and
    the exact zeroed outbox/completion proof, then seals the receipt from the
    original stored cycle start/completion timestamps without another write.
@@ -679,6 +687,12 @@ Run the focused contract suite and the Firestore-emulator integration suite:
 npm --prefix functions run test:whatsapp-catalog
 npm --prefix functions run test:whatsapp-catalog-integration
 ```
+
+The integration script owns `firebase emulators:exec` for the isolated
+`demo-spazaone-native-cart` project. The test itself rejects any invocation
+without a loopback `FIRESTORE_EMULATOR_HOST` and that exact demo project before
+Firebase Admin initializes; do not bypass the package script with a bare
+`node --test` command.
 
 Also retain the completed reconciliation receipt, redacted rollout
 configuration comparison, Meta item-level acceptance evidence, and the
