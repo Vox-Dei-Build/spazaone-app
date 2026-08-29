@@ -580,3 +580,44 @@ test("a recovered read-only closure must carry prior ambiguous receipt lineage",
       error.code === "PRODUCTION_RECEIPT_PRIOR_RECEIPT_SHA256_INVALID",
   );
 });
+
+test("deployment recovery can close only from exact remote readback with prior lineage", () => {
+  const recovered = buildNeedsReviewProductionWriteReceipt(
+    needsReviewInput({ remoteEvidence: rawFunctionEvidence() }),
+  );
+  recovered.outcome = "recovered_verified";
+  recovered.remoteWriteAttempted = false;
+  recovered.needsReview = false;
+  recovered.lineage = {
+    mode: "recovered_readback",
+    priorReceiptSha256: "a".repeat(64),
+  };
+  recovered.result.commandExitZero = null;
+  recovered.result.readbackStatus = "verified";
+  recovered.result.cleanupStatus = "not_applicable";
+  recovered.result.errorCode = null;
+  delete recovered.redactedReceiptSha256;
+  recovered.redactedReceiptSha256 = canonicalSha256(recovered);
+  assert.deepEqual(validateProductionWriteReceipt(recovered), {
+    structurallyValid: true,
+    outcome: "recovered_verified",
+  });
+
+  for (const mutation of [
+    (receipt) => {
+      receipt.lineage.priorReceiptSha256 = null;
+    },
+    (receipt) => {
+      receipt.result.remoteEvidence = null;
+    },
+    (receipt) => {
+      receipt.remoteWriteAttempted = true;
+    },
+  ]) {
+    const invalid = structuredClone(recovered);
+    mutation(invalid);
+    delete invalid.redactedReceiptSha256;
+    invalid.redactedReceiptSha256 = canonicalSha256(invalid);
+    assert.throws(() => validateProductionWriteReceipt(invalid));
+  }
+});

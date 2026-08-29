@@ -130,13 +130,19 @@ const CLEAN_LAUNCHER = Object.freeze({
 class ProductionExecutorError extends Error {
   constructor(
     code,
-    { needsReview = false, targetMayExist = false, cause } = {},
+    {
+      needsReview = false,
+      targetMayExist = false,
+      recovery = null,
+      cause,
+    } = {},
   ) {
     super(code, cause === undefined ? undefined : { cause });
     this.name = "ProductionExecutorError";
     this.code = code;
     this.needsReview = needsReview;
     this.targetMayExist = targetMayExist;
+    this.recovery = recovery;
     this.retryAllowed = false;
   }
 }
@@ -347,10 +353,7 @@ async function prepareProductionLiveSession({
   const recoveryInspection = recoveryBinding.mode === "readback_first";
   if (
     recoveryBinding.mode === "continuation" ||
-    (recoveryInspection &&
-      (context.kind !== "spazaone_catalog_full_reconciliation" ||
-        context.lane !== "full-reconciliation" ||
-        typeof recoveryReadbackProvider !== "function")) ||
+    (recoveryInspection && typeof recoveryReadbackProvider !== "function") ||
     (!recoveryInspection && recoveryReadbackProvider !== undefined)
   ) {
     fail("PRODUCTION_RECOVERY_READBACK_PROVIDER_INVALID");
@@ -746,7 +749,9 @@ function exactRecoveryReadback(value) {
   }
   const expectedKeys =
     value.outcome === "complete"
-      ? ["cycleId", "outcome"]
+      ? value.evidenceSha256 === undefined
+        ? ["cycleId", "outcome"]
+        : ["cycleId", "evidenceSha256", "outcome"]
       : [
           "acknowledgedPages",
           "continuationStateDigestSha256",
@@ -758,6 +763,9 @@ function exactRecoveryReadback(value) {
   if (
     canonicalJson(Object.keys(value).sort()) !== canonicalJson(expectedKeys) ||
     !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    (value.outcome === "complete" &&
+      value.evidenceSha256 !== undefined &&
+      !SHA256.test(String(value.evidenceSha256))) ||
     (value.outcome === "incomplete" &&
       (!SHA256.test(String(value.continuationStateDigestSha256 ?? "")) ||
         !Number.isSafeInteger(value.acknowledgedPages) ||
@@ -818,7 +826,14 @@ async function recordRecoveryInspection(
   state.recoveryReadbackProvider = undefined;
   let canonicalReadback;
   try {
-    canonicalReadback = exactRecoveryReadback(await provider());
+    canonicalReadback = exactRecoveryReadback(
+      await provider(
+        Object.freeze({
+          mountedPackage: state.mountedPackage,
+          workspace: state.workspace,
+        }),
+      ),
+    );
   } catch (error) {
     await invalidateLiveSessionCapability({
       registry: recoveryInspectionCapabilities,
@@ -973,6 +988,93 @@ function extractActionAuthorizationArguments(argv) {
     fail("SERIALIZED_PRODUCTION_CAPABILITY_FORBIDDEN");
   }
   return { remaining };
+}
+
+function extractDeploymentRecoveryArguments(argv) {
+  const remaining = [];
+  const values = new Map();
+  let recoverNeedsReview = false;
+  const valueKeys = new Set([
+    "prior-needs-review-receipt-path",
+    "expected-prior-needs-review-receipt-path-sha256",
+    "expected-prior-needs-review-receipt-sha256",
+    "expected-prior-needs-review-receipt-file-sha256",
+    "prior-target-receipt-path",
+    "expected-prior-target-receipt-path-sha256",
+    "expected-prior-target-receipt-file-sha256",
+  ]);
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--recover-needs-review") {
+      if (recoverNeedsReview) fail("PRODUCTION_RECOVERY_ARGUMENT_DUPLICATE");
+      recoverNeedsReview = true;
+      continue;
+    }
+    const key = argument.startsWith("--") ? argument.slice(2) : "";
+    if (!valueKeys.has(key)) {
+      remaining.push(argument);
+      continue;
+    }
+    const value = argv[index + 1];
+    if (values.has(key) || !value || value.startsWith("--")) {
+      fail("PRODUCTION_RECOVERY_ARGUMENT_INVALID");
+    }
+    values.set(key, value);
+    index += 1;
+  }
+  if (!recoverNeedsReview) {
+    if (values.size > 0) fail("PRODUCTION_RECOVERY_ARGUMENT_INVALID");
+    return { remaining, recovery: null };
+  }
+  const recoveryRecordPath = String(
+    values.get("prior-needs-review-receipt-path") ?? "",
+  );
+  const recoveryRecordSha256 = String(
+    values.get("expected-prior-needs-review-receipt-sha256") ?? "",
+  );
+  const recoveryRecordPathSha256 = String(
+    values.get("expected-prior-needs-review-receipt-path-sha256") ?? "",
+  );
+  const recoveryRecordFileSha256 = String(
+    values.get("expected-prior-needs-review-receipt-file-sha256") ?? "",
+  );
+  const targetPath = String(values.get("prior-target-receipt-path") ?? "");
+  const targetPathSha256 = String(
+    values.get("expected-prior-target-receipt-path-sha256") ?? "",
+  );
+  const expectedTargetFileSha256 = values.has(
+    "expected-prior-target-receipt-file-sha256",
+  )
+    ? String(values.get("expected-prior-target-receipt-file-sha256"))
+    : null;
+  if (
+    !path.isAbsolute(recoveryRecordPath) ||
+    path.resolve(recoveryRecordPath) !== recoveryRecordPath ||
+    !path.isAbsolute(targetPath) ||
+    path.resolve(targetPath) !== targetPath ||
+    !SHA256.test(recoveryRecordSha256) ||
+    !SHA256.test(recoveryRecordPathSha256) ||
+    !SHA256.test(recoveryRecordFileSha256) ||
+    !SHA256.test(targetPathSha256) ||
+    (expectedTargetFileSha256 !== null &&
+      !SHA256.test(expectedTargetFileSha256)) ||
+    sha256(recoveryRecordPath) !== recoveryRecordPathSha256 ||
+    sha256(targetPath) !== targetPathSha256
+  ) {
+    fail("PRODUCTION_RECOVERY_ARGUMENT_INVALID");
+  }
+  return {
+    remaining,
+    recovery: Object.freeze({
+      recoveryRecordPath,
+      recoveryRecordSha256,
+      recoveryRecordPathSha256,
+      recoveryRecordFileSha256,
+      targetPath,
+      targetPathSha256,
+      expectedTargetFileSha256,
+    }),
+  };
 }
 
 function now() {
@@ -2310,7 +2412,7 @@ async function persistNeedsReview(receipt, transaction) {
   }
 }
 
-function intentBytes(input) {
+function genericLocalIntentBytes(input) {
   return Buffer.from(
     `${canonicalJson({
       schemaVersion: 1,
@@ -2338,12 +2440,80 @@ function intentBytes(input) {
   );
 }
 
-async function beginIntent(input) {
-  const bytes = intentBytes(input);
+function recoveryAuthorityBytes(input, dispatchPreparedAt) {
+  const receipt = receiptRecord({
+    ...input,
+    outcome: "needs_review",
+    actionStartedAt: input.actionStartedAt,
+    dispatchStartedAt: dispatchPreparedAt,
+    actionCompletedAt: dispatchPreparedAt,
+    verifiedAt: dispatchPreparedAt,
+    lineageMode: input.priorReceiptSha256
+      ? "reviewed_resume_write"
+      : "direct_write",
+    commandExitZero: false,
+    readbackStatus: "needs_review",
+    cleanupStatus:
+      input.kind === "spazaone_catalog_full_reconciliation"
+        ? "not_applicable"
+        : "needs_review",
+    providerScratchEvidence: null,
+    remoteEvidence: null,
+    errorCode: "PRODUCTION_DISPATCH_OUTCOME_UNRESOLVED",
+    remoteWriteAttempted: true,
+  });
+  return Buffer.from(`${canonicalJson(receipt)}\n`, "utf8");
+}
+
+async function beginIntent(input, dispatchPreparedAt = null) {
+  const bytes =
+    input.remoteWritePlanned === false
+      ? genericLocalIntentBytes(input)
+      : recoveryAuthorityBytes(input, dispatchPreparedAt);
   try {
+    const recoveryAuthoritySha256 =
+      input.remoteWritePlanned === false
+        ? null
+        : JSON.parse(bytes.toString("utf8")).redactedReceiptSha256;
     return await createDurableArtifactTransaction({
       targetPath: input.receiptPath,
       redactedIntentBytes: bytes,
+      recoveryAuthoritySha256,
+    });
+  } finally {
+    bytes.fill(0);
+  }
+}
+
+function persistenceRecoveryError(transaction, error, code) {
+  const recovery =
+    error?.recovery ?? transaction?.recoveryDescriptor?.() ?? null;
+  return new ProductionExecutorError(code, {
+    needsReview: true,
+    targetMayExist:
+      error?.targetMayExist === true || recovery?.targetMayExist === true,
+    recovery,
+    cause: error,
+  });
+}
+
+function persistedNeedsReviewRecovery(receipt, persistedPath) {
+  const bytes = Buffer.from(`${canonicalJson(receipt)}\n`, "utf8");
+  try {
+    const fileSha256 = sha256(bytes);
+    return Object.freeze({
+      schemaVersion: 1,
+      kind: "spazaone_durable_artifact_recovery",
+      recoveryRecordPath: persistedPath,
+      recoveryRecordPathSha256: sha256(persistedPath),
+      recoveryRecordFileSha256: fileSha256,
+      recoveryRecordSha256: receipt.redactedReceiptSha256,
+      targetPath: persistedPath,
+      targetPathSha256: sha256(persistedPath),
+      expectedTargetFileSha256: fileSha256,
+      targetMayExist: false,
+      readbackFirst: true,
+      retryAllowed: false,
     });
   } finally {
     bytes.fill(0);
@@ -2633,7 +2803,8 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
     }
   };
   try {
-    transaction = await beginIntent(context);
+    const dispatchPreparedAt = now();
+    transaction = await beginIntent(context, dispatchPreparedAt);
     await transaction.verifyReadyForDispatch();
     await revalidateAuthorityAndCandidate(context);
     await verifyMountedExactCommitFirebasePackage(session.mountedPackage);
@@ -2783,6 +2954,13 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
       }
       throw error;
     }
+    if (transaction?.state === "failed") {
+      throw persistenceRecoveryError(
+        transaction,
+        error,
+        "PRODUCTION_RECEIPT_PERSISTENCE_UNCERTAIN",
+      );
+    }
     if (transaction?.state === "dispatch_started") {
       await cleanupSession();
       const completedAt = now();
@@ -2805,19 +2983,20 @@ async function executeDeployment(sessionCapability, options, dotenvText) {
         errorCode: safeCode,
         remoteWriteAttempted: true,
       });
+      let persistedReview;
       try {
-        await persistNeedsReview(receipt, transaction);
+        persistedReview = await persistNeedsReview(receipt, transaction);
       } catch (persistError) {
-        throw new ProductionExecutorError(
+        throw persistenceRecoveryError(
+          transaction,
+          persistError,
           "PRODUCTION_RECEIPT_PERSISTENCE_UNCERTAIN",
-          {
-            needsReview: true,
-            targetMayExist: persistError?.targetMayExist === true,
-            cause: persistError,
-          },
         );
       }
-      throw new ProductionExecutorError(safeCode, { needsReview: true });
+      throw new ProductionExecutorError(safeCode, {
+        needsReview: true,
+        recovery: persistedNeedsReviewRecovery(receipt, persistedReview.path),
+      });
     }
     throw error;
   }
@@ -2931,7 +3110,8 @@ async function executeReconciliation(
     sessionCleaned = true;
   };
   try {
-    transaction = await beginIntent(context);
+    const dispatchPreparedAt = now();
+    transaction = await beginIntent(context, dispatchPreparedAt);
     await transaction.verifyReadyForDispatch();
     const artifact = await runPrivateFullCatalogReconciliation({
       ...options,
@@ -3038,6 +3218,13 @@ async function executeReconciliation(
     } catch (_) {
       // The remote reconciliation remains needs_review regardless of cleanup.
     }
+    if (transaction?.state === "failed") {
+      throw persistenceRecoveryError(
+        transaction,
+        error,
+        "PRODUCTION_RECEIPT_PERSISTENCE_UNCERTAIN",
+      );
+    }
     const completedAt = now();
     const safeCode = /^[A-Z][A-Z0-9_]{0,95}$/.test(String(error?.code ?? ""))
       ? error.code
@@ -3060,19 +3247,20 @@ async function executeReconciliation(
       errorCode: safeCode,
       remoteWriteAttempted: true,
     });
+    let persistedReview;
     try {
-      await persistNeedsReview(receipt, transaction);
+      persistedReview = await persistNeedsReview(receipt, transaction);
     } catch (persistError) {
-      throw new ProductionExecutorError(
+      throw persistenceRecoveryError(
+        transaction,
+        persistError,
         "PRODUCTION_RECEIPT_PERSISTENCE_UNCERTAIN",
-        {
-          needsReview: true,
-          targetMayExist: persistError?.targetMayExist === true,
-          cause: persistError,
-        },
       );
     }
-    throw new ProductionExecutorError(safeCode, { needsReview: true });
+    throw new ProductionExecutorError(safeCode, {
+      needsReview: true,
+      recovery: persistedNeedsReviewRecovery(receipt, persistedReview.path),
+    });
   }
 }
 
@@ -3161,6 +3349,8 @@ async function persistRecoveredReconciliation({
       {
         needsReview: true,
         targetMayExist: error?.targetMayExist === true,
+        recovery:
+          error?.recovery ?? transaction?.recoveryDescriptor?.() ?? null,
         cause: error,
       },
     );
@@ -3185,6 +3375,346 @@ async function authorizeDirectPreparedSession(prepared) {
     }
     throw error;
   }
+}
+
+function recoveryOperationBinding(context) {
+  return {
+    lane: context.lane,
+    selector: context.selector,
+    sourceSha256: context.sourceSha256,
+    configurationSha256: nativeCatalogTargetConfigurationDigestSha256(),
+    candidateManifestSha256: context.expectedCandidateManifestSha256,
+    operationInputSha256: context.operationInputSha256,
+  };
+}
+
+async function inspectPossibleRecoveryTarget(recovery, context) {
+  if (
+    recovery.targetPath === context.receiptPath ||
+    recovery.targetPath === context.candidateManifestPath
+  ) {
+    return Object.freeze({ outcome: "target_present_untrusted" });
+  }
+  let stat;
+  try {
+    stat = await lstat(recovery.targetPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return Object.freeze({ outcome: "target_absent" });
+    }
+    fail("PRODUCTION_RECOVERY_TARGET_REJECTED", { cause: error });
+  }
+  const uid = process.geteuid?.();
+  if (
+    !Number.isSafeInteger(uid) ||
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    stat.uid !== uid ||
+    stat.nlink !== 1 ||
+    (stat.mode & 0o777) !== 0o600 ||
+    stat.size < 2 ||
+    stat.size > 256 * 1024 ||
+    (await realpath(recovery.targetPath)) !== recovery.targetPath
+  ) {
+    fail("PRODUCTION_RECOVERY_TARGET_REJECTED");
+  }
+  let bytes;
+  try {
+    bytes = await readFile(recovery.targetPath);
+    const receipt = JSON.parse(bytes.toString("utf8"));
+    const canonicalBytes = Buffer.from(`${canonicalJson(receipt)}\n`, "utf8");
+    try {
+      if (!bytes.equals(canonicalBytes)) {
+        return Object.freeze({ outcome: "target_present_untrusted" });
+      }
+    } finally {
+      canonicalBytes.fill(0);
+    }
+    validateProductionWriteReceipt(receipt);
+    const expected = recoveryOperationBinding(context);
+    const actual = Object.fromEntries(
+      Object.keys(expected).map((key) => [key, receipt.operation?.[key]]),
+    );
+    const receiptFileSha256 = sha256(bytes);
+    if (
+      recovery.expectedTargetFileSha256 === null ||
+      receiptFileSha256 !== recovery.expectedTargetFileSha256 ||
+      receipt.appCommit !== context.expectedAppCommit ||
+      receipt.kind !== context.kind ||
+      !new Set(["verified", "needs_review"]).has(receipt.outcome) ||
+      canonicalJson(actual) !== canonicalJson(expected)
+    ) {
+      return Object.freeze({ outcome: "target_present_untrusted" });
+    }
+    return Object.freeze({
+      outcome: "target_present_canonical",
+      receiptOutcome: receipt.outcome,
+      receiptSha256: receipt.redactedReceiptSha256,
+      receiptFileSha256,
+    });
+  } catch (error) {
+    if (error instanceof ProductionExecutorError) throw error;
+    return Object.freeze({ outcome: "target_present_untrusted" });
+  } finally {
+    bytes?.fill?.(0);
+  }
+}
+
+async function loadDeploymentRecoveryAuthority(options, context) {
+  const recovery = options.recovery;
+  if (!recovery) fail("PRODUCTION_RECOVERY_ARGUMENT_INVALID");
+  // The possible canonical target is always inspected before the hidden
+  // recovery authority. This covers an acknowledgement loss after link/fsync.
+  const targetInspection = await inspectPossibleRecoveryTarget(
+    recovery,
+    context,
+  );
+  let loaded;
+  let recoveryLoadError;
+  try {
+    loaded = await loadPriorNeedsReviewReceipt({
+      receiptPath: recovery.recoveryRecordPath,
+      expectedPriorReceiptSha256: recovery.recoveryRecordSha256,
+      expectedAppCommit: context.expectedAppCommit,
+      expectedOperation: recoveryOperationBinding(context),
+      expectedKind: context.kind,
+    });
+  } catch (error) {
+    recoveryLoadError = error;
+  }
+  if (
+    (loaded &&
+      loaded.priorReceiptFileSha256 !== recovery.recoveryRecordFileSha256) ||
+    (loaded &&
+      loaded.priorReceiptPathSha256 !== sha256(recovery.recoveryRecordPath))
+  ) {
+    fail("PRODUCTION_RECOVERY_AUTHORITY_REJECTED");
+  }
+  if (loaded) return { loaded, targetInspection, existingVerified: null };
+  if (targetInspection.outcome !== "target_present_canonical") {
+    fail("PRODUCTION_RECOVERY_AUTHORITY_REJECTED", {
+      cause: recoveryLoadError,
+    });
+  }
+  if (targetInspection.receiptOutcome === "verified") {
+    return {
+      loaded: null,
+      targetInspection,
+      existingVerified: targetInspection,
+    };
+  }
+  try {
+    loaded = await loadPriorNeedsReviewReceipt({
+      receiptPath: recovery.targetPath,
+      expectedPriorReceiptSha256: targetInspection.receiptSha256,
+      expectedAppCommit: context.expectedAppCommit,
+      expectedOperation: recoveryOperationBinding(context),
+      expectedKind: context.kind,
+    });
+  } catch (error) {
+    fail("PRODUCTION_RECOVERY_AUTHORITY_REJECTED", { cause: error });
+  }
+  if (loaded.priorReceiptFileSha256 !== targetInspection.receiptFileSha256) {
+    fail("PRODUCTION_RECOVERY_AUTHORITY_REJECTED");
+  }
+  return { loaded, targetInspection, existingVerified: null };
+}
+
+async function persistRecoveredDeployment({
+  context,
+  candidate,
+  preparedSummary,
+  recoveryReadbackSha256,
+  rawEvidence,
+  loadedPriorReceipt,
+  targetInspection,
+}) {
+  await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+  await revalidateAuthorityAndCandidate(context);
+  const actionStartedAt = now();
+  const receiptContext = {
+    ...context,
+    actionAuthorizationSha256: preparedSummary.bindingSha256,
+    actionAuthorizationClaimSha256: recoveryReadbackSha256,
+    liveSessionExpiresAt: preparedSummary.expiresAt,
+    liveSessionRecoverySha256: canonicalSha256({
+      mode: "readback_first",
+      priorReceiptSha256: context.priorReceiptSha256,
+      targetInspection,
+    }),
+    actionStartedAt,
+    remoteWritePlanned: false,
+  };
+  let transaction;
+  let persistenceStartedAt;
+  try {
+    transaction = await beginIntent(receiptContext);
+    await transaction.verifyReadyForDispatch();
+    await revalidateLoadedPriorNeedsReviewReceipt(loadedPriorReceipt);
+    const finalCandidate = await revalidateAuthorityAndCandidate(context);
+    if (canonicalSha256(candidate) !== canonicalSha256(finalCandidate)) {
+      fail("PRODUCTION_RECOVERY_CANDIDATE_CHANGED");
+    }
+    persistenceStartedAt = now();
+    transaction.markDispatchStarted();
+    const completedAt = now();
+    const receipt = receiptRecord({
+      ...receiptContext,
+      outcome: "recovered_verified",
+      actionStartedAt,
+      dispatchStartedAt: persistenceStartedAt,
+      actionCompletedAt: completedAt,
+      verifiedAt: completedAt,
+      lineageMode: "recovered_readback",
+      commandExitZero: null,
+      readbackStatus: "verified",
+      cleanupStatus: "not_applicable",
+      providerScratchEvidence: null,
+      remoteEvidence: rawEvidence,
+      errorCode: null,
+      remoteWriteAttempted: false,
+    });
+    const attestation = issueAuthorityAttestation(
+      receipt,
+      finalCandidate,
+      transaction,
+    );
+    const persisted = await persistWithPrivateAttestation(
+      attestation,
+      receipt,
+      transaction,
+    );
+    return {
+      outcome: "recovered_verified",
+      kind: context.kind,
+      lane: context.lane,
+      receiptPath: persisted.path,
+      receiptSha256: receipt.redactedReceiptSha256,
+      priorReceiptSha256: context.priorReceiptSha256,
+      targetInspection,
+      remoteWriteAttempted: false,
+      retryAllowed: false,
+    };
+  } catch (error) {
+    if (!persistenceStartedAt) {
+      try {
+        await transaction?.cancelBeforeDispatch();
+      } catch (cancelError) {
+        throw persistenceRecoveryError(
+          transaction,
+          cancelError,
+          "PRODUCTION_WRITE_INTENT_CANCELLATION_UNCERTAIN",
+        );
+      }
+      throw error;
+    }
+    throw persistenceRecoveryError(
+      transaction,
+      error,
+      "PRODUCTION_RECOVERED_RECEIPT_PERSISTENCE_UNCERTAIN",
+    );
+  }
+}
+
+async function runDeploymentRecovery(options, dotenvText) {
+  const execution = await deploymentExecutionContext(options, dotenvText);
+  const context = {
+    ...execution.context,
+    priorReceiptSha256: options.recovery.recoveryRecordSha256,
+  };
+  const candidate = await revalidateAuthorityAndCandidate(context);
+  const { loaded, targetInspection, existingVerified } =
+    await loadDeploymentRecoveryAuthority(options, context);
+  if (existingVerified) {
+    return {
+      outcome: "recovered_existing_verified",
+      kind: context.kind,
+      lane: context.lane,
+      receiptPath: options.recovery.targetPath,
+      receiptSha256: existingVerified.receiptSha256,
+      receiptFileSha256: existingVerified.receiptFileSha256,
+      targetInspection,
+      remoteWriteAttempted: false,
+      retryAllowed: false,
+    };
+  }
+  if (context.lane === "existing-code") {
+    fail("PRODUCTION_EXISTING_CODE_RECOVERY_REQUIRES_MANUAL_REVIEW", {
+      needsReview: true,
+    });
+  }
+  context.priorReceiptSha256 = loaded.priorReceiptSha256;
+  let rawEvidence = null;
+  const prepared = await prepareProductionLiveSession({
+    context,
+    candidate,
+    dotenvText,
+    recovery: {
+      mode: "readback_first",
+      priorReceiptSha256: loaded.priorReceiptSha256,
+    },
+    recoveryReadbackProvider: async ({ mountedPackage, workspace }) => {
+      await revalidateLoadedPriorNeedsReviewReceipt(loaded);
+      await revalidateAuthorityAndCandidate(context);
+      await verifyMountedExactCommitFirebasePackage(mountedPackage);
+      await verifyFirebaseProductionSessionWorkspace(workspace);
+      if (execution.policyLane) {
+        const readback = await collectCatalogPolicyReadback(context.lane);
+        if (!policyReadbackMatches(context.lane, execution.source, readback)) {
+          fail("PRODUCTION_RECOVERY_READBACK_MISMATCH", {
+            needsReview: true,
+          });
+        }
+        rawEvidence = policyRemoteEvidence(
+          context.lane,
+          execution.source,
+          readback,
+        );
+      } else {
+        const sourceContract = await candidateSourceContract(
+          context.expectedAppCommit,
+          mountedPackage,
+        );
+        const readback = await collectCatalogFunctionReadback({
+          lane: context.lane,
+          validated: execution.validated,
+          candidateSourceContract: sourceContract,
+        });
+        if (readback.environmentMatches !== true) {
+          fail("PRODUCTION_RECOVERY_READBACK_MISMATCH", {
+            needsReview: true,
+          });
+        }
+        rawEvidence = functionRemoteEvidence(
+          context.lane,
+          context.selector,
+          readback,
+        );
+      }
+      return {
+        outcome: "complete",
+        cycleId: canonicalSha256(rawEvidence).slice(0, 32),
+        evidenceSha256: canonicalSha256(rawEvidence),
+      };
+    },
+  });
+  const inspection = await recordRecoveryInspection(prepared.capability);
+  if (
+    inspection.outcome !== "recovered_readback" ||
+    !rawEvidence ||
+    inspection.priorReceiptSha256 !== loaded.priorReceiptSha256
+  ) {
+    fail("PRODUCTION_RECOVERY_READBACK_REJECTED", { needsReview: true });
+  }
+  return persistRecoveredDeployment({
+    context,
+    candidate,
+    preparedSummary: prepared.summary,
+    recoveryReadbackSha256: inspection.recoveryReadbackSha256,
+    rawEvidence,
+    loadedPriorReceipt: loaded,
+    targetInspection,
+  });
 }
 
 async function runDeploymentWithActionCeremony(options, dotenvText) {
@@ -3345,10 +3875,15 @@ async function main() {
     const [mode, ...args] = process.argv.slice(2);
     const authorizationArguments = extractActionAuthorizationArguments(args);
     if (mode === "deployment") {
-      const options = parseDeploymentGuardArguments(
+      const deploymentRecoveryArguments = extractDeploymentRecoveryArguments(
         authorizationArguments.remaining,
       );
+      const options = {
+        ...parseDeploymentGuardArguments(deploymentRecoveryArguments.remaining),
+        recovery: deploymentRecoveryArguments.recovery,
+      };
       if (!options.execute) {
+        if (options.recovery) fail("PRODUCTION_RECOVERY_ARGUMENT_INVALID");
         await runLegacyReadOnly(LEGACY_DEPLOYMENT_SCRIPT, args);
         return;
       }
@@ -3362,7 +3897,9 @@ async function main() {
       }
       const dotenvText =
         policyLane || process.stdin.isTTY ? "" : await readStandardInput();
-      const result = await runDeploymentWithActionCeremony(options, dotenvText);
+      const result = options.recovery
+        ? await runDeploymentRecovery(options, dotenvText)
+        : await runDeploymentWithActionCeremony(options, dotenvText);
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return;
     }
@@ -3393,6 +3930,7 @@ async function main() {
         code: safe.code,
         retryAllowed: false,
         ...(safe.targetMayExist ? { targetMayExist: true } : {}),
+        ...(safe.recovery ? { recovery: safe.recovery } : {}),
       })}\n`,
     );
     process.exitCode = 1;

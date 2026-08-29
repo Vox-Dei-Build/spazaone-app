@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   chmod,
   link,
@@ -35,6 +36,10 @@ function transactionOptions(root, overrides = {}) {
   };
 }
 
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 async function assertMissing(pathname) {
   await assert.rejects(lstat(pathname), (error) => error?.code === "ENOENT");
 }
@@ -49,6 +54,20 @@ test("durable transaction stages an intent and persists exact opaque bytes no-re
     intent.fill(0x78);
 
     assert.equal(transaction.state, "prepared");
+    assert.deepEqual(transaction.recoveryDescriptor(), {
+      schemaVersion: 1,
+      kind: "spazaone_durable_artifact_recovery",
+      recoveryRecordPath: transaction.intentPath,
+      recoveryRecordPathSha256: sha256(transaction.intentPath),
+      recoveryRecordFileSha256: sha256("redacted intent\n"),
+      recoveryRecordSha256: null,
+      targetPath: transaction.targetPath,
+      targetPathSha256: sha256(transaction.targetPath),
+      expectedTargetFileSha256: null,
+      targetMayExist: false,
+      readbackFirst: true,
+      retryAllowed: false,
+    });
     assert.equal(
       await readFile(transaction.intentPath, "utf8"),
       "redacted intent\n",
@@ -312,12 +331,18 @@ test("post-link uncertainty reports targetMayExist and preserves review evidence
     transaction.markDispatchStarted();
     await assert.rejects(
       transaction.persistFinal("canonical receipt\n"),
-      (error) =>
-        error instanceof DurableArtifactTransactionError &&
-        error.code === "DURABLE_ARTIFACT_PERSISTENCE_UNCERTAIN" &&
-        error.targetMayExist === true &&
-        error.needsReview === true &&
-        error.retryAllowed === false,
+      (error) => {
+        assert.equal(error instanceof DurableArtifactTransactionError, true);
+        assert.equal(error.code, "DURABLE_ARTIFACT_PERSISTENCE_UNCERTAIN");
+        assert.equal(error.targetMayExist, true);
+        assert.equal(error.needsReview, true);
+        assert.equal(error.retryAllowed, false);
+        assert.deepEqual(error.recovery, {
+          ...transaction.recoveryDescriptor(),
+          targetMayExist: true,
+        });
+        return true;
+      },
     );
     assert.equal(
       await readFile(transaction.targetPath, "utf8"),
@@ -328,6 +353,83 @@ test("post-link uncertainty reports targetMayExist and preserves review evidence
       await readFile(transaction.intentPath, "utf8"),
       '{"operation":"catalog-write","redacted":true}\n',
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("late failure after recovery-record removal reports the exact verified target digest", async () => {
+  const root = await temporaryDirectory("durable-artifact-late-final-");
+  try {
+    const finalBytes = "canonical final receipt\n";
+    const transaction = await createDurableArtifactTransaction(
+      transactionOptions(root, {
+        fsImpl: {
+          unlink: async (pathname) => {
+            await unlink(pathname);
+            if (pathname.includes(".intent-")) {
+              throw new Error("simulated directory-fsync boundary failure");
+            }
+          },
+        },
+      }),
+    );
+    transaction.markDispatchStarted();
+    await assert.rejects(transaction.persistFinal(finalBytes), (error) => {
+      assert.equal(error.targetMayExist, true);
+      assert.equal(error.recovery.targetMayExist, true);
+      assert.equal(error.recovery.expectedTargetFileSha256, sha256(finalBytes));
+      return true;
+    });
+    assert.equal(await readFile(transaction.targetPath, "utf8"), finalBytes);
+    assert.equal((await lstat(transaction.targetPath)).nlink, 1);
+    await assertMissing(transaction.intentPath);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("exact duplicate recovery authorities fail closed and tampering is detected", async () => {
+  const root = await temporaryDirectory("durable-artifact-recovery-duplicate-");
+  try {
+    const options = transactionOptions(root, {
+      redactedIntentBytes: "canonical recovery authority\n",
+      uuid: () => "first-stage",
+    });
+    const first = await createDurableArtifactTransaction(options);
+    const descriptor = first.recoveryDescriptor();
+    assert.equal(
+      path.basename(first.intentPath),
+      `.receipt.json.intent-${sha256(first.targetPath)}`,
+    );
+
+    await assert.rejects(
+      createDurableArtifactTransaction({
+        ...options,
+        uuid: () => "second-stage",
+      }),
+      (error) =>
+        error instanceof DurableArtifactTransactionError &&
+        error.code === "DURABLE_ARTIFACT_INTENT_CREATION_FAILED" &&
+        error.retryAllowed === false,
+    );
+    assert.deepEqual(first.recoveryDescriptor(), descriptor);
+
+    await writeFile(first.intentPath, "tampered recovery authority\n", {
+      mode: 0o600,
+    });
+    await assert.rejects(
+      first.verifyReadyForDispatch(),
+      (error) =>
+        error instanceof DurableArtifactTransactionError &&
+        error.code === "DURABLE_ARTIFACT_FILE_IDENTITY_CHANGED",
+    );
+    await writeFile(first.intentPath, "canonical recovery authority\n", {
+      mode: 0o600,
+    });
+    await first.verifyReadyForDispatch();
+    first.markDispatchStarted();
+    await first.persistFinal("reviewed closure\n");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

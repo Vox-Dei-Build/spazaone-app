@@ -146,13 +146,19 @@ export async function loadPriorNeedsReviewReceipt({
   expectedPriorReceiptSha256,
   expectedAppCommit,
   expectedOperation,
+  expectedKind = "spazaone_catalog_full_reconciliation",
   fsImpl = defaultFs,
   ownerUid,
 } = {}) {
   canonicalPath(receiptPath, "PRIOR_NEEDS_REVIEW_RECEIPT_PATH");
   if (
     !SHA256.test(String(expectedPriorReceiptSha256 ?? "")) ||
-    !SHA1.test(String(expectedAppCommit ?? ""))
+    !SHA1.test(String(expectedAppCommit ?? "")) ||
+    !new Set([
+      "spazaone_catalog_function_deployment",
+      "spazaone_catalog_policy_deployment",
+      "spazaone_catalog_full_reconciliation",
+    ]).has(expectedKind)
   ) {
     fail("PRIOR_NEEDS_REVIEW_EXPECTATION_INVALID");
   }
@@ -200,7 +206,7 @@ export async function loadPriorNeedsReviewReceipt({
     validateProductionWriteReceipt(receipt);
     if (
       receipt.outcome !== "needs_review" ||
-      receipt.kind !== "spazaone_catalog_full_reconciliation" ||
+      receipt.kind !== expectedKind ||
       receipt.remoteWriteAttempted !== true ||
       receipt.needsReview !== true ||
       receipt.retryAllowed !== false ||
@@ -221,6 +227,7 @@ export async function loadPriorNeedsReviewReceipt({
       priorReceiptSha256: receipt.redactedReceiptSha256,
       priorReceiptFileSha256: sha256(bytes),
       priorReceiptPathSha256: sha256(receiptPath),
+      priorReceiptKind: receipt.kind,
       operationBindingSha256: canonicalSha256(binding),
       operation: binding,
       snapshot,

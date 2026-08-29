@@ -1444,9 +1444,7 @@ export function validateProductionWriteReceipt(receipt) {
       receipt.result.cleanupStatus !== "not_applicable" ||
       receipt.result.errorCode !== null ||
       !receipt.result.remoteEvidence ||
-      (recovered &&
-        (receipt.kind !== "spazaone_catalog_full_reconciliation" ||
-          receipt.lineage.mode !== "recovered_readback")) ||
+      (recovered && receipt.lineage.mode !== "recovered_readback") ||
       (!recovered &&
         (receipt.kind !== "spazaone_catalog_policy_deployment" ||
           receipt.lineage.mode !== "policy_readback"))

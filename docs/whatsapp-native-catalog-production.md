@@ -50,6 +50,24 @@ existing two authorization-digest fields for schema compatibility; they now
 contain only the private session binding and one-shot consumption digests, not
 a reusable or serialized capability.
 
+Immediately before a provider write can start, the executor durably creates a
+canonical `needs_review` receipt at a deterministic owner-only `0600` recovery
+path bound to the intended final receipt path. It keeps that recovery authority
+until the final receipt bytes, inode, parent directory, and no-replace link have
+all been verified. Any post-dispatch failure reports the recovery path, path
+and file digests, possible target path, and the exact expected final-target
+file digest when final bytes existed. A second attempt for the same receipt
+target is rejected while that recovery authority remains.
+
+Recovery always inspects the possible final target first. A missing recovery
+record is closable only when the target is a canonical, fully operation-bound
+receipt whose file SHA-256 exactly matches the executor-reported expected
+target digest. Otherwise the intact recovery authority is mandatory and the
+provider is read back before any continuation decision; it is never blindly
+redispatched. The `existing-code` deployment lane remains fail-closed unless
+an exact final target was already verified because its pre-write environment
+baseline cannot be reconstructed after a crash.
+
 Local code review, builds, tests, and exact-package preparation do not authorize
 an external action. Each external write remains a distinct approval:
 integration publication, each Firestore or Functions deployment lane, full
@@ -647,6 +665,29 @@ input. Every execute receipt must bind the exact project, clean app commit,
 immutable target digest, selector, dotenv SHA-256, rollout booleans, scope
 counts/digests, and cleanup status. If the command result is ambiguous, stop at
 `needs_review`; a blind repeat can produce a partial multi-function rollout.
+Use the exact recovery fields printed with that result and a fresh closure
+receipt path; do not delete or rename the hidden recovery record:
+
+```bash
+functions/scripts/launch-whatsapp-catalog-production.sh deployment \
+  --recover-needs-review --execute --lane <exact-original-lane> \
+  --expected-app-commit <clean-authority-commit> \
+  --expected-current-main-commit <frozen-current-main-commit> \
+  --prior-needs-review-receipt-path <reported-recovery-path> \
+  --expected-prior-needs-review-receipt-path-sha256 <reported-path-sha256> \
+  --expected-prior-needs-review-receipt-sha256 <reported-receipt-sha256> \
+  --expected-prior-needs-review-receipt-file-sha256 <reported-file-sha256> \
+  --prior-target-receipt-path <reported-target-path> \
+  --expected-prior-target-receipt-path-sha256 <reported-target-path-sha256> \
+  --expected-prior-target-receipt-file-sha256 <reported-target-file-sha256> \
+  --receipt-path <absolute-new-closure-receipt-path> \
+  --candidate-manifest-path <absolute-canonical-manifest-path> \
+  --expected-candidate-manifest-sha256 <approved-manifest-sha256>
+```
+
+Omit only the expected target-file argument when the failure report contains
+`null` because no final bytes had reached the persistence phase. Configured
+function lanes still receive their original exact dotenv on standard input.
 
 ## Atomic cart contract
 

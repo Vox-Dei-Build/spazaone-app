@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
   link as fsLink,
@@ -12,6 +12,7 @@ import path from "node:path";
 const INTENT_MAX_BYTES = 64 * 1024;
 const ARTIFACT_MAX_BYTES = 16 * 1024 * 1024;
 const SAFE_FILE_MODE = 0o600;
+const SHA256 = /^[a-f0-9]{64}$/;
 const EXCLUSIVE_READ_WRITE_FLAGS =
   fsConstants.O_CREAT |
   fsConstants.O_EXCL |
@@ -51,6 +52,10 @@ export class DurableArtifactTransactionError extends Error {
 
 function fail(code, details) {
   throw new DurableArtifactTransactionError(code, details);
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function snapshotBytes(value, label, maximumBytes) {
@@ -215,6 +220,10 @@ class DurableArtifactTransaction {
   #intentHandle;
   #intentIdentity;
   #intentBytes;
+  #intentFileSha256;
+  #recoveryAuthoritySha256;
+  #expectedTargetFileSha256 = null;
+  #targetMayExist = false;
   #state = "prepared";
 
   constructor(input) {
@@ -229,6 +238,8 @@ class DurableArtifactTransaction {
     this.#intentHandle = input.intentHandle;
     this.#intentIdentity = input.intentIdentity;
     this.#intentBytes = input.intentBytes;
+    this.#intentFileSha256 = sha256(input.intentBytes);
+    this.#recoveryAuthoritySha256 = input.recoveryAuthoritySha256;
   }
 
   get targetPath() {
@@ -241,6 +252,29 @@ class DurableArtifactTransaction {
 
   get state() {
     return this.#state;
+  }
+
+  /**
+   * Returns only non-secret storage bindings. A caller can safely print this
+   * after a post-dispatch failure so recovery can locate the exact durable
+   * authority record and inspect the possible target before doing anything
+   * else. The record bytes remain private to the held owner-only inode.
+   */
+  recoveryDescriptor() {
+    return Object.freeze({
+      schemaVersion: 1,
+      kind: "spazaone_durable_artifact_recovery",
+      recoveryRecordPath: this.#intentPath,
+      recoveryRecordPathSha256: sha256(this.#intentPath),
+      recoveryRecordFileSha256: this.#intentFileSha256,
+      recoveryRecordSha256: this.#recoveryAuthoritySha256,
+      targetPath: this.#targetPath,
+      targetPathSha256: sha256(this.#targetPath),
+      expectedTargetFileSha256: this.#expectedTargetFileSha256,
+      targetMayExist: this.#targetMayExist,
+      readbackFirst: true,
+      retryAllowed: false,
+    });
   }
 
   async #assertParentIdentity() {
@@ -367,8 +401,11 @@ class DurableArtifactTransaction {
       await closeQuietly(this.#parentHandle);
       this.#intentBytes.fill(0);
       this.#state = "failed";
-      throw storageError(error);
+      const wrapped = storageError(error);
+      wrapped.recovery = this.recoveryDescriptor();
+      throw wrapped;
     }
+    this.#expectedTargetFileSha256 = sha256(finalBytes);
     this.#state = "finalizing";
 
     let stagingHandle;
@@ -445,13 +482,6 @@ class DurableArtifactTransaction {
         finalBytes,
         2,
       );
-      await this.#safeUnlinkHeld(
-        this.#intentPath,
-        this.#intentHandle,
-        this.#intentIdentity,
-        this.#intentBytes,
-        1,
-      );
       await this.#parentHandle.sync();
 
       targetHandle = await this.#fs.open(
@@ -466,14 +496,25 @@ class DurableArtifactTransaction {
         !sameIdentity(targetIdentity, stagingIdentity) ||
         !sameIdentity(targetPathStat, stagingIdentity) ||
         !(await readExact(targetHandle, finalBytes)) ||
-        !(await pathMissing(this.#fs, this.#stagingPath)) ||
-        !(await pathMissing(this.#fs, this.#intentPath))
+        !(await pathMissing(this.#fs, this.#stagingPath))
       ) {
         fail("DURABLE_ARTIFACT_FINAL_VERIFICATION_UNCERTAIN", {
           targetMayExist: true,
         });
       }
       await this.#assertParentIdentity();
+
+      // The recovery authority remains intact through every target byte,
+      // inode, and parent verification above. It is removed only after the
+      // final target is already a canonical owner-only single-link file.
+      await this.#safeUnlinkHeld(
+        this.#intentPath,
+        this.#intentHandle,
+        this.#intentIdentity,
+        this.#intentBytes,
+        1,
+      );
+      await this.#parentHandle.sync();
 
       const finalHandleStat = await targetHandle.stat();
       const finalPathStat = await this.#fs.lstat(this.#targetPath);
@@ -482,7 +523,9 @@ class DurableArtifactTransaction {
         !safeFileStat(finalPathStat, this.#uid, finalBytes.length, 1) ||
         !sameIdentity(finalHandleStat, stagingIdentity) ||
         !sameIdentity(finalPathStat, stagingIdentity) ||
-        !(await readExact(targetHandle, finalBytes))
+        !(await readExact(targetHandle, finalBytes)) ||
+        !(await pathMissing(this.#fs, this.#stagingPath)) ||
+        !(await pathMissing(this.#fs, this.#intentPath))
       ) {
         fail("DURABLE_ARTIFACT_FINAL_VERIFICATION_UNCERTAIN", {
           targetMayExist: true,
@@ -510,7 +553,10 @@ class DurableArtifactTransaction {
       await closeQuietly(this.#parentHandle);
       this.#intentBytes.fill(0);
       this.#state = "failed";
-      throw storageError(error, { linkAttempted });
+      this.#targetMayExist = linkAttempted || error?.targetMayExist === true;
+      const wrapped = storageError(error, { linkAttempted });
+      wrapped.recovery = this.recoveryDescriptor();
+      throw wrapped;
     } finally {
       finalBytes.fill(0);
     }
@@ -525,24 +571,41 @@ class DurableArtifactTransaction {
 export async function createDurableArtifactTransaction({
   targetPath,
   redactedIntentBytes,
+  recoveryAuthoritySha256 = null,
   ownerUid,
   fsImpl: fsOverrides,
   uuid = randomUUID,
 }) {
   assertCanonicalTarget(targetPath);
+  if (
+    recoveryAuthoritySha256 !== null &&
+    !SHA256.test(String(recoveryAuthoritySha256))
+  ) {
+    fail("DURABLE_ARTIFACT_RECOVERY_AUTHORITY_SHA256_INVALID", {
+      retryAllowed: false,
+    });
+  }
   const uid = expectedOwnerUid(ownerUid);
   const fsImpl = Object.freeze({ ...defaultFs, ...fsOverrides });
   const parentPath = path.dirname(targetPath);
   const name = path.basename(targetPath);
-  const nonce = uuid();
-  assertSafeNonce(nonce);
-  const intentPath = path.join(parentPath, `.${name}.intent-${nonce}`);
-  const stagingPath = path.join(parentPath, `.${name}.stage-${nonce}`);
   const intentBytes = snapshotBytes(
     redactedIntentBytes,
     "INTENT",
     INTENT_MAX_BYTES,
   );
+  // A target-bound deterministic name makes a crash-left recovery record
+  // discoverable and makes every second execution for the same receipt target
+  // fail closed until the first attempt is recovered. Staging remains
+  // nonce-scoped because it is not an authority record.
+  const intentBindingDigest = sha256(targetPath);
+  const nonce = uuid();
+  assertSafeNonce(nonce);
+  const intentPath = path.join(
+    parentPath,
+    `.${name}.intent-${intentBindingDigest}`,
+  );
+  const stagingPath = path.join(parentPath, `.${name}.stage-${nonce}`);
 
   let parentHandle;
   let parentIdentity;
@@ -612,6 +675,7 @@ export async function createDurableArtifactTransaction({
       intentHandle,
       intentIdentity,
       intentBytes,
+      recoveryAuthoritySha256,
     });
     await transaction.verifyReadyForDispatch();
     return transaction;

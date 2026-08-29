@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   lstat,
   mkdtemp,
@@ -15,8 +16,10 @@ import { pathToFileURL } from "node:url";
 
 import {
   PINNED_NODE_RUNTIME,
+  appCommitSourceSha256,
   canonicalSha256,
 } from "../scripts/production-write-receipt.mjs";
+import { createDurableArtifactTransaction } from "../scripts/durable-artifact-transaction.mjs";
 
 const executorPath = path.resolve(
   "scripts/execute-whatsapp-catalog-production.mjs",
@@ -151,7 +154,11 @@ export {
   disposeRecoveryInspectionLiveSession,
   exactRecoveryReadback,
   extractActionAuthorizationArguments,
+  extractDeploymentRecoveryArguments,
+  inspectPossibleRecoveryTarget,
   mintFreshReconciliationContinuationCapability,
+  persistedNeedsReviewRecovery,
+  recoveryAuthorityBytes,
   prepareProductionLiveSession,
   recordRecoveryInspection,
 };
@@ -224,6 +231,10 @@ test("production executor is a zero-export module with private attestation state
   assert.match(source, /authorityAttestations\.delete\(token\)/);
   assert.match(source, /transaction\.markDispatchStarted\(\)/);
   assert.match(source, /createDurableArtifactTransaction/);
+  assert.match(source, /recoveryAuthorityBytes/);
+  assert.match(source, /PRODUCTION_DISPATCH_OUTCOME_UNRESOLVED/);
+  assert.match(source, /recoveryRecordFileSha256/);
+  assert.match(source, /inspectPossibleRecoveryTarget/);
   assert.match(source, /authorizePreparedProductionLiveSession/);
   assert.match(source, /consumeProductionLiveSessionCapability/);
   assert.match(source, /disposeAuthorizedProductionLiveSession/);
@@ -233,15 +244,210 @@ test("production executor is a zero-export module with private attestation state
   assert.doesNotMatch(source, /claimProductionActionAuthorization/);
   assert.doesNotMatch(source, /loadProductionActionAuthorization/);
   assert.doesNotMatch(source, /createAuthenticatedDeploymentSnapshot/);
+  const deploymentBody = source.slice(
+    source.indexOf("async function executeDeployment("),
+    source.indexOf("function reconciliationExecutionContext("),
+  );
   assert.ok(
-    source.lastIndexOf("consumeProductionLiveSessionCapability(") <
-      source.lastIndexOf("beginIntent(context)"),
+    deploymentBody.indexOf("consumeProductionLiveSessionCapability(") <
+      deploymentBody.indexOf("beginIntent(context, dispatchPreparedAt)"),
   );
   assert.ok(
     source.indexOf("authorityAttestations.delete(token)") <
       source.indexOf("return await transaction.persistFinal(bytes)"),
   );
   assert.doesNotMatch(source, /await executeDeployment\(options, dotenvText\)/);
+});
+
+test("post-dispatch authority is a canonical needs_review receipt and recovery arguments are exact", async () => {
+  await withInstrumentedExecutor(
+    ({
+      recoveryAuthorityBytes,
+      extractDeploymentRecoveryArguments,
+      persistedNeedsReviewRecovery,
+    }) => {
+      const { context } = lifecycleFixture();
+      const receiptPath = "/private/tmp/recovered-deployment-closure.json";
+      const recoveryRecordPath = "/private/tmp/.original.json.intent-record";
+      const targetPath = "/private/tmp/original.json";
+      const input = {
+        ...context,
+        sourceSha256: appCommitSourceSha256(context.expectedAppCommit),
+        receiptPath,
+        actionStartedAt: "2026-08-29T10:00:00.000Z",
+        actionAuthorizationSha256: "1".repeat(64),
+        actionAuthorizationClaimSha256: "2".repeat(64),
+        liveSessionExpiresAt: "2026-08-29T10:05:00.000Z",
+        liveSessionRecoverySha256: "3".repeat(64),
+        priorReceiptSha256: null,
+        remoteWritePlanned: true,
+      };
+      const bytes = recoveryAuthorityBytes(input, "2026-08-29T10:00:01.000Z");
+      const receipt = JSON.parse(bytes.toString("utf8"));
+      bytes.fill(0);
+      assert.equal(receipt.outcome, "needs_review");
+      assert.equal(receipt.remoteWriteAttempted, true);
+      assert.equal(receipt.retryAllowed, false);
+      assert.equal(
+        receipt.result.errorCode,
+        "PRODUCTION_DISPATCH_OUTCOME_UNRESOLVED",
+      );
+      const persistedDescriptor = persistedNeedsReviewRecovery(
+        receipt,
+        targetPath,
+      );
+      assert.equal(
+        persistedDescriptor.recoveryRecordSha256,
+        receipt.redactedReceiptSha256,
+      );
+      assert.equal(
+        persistedDescriptor.expectedTargetFileSha256,
+        persistedDescriptor.recoveryRecordFileSha256,
+      );
+      assert.equal(persistedDescriptor.recoveryRecordPath, targetPath);
+      assert.equal(persistedDescriptor.targetPath, targetPath);
+
+      const recoveryRecordPathSha256 = canonicalSha256(recoveryRecordPath);
+      // canonicalSha256 hashes JSON strings; CLI path bindings use raw SHA256.
+      const rawSha = (value) =>
+        createHash("sha256").update(value).digest("hex");
+      assert.notEqual(recoveryRecordPathSha256, rawSha(recoveryRecordPath));
+      const parsed = extractDeploymentRecoveryArguments([
+        "--execute",
+        "--recover-needs-review",
+        "--prior-needs-review-receipt-path",
+        recoveryRecordPath,
+        "--expected-prior-needs-review-receipt-path-sha256",
+        rawSha(recoveryRecordPath),
+        "--expected-prior-needs-review-receipt-sha256",
+        "4".repeat(64),
+        "--expected-prior-needs-review-receipt-file-sha256",
+        "5".repeat(64),
+        "--prior-target-receipt-path",
+        targetPath,
+        "--expected-prior-target-receipt-path-sha256",
+        rawSha(targetPath),
+        "--expected-prior-target-receipt-file-sha256",
+        "6".repeat(64),
+      ]);
+      assert.deepEqual(parsed.remaining, ["--execute"]);
+      assert.equal(parsed.recovery.targetPath, targetPath);
+      assert.equal(parsed.recovery.recoveryRecordPath, recoveryRecordPath);
+      assert.throws(
+        () =>
+          extractDeploymentRecoveryArguments([
+            "--recover-needs-review",
+            "--prior-needs-review-receipt-path",
+            recoveryRecordPath,
+          ]),
+        /PRODUCTION_RECOVERY_ARGUMENT_INVALID/,
+      );
+    },
+  );
+});
+
+test("target-first recovery accepts only an exact canonical bound target digest", async () => {
+  await withInstrumentedExecutor(
+    async ({ recoveryAuthorityBytes, inspectPossibleRecoveryTarget }) => {
+      const root = await realpath(
+        await mkdtemp(path.join(os.tmpdir(), "production-target-readback-")),
+      );
+      try {
+        const { context } = lifecycleFixture();
+        const targetPath = path.join(root, "original-receipt.json");
+        const closurePath = path.join(root, "closure.json");
+        const exactContext = {
+          ...context,
+          sourceSha256: appCommitSourceSha256(context.expectedAppCommit),
+          receiptPath: closurePath,
+          candidateManifestPath: path.join(root, "candidate.json"),
+          actionStartedAt: "2026-08-29T10:00:00.000Z",
+          actionAuthorizationSha256: "1".repeat(64),
+          actionAuthorizationClaimSha256: "2".repeat(64),
+          liveSessionExpiresAt: "2026-08-29T10:05:00.000Z",
+          liveSessionRecoverySha256: "3".repeat(64),
+          priorReceiptSha256: null,
+          remoteWritePlanned: true,
+        };
+        const bytes = recoveryAuthorityBytes(
+          exactContext,
+          "2026-08-29T10:00:01.000Z",
+        );
+        await writeFile(targetPath, bytes, { flag: "wx", mode: 0o600 });
+        const rawSha = (value) =>
+          createHash("sha256").update(value).digest("hex");
+        const recovery = {
+          targetPath,
+          targetPathSha256: rawSha(targetPath),
+          expectedTargetFileSha256: rawSha(bytes),
+        };
+        const exact = await inspectPossibleRecoveryTarget(
+          recovery,
+          exactContext,
+        );
+        assert.equal(exact.outcome, "target_present_canonical");
+        assert.equal(exact.receiptOutcome, "needs_review");
+        assert.equal(exact.receiptFileSha256, rawSha(bytes));
+
+        const wrongDigest = await inspectPossibleRecoveryTarget(
+          { ...recovery, expectedTargetFileSha256: "f".repeat(64) },
+          exactContext,
+        );
+        assert.deepEqual(wrongDigest, {
+          outcome: "target_present_untrusted",
+        });
+        bytes.fill(0);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+test("a crash boundary after dispatch has a complete canonical recovery authority on disk", async () => {
+  await withInstrumentedExecutor(async ({ recoveryAuthorityBytes }) => {
+    const root = await realpath(
+      await mkdtemp(path.join(os.tmpdir(), "production-dispatch-crash-")),
+    );
+    try {
+      const { context } = lifecycleFixture();
+      const exactContext = {
+        ...context,
+        sourceSha256: appCommitSourceSha256(context.expectedAppCommit),
+        receiptPath: path.join(root, "final.json"),
+        actionStartedAt: "2026-08-29T10:00:00.000Z",
+        actionAuthorizationSha256: "1".repeat(64),
+        actionAuthorizationClaimSha256: "2".repeat(64),
+        liveSessionExpiresAt: "2026-08-29T10:05:00.000Z",
+        liveSessionRecoverySha256: "3".repeat(64),
+        priorReceiptSha256: null,
+        remoteWritePlanned: true,
+      };
+      const bytes = recoveryAuthorityBytes(
+        exactContext,
+        "2026-08-29T10:00:01.000Z",
+      );
+      const receipt = JSON.parse(bytes.toString("utf8"));
+      const transaction = await createDurableArtifactTransaction({
+        targetPath: exactContext.receiptPath,
+        redactedIntentBytes: bytes,
+        recoveryAuthoritySha256: receipt.redactedReceiptSha256,
+      });
+      await transaction.verifyReadyForDispatch();
+      transaction.markDispatchStarted();
+
+      assert.deepEqual(await readFile(transaction.intentPath), bytes);
+      assert.equal(
+        transaction.recoveryDescriptor().recoveryRecordSha256,
+        receipt.redactedReceiptSha256,
+      );
+      assert.equal(transaction.recoveryDescriptor().readbackFirst, true);
+      await transaction.persistFinal(bytes);
+      bytes.fill(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 test("deployment body uses only a sealed authenticated package through dispatch", async () => {
@@ -274,7 +480,10 @@ test("reviewed recovery returns exact readback facts before fresh continuation a
     executorSource,
     /recoveryReadbackSha256:\s*state\.recoveryReadbackSha256/,
   );
-  assert.match(executorSource, /exactRecoveryReadback\(await provider\(\)\)/);
+  assert.match(
+    executorSource,
+    /exactRecoveryReadback\([\s\S]*?await provider\(/,
+  );
   assert.match(reconciliationSource, /continuation_authorization_required/);
   assert.ok(
     reconciliationSource.indexOf(
@@ -323,6 +532,21 @@ test("private lifecycle validators reject malformed recovery and expired dispatc
       assert.equal(Object.isFrozen(valid.facts), true);
       assert.deepEqual(valid.facts, validFacts);
       assert.equal(valid.readbackSha256, canonicalSha256(validFacts));
+      const deploymentEvidence = exactRecoveryReadback({
+        outcome: "complete",
+        cycleId: "d".repeat(32),
+        evidenceSha256: "e".repeat(64),
+      });
+      assert.equal(deploymentEvidence.facts.evidenceSha256, "e".repeat(64));
+      assert.throws(
+        () =>
+          exactRecoveryReadback({
+            outcome: "complete",
+            cycleId: "d".repeat(32),
+            evidenceSha256: "invalid",
+          }),
+        /PRODUCTION_RECOVERY_READBACK_REJECTED/,
+      );
 
       const deadline = "2026-08-29T10:00:00.000Z";
       assert.doesNotThrow(() =>

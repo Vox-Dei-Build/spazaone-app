@@ -32,6 +32,7 @@ import {
   canonicalProductionCandidateManifestBytes,
 } from "../scripts/production-candidate-manifest.mjs";
 import { nativeCatalogTargetConfigurationDigestSha256 } from "../scripts/whatsapp-catalog-production-target.mjs";
+import { catalogFunctionSelector } from "../scripts/guard-whatsapp-catalog-functions-deploy.mjs";
 
 const appCommit = "c".repeat(40);
 const lane = "full-reconciliation";
@@ -96,6 +97,45 @@ function priorReceipt() {
   });
 }
 
+function deploymentPriorReceipt() {
+  const deploymentLane = "dark-new";
+  const deploymentSelector = catalogFunctionSelector(deploymentLane);
+  const manifest = {
+    ...candidateManifest(),
+    operation: {
+      kind: "function_deployment",
+      lane: deploymentLane,
+      selector: deploymentSelector,
+      inputSha256: operationInputSha256,
+    },
+  };
+  return buildNeedsReviewProductionWriteReceipt({
+    kind: "spazaone_catalog_function_deployment",
+    outcome: "needs_review",
+    actionStartedAt: "2026-08-29T07:00:00.000Z",
+    dispatchStartedAt: "2026-08-29T07:00:01.000Z",
+    actionCompletedAt: "2026-08-29T07:00:02.000Z",
+    verifiedAt: "2026-08-29T07:00:02.000Z",
+    appCommit,
+    lane: deploymentLane,
+    selector: deploymentSelector,
+    sourceSha256: appCommitSourceSha256(appCommit),
+    configurationSha256: nativeCatalogTargetConfigurationDigestSha256(),
+    candidateManifest: manifest,
+    candidateManifestSha256: sha256(
+      canonicalProductionCandidateManifestBytes(manifest),
+    ),
+    operationInputSha256,
+    actionAuthorizationSha256,
+    actionAuthorizationClaimSha256,
+    commandExitZero: false,
+    readbackStatus: "needs_review",
+    cleanupStatus: "needs_review",
+    remoteEvidence: null,
+    errorCode: "PRODUCTION_DISPATCH_OUTCOME_UNRESOLVED",
+  });
+}
+
 function expectedOperation(receipt) {
   return {
     lane: receipt.operation.lane,
@@ -143,6 +183,47 @@ test("exact prior needs_review receipt loads as a frozen operation-bound snapsho
     assert.equal(loaded.auditOnly, true);
     assert.equal(loaded.authorizesReviewedResume, false);
     assert.equal(loaded.trustedOriginVerified, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the same exact owner-only loader accepts a bound deployment recovery authority", async () => {
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "prior-deployment-recovery-")),
+  );
+  try {
+    const receipt = deploymentPriorReceipt();
+    const written = await writePrior(root, receipt, {
+      name: "deployment.json",
+    });
+    const loaded = await loadPriorNeedsReviewReceipt({
+      receiptPath: written.receiptPath,
+      expectedPriorReceiptSha256: receipt.redactedReceiptSha256,
+      expectedAppCommit: appCommit,
+      expectedOperation: expectedOperation(receipt),
+      expectedKind: "spazaone_catalog_function_deployment",
+    });
+    assert.equal(
+      loaded.priorReceiptKind,
+      "spazaone_catalog_function_deployment",
+    );
+    assert.equal(
+      loaded.snapshot.result.errorCode,
+      "PRODUCTION_DISPATCH_OUTCOME_UNRESOLVED",
+    );
+
+    await assert.rejects(
+      loadPriorNeedsReviewReceipt({
+        receiptPath: written.receiptPath,
+        expectedPriorReceiptSha256: receipt.redactedReceiptSha256,
+        expectedAppCommit: appCommit,
+        expectedOperation: expectedOperation(receipt),
+      }),
+      (error) =>
+        error instanceof PriorNeedsReviewReceiptError &&
+        error.code === "PRIOR_NEEDS_REVIEW_RECEIPT_BINDING_INVALID",
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
