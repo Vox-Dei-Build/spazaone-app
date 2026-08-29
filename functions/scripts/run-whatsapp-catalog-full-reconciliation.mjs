@@ -221,12 +221,13 @@ export async function resolveAuthorityAppCommit({
           "--role",
           "authority",
           "--",
+          // The machine guard permits the repository-bound read-only ref
+          // endpoint; keep this exact route so current-main verification does
+          // not widen into the general commits API.
           "api",
-          "--method",
-          "GET",
-          "repos/Vox-Dei-Build/spazaone-app/commits/main",
+          "repos/Vox-Dei-Build/spazaone-app/git/ref/heads/main",
           "--jq",
-          ".sha",
+          ".object.sha",
         ],
         {
           cwd: APP_REPOSITORY_ROOT,

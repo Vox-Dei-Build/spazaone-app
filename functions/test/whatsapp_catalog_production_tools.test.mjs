@@ -1109,7 +1109,7 @@ test("secret resolution pins Firebase project/account and scrubs ambient credent
   assert.ok(invalidSecret.every((byte) => byte === 0));
 });
 
-test("authority resolver requires a clean exact Vox Dei app checkout", async () => {
+test("authority resolver uses the guarded read-only ref for a clean exact Vox Dei checkout", async () => {
   const authorityInvocations = [];
   const outputs = [
     "",
@@ -1152,11 +1152,9 @@ test("authority resolver requires a clean exact Vox Dei app checkout", async () 
     "authority",
     "--",
     "api",
-    "--method",
-    "GET",
-    "repos/Vox-Dei-Build/spazaone-app/commits/main",
+    "repos/Vox-Dei-Build/spazaone-app/git/ref/heads/main",
     "--jq",
-    ".sha",
+    ".object.sha",
   ]);
   assert.deepEqual(authorityInvocations[4].args, [
     "merge-base",
