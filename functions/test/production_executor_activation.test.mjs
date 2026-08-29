@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { FROZEN_APP_MAIN_COMMIT } from "../scripts/production-candidate-manifest.mjs";
 import { PINNED_NODE_RUNTIME } from "../scripts/production-write-receipt.mjs";
@@ -43,6 +44,29 @@ function directExecutorEnvironment() {
   };
 }
 
+async function withInstrumentedExecutor(callback) {
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "production-executor-harness-")),
+  );
+  const harnessPath = path.join(root, "executor-harness.mjs");
+  try {
+    const scriptsRoot = path.dirname(executorPath);
+    const source = (await readFile(executorPath, "utf8")).replace(
+      /from "(\.\/[^"\n]+)"/g,
+      (_, specifier) =>
+        `from ${JSON.stringify(pathToFileURL(path.resolve(scriptsRoot, specifier)).href)}`,
+    );
+    await writeFile(
+      harnessPath,
+      `${source}\nexport { exactRecoveryReadback, assertLiveSessionDispatchDeadline, extractActionAuthorizationArguments };\n`,
+      { flag: "wx", mode: 0o600 },
+    );
+    return await callback(await import(pathToFileURL(harnessPath).href));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
 test("production executor is a zero-export module with private attestation state", async () => {
   const namespace = await import(
     `../scripts/execute-whatsapp-catalog-production.mjs?test=${Date.now()}`
@@ -51,38 +75,134 @@ test("production executor is a zero-export module with private attestation state
   const source = await readFile(executorPath, "utf8");
   assert.doesNotMatch(source, /^\s*export\s+/m);
   assert.match(source, /const authorityAttestations = new WeakMap\(\)/);
+  assert.match(source, /const preparedLiveSessions = new WeakMap\(\)/);
+  assert.match(source, /const liveSessionCapabilities = new WeakMap\(\)/);
+  assert.match(
+    source,
+    /const recoveryInspectionCapabilities = new WeakMap\(\)/,
+  );
   assert.match(source, /authorityAttestations\.delete\(token\)/);
   assert.match(source, /transaction\.markDispatchStarted\(\)/);
   assert.match(source, /createDurableArtifactTransaction/);
-  assert.match(source, /claimProductionActionAuthorization/);
+  assert.match(source, /authorizePreparedProductionLiveSession/);
+  assert.match(source, /consumeProductionLiveSessionCapability/);
+  assert.match(source, /liveSessionCapabilities\.delete\(capability\)/);
   assert.match(source, /actionAuthorizationClaimSha256/);
-  assert.match(source, /PRODUCTION_LIVE_SESSION_CAPABILITY_NOT_AUTHORIZED/);
+  assert.match(source, /SERIALIZED_PRODUCTION_CAPABILITY_FORBIDDEN/);
+  assert.doesNotMatch(source, /claimProductionActionAuthorization/);
+  assert.doesNotMatch(source, /loadProductionActionAuthorization/);
+  assert.doesNotMatch(source, /createAuthenticatedDeploymentSnapshot/);
   assert.ok(
-    source.lastIndexOf("claimProductionActionAuthorization(") <
+    source.indexOf("liveSessionCapabilities.delete(capability)") <
       source.lastIndexOf("beginIntent(context)"),
   );
   assert.ok(
     source.indexOf("authorityAttestations.delete(token)") <
       source.indexOf("return await transaction.persistFinal(bytes)"),
   );
-  assert.ok(
-    source.lastIndexOf("assertExecutorActivationAuthorized()") <
-      source.indexOf("await executeDeployment(options, dotenvText)"),
-  );
+  assert.doesNotMatch(source, /await executeDeployment\(options, dotenvText\)/);
 });
 
 test("disabled deployment body uses only a sealed authenticated package through dispatch", async () => {
   const source = await readFile(executorPath, "utf8");
-  assert.match(source, /createAuthenticatedDeploymentSnapshot/);
-  assert.match(source, /packageFileEvidence/);
-  assert.match(source, /"firestore\.rules"/);
-  assert.match(source, /"firestore\.indexes\.json"/);
-  assert.match(source, /verifyImmutableDeploymentSnapshot/);
-  assert.match(source, /immutableDeploymentSnapshotPath/);
+  assert.match(source, /prepareExactCommitFirebasePackage/);
+  assert.match(source, /mountExactCommitFirebasePackageReadOnly/);
+  assert.match(source, /verifyMountedExactCommitFirebasePackage/);
+  assert.match(source, /createFirebaseProductionSessionWorkspace/);
+  assert.match(source, /firebaseProviderWorkspacePath/);
+  assert.match(source, /gitArchiveSha256/);
+  assert.match(source, /gitTreeSha1/);
+  assert.match(source, /sourceKernelReadOnly/);
+  assert.match(source, /serializableCapability:\s*false/);
+  assert.match(source, /providerScratchInventorySha256/);
   assert.doesNotMatch(source, /buildEphemeralFirebase(?:Policy)?Config\(/);
   assert.ok(
-    source.lastIndexOf("verifyImmutableDeploymentSnapshot(") >
+    source.lastIndexOf("verifyMountedExactCommitFirebasePackage(") >
       source.lastIndexOf("waitForSpawn("),
+  );
+});
+
+test("reviewed recovery is readback-first and requires fresh continuation authority", async () => {
+  const [executorSource, reconciliationSource] = await Promise.all([
+    readFile(executorPath, "utf8"),
+    readFile(reconciliationPath, "utf8"),
+  ]);
+  assert.match(executorSource, /recordRecoveryInspection/);
+  assert.match(executorSource, /mintFreshReconciliationContinuationCapability/);
+  assert.match(
+    executorSource,
+    /recoveryReadbackSha256:\s*validatedReadback\.readbackSha256/,
+  );
+  assert.match(
+    reconciliationSource,
+    /FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED/,
+  );
+  assert.ok(
+    reconciliationSource.indexOf(
+      '"FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED"',
+    ) < reconciliationSource.indexOf("for (let step = 0; step < maxSteps"),
+  );
+});
+
+test("private lifecycle validators reject malformed recovery and expired dispatch", async () => {
+  await withInstrumentedExecutor(
+    ({
+      exactRecoveryReadback,
+      assertLiveSessionDispatchDeadline,
+      extractActionAuthorizationArguments,
+    }) => {
+      assert.throws(
+        () =>
+          exactRecoveryReadback({
+            outcome: "incomplete",
+            cycleId: "a".repeat(32),
+            readbackSha256: "b".repeat(64),
+            continuationStateDigestSha256: "invalid",
+          }),
+        /PRODUCTION_RECOVERY_READBACK_REJECTED/,
+      );
+      assert.throws(
+        () =>
+          exactRecoveryReadback({
+            outcome: "complete",
+            cycleId: "a".repeat(32),
+            readbackSha256: "b".repeat(64),
+            unexpected: true,
+          }),
+        /PRODUCTION_RECOVERY_READBACK_REJECTED/,
+      );
+      const valid = exactRecoveryReadback({
+        outcome: "incomplete",
+        cycleId: "a".repeat(32),
+        readbackSha256: "b".repeat(64),
+        continuationStateDigestSha256: "c".repeat(64),
+      });
+      assert.equal(Object.isFrozen(valid), true);
+
+      const deadline = "2026-08-29T10:00:00.000Z";
+      assert.doesNotThrow(() =>
+        assertLiveSessionDispatchDeadline(
+          { binding: { expiresAt: deadline } },
+          () => new Date("2026-08-29T09:59:59.999Z"),
+        ),
+      );
+      assert.throws(
+        () =>
+          assertLiveSessionDispatchDeadline(
+            { binding: { expiresAt: deadline } },
+            () => new Date(deadline),
+          ),
+        /PRODUCTION_LIVE_SESSION_EXPIRED_BEFORE_DISPATCH/,
+      );
+      assert.throws(
+        () =>
+          extractActionAuthorizationArguments([
+            "--action-authorization-receipt-path",
+            "/tmp/forbidden.json",
+          ]),
+        /SERIALIZED_PRODUCTION_CAPABILITY_FORBIDDEN/,
+      );
+    },
   );
 });
 

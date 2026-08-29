@@ -11,9 +11,16 @@ import {
   PINNED_LOCAL_PACKAGE_TOOLCHAIN,
   assertKernelReadOnlyMount,
   cleanupExactCommitFirebasePackage,
+  cleanupFirebaseProviderWorkspace,
+  createFirebaseProductionSessionWorkspace,
   exactCommitFirebasePackagePath,
+  firebaseProviderWorkspacePath,
+  inspectFirebaseProviderWorkspace,
+  mountExactCommitFirebasePackageReadOnly,
   prepareExactCommitFirebasePackage,
   verifyExactCommitFirebasePackage,
+  verifyFirebaseProductionSessionWorkspace,
+  verifyMountedExactCommitFirebasePackage,
 } from "../scripts/exact-commit-firebase-package.mjs";
 
 const execFile = promisify(nodeExecFile);
@@ -28,6 +35,8 @@ test("exact Git commit is rebuilt offline with a pinned production dependency cl
   ]);
   const expectedAppCommit = stdout.trim();
   let prepared;
+  let mounted;
+  let workspace;
   try {
     prepared = await prepareExactCommitFirebasePackage({
       repositoryRoot,
@@ -40,6 +49,7 @@ test("exact Git commit is rebuilt offline with a pinned production dependency cl
     assert.equal(prepared.scriptsDisabledDuringInstall, true);
     assert.equal(prepared.productionDependenciesIncluded, true);
     assert.equal(prepared.authorizesProduction, false);
+    assert.match(prepared.gitTreeSha1, /^[a-f0-9]{40}$/);
     assert.match(prepared.gitArchiveSha256, /^[a-f0-9]{64}$/);
     assert.match(prepared.generatedLibInventorySha256, /^[a-f0-9]{64}$/);
     assert.match(prepared.dependencyClosureSha256, /^[a-f0-9]{64}$/);
@@ -66,19 +76,104 @@ test("exact Git commit is rebuilt offline with a pinned production dependency cl
       /"name":\s*"firebase-functions"/,
     );
 
-    await writeFile(
-      exactCommitFirebasePackagePath(prepared, "functions/lib/index.js"),
-      "mutated after preparation\n",
+    const generatedPath = exactCommitFirebasePackagePath(
+      prepared,
+      "functions/lib/index.js",
     );
+    const generatedBytes = await readFile(generatedPath);
+    await writeFile(generatedPath, "mutated after preparation\n");
     await assert.rejects(
       verifyExactCommitFirebasePackage(prepared),
       (error) =>
         error instanceof ExactCommitFirebasePackageError &&
         error.code === "EXACT_COMMIT_PACKAGE_CHANGED",
     );
+    await writeFile(generatedPath, generatedBytes);
+    generatedBytes.fill(0);
+    assert.equal(
+      (await verifyExactCommitFirebasePackage(prepared)).verified,
+      true,
+    );
+
+    mounted = await mountExactCommitFirebasePackageReadOnly(prepared);
+    assert.equal(
+      (await verifyMountedExactCommitFirebasePackage(mounted)).kernelReadOnly,
+      true,
+    );
+    workspace = await createFirebaseProductionSessionWorkspace({
+      mountedPackage: mounted,
+      projectId: "pasella-ledger",
+      lane: "firestore-rules",
+      temporaryRoot: await realpath(os.tmpdir()),
+    });
+    const verifiedWorkspace =
+      await verifyFirebaseProductionSessionWorkspace(workspace);
+    assert.equal(verifiedWorkspace.sourceKernelReadOnly, true);
+    assert.equal(verifiedWorkspace.providerInputKernelReadOnly, true);
+    assert.equal(workspace.writableOverlay, false);
+    assert.match(workspace.providerInputInventorySha256, /^[a-f0-9]{64}$/);
+    const configPath = firebaseProviderWorkspacePath(workspace, "config");
+    await assert.rejects(writeFile(configPath, "must not replace config\n"), {
+      code: "EROFS",
+    });
+    const scratchPath = firebaseProviderWorkspacePath(workspace, "scratch");
+    await writeFile(path.join(scratchPath, "provider.tmp"), "bounded scratch");
+    await assert.rejects(
+      verifyFirebaseProductionSessionWorkspace(workspace),
+      (error) => error.code === "FIREBASE_PRODUCTION_SESSION_SCRATCH_CHANGED",
+    );
+    const afterUse = await verifyFirebaseProductionSessionWorkspace(workspace, {
+      allowScratchChanges: true,
+    });
+    assert.equal(afterUse.providerScratchEntryCount, 1);
+    assert.equal(
+      (await inspectFirebaseProviderWorkspace(workspace))
+        .providerScratchEntryCount,
+      1,
+    );
+    await cleanupFirebaseProviderWorkspace(workspace);
+    workspace = null;
+
+    workspace = await createFirebaseProductionSessionWorkspace({
+      mountedPackage: mounted,
+      projectId: "pasella-ledger",
+      lane: "dark-new",
+      dotenvText: "SPAZAONE_ENVIRONMENT=production\n",
+      temporaryRoot: await realpath(os.tmpdir()),
+    });
+    assert.equal(
+      (await verifyFirebaseProductionSessionWorkspace(workspace))
+        .providerInputKernelReadOnly,
+      true,
+    );
+    const functionConfigPath = firebaseProviderWorkspacePath(
+      workspace,
+      "config",
+    );
+    const functionConfig = JSON.parse(
+      await readFile(functionConfigPath, "utf8"),
+    );
+    assert.equal(functionConfig.functions.length, 1);
+    assert.equal(
+      functionConfig.functions[0].source,
+      firebaseProviderWorkspacePath(workspace, "functions-source"),
+    );
+    assert.match(
+      functionConfig.functions[0].configDir,
+      /provider-input-readonly\/config$/,
+    );
+    await assert.rejects(
+      writeFile(
+        path.join(functionConfig.functions[0].configDir, ".env.pasella-ledger"),
+        "must not replace dotenv\n",
+      ),
+      { code: "EROFS" },
+    );
   } finally {
+    if (workspace) await cleanupFirebaseProviderWorkspace(workspace);
     if (prepared) {
       await cleanupExactCommitFirebasePackage({
+        mountedPackage: mounted,
         packageDescriptor: prepared,
       });
     }
@@ -129,6 +224,17 @@ test("provider image and local probe contract pins exact tools and audit-only ev
   assert.match(source, /"ci",\s*"--offline",\s*"--ignore-scripts"/s);
   assert.match(source, /FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH: "true"/);
   assert.match(source, /workspace\.projectId\.startsWith\("demo-"\)/);
+  assert.match(source, /createFirebaseProductionSessionWorkspace/);
+  assert.match(source, /PRODUCTION_SESSION_LANES/);
+  assert.match(source, /source:\s*image\.functionsPath/);
+  assert.match(source, /path\.join\(image\.mountRoot, "firestore\.rules"\)/);
+  assert.match(
+    source,
+    /path\.join\(image\.mountRoot, "firestore\.indexes\.json"\)/,
+  );
+  assert.match(source, /verifyFirebaseProductionSessionWorkspace/);
+  assert.match(source, /providerScratchInventorySha256/);
+  assert.match(source, /FIREBASE_PRODUCTION_SESSION_SCRATCH_CHANGED/);
   assert.match(source, /productionWriteAttempted: false/);
   assert.match(source, /authorizesProduction: false/);
 });

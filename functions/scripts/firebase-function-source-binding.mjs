@@ -348,6 +348,7 @@ function expectedGeneratedFiles(trackedFiles) {
 export async function computeCandidateFirebaseSourceContract({
   repositoryRoot,
   functionsDirectory,
+  gitFunctionsDirectory = functionsDirectory,
   expectedAppCommit,
   runtimeConfigHashSha1,
   loadGitTree = loadCandidateGitTree,
@@ -361,6 +362,7 @@ export async function computeCandidateFirebaseSourceContract({
   if (
     !path.isAbsolute(String(repositoryRoot ?? "")) ||
     !path.isAbsolute(String(functionsDirectory ?? "")) ||
+    !path.isAbsolute(String(gitFunctionsDirectory ?? "")) ||
     !SHA1.test(String(expectedAppCommit ?? "")) ||
     !SHA1.test(String(runtimeConfigHashSha1 ?? ""))
   ) {
@@ -372,7 +374,7 @@ export async function computeCandidateFirebaseSourceContract({
   }
   const tree = await loadGitTree({
     repositoryRoot,
-    functionsDirectory,
+    functionsDirectory: gitFunctionsDirectory,
     expectedAppCommit,
     execFileImpl,
     environment,

@@ -910,6 +910,14 @@ async function runFullCatalogReconciliation({
           outboxStatusCounts: completion.outboxStatusCounts,
         });
       }
+      // A reviewed resume is inspection-only. If remote completion cannot be
+      // proven, this invocation must stop before the first continuation write.
+      // A new, same-process capability must bind this exact readback and be
+      // freshly authorized before a later continuation attempt.
+      throw new ReconciliationOperatorError(
+        "FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED",
+        { ambiguous: false, needsReview: true },
+      );
     }
     for (let step = 0; step < maxSteps; step += 1) {
       if (Date.now() - startedAtMs > maxElapsedMs) {

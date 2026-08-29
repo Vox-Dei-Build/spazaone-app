@@ -603,12 +603,19 @@ export function codexGuardDeployArguments({ lane, dryRun, configPath }) {
   return args;
 }
 
-function catalogPolicySourcePath(lane) {
+function catalogPolicySourcePath(lane, sourceRoot = APP_REPOSITORY_ROOT) {
+  if (
+    typeof sourceRoot !== "string" ||
+    !path.isAbsolute(sourceRoot) ||
+    path.resolve(sourceRoot) !== sourceRoot
+  ) {
+    throw new CatalogDeploymentGuardError("CATALOG_POLICY_SOURCE_ROOT_INVALID");
+  }
   if (lane === "firestore-rules") {
-    return path.join(APP_REPOSITORY_ROOT, "firestore.rules");
+    return path.join(sourceRoot, "firestore.rules");
   }
   if (lane === "firestore-indexes") {
-    return path.join(APP_REPOSITORY_ROOT, "firestore.indexes.json");
+    return path.join(sourceRoot, "firestore.indexes.json");
   }
   throw new CatalogDeploymentGuardError("CATALOG_POLICY_LANE_INVALID");
 }
@@ -766,8 +773,11 @@ export function canonicalFirestoreIndexConfiguration(value) {
   return { indexes, fieldOverrides };
 }
 
-export async function catalogPolicySourceContract(lane) {
-  const sourcePath = catalogPolicySourcePath(lane);
+export async function catalogPolicySourceContract(
+  lane,
+  { sourceRoot = APP_REPOSITORY_ROOT } = {},
+) {
+  const sourcePath = catalogPolicySourcePath(lane, sourceRoot);
   const source = await readFile(sourcePath);
   const sourceSha256 = sha256(source);
   if (lane === "firestore-rules") {

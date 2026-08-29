@@ -277,6 +277,26 @@ test("candidate contract binds Git blobs, exact generated inventory, and package
       pinnedFiles,
     );
 
+    const reviewedGitFunctionsDirectory = path.join(
+      root,
+      "reviewed-git-origin/functions",
+    );
+    let capturedGitFunctionsDirectory = null;
+    const separated = await computeCandidateFirebaseSourceContract({
+      repositoryRoot: root,
+      functionsDirectory,
+      gitFunctionsDirectory: reviewedGitFunctionsDirectory,
+      expectedAppCommit: commit,
+      runtimeConfigHashSha1: "b".repeat(40),
+      loadGitTree: async (input) => {
+        capturedGitFunctionsDirectory = input.functionsDirectory;
+        return fakeGitTree(tracked)();
+      },
+      assertImplementation: async () => "d".repeat(64),
+    });
+    assert.equal(capturedGitFunctionsDirectory, reviewedGitFunctionsDirectory);
+    assert.equal(separated.contractSha256, contract.contractSha256);
+
     await writeFile(
       path.join(functionsDirectory, "firestore-debug.log"),
       "firebase-tools packages this untracked file\n",

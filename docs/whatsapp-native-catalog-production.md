@@ -19,13 +19,47 @@ merchant, Meta catalogue, or sender identity from a client-side cart line.
 > Receipt schema v2 structural validation is locally implemented but is not
 > production attestation. While both executors are disabled, the module exports
 > no verified-receipt constructor, seal, or persister. Importers can create and
-> atomically persist only `needs_review` records. A future reviewed enablement
-> must add one module-private high-level closure that loads the real candidate
-> manifest, performs the real remote action/readback itself, and carries an
-> opaque attestation through receipt persistence. Dependency-injected output or
-> a caller-supplied self-consistent object/hash must never acquire that
-> attestation. Executor enablement, dispatch, and verified receipt persistence
-> remain separate blocked work.
+> atomically persist only `needs_review` records. The dormant executor now has
+> one module-private high-level closure that loads the real candidate manifest,
+> owns the real remote action/readback, and carries an opaque attestation through
+> receipt persistence. It is not reachable from the launcher or CLI. A future
+> reviewed enablement may wire only its same-process capability pause; a
+> dependency-injected output or caller-supplied self-consistent object/hash must
+> never acquire that attestation. Executor enablement, dispatch, and verified
+> receipt persistence remain separate blocked work.
+
+### Same-process production session (implemented locally, still disabled)
+
+The dormant writer no longer accepts an authorization receipt, digest, path,
+environment variable, or other serialized value as production authority. A
+future enablement must keep one process alive while it:
+
+1. authenticates the exact Vox Dei candidate manifest and commit/tree;
+2. rebuilds that commit from `git archive` with pinned tools and offline
+   dependencies, then mounts the resulting provider package kernel read-only;
+3. creates and inventories a per-session Firebase config/dotenv scratch
+   directory whose deployable source paths point only into that mount;
+4. pauses and presents the non-secret operation, target, archive/package
+   digests, receipt-path digest, recovery lineage, and deadline for explicit
+   action-time approval; and
+5. mints an unforgeable module-private object only after that approval. The
+   object is deleted from its private `WeakMap` before the durable intent and
+   can be used once before its deadline.
+
+The package, pending handle, and authorized handle are process memory only.
+They are not written to a file, stdout, environment, command argument, or
+receipt. A crash/restart loses the handle and requires a new exact package,
+fresh readback, and fresh action-time approval. The receipt retains the
+existing two authorization-digest fields for schema compatibility; they now
+contain only the private session binding and one-shot consumption digests, not
+a reusable or serialized capability.
+
+Local code review, builds, tests, the exact-package preparation path, and the
+hard-disabled orchestration can be authorized together. Each future external
+write remains a distinct approval: integration publication, each Firestore or
+Functions deployment lane, full catalogue reconciliation, Botpress deploy,
+WhatsApp cutover, and the controlled live test. Catalogue reconciliation does
+not imply Botpress/WhatsApp cutover authority.
 
 ## Rollout gates
 
@@ -83,16 +117,16 @@ New native-catalog functions and modified existing functions are deliberately
 separate lanes:
 
 - `dark-new` deploys only the twelve new functions. It requires the exact
-  non-secret configuration below on standard input. The helper writes that
-  configuration with mode `0600` to a one-use directory outside the uploaded
-  functions source, points Firebase `configDir` there, then deletes the
-  directory in `finally`.
+  non-secret configuration below on standard input. The helper stages that
+  configuration with mode `0600`, seals the Firebase config and `configDir`
+  into a one-use UDRO image, proves the mounted inputs reject writes with
+  `EROFS`, and deletes the image/session scratch in `finally`.
 - `existing-code` deploys only `getMerchantCatalogBotHttp`, `checkoutCart`,
   `cancelOrder`, `finalizeOnlinePaid`, and `updateOrderPayment`. It accepts no
   dotenv. Before it can run, the guard verifies both Firebase CLI `15.21.0` and
   that installed CLI's `inferDetailsFromExisting` remote-environment merge.
-  It then uses a mode-`0700` one-invocation directory containing a mode-`0600`
-  Firebase config with no dotenv or `configDir`. If either the
+  It then seals a mode-`0600` Firebase config with no dotenv or `configDir`
+  into the same one-invocation read-only provider-input image. If either the
   source dotenv check or pinned-CLI preservation contract cannot be proved,
   the lane fails closed before deployment.
 - `sync-enable` later updates only the six synchronization/reconciliation
@@ -239,6 +273,13 @@ TypeScript source, any other uploadable untracked or ignored file, any symlink
 or special file, and any tracked byte whose Git blob is not from the exact
 reviewed commit. It computes the Firebase package contract both before and
 after the command; a difference is `needs_review`, never a retry signal.
+
+The governed wrapper must run from the registered authority checkout, so the
+executor preserves the authenticated Firebase `HOME`. It redirects the child
+process `TMPDIR` to the session's bounded scratch directory and inventories it
+after provider exit. A fresh clean-authority recheck catches any provider file
+written into the checkout. Credential-store state is not copied into the
+session and is never treated as deployable input evidence.
 Only the pinned Firebase ignores are applied. In particular, a local
 `firestore-debug.log` is uploadable and therefore rejected as an unreviewed
 source file; remove it before the final build rather than broadening the ignore
@@ -435,14 +476,17 @@ authenticated, resumable full reconciliation while delivery is dark:
      --expected-app-commit <clean-authority-commit> --reviewed-resume
    ```
 
-   This performs an authenticated `inspect_recovery`, obtains the current
-   opaque digest from server-owned state, and continues only if that digest and
-   deployment binding still match. It supports the important zero-page case in
-   which cycle initialization committed but the first page response was lost.
-   It also handles a timeout after the final dispatch: if the server already
+   This performs only an authenticated `inspect_recovery`. If the server already
    committed `status=complete`, inspection validates both stored bindings and
    the exact zeroed outbox/completion proof, then seals the receipt from the
    original stored cycle start/completion timestamps without another write.
+   If the cycle is incomplete—including the important zero-page case in which
+   initialization committed but the first page response was lost—the reviewed
+   resume stops with
+   `FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED`. A later
+   continuation requires a newly authorized same-process capability bound to
+   that exact recovery readback and continuation-state digest; restarting the
+   process or reusing the old approval cannot continue it.
    The CLI accepts no cycle, cursor, target digest, merchant, recipient, or
    credential argument.
    The authority checkout and governed current-main binding are rechecked

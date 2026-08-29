@@ -57,15 +57,17 @@ import {
 } from "./firebase-function-source-binding.mjs";
 import { createDurableArtifactTransaction } from "./durable-artifact-transaction.mjs";
 import {
-  claimProductionActionAuthorization,
-  loadProductionActionAuthorization,
-} from "./production-action-authorization.mjs";
-import {
-  createImmutableDeploymentSnapshotBuilder,
-  immutableDeploymentSnapshotPath,
-  removeImmutableDeploymentSnapshot,
-  verifyImmutableDeploymentSnapshot,
-} from "./immutable-deployment-snapshot.mjs";
+  cleanupExactCommitFirebasePackage,
+  cleanupFirebaseProviderWorkspace,
+  createFirebaseProductionSessionWorkspace,
+  firebaseProviderWorkspacePath,
+  inspectFirebaseProviderWorkspace,
+  mountExactCommitFirebasePackageReadOnly,
+  mountedExactCommitFirebasePackagePath,
+  prepareExactCommitFirebasePackage,
+  verifyFirebaseProductionSessionWorkspace,
+  verifyMountedExactCommitFirebasePackage,
+} from "./exact-commit-firebase-package.mjs";
 import {
   PRODUCTION_FIREBASE_ACCOUNT,
   PRODUCTION_FIREBASE_PROJECT_ID,
@@ -87,6 +89,10 @@ const MAX_DOTENV_BYTES = 16 * 1024;
 const MAX_READBACK_BYTES = 10 * 1024 * 1024;
 const SHA256 = /^[a-f0-9]{64}$/;
 const authorityAttestations = new WeakMap();
+const preparedLiveSessions = new WeakMap();
+const liveSessionCapabilities = new WeakMap();
+const recoveryInspectionCapabilities = new WeakMap();
+const LIVE_SESSION_MAX_AGE_MS = 10 * 60 * 1000;
 const CLEAN_LAUNCHER = Object.freeze({
   path: path.join(
     FUNCTIONS_DIRECTORY,
@@ -121,21 +127,548 @@ function assertExecutorActivationAuthorized() {
   fail("PRODUCTION_EXECUTOR_ACTIVATION_NOT_AUTHORIZED");
 }
 
-function assertLiveSessionCapabilityAuthorized() {
-  // File hashes and same-owner claim files cannot establish a trusted action
-  // origin. Only a separately user-approved, zero-export same-process session
-  // launched from the exact reviewed archive may replace this hard stop.
-  fail("PRODUCTION_LIVE_SESSION_CAPABILITY_NOT_AUTHORIZED");
-}
-
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function deepFreeze(value) {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+function liveSessionRecoveryBinding(value = {}) {
+  const mode = value.mode ?? "direct";
+  if (!new Set(["direct", "readback_first", "continuation"]).has(mode)) {
+    fail("PRODUCTION_LIVE_SESSION_RECOVERY_MODE_INVALID");
+  }
+  const priorReceiptSha256 = value.priorReceiptSha256 ?? null;
+  const cycleId = value.cycleId ?? null;
+  const continuationStateDigestSha256 =
+    value.continuationStateDigestSha256 ?? null;
+  const recoveryReadbackSha256 = value.recoveryReadbackSha256 ?? null;
+  if (
+    (mode === "direct" &&
+      [
+        priorReceiptSha256,
+        cycleId,
+        continuationStateDigestSha256,
+        recoveryReadbackSha256,
+      ].some((entry) => entry !== null)) ||
+    (mode !== "direct" && !SHA256.test(String(priorReceiptSha256 ?? ""))) ||
+    (mode === "readback_first" &&
+      [cycleId, continuationStateDigestSha256, recoveryReadbackSha256].some(
+        (entry) => entry !== null,
+      )) ||
+    (mode === "continuation" &&
+      (!/^[a-f0-9]{32}$/.test(String(cycleId ?? "")) ||
+        !SHA256.test(String(continuationStateDigestSha256 ?? "")) ||
+        !SHA256.test(String(recoveryReadbackSha256 ?? ""))))
+  ) {
+    fail("PRODUCTION_LIVE_SESSION_RECOVERY_BINDING_INVALID");
+  }
+  return {
+    mode,
+    priorReceiptSha256,
+    cycleId,
+    continuationStateDigestSha256,
+    recoveryReadbackSha256,
+  };
+}
+
+async function cleanupLiveSessionState(state) {
+  if (!state || state.cleaned === true) return;
+  let cleanupError = null;
+  try {
+    if (state.workspace && state.workspaceCleaned !== true) {
+      await cleanupFirebaseProviderWorkspace(state.workspace);
+      state.workspaceCleaned = true;
+    }
+  } catch (error) {
+    cleanupError = error;
+  }
+  try {
+    if (
+      (state.mountedPackage || state.packageDescriptor) &&
+      state.packageCleaned !== true
+    ) {
+      await cleanupExactCommitFirebasePackage({
+        mountedPackage: state.mountedPackage,
+        packageDescriptor: state.packageDescriptor,
+      });
+      state.packageCleaned = true;
+    }
+  } catch (error) {
+    cleanupError ??= error;
+  }
+  if (cleanupError) {
+    throw cleanupError;
+  }
+  state.cleaned = true;
+}
+
+async function prepareProductionLiveSession({
+  context,
+  candidate,
+  dotenvText,
+  recovery,
+  clock = () => new Date(),
+}) {
+  if (
+    !candidate ||
+    !Object.isFrozen(candidate.authenticatedManifest) ||
+    candidate.appCommit !== context.expectedAppCommit ||
+    candidate.governedMainCommit !== context.expectedCurrentMainCommit ||
+    candidate.manifestSha256 !== context.expectedCandidateManifestSha256 ||
+    candidate.operation?.kind !== manifestOperationKind(context.kind) ||
+    candidate.operation?.lane !== context.lane ||
+    candidate.operation?.selector !== context.selector ||
+    candidate.operation?.inputSha256 !== context.operationInputSha256
+  ) {
+    fail("PRODUCTION_LIVE_SESSION_CANDIDATE_INVALID");
+  }
+  const policyLane = CATALOG_POLICY_LANES.includes(context.lane);
+  if (policyLane || context.lane === "existing-code") {
+    if (dotenvText !== "") fail("PRODUCTION_LIVE_SESSION_DOTENV_INVALID");
+  } else {
+    let validatedDotenv;
+    try {
+      validatedDotenv = validateCatalogDeploymentDotenv({
+        lane: context.lane,
+        text: dotenvText,
+        appCommit: context.expectedAppCommit,
+      });
+    } catch (_) {
+      fail("PRODUCTION_LIVE_SESSION_DOTENV_INVALID");
+    }
+    if (validatedDotenv.sha256 !== context.operationInputSha256) {
+      fail("PRODUCTION_LIVE_SESSION_DOTENV_BINDING_MISMATCH");
+    }
+  }
+  const preparedAt = clock();
+  if (!(preparedAt instanceof Date) || !Number.isFinite(preparedAt.getTime())) {
+    fail("PRODUCTION_LIVE_SESSION_CLOCK_INVALID");
+  }
+  let packageDescriptor;
+  let mountedPackage;
+  let workspace;
+  try {
+    packageDescriptor = await prepareExactCommitFirebasePackage({
+      repositoryRoot: APP_REPOSITORY_ROOT,
+      expectedAppCommit: context.expectedAppCommit,
+      temporaryRoot: "/private/tmp",
+    });
+    if (packageDescriptor.gitTreeSha1 !== candidate.gitTreeSha1) {
+      fail("PRODUCTION_LIVE_SESSION_GIT_TREE_MISMATCH");
+    }
+    mountedPackage =
+      await mountExactCommitFirebasePackageReadOnly(packageDescriptor);
+    const mountEvidence =
+      await verifyMountedExactCommitFirebasePackage(mountedPackage);
+    workspace = await createFirebaseProductionSessionWorkspace({
+      mountedPackage,
+      projectId: PRODUCTION_FIREBASE_PROJECT_ID,
+      lane: context.lane,
+      dotenvText,
+      temporaryRoot: "/private/tmp",
+    });
+    const scratchEvidence =
+      await verifyFirebaseProductionSessionWorkspace(workspace);
+    const expiresAt = new Date(
+      preparedAt.getTime() + LIVE_SESSION_MAX_AGE_MS,
+    ).toISOString();
+    const recoveryBinding = liveSessionRecoveryBinding(recovery);
+    const binding = deepFreeze({
+      schemaVersion: 1,
+      kind: "spazaone_production_live_session",
+      preparedAt: preparedAt.toISOString(),
+      expiresAt,
+      authority: { ...PRODUCTION_WRITE_AUTHORITY },
+      target: { ...PRODUCTION_WRITE_TARGET },
+      candidate: {
+        appCommit: context.expectedAppCommit,
+        governedMainCommit: context.expectedCurrentMainCommit,
+        gitTreeSha1: candidate.gitTreeSha1,
+        gitArchiveSha256: packageDescriptor.gitArchiveSha256,
+        reviewedArchiveInventorySha256:
+          packageDescriptor.reviewedArchiveInventorySha256,
+        packageInventorySha256: packageDescriptor.packageInventorySha256,
+        packageJsonSha256: packageDescriptor.packageJsonSha256,
+        packageLockSha256: packageDescriptor.packageLockSha256,
+        dependencyClosureSha256: packageDescriptor.dependencyClosureSha256,
+        generatedLibInventorySha256:
+          packageDescriptor.generatedLibInventorySha256,
+        candidateManifestSha256: candidate.manifestSha256,
+        reviewedEvidenceReceiptSetSha256: candidate.receiptSetSha256,
+      },
+      operation: {
+        kind: context.kind,
+        lane: context.lane,
+        selector: context.selector,
+        sourceSha256: context.sourceSha256,
+        configurationSha256: nativeCatalogTargetConfigurationDigestSha256(),
+        operationInputSha256: context.operationInputSha256,
+      },
+      receiptPathSha256: sha256(context.receiptPath),
+      recovery: recoveryBinding,
+      scratch: {
+        workspaceConfigSha256: workspace.configSha256,
+        dotenvSha256: workspace.dotenvSha256,
+        sourcePackageInventorySha256:
+          scratchEvidence.sourcePackageInventorySha256,
+        providerScratchInventorySha256:
+          scratchEvidence.providerScratchInventorySha256,
+        providerScratchEntryCount: scratchEvidence.providerScratchEntryCount,
+        sourceKernelReadOnly:
+          mountEvidence.kernelReadOnly === true &&
+          scratchEvidence.sourceKernelReadOnly === true &&
+          scratchEvidence.providerInputKernelReadOnly === true,
+        providerInputInventorySha256:
+          scratchEvidence.providerInputInventorySha256,
+      },
+      oneShot: true,
+      serializableCapability: false,
+      productionWriteAttempted: false,
+    });
+    const bindingSha256 = canonicalSha256(binding);
+    const capability = Object.freeze(Object.create(null));
+    const state = {
+      binding,
+      bindingSha256,
+      candidate,
+      packageDescriptor,
+      mountedPackage,
+      workspace,
+      context: structuredClone(context),
+      consumed: false,
+      cleaned: false,
+    };
+    if (recoveryBinding.mode === "readback_first") {
+      recoveryInspectionCapabilities.set(capability, state);
+    } else {
+      preparedLiveSessions.set(capability, state);
+    }
+    return {
+      capability,
+      summary: Object.freeze({
+        outcome: "authorization_required",
+        bindingSha256,
+        expiresAt,
+        appCommit: context.expectedAppCommit,
+        gitTreeSha1: candidate.gitTreeSha1,
+        gitArchiveSha256: packageDescriptor.gitArchiveSha256,
+        packageInventorySha256: packageDescriptor.packageInventorySha256,
+        operation: Object.freeze({ ...binding.operation }),
+        recoveryMode: recoveryBinding.mode,
+        receiptPathSha256: binding.receiptPathSha256,
+        sourceKernelReadOnly: binding.scratch.sourceKernelReadOnly,
+        providerScratchEntryCount: binding.scratch.providerScratchEntryCount,
+        productionWriteAttempted: false,
+      }),
+    };
+  } catch (error) {
+    await cleanupLiveSessionState({
+      packageDescriptor,
+      mountedPackage,
+      workspace,
+      cleaned: false,
+    });
+    throw error;
+  }
+}
+
+async function authorizePreparedProductionLiveSession(
+  preparedCapability,
+  { authorizedAt, deadline, clock = () => new Date() },
+) {
+  const state = preparedLiveSessions.get(preparedCapability);
+  const authorizedAtMs = Date.parse(authorizedAt);
+  const deadlineMs = Date.parse(deadline);
+  const current = clock();
+  const nowMs = current instanceof Date ? current.getTime() : Number.NaN;
+  if (
+    !state ||
+    state.consumed ||
+    state.binding.recovery.mode !== "direct" ||
+    !Number.isFinite(authorizedAtMs) ||
+    !Number.isFinite(deadlineMs) ||
+    !Number.isFinite(nowMs) ||
+    authorizedAtMs > nowMs ||
+    authorizedAtMs < Date.parse(state.binding.preparedAt) ||
+    deadlineMs <= nowMs ||
+    deadlineMs <= authorizedAtMs ||
+    deadlineMs - authorizedAtMs > LIVE_SESSION_MAX_AGE_MS ||
+    deadlineMs > Date.parse(state.binding.expiresAt) ||
+    nowMs >= Date.parse(state.binding.expiresAt)
+  ) {
+    fail("FRESH_PRODUCTION_ACTION_AUTHORIZATION_REQUIRED");
+  }
+  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  state.consumed = true;
+  preparedLiveSessions.delete(preparedCapability);
+  const authorizedBinding = deepFreeze({
+    ...state.binding,
+    authorizedAt,
+    expiresAt: deadline,
+  });
+  const capability = Object.freeze(Object.create(null));
+  const authorizedState = {
+    ...state,
+    binding: authorizedBinding,
+    bindingSha256: canonicalSha256(authorizedBinding),
+    consumed: false,
+  };
+  liveSessionCapabilities.set(capability, authorizedState);
+  return {
+    capability,
+    summary: Object.freeze({
+      outcome: "authorized_in_same_process",
+      bindingSha256: authorizedState.bindingSha256,
+      expiresAt: deadline,
+      operation: Object.freeze({ ...authorizedBinding.operation }),
+      receiptPathSha256: authorizedBinding.receiptPathSha256,
+      serializableCapability: false,
+      remoteWriteAttempted: false,
+    }),
+  };
+}
+
+async function disposePreparedProductionLiveSession(preparedCapability) {
+  const state = preparedLiveSessions.get(preparedCapability);
+  if (!state || state.consumed) {
+    fail("PRODUCTION_PREPARED_SESSION_NOT_ACTIVE");
+  }
+  await cleanupLiveSessionState(state);
+  state.consumed = true;
+  preparedLiveSessions.delete(preparedCapability);
+}
+
+async function consumeProductionLiveSessionCapability(
+  capability,
+  expectedContext,
+  { clock = () => new Date() } = {},
+) {
+  const state = liveSessionCapabilities.get(capability);
+  const consumedAt = clock();
+  if (
+    !state ||
+    state.consumed ||
+    !(consumedAt instanceof Date) ||
+    !Number.isFinite(consumedAt.getTime()) ||
+    consumedAt.getTime() >= Date.parse(state.binding.expiresAt) ||
+    canonicalSha256(state.context) !== canonicalSha256(expectedContext) ||
+    state.binding.recovery.mode === "readback_first"
+  ) {
+    fail("PRODUCTION_LIVE_SESSION_CAPABILITY_REJECTED");
+  }
+  state.consumed = true;
+  liveSessionCapabilities.delete(capability);
+  try {
+    await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+    await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  } catch (error) {
+    await cleanupLiveSessionState(state);
+    throw error;
+  }
+  const consumptionFacts = {
+    schemaVersion: 1,
+    kind: "spazaone_production_live_session_consumption",
+    consumedAt: consumedAt.toISOString(),
+    bindingSha256: state.bindingSha256,
+    operationSha256: canonicalSha256(state.binding.operation),
+    recoverySha256: canonicalSha256(state.binding.recovery),
+    oneShot: true,
+  };
+  return {
+    ...state,
+    consumedAt: consumptionFacts.consumedAt,
+    consumptionSha256: canonicalSha256(consumptionFacts),
+  };
+}
+
+async function inspectAuthorizedProductionLiveSession(
+  capability,
+  expectedContext,
+  { clock = () => new Date() } = {},
+) {
+  const state = liveSessionCapabilities.get(capability);
+  const inspectedAt = clock();
+  if (
+    !state ||
+    state.consumed ||
+    !(inspectedAt instanceof Date) ||
+    !Number.isFinite(inspectedAt.getTime()) ||
+    inspectedAt.getTime() >= Date.parse(state.binding.expiresAt) ||
+    canonicalSha256(state.context) !== canonicalSha256(expectedContext) ||
+    state.binding.recovery.mode === "readback_first"
+  ) {
+    fail("PRODUCTION_LIVE_SESSION_CAPABILITY_REJECTED");
+  }
+  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  return state;
+}
+
+function exactRecoveryReadback(value) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    !new Set(["complete", "incomplete"]).has(value.outcome)
+  ) {
+    fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
+  }
+  const expectedKeys =
+    value.outcome === "complete"
+      ? ["cycleId", "outcome", "readbackSha256"]
+      : [
+          "continuationStateDigestSha256",
+          "cycleId",
+          "outcome",
+          "readbackSha256",
+        ];
+  if (
+    canonicalJson(Object.keys(value).sort()) !== canonicalJson(expectedKeys) ||
+    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    !SHA256.test(String(value.readbackSha256 ?? "")) ||
+    (value.outcome === "incomplete" &&
+      !SHA256.test(String(value.continuationStateDigestSha256 ?? "")))
+  ) {
+    fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
+  }
+  return deepFreeze(structuredClone(value));
+}
+
+async function recordRecoveryInspection(
+  inspectionCapability,
+  recoveryReadback,
+  { clock = () => new Date() } = {},
+) {
+  const state = recoveryInspectionCapabilities.get(inspectionCapability);
+  const inspectedAt = clock();
+  const validatedReadback = exactRecoveryReadback(recoveryReadback);
+  if (
+    !state ||
+    state.consumed ||
+    state.binding.recovery.mode !== "readback_first" ||
+    state.recoveryReadback !== undefined ||
+    !(inspectedAt instanceof Date) ||
+    inspectedAt.getTime() >= Date.parse(state.binding.expiresAt) ||
+    !validatedReadback
+  ) {
+    fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
+  }
+  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  state.recoveryReadback = validatedReadback;
+  state.recoveryInspectedAt = inspectedAt.toISOString();
+  if (validatedReadback.outcome === "complete") {
+    const result = Object.freeze({
+      outcome: "recovered_readback",
+      bindingSha256: state.bindingSha256,
+      recoveryReadbackSha256: validatedReadback.readbackSha256,
+      priorReceiptSha256: state.binding.recovery.priorReceiptSha256,
+      remoteWriteAttempted: false,
+      continuationAuthorizationRequired: false,
+    });
+    await cleanupLiveSessionState(state);
+    state.consumed = true;
+    recoveryInspectionCapabilities.delete(inspectionCapability);
+    return result;
+  }
+  return Object.freeze({
+    outcome: "continuation_authorization_required",
+    bindingSha256: state.bindingSha256,
+    recoveryReadbackSha256: validatedReadback.readbackSha256,
+    priorReceiptSha256: state.binding.recovery.priorReceiptSha256,
+    remoteWriteAttempted: false,
+    continuationAuthorizationRequired: true,
+  });
+}
+
+async function mintFreshReconciliationContinuationCapability(
+  inspectionCapability,
+  { authorizedAt, deadline, clock = () => new Date() },
+) {
+  const state = recoveryInspectionCapabilities.get(inspectionCapability);
+  let validatedReadback = null;
+  try {
+    if (state?.recoveryReadback) {
+      validatedReadback = exactRecoveryReadback(state.recoveryReadback);
+    }
+  } catch (_) {
+    fail("FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED");
+  }
+  const authorizedAtMs = Date.parse(authorizedAt);
+  const deadlineMs = Date.parse(deadline);
+  const current = clock();
+  const nowMs = current instanceof Date ? current.getTime() : Number.NaN;
+  if (
+    !state ||
+    state.consumed ||
+    validatedReadback?.outcome !== "incomplete" ||
+    canonicalSha256(validatedReadback) !==
+      canonicalSha256(state.recoveryReadback) ||
+    !Number.isFinite(authorizedAtMs) ||
+    !Number.isFinite(deadlineMs) ||
+    !Number.isFinite(nowMs) ||
+    authorizedAtMs > nowMs ||
+    authorizedAtMs < Date.parse(state.recoveryInspectedAt) ||
+    deadlineMs <= nowMs ||
+    deadlineMs <= authorizedAtMs ||
+    deadlineMs - authorizedAtMs > LIVE_SESSION_MAX_AGE_MS ||
+    deadlineMs > Date.parse(state.binding.expiresAt) ||
+    nowMs >= Date.parse(state.binding.expiresAt)
+  ) {
+    fail("FRESH_RECONCILIATION_CONTINUATION_AUTHORIZATION_REQUIRED");
+  }
+  await verifyMountedExactCommitFirebasePackage(state.mountedPackage);
+  await verifyFirebaseProductionSessionWorkspace(state.workspace);
+  state.consumed = true;
+  recoveryInspectionCapabilities.delete(inspectionCapability);
+  const continuationBinding = deepFreeze({
+    ...state.binding,
+    authorizedAt,
+    expiresAt: deadline,
+    recovery: {
+      mode: "continuation",
+      priorReceiptSha256: state.binding.recovery.priorReceiptSha256,
+      cycleId: validatedReadback.cycleId,
+      continuationStateDigestSha256:
+        validatedReadback.continuationStateDigestSha256,
+      recoveryReadbackSha256: validatedReadback.readbackSha256,
+    },
+  });
+  const capability = Object.freeze(Object.create(null));
+  const continuationState = {
+    ...state,
+    binding: continuationBinding,
+    bindingSha256: canonicalSha256(continuationBinding),
+    consumed: false,
+    recoveryReadback: undefined,
+    recoveryInspectedAt: undefined,
+  };
+  liveSessionCapabilities.set(capability, continuationState);
+  return {
+    capability,
+    summary: Object.freeze({
+      outcome: "continuation_authorized_in_same_process",
+      bindingSha256: continuationState.bindingSha256,
+      expiresAt: deadline,
+      priorReceiptSha256: continuationBinding.recovery.priorReceiptSha256,
+      recoveryReadbackSha256:
+        continuationBinding.recovery.recoveryReadbackSha256,
+      remoteWriteAttempted: false,
+    }),
+  };
+}
+
 function extractActionAuthorizationArguments(argv) {
   const remaining = [];
-  let authorizationPath = "";
-  let expectedAuthorizationReceiptSha256 = "";
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     const authorizationArgument =
@@ -145,46 +678,27 @@ function extractActionAuthorizationArguments(argv) {
       remaining.push(argument);
       continue;
     }
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
-      fail("PRODUCTION_ACTION_AUTHORIZATION_ARGUMENT_INVALID");
-    }
-    if (argument === "--action-authorization-receipt-path") {
-      if (authorizationPath) {
-        fail("PRODUCTION_ACTION_AUTHORIZATION_ARGUMENT_DUPLICATE");
-      }
-      authorizationPath = value;
-    } else {
-      if (expectedAuthorizationReceiptSha256) {
-        fail("PRODUCTION_ACTION_AUTHORIZATION_ARGUMENT_DUPLICATE");
-      }
-      expectedAuthorizationReceiptSha256 = value;
-    }
-    index += 1;
+    // A file, digest, environment variable, or CLI argument must never become
+    // a production capability. Only the private object minted and consumed in
+    // this process can cross the writer boundary.
+    fail("SERIALIZED_PRODUCTION_CAPABILITY_FORBIDDEN");
   }
-  const execute = remaining.includes("--execute");
-  if (
-    (!execute && (authorizationPath || expectedAuthorizationReceiptSha256)) ||
-    Boolean(authorizationPath) !==
-      Boolean(expectedAuthorizationReceiptSha256) ||
-    (authorizationPath &&
-      (!path.isAbsolute(authorizationPath) ||
-        path.resolve(authorizationPath) !== authorizationPath)) ||
-    (expectedAuthorizationReceiptSha256 &&
-      !SHA256.test(expectedAuthorizationReceiptSha256))
-  ) {
-    fail("PRODUCTION_ACTION_AUTHORIZATION_ARGUMENT_INVALID");
-  }
-  return {
-    remaining,
-    authorizationPath: authorizationPath || null,
-    expectedAuthorizationReceiptSha256:
-      expectedAuthorizationReceiptSha256 || null,
-  };
+  return { remaining };
 }
 
 function now() {
   return new Date().toISOString();
+}
+
+function assertLiveSessionDispatchDeadline(session, clock = () => new Date()) {
+  const current = clock();
+  const currentMs = current instanceof Date ? current.getTime() : Number.NaN;
+  if (
+    !Number.isFinite(currentMs) ||
+    currentMs >= Date.parse(session?.binding?.expiresAt ?? "")
+  ) {
+    fail("PRODUCTION_LIVE_SESSION_EXPIRED_BEFORE_DISPATCH");
+  }
 }
 
 async function assertCleanLauncherOrigin() {
@@ -544,10 +1058,9 @@ function intentBytes(input) {
       operationInputSha256: input.operationInputSha256,
       actionAuthorizationSha256: input.actionAuthorizationSha256,
       actionAuthorizationClaimSha256: input.actionAuthorizationClaimSha256,
-      actionAuthorizationId: input.actionAuthorizationId,
-      actionAuthorizationExpiresAt: input.actionAuthorizationExpiresAt,
-      actionAuthorizationIntentBindingSha256:
-        input.actionAuthorizationIntentBindingSha256,
+      liveSessionExpiresAt: input.liveSessionExpiresAt,
+      liveSessionRecoverySha256: input.liveSessionRecoverySha256,
+      serializableCapability: false,
       priorReceiptSha256: input.priorReceiptSha256,
       receiptPathSha256: sha256(input.receiptPath),
       actionStartedAt: input.actionStartedAt,
@@ -620,7 +1133,7 @@ async function collectExistingEnvironmentBaselines(lane) {
   );
 }
 
-async function candidateSourceContract(expectedAppCommit) {
+async function candidateSourceContract(expectedAppCommit, mountedPackage) {
   try {
     const runtimeConfigHashSha1 =
       await collectFirebaseGen1RuntimeConfigHashSha1({
@@ -632,177 +1145,17 @@ async function candidateSourceContract(expectedAppCommit) {
       });
     return await computeCandidateFirebaseSourceContract({
       repositoryRoot: APP_REPOSITORY_ROOT,
-      functionsDirectory: FUNCTIONS_DIRECTORY,
+      functionsDirectory: mountedExactCommitFirebasePackagePath(
+        mountedPackage,
+        "functions",
+      ),
+      gitFunctionsDirectory: FUNCTIONS_DIRECTORY,
       expectedAppCommit,
       runtimeConfigHashSha1,
       environment: scrubCredentialEnvironment(),
     });
   } catch (_) {
     fail("CANDIDATE_FUNCTION_SOURCE_BINDING_FAILED");
-  }
-}
-
-async function reviewedGitBlob(expectedAppCommit, relativePath) {
-  if (
-    !new Set(["firestore.rules", "firestore.indexes.json"]).has(relativePath)
-  ) {
-    fail("CANDIDATE_POLICY_SNAPSHOT_PATH_INVALID");
-  }
-  let bytes;
-  try {
-    const result = await execFile(
-      "/usr/bin/git",
-      [
-        "-C",
-        APP_REPOSITORY_ROOT,
-        "show",
-        `${expectedAppCommit}:${relativePath}`,
-      ],
-      {
-        encoding: null,
-        maxBuffer: MAX_READBACK_BYTES,
-        env: scrubCredentialEnvironment(),
-      },
-    );
-    bytes = Buffer.isBuffer(result.stdout)
-      ? Buffer.from(result.stdout)
-      : Buffer.from(String(result.stdout ?? ""), "utf8");
-    if (bytes.length < 1 || bytes.length > MAX_READBACK_BYTES) {
-      fail("CANDIDATE_POLICY_SNAPSHOT_UNREADABLE");
-    }
-    return bytes;
-  } catch (error) {
-    bytes?.fill?.(0);
-    if (error instanceof ProductionExecutorError) throw error;
-    fail("CANDIDATE_POLICY_SNAPSHOT_UNREADABLE");
-  }
-}
-
-async function createAuthenticatedDeploymentSnapshot({
-  policyLane,
-  lane,
-  expectedAppCommit,
-  source,
-  sourceContract,
-  validated,
-}) {
-  const builder = await createImmutableDeploymentSnapshotBuilder();
-  let sealed = false;
-  let snapshot;
-  try {
-    let config;
-    if (policyLane) {
-      for (const relativePath of [
-        "firestore.rules",
-        "firestore.indexes.json",
-      ]) {
-        const bytes = await reviewedGitBlob(expectedAppCommit, relativePath);
-        try {
-          const digest = sha256(bytes);
-          if (
-            relativePath === source.sourcePath &&
-            digest !== source.sourceSha256
-          ) {
-            fail("CANDIDATE_POLICY_SNAPSHOT_MISMATCH");
-          }
-          await builder.addBytes({
-            relativePath,
-            bytes,
-            expectedSha256: digest,
-          });
-        } finally {
-          bytes.fill(0);
-        }
-      }
-      config = {
-        firestore: {
-          rules: path.join(builder.rootPath, "firestore.rules"),
-          indexes: path.join(builder.rootPath, "firestore.indexes.json"),
-        },
-      };
-    } else {
-      const evidence = sourceContract?.packageFileEvidence;
-      if (
-        !Array.isArray(evidence) ||
-        evidence.length !== sourceContract.packagedFileCount ||
-        evidence.some(
-          (entry) =>
-            !entry ||
-            typeof entry.relativePath !== "string" ||
-            !SHA256.test(String(entry.sha256 ?? "")),
-        )
-      ) {
-        fail("CANDIDATE_FUNCTION_SNAPSHOT_EVIDENCE_INVALID");
-      }
-      for (const entry of evidence) {
-        await builder.addSourceFile({
-          relativePath: `functions/${entry.relativePath}`,
-          sourcePath: path.join(
-            FUNCTIONS_DIRECTORY,
-            ...entry.relativePath.split("/"),
-          ),
-          expectedSha256: entry.sha256,
-        });
-      }
-      if (validated) {
-        const dotenvBytes = Buffer.from(validated.normalized, "utf8");
-        try {
-          await builder.addBytes({
-            relativePath: `config/.env.${PRODUCTION_FIREBASE_PROJECT_ID}`,
-            bytes: dotenvBytes,
-            expectedSha256: sha256(dotenvBytes),
-          });
-        } finally {
-          dotenvBytes.fill(0);
-        }
-      }
-      config = {
-        functions: [
-          {
-            source: path.join(builder.rootPath, "functions"),
-            codebase: "default",
-            ignore: [
-              "node_modules",
-              ".git",
-              "firebase-debug.log",
-              "firebase-debug.*.log",
-            ],
-            ...(validated
-              ? { configDir: path.join(builder.rootPath, "config") }
-              : {}),
-          },
-        ],
-      };
-    }
-    const configBytes = Buffer.from(`${JSON.stringify(config, null, 2)}\n`);
-    try {
-      await builder.addBytes({
-        relativePath: "firebase.json",
-        bytes: configBytes,
-        expectedSha256: sha256(configBytes),
-      });
-    } finally {
-      configBytes.fill(0);
-    }
-    snapshot = await builder.seal();
-    sealed = true;
-    await verifyImmutableDeploymentSnapshot(snapshot);
-    return snapshot;
-  } catch (error) {
-    if (!sealed) {
-      try {
-        await builder.discard();
-      } catch (_) {
-        // The original pre-dispatch validation error remains authoritative.
-      }
-    } else if (snapshot) {
-      try {
-        await removeImmutableDeploymentSnapshot(snapshot);
-      } catch (_) {
-        // The original pre-dispatch validation error remains authoritative.
-      }
-    }
-    throw error;
   }
 }
 
@@ -884,8 +1237,7 @@ function policyRemoteEvidence(lane, source, readback) {
   };
 }
 
-async function executeDeployment(options, dotenvText) {
-  assertLiveSessionCapabilityAuthorized();
+async function executeDeployment(sessionCapability, options, dotenvText) {
   const kind = operationKindForLane(options.lane);
   const selector = manifestSelectorForLane(options.lane);
   const policyLane = CATALOG_POLICY_LANES.includes(options.lane);
@@ -921,32 +1273,39 @@ async function executeDeployment(options, dotenvText) {
     priorReceiptSha256: null,
   };
   await revalidateAuthorityAndCandidate(context);
-  const authorizationOperation = {
-    kind,
-    lane: options.lane,
-    selector,
-    sourceSha256: source.sourceSha256,
-    configurationSha256: nativeCatalogTargetConfigurationDigestSha256(),
-    candidateManifestSha256: options.expectedCandidateManifestSha256,
-    operationInputSha256,
-  };
-  const authorization = await loadProductionActionAuthorization({
-    authorizationPath: options.authorizationPath,
-    expectedAuthorizationReceiptSha256:
-      options.expectedAuthorizationReceiptSha256,
-    expectedAppCommit: options.expectedAppCommit,
-    expectedOperation: authorizationOperation,
-    expectedReceiptPath: options.receiptPath,
-    expectedPriorReceiptSha256: null,
-  });
-  context.actionAuthorizationSha256 = authorization.authorizationReceiptSha256;
-  context.actionAuthorizationId = authorization.authorizationId;
-  context.actionAuthorizationExpiresAt = authorization.expiresAt;
-  context.actionAuthorizationIntentBindingSha256 =
-    authorization.intentBindingSha256;
+  const inspectedSession = await inspectAuthorizedProductionLiveSession(
+    sessionCapability,
+    context,
+  );
+  const mountedSourceRoot = path.dirname(
+    mountedExactCommitFirebasePackagePath(
+      inspectedSession.mountedPackage,
+      "firestore.rules",
+    ),
+  );
+  if (policyLane) {
+    const exactSource = await catalogPolicySourceContract(options.lane, {
+      sourceRoot: mountedSourceRoot,
+    });
+    if (
+      exactSource.sourceSha256 !== source.sourceSha256 ||
+      exactSource.selector !== selector
+    ) {
+      fail("CATALOG_POLICY_EXACT_PACKAGE_MISMATCH");
+    }
+  } else {
+    const exactFunctionsDirectory = firebaseProviderWorkspacePath(
+      inspectedSession.workspace,
+      "functions-source",
+    );
+    await assertNoSourceDeploymentDotenv(exactFunctionsDirectory);
+  }
   const initialSourceContract = policyLane
     ? null
-    : await candidateSourceContract(options.expectedAppCommit);
+    : await candidateSourceContract(
+        options.expectedAppCommit,
+        inspectedSession.mountedPackage,
+      );
   const existingEnvironmentBaselines =
     options.lane === "existing-code"
       ? await collectExistingEnvironmentBaselines(options.lane)
@@ -968,17 +1327,20 @@ async function executeDeployment(options, dotenvText) {
     fail("CATALOG_FUNCTION_READBACK_FAILED");
   }
 
-  const deploymentSnapshot = await createAuthenticatedDeploymentSnapshot({
-    policyLane,
-    expectedAppCommit: options.expectedAppCommit,
-    source,
-    sourceContract: initialSourceContract,
-    validated,
-  });
-  const configPath = immutableDeploymentSnapshotPath(
-    deploymentSnapshot,
-    "firebase.json",
+  await revalidateAuthorityAndCandidate(context);
+  await verifyMountedExactCommitFirebasePackage(
+    inspectedSession.mountedPackage,
   );
+  await verifyFirebaseProductionSessionWorkspace(inspectedSession.workspace);
+  const session = await consumeProductionLiveSessionCapability(
+    sessionCapability,
+    context,
+  );
+  context.actionAuthorizationSha256 = session.bindingSha256;
+  context.actionAuthorizationClaimSha256 = session.consumptionSha256;
+  context.liveSessionExpiresAt = session.binding.expiresAt;
+  context.liveSessionRecoverySha256 = canonicalSha256(session.binding.recovery);
+  const configPath = firebaseProviderWorkspacePath(session.workspace, "config");
 
   const actionStartedAt = now();
   context.actionStartedAt = actionStartedAt;
@@ -986,31 +1348,23 @@ async function executeDeployment(options, dotenvText) {
   let dispatchStartedAt;
   let commandExitZero = false;
   let cleanupStatus = "deleted";
-  let snapshotRemoved = false;
+  let sessionCleaned = false;
+  const cleanupSession = async () => {
+    if (sessionCleaned) return;
+    try {
+      await cleanupLiveSessionState(session);
+      sessionCleaned = true;
+    } catch (_) {
+      cleanupStatus = "needs_review";
+    }
+  };
   try {
-    const authorizationClaim =
-      await claimProductionActionAuthorization(authorization);
-    context.actionAuthorizationClaimSha256 = authorizationClaim.claimSha256;
     transaction = await beginIntent(context);
     await transaction.verifyReadyForDispatch();
     await revalidateAuthorityAndCandidate(context);
-    const dispatchAuthorization = await loadProductionActionAuthorization({
-      authorizationPath: options.authorizationPath,
-      expectedAuthorizationReceiptSha256:
-        options.expectedAuthorizationReceiptSha256,
-      expectedAppCommit: options.expectedAppCommit,
-      expectedOperation: authorizationOperation,
-      expectedReceiptPath: options.receiptPath,
-      expectedPriorReceiptSha256: null,
-    });
-    if (
-      dispatchAuthorization.intentBindingSha256 !==
-        context.actionAuthorizationIntentBindingSha256 ||
-      dispatchAuthorization.authorizationId !== context.actionAuthorizationId
-    ) {
-      fail("PRODUCTION_ACTION_AUTHORIZATION_CHANGED");
-    }
-    await verifyImmutableDeploymentSnapshot(deploymentSnapshot);
+    await verifyMountedExactCommitFirebasePackage(session.mountedPackage);
+    await verifyFirebaseProductionSessionWorkspace(session.workspace);
+    assertLiveSessionDispatchDeadline(session);
     dispatchStartedAt = now();
     transaction.markDispatchStarted();
     try {
@@ -1023,7 +1377,12 @@ async function executeDeployment(options, dotenvText) {
         }),
         {
           cwd: APP_REPOSITORY_ROOT,
-          env: scrubCredentialEnvironment(),
+          env: {
+            ...scrubCredentialEnvironment(),
+            TMPDIR: firebaseProviderWorkspacePath(session.workspace, "scratch"),
+            FIREBASE_CLI_DISABLE_UPDATE_CHECK: "1",
+            CI: "1",
+          },
           stdio: "inherit",
         },
       );
@@ -1031,28 +1390,35 @@ async function executeDeployment(options, dotenvText) {
     } catch (_) {
       commandExitZero = false;
     }
-    let snapshotIntegrityVerified = false;
+    let packageIntegrityVerified = false;
     try {
-      await verifyImmutableDeploymentSnapshot(deploymentSnapshot);
-      snapshotIntegrityVerified = true;
+      await revalidateAuthorityAndCandidate(context);
+      await verifyMountedExactCommitFirebasePackage(session.mountedPackage);
+      const verifiedWorkspace = await verifyFirebaseProductionSessionWorkspace(
+        session.workspace,
+        {
+          allowScratchChanges: true,
+        },
+      );
+      const scratch = await inspectFirebaseProviderWorkspace(session.workspace);
+      packageIntegrityVerified =
+        verifiedWorkspace.sourceKernelReadOnly === true &&
+        verifiedWorkspace.providerInputKernelReadOnly === true &&
+        SHA256.test(scratch.providerScratchInventorySha256) &&
+        Number.isSafeInteger(scratch.providerScratchEntryCount);
     } catch (_) {
-      snapshotIntegrityVerified = false;
+      packageIntegrityVerified = false;
     }
-    try {
-      await removeImmutableDeploymentSnapshot(deploymentSnapshot);
-      snapshotRemoved = true;
-    } catch (_) {
-      cleanupStatus = "needs_review";
-    }
+    await cleanupSession();
     if (!commandExitZero) {
       throw new ProductionExecutorError(
         "CATALOG_DEPLOY_EXECUTION_NEEDS_REVIEW",
         { needsReview: true },
       );
     }
-    if (!snapshotIntegrityVerified) {
+    if (!packageIntegrityVerified) {
       throw new ProductionExecutorError(
-        "CATALOG_DEPLOY_SNAPSHOT_INTEGRITY_NEEDS_REVIEW",
+        "CATALOG_DEPLOY_EXACT_PACKAGE_INTEGRITY_NEEDS_REVIEW",
         { needsReview: true },
       );
     }
@@ -1127,17 +1493,14 @@ async function executeDeployment(options, dotenvText) {
       } catch (_) {
         fail("PRODUCTION_WRITE_INTENT_CANCELLATION_UNCERTAIN");
       }
-      try {
-        if (!snapshotRemoved) {
-          await removeImmutableDeploymentSnapshot(deploymentSnapshot);
-          snapshotRemoved = true;
-        }
-      } catch (_) {
-        fail("PRODUCTION_DEPLOY_SNAPSHOT_CLEANUP_UNCERTAIN");
+      await cleanupSession();
+      if (cleanupStatus !== "deleted") {
+        fail("PRODUCTION_DEPLOY_SESSION_CLEANUP_UNCERTAIN");
       }
       throw error;
     }
     if (transaction?.state === "dispatch_started") {
+      await cleanupSession();
       const completedAt = now();
       const safeCode = /^[A-Z][A-Z0-9_]{0,95}$/.test(String(error?.code ?? ""))
         ? error.code
@@ -1189,12 +1552,9 @@ async function main() {
     const [mode, ...args] = process.argv.slice(2);
     const authorizationArguments = extractActionAuthorizationArguments(args);
     if (mode === "deployment") {
-      const options = {
-        ...parseDeploymentGuardArguments(authorizationArguments.remaining),
-        authorizationPath: authorizationArguments.authorizationPath,
-        expectedAuthorizationReceiptSha256:
-          authorizationArguments.expectedAuthorizationReceiptSha256,
-      };
+      const options = parseDeploymentGuardArguments(
+        authorizationArguments.remaining,
+      );
       if (!options.execute) {
         await runLegacyReadOnly(LEGACY_DEPLOYMENT_SCRIPT, args);
         return;
@@ -1210,17 +1570,16 @@ async function main() {
       }
       const dotenvText =
         policyLane || process.stdin.isTTY ? "" : await readStandardInput();
-      const result = await executeDeployment(options, dotenvText);
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      return;
+      // The future enabled orchestrator must prepare the reviewed package,
+      // pause for action-time authority, authorize its private handle, and
+      // pass that same-process object to executeDeployment. A CLI argument is
+      // deliberately incapable of filling this slot.
+      void options;
+      void dotenvText;
+      fail("FRESH_PRODUCTION_ACTION_AUTHORIZATION_REQUIRED");
     }
     if (mode === "reconciliation") {
-      const options = {
-        ...parseRunnerArguments(authorizationArguments.remaining),
-        authorizationPath: authorizationArguments.authorizationPath,
-        expectedAuthorizationReceiptSha256:
-          authorizationArguments.expectedAuthorizationReceiptSha256,
-      };
+      const options = parseRunnerArguments(authorizationArguments.remaining);
       if (!options.execute) {
         await runLegacyReadOnly(LEGACY_RECONCILIATION_SCRIPT, args);
         return;

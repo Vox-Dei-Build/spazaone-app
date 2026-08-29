@@ -28,6 +28,8 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024;
 const MAX_COMMAND_BYTES = 32 * 1024 * 1024;
 const MAX_DOTENV_BYTES = 16 * 1024;
+const MAX_PROVIDER_SCRATCH_ENTRIES = 2_048;
+const MAX_PROVIDER_SCRATCH_BYTES = 256 * 1024 * 1024;
 const SAFE_DIRECTORY_MODE = 0o700;
 const SAFE_FILE_MODE = 0o600;
 const IMAGE_FILE_MODE = 0o400;
@@ -425,6 +427,15 @@ export async function prepareExactCommitFirebasePackage({
     if (commit.stdout.trim() !== expectedAppCommit) {
       fail("EXACT_COMMIT_PACKAGE_COMMIT_MISMATCH");
     }
+    const gitTree = await runCommand(
+      PINNED_LOCAL_PACKAGE_TOOLCHAIN.git.path,
+      ["-C", repositoryRoot, "rev-parse", `${expectedAppCommit}^{tree}`],
+      { environment },
+    );
+    const gitTreeSha1 = gitTree.stdout.trim();
+    if (!SHA1.test(gitTreeSha1)) {
+      fail("EXACT_COMMIT_PACKAGE_GIT_TREE_MISMATCH");
+    }
     const archived = await execFile(
       PINNED_LOCAL_PACKAGE_TOOLCHAIN.git.path,
       ["-C", repositoryRoot, "archive", "--format=tar", expectedAppCommit],
@@ -520,6 +531,7 @@ export async function prepareExactCommitFirebasePackage({
     const packageInventorySha256 = inventoryDigest(finalRows);
     const descriptor = Object.freeze({
       expectedAppCommit,
+      gitTreeSha1,
       gitArchiveSha256,
       reviewedArchiveInventorySha256,
       packageJsonSha256,
@@ -566,6 +578,23 @@ export function exactCommitFirebasePackagePath(
     fail("EXACT_COMMIT_PACKAGE_PATH_INVALID");
   }
   return path.join(state.archiveRoot, ...segments);
+}
+
+export function mountedExactCommitFirebasePackagePath(
+  mountedPackage,
+  relativePath,
+) {
+  const state = images.get(mountedPackage);
+  if (!state || state.detached || typeof relativePath !== "string") {
+    fail("EXACT_COMMIT_MOUNT_NOT_ACTIVE");
+  }
+  const segments = relativePath.split("/");
+  if (
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    fail("EXACT_COMMIT_PACKAGE_PATH_INVALID");
+  }
+  return path.join(state.mountRoot, ...segments);
 }
 
 export async function verifyExactCommitFirebasePackage(packageDescriptor) {
@@ -690,6 +719,24 @@ export async function mountExactCommitFirebasePackageReadOnly(
   }
 }
 
+export async function verifyMountedExactCommitFirebasePackage(mountedPackage) {
+  const image = images.get(mountedPackage);
+  if (!image || image.detached) fail("EXACT_COMMIT_MOUNT_NOT_ACTIVE");
+  await assertKernelReadOnlyMount(image.mountRoot);
+  await verifyExactCommitFirebasePackage(image.packageDescriptor);
+  const mountedRows = await inventory(image.mountRoot);
+  if (inventoryDigest(mountedRows) !== mountedPackage.packageInventorySha256) {
+    fail("KERNEL_READ_ONLY_PACKAGE_INVENTORY_MISMATCH");
+  }
+  return Object.freeze({
+    verified: true,
+    kernelReadOnly: true,
+    packageInventorySha256: mountedPackage.packageInventorySha256,
+    dependencyClosureSha256: mountedPackage.dependencyClosureSha256,
+    generatedLibInventorySha256: mountedPackage.generatedLibInventorySha256,
+  });
+}
+
 function exactDotenv(text) {
   if (
     typeof text !== "string" ||
@@ -786,15 +833,243 @@ export async function createFirebaseProviderWorkspace({
   return descriptor;
 }
 
+const PRODUCTION_SESSION_LANES = Object.freeze([
+  "firestore-rules",
+  "firestore-indexes",
+  "dark-new",
+  "existing-code",
+  "sync-enable",
+  "controlled-delivery-enable",
+  "all-eligible-delivery-enable",
+  "delivery-disable",
+  "sync-disable",
+]);
+
+/**
+ * Builds the operation-specific Firebase inputs in scratch, seals them into a
+ * second UDRO image, and returns only paths on that kernel read-only mount.
+ * Deployable source paths remain on the independently mounted reviewed Git
+ * package. The remaining writable directory is bounded provider scratch only;
+ * this descriptor is evidence and path routing, never write authority.
+ */
+export async function createFirebaseProductionSessionWorkspace({
+  mountedPackage,
+  projectId,
+  lane,
+  dotenvText = "",
+  temporaryRoot = os.tmpdir(),
+} = {}) {
+  const image = images.get(mountedPackage);
+  canonicalRoot(temporaryRoot, "FIREBASE_PROVIDER_WORKSPACE_ROOT");
+  if (
+    !image ||
+    image.detached ||
+    typeof projectId !== "string" ||
+    !/^[a-z][a-z0-9-]{4,29}$/.test(projectId) ||
+    !PRODUCTION_SESSION_LANES.includes(lane)
+  ) {
+    fail("FIREBASE_PRODUCTION_SESSION_WORKSPACE_INPUT_INVALID");
+  }
+  const normalizedDotenv = exactDotenv(dotenvText);
+  const policyLane = lane === "firestore-rules" || lane === "firestore-indexes";
+  const configuredFunctionLane = !policyLane && lane !== "existing-code";
+  if (
+    (policyLane && normalizedDotenv.length !== 0) ||
+    (lane === "existing-code" && normalizedDotenv.length !== 0) ||
+    (configuredFunctionLane && normalizedDotenv.length === 0)
+  ) {
+    fail("FIREBASE_PRODUCTION_SESSION_DOTENV_INVALID");
+  }
+
+  const rootPath = await realpath(
+    await mkdtemp(path.join(temporaryRoot, "spazaone-production-session-")),
+  );
+  let providerInputMountRoot = null;
+  let providerInputAttached = false;
+  try {
+    const providerHome = path.join(rootPath, "provider-home");
+    const providerInputRoot = path.join(rootPath, "provider-input");
+    const providerInputImagePath = path.join(rootPath, "provider-input.dmg");
+    providerInputMountRoot = path.join(rootPath, "provider-input-readonly");
+    await mkdir(providerHome, { mode: SAFE_DIRECTORY_MODE });
+    await mkdir(providerInputRoot, { mode: SAFE_DIRECTORY_MODE });
+    await mkdir(providerInputMountRoot, { mode: SAFE_DIRECTORY_MODE });
+    let configDir = null;
+    let dotenvPath = null;
+    const expectedOverlayEntries = [];
+    if (configuredFunctionLane) {
+      const inputConfigDir = path.join(providerInputRoot, "config");
+      configDir = path.join(providerInputMountRoot, "config");
+      await mkdir(inputConfigDir, { mode: SAFE_DIRECTORY_MODE });
+      dotenvPath = path.join(inputConfigDir, `.env.${projectId}`);
+      await writeExactFile(
+        dotenvPath,
+        Buffer.from(normalizedDotenv, "utf8"),
+        SAFE_FILE_MODE,
+      );
+      expectedOverlayEntries.push(`.env.${projectId}`);
+    }
+
+    const config = policyLane
+      ? {
+          firestore: {
+            rules: path.join(image.mountRoot, "firestore.rules"),
+            indexes: path.join(image.mountRoot, "firestore.indexes.json"),
+          },
+        }
+      : {
+          functions: [
+            {
+              source: image.functionsPath,
+              codebase: "default",
+              ignore: [
+                "node_modules",
+                ".git",
+                "firebase-debug.log",
+                "firebase-debug.*.log",
+              ],
+              ...(configDir ? { configDir } : {}),
+            },
+          ],
+        };
+    const configBytes = Buffer.from(`${JSON.stringify(config, null, 2)}\n`);
+    const configPath = path.join(providerInputRoot, "firebase.json");
+    await writeExactFile(configPath, configBytes, SAFE_FILE_MODE);
+    const scratchBaseline = await providerScratchEvidence({ providerHome });
+    const providerInputRows = await inventory(providerInputRoot);
+    const providerInputInventorySha256 = inventoryDigest(providerInputRows);
+    await image.runCommand(
+      PINNED_LOCAL_PACKAGE_TOOLCHAIN.hdiutil.path,
+      [
+        "create",
+        "-quiet",
+        "-format",
+        "UDRO",
+        "-fs",
+        "HFS+",
+        "-volname",
+        `spazaone-session-${lane}`,
+        "-srcfolder",
+        providerInputRoot,
+        providerInputImagePath,
+      ],
+      { environment: image.environment, timeout: 180_000 },
+    );
+    await chmod(providerInputImagePath, IMAGE_FILE_MODE);
+    await image.runCommand(
+      PINNED_LOCAL_PACKAGE_TOOLCHAIN.hdiutil.path,
+      [
+        "attach",
+        "-quiet",
+        "-readonly",
+        "-nobrowse",
+        "-mountpoint",
+        providerInputMountRoot,
+        providerInputImagePath,
+      ],
+      { environment: image.environment, timeout: 60_000 },
+    );
+    providerInputAttached = true;
+    await assertKernelReadOnlyMount(providerInputMountRoot);
+    if (
+      inventoryDigest(await inventory(providerInputMountRoot)) !==
+      providerInputInventorySha256
+    ) {
+      fail("FIREBASE_PRODUCTION_SESSION_INPUT_INVENTORY_MISMATCH");
+    }
+    await rm(providerInputRoot, { recursive: true, force: false });
+    const mountedConfigDir = configuredFunctionLane
+      ? path.join(providerInputMountRoot, "config")
+      : null;
+    const mountedDotenvPath = configuredFunctionLane
+      ? path.join(mountedConfigDir, `.env.${projectId}`)
+      : null;
+    const mountedConfigPath = path.join(
+      providerInputMountRoot,
+      "firebase.json",
+    );
+    const descriptor = Object.freeze({
+      projectId,
+      lane,
+      configSha256: sha256(configBytes),
+      dotenvSha256:
+        configuredFunctionLane === true ? sha256(normalizedDotenv) : null,
+      sourcePackageInventorySha256: mountedPackage.packageInventorySha256,
+      sourceKernelReadOnly: true,
+      providerInputKernelReadOnly: true,
+      providerInputInventorySha256,
+      writableOverlay: false,
+      scratchBaselineInventorySha256: scratchBaseline.inventorySha256,
+      scratchBaselineEntryCount: scratchBaseline.entryCount,
+      productionWriteAttempted: false,
+      authorizesProduction: false,
+    });
+    configBytes.fill(0);
+    workspaces.set(descriptor, {
+      rootPath,
+      configDir: mountedConfigDir,
+      configPath: mountedConfigPath,
+      dotenvPath: mountedDotenvPath,
+      providerHome,
+      providerInputImagePath,
+      providerInputMountRoot,
+      providerInputRows,
+      providerInputAttached,
+      runCommand: image.runCommand,
+      environment: image.environment,
+      mountedPackage,
+      expectedConfigEntries: [
+        "provider-home",
+        "provider-input-readonly",
+        "provider-input.dmg",
+      ],
+      expectedOverlayEntries: expectedOverlayEntries.sort(),
+      cleaned: false,
+      productionSession: true,
+    });
+    return descriptor;
+  } catch (error) {
+    if (providerInputMountRoot) {
+      await image
+        .runCommand(
+          PINNED_LOCAL_PACKAGE_TOOLCHAIN.hdiutil.path,
+          ["detach", "-quiet", providerInputMountRoot],
+          { environment: image.environment, timeout: 60_000 },
+        )
+        .catch(() => {});
+    }
+    await rm(rootPath, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
 async function verifyProviderWorkspace(workspace, state) {
+  if (state.productionSession === true) {
+    await assertKernelReadOnlyMount(state.providerInputMountRoot);
+    const providerInputRows = await inventory(state.providerInputMountRoot);
+    if (
+      inventoryDigest(providerInputRows) !==
+        workspace.providerInputInventorySha256 ||
+      canonicalJson(providerInputRows) !==
+        canonicalJson(state.providerInputRows)
+    ) {
+      fail("FIREBASE_PRODUCTION_SESSION_INPUT_CHANGED");
+    }
+  }
   const configBytes = await readFile(state.configPath);
-  const dotenvBytes = await readFile(state.dotenvPath);
+  const dotenvBytes = state.dotenvPath
+    ? await readFile(state.dotenvPath)
+    : Buffer.alloc(0);
   try {
     const rootEntries = (await readdir(state.rootPath)).sort();
-    const overlayEntries = (await readdir(state.configDir)).sort();
+    const overlayEntries = state.configDir
+      ? (await readdir(state.configDir)).sort()
+      : [];
     if (
       sha256(configBytes) !== workspace.configSha256 ||
-      sha256(dotenvBytes) !== workspace.dotenvSha256 ||
+      (state.dotenvPath
+        ? sha256(dotenvBytes) !== workspace.dotenvSha256
+        : workspace.dotenvSha256 !== null) ||
       canonicalJson(rootEntries) !==
         canonicalJson(state.expectedConfigEntries) ||
       canonicalJson(overlayEntries) !==
@@ -819,7 +1094,10 @@ async function providerScratchEvidence(state) {
   }
   const rows = await inventory(state.providerHome);
   const totalBytes = rows.reduce((total, row) => total + row[3], 0);
-  if (rows.length > 100 || totalBytes > 1024 * 1024) {
+  if (
+    rows.length > MAX_PROVIDER_SCRATCH_ENTRIES ||
+    totalBytes > MAX_PROVIDER_SCRATCH_BYTES
+  ) {
     fail("FIREBASE_PROVIDER_SCRATCH_UNBOUNDED");
   }
   return Object.freeze({
@@ -832,10 +1110,60 @@ async function providerScratchEvidence(state) {
 export async function inspectFirebaseProviderWorkspace(workspace) {
   const state = workspaces.get(workspace);
   if (!state || state.cleaned) fail("FIREBASE_PROVIDER_WORKSPACE_NOT_ACTIVE");
+  const scratch = await providerScratchEvidence(state);
   return Object.freeze({
     rootEntries: Object.freeze((await readdir(state.rootPath)).sort()),
-    overlayEntries: Object.freeze((await readdir(state.configDir)).sort()),
+    overlayEntries: Object.freeze(
+      state.configDir ? (await readdir(state.configDir)).sort() : [],
+    ),
+    providerScratchInventorySha256: scratch.inventorySha256,
+    providerScratchEntryCount: scratch.entryCount,
+    providerScratchTotalBytes: scratch.totalBytes,
   });
+}
+
+export async function verifyFirebaseProductionSessionWorkspace(
+  workspace,
+  { allowScratchChanges = false } = {},
+) {
+  const state = workspaces.get(workspace);
+  if (!state || state.cleaned || state.productionSession !== true) {
+    fail("FIREBASE_PRODUCTION_SESSION_WORKSPACE_NOT_ACTIVE");
+  }
+  await verifyProviderWorkspace(workspace, state);
+  const scratch = await providerScratchEvidence(state);
+  if (
+    allowScratchChanges !== true &&
+    (scratch.entryCount !== workspace.scratchBaselineEntryCount ||
+      scratch.inventorySha256 !== workspace.scratchBaselineInventorySha256)
+  ) {
+    fail("FIREBASE_PRODUCTION_SESSION_SCRATCH_CHANGED");
+  }
+  return Object.freeze({
+    verified: true,
+    sourceKernelReadOnly: workspace.sourceKernelReadOnly,
+    providerInputKernelReadOnly: workspace.providerInputKernelReadOnly,
+    providerInputInventorySha256: workspace.providerInputInventorySha256,
+    sourcePackageInventorySha256: workspace.sourcePackageInventorySha256,
+    providerScratchInventorySha256: scratch.inventorySha256,
+    providerScratchEntryCount: scratch.entryCount,
+  });
+}
+
+export function firebaseProviderWorkspacePath(workspace, kind) {
+  const state = workspaces.get(workspace);
+  if (!state || state.cleaned) fail("FIREBASE_PROVIDER_WORKSPACE_NOT_ACTIVE");
+  if (kind === "root") return state.rootPath;
+  if (kind === "config") return state.configPath;
+  if (kind === "home") return state.providerHome;
+  if (kind === "scratch") return state.providerHome;
+  if (kind === "functions-source") {
+    return mountedExactCommitFirebasePackagePath(
+      state.mountedPackage,
+      "functions",
+    );
+  }
+  fail("FIREBASE_PROVIDER_WORKSPACE_PATH_INVALID");
 }
 
 export async function probeFirebasePackageLocally({
@@ -908,6 +1236,14 @@ export async function probeFirebasePackageLocally({
 export async function cleanupFirebaseProviderWorkspace(workspace) {
   const state = workspaces.get(workspace);
   if (!state || state.cleaned) fail("FIREBASE_PROVIDER_WORKSPACE_NOT_ACTIVE");
+  if (state.providerInputAttached) {
+    await state.runCommand(
+      PINNED_LOCAL_PACKAGE_TOOLCHAIN.hdiutil.path,
+      ["detach", "-quiet", state.providerInputMountRoot],
+      { environment: state.environment, timeout: 60_000 },
+    );
+    state.providerInputAttached = false;
+  }
   await rm(state.rootPath, { recursive: true, force: false });
   state.cleaned = true;
   workspaces.delete(workspace);
