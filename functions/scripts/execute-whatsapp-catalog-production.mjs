@@ -2582,6 +2582,62 @@ async function collectExistingEnvironmentBaselines(lane) {
   );
 }
 
+async function collectExistingCodeRecoveryReadback({
+  context,
+  sourceContract,
+  collectBaselines = collectExistingEnvironmentBaselines,
+  collectReadback = collectCatalogFunctionReadback,
+  verifyBaseline = verifyExistingCodeEnvironmentBaseline,
+}) {
+  if (
+    context?.lane !== "existing-code" ||
+    !sourceContract ||
+    typeof collectBaselines !== "function" ||
+    typeof collectReadback !== "function" ||
+    typeof verifyBaseline !== "function"
+  ) {
+    fail("PRODUCTION_EXISTING_CODE_RECOVERY_INPUT_INVALID");
+  }
+  // A direct existing-code dispatch proves the pre-deploy baseline before it
+  // can write. Recovery cannot recreate that consumed snapshot, so it performs
+  // two fresh reads instead: first prove that the current state is one of the
+  // exact permitted final baseline shapes, then prove a stable second read is
+  // bound to the frozen candidate source and identical environment digest.
+  const existingEnvironmentBaselines = await collectBaselines(context.lane);
+  const firstRead = await collectReadback({
+    lane: context.lane,
+    validated: null,
+    candidateSourceContract: sourceContract,
+    existingEnvironmentBaselines,
+  });
+  const baselineContract = verifyBaseline({
+    functionNames: Object.keys(existingEnvironmentBaselines),
+    existingEnvironmentBaselines,
+  });
+  if (
+    !SHA256.test(String(firstRead?.environmentDigestSha256 ?? "")) ||
+    firstRead.environmentShapesValid !== true ||
+    baselineContract?.baselineMatches !== true ||
+    baselineContract.preDeployEnvironmentDigestSha256 !==
+      firstRead.environmentDigestSha256
+  ) {
+    fail("PRODUCTION_EXISTING_CODE_RECOVERY_BASELINE_MISMATCH", {
+      needsReview: true,
+    });
+  }
+  const readback = await collectReadback({
+    lane: context.lane,
+    validated: null,
+    expectedPreservationDigestSha256: firstRead.environmentDigestSha256,
+    existingEnvironmentBaselines,
+    candidateSourceContract: sourceContract,
+  });
+  if (readback.environmentMatches !== true) {
+    fail("PRODUCTION_RECOVERY_READBACK_MISMATCH", { needsReview: true });
+  }
+  return readback;
+}
+
 async function candidateSourceContract(expectedAppCommit, mountedPackage) {
   try {
     const runtimeConfigHashSha1 =
@@ -3664,11 +3720,6 @@ async function runDeploymentRecovery(options, dotenvText) {
       retryAllowed: false,
     };
   }
-  if (context.lane === "existing-code") {
-    fail("PRODUCTION_EXISTING_CODE_RECOVERY_REQUIRES_MANUAL_REVIEW", {
-      needsReview: true,
-    });
-  }
   context.priorReceiptSha256 = loaded.priorReceiptSha256;
   let rawEvidence = null;
   const prepared = await prepareProductionLiveSession({
@@ -3701,11 +3752,17 @@ async function runDeploymentRecovery(options, dotenvText) {
           context.expectedAppCommit,
           mountedPackage,
         );
-        const readback = await collectCatalogFunctionReadback({
-          lane: context.lane,
-          validated: execution.validated,
-          candidateSourceContract: sourceContract,
-        });
+        const readback =
+          context.lane === "existing-code"
+            ? await collectExistingCodeRecoveryReadback({
+                context,
+                sourceContract,
+              })
+            : await collectCatalogFunctionReadback({
+                lane: context.lane,
+                validated: execution.validated,
+                candidateSourceContract: sourceContract,
+              });
         if (readback.environmentMatches !== true) {
           fail("PRODUCTION_RECOVERY_READBACK_MISMATCH", {
             needsReview: true,

@@ -55,6 +55,7 @@ const RECOVERY_EXECUTOR_ALLOWED_CHANGED_PATHS = Object.freeze([
   "functions/scripts/execute-whatsapp-catalog-production.mjs",
   "functions/scripts/firebase-function-source-binding.mjs",
   "functions/scripts/run-whatsapp-catalog-full-reconciliation.mjs",
+  "functions/test/production_executor_activation.test.mjs",
   "functions/test/whatsapp_catalog_production_tools.test.mjs",
 ]);
 

@@ -147,6 +147,7 @@ export {
   assertLiveSessionDispatchDeadline,
   authorizePreparedProductionLiveSession,
   consumeProductionLiveSessionCapability,
+  collectExistingCodeRecoveryReadback,
   conductProductionActionCeremony,
   disposeAuthorizedProductionLiveSession,
   disposeConsumedProductionLiveSession,
@@ -174,6 +175,61 @@ export {
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test("existing-code recovery performs two stable final-state reads without another deployment", async () => {
+  await withInstrumentedExecutor(async (executor) => {
+    const digest = "a".repeat(64);
+    const baselines = Object.freeze({ checkoutCart: Object.freeze({}) });
+    const calls = [];
+    const readback = Object.freeze({
+      environmentDigestSha256: digest,
+      environmentShapesValid: true,
+      environmentMatches: true,
+    });
+    const result = await executor.collectExistingCodeRecoveryReadback({
+      context: { lane: "existing-code" },
+      sourceContract: { contractSha256: "b".repeat(64) },
+      collectBaselines: async (lane) => {
+        calls.push(["baseline", lane]);
+        return baselines;
+      },
+      collectReadback: async (input) => {
+        calls.push(["readback", input.expectedPreservationDigestSha256 ?? null]);
+        return readback;
+      },
+      verifyBaseline: () => ({
+        baselineMatches: true,
+        preDeployEnvironmentDigestSha256: digest,
+      }),
+    });
+    assert.equal(result, readback);
+    assert.deepEqual(calls, [
+      ["baseline", "existing-code"],
+      ["readback", null],
+      ["readback", digest],
+    ]);
+
+    await assert.rejects(
+      executor.collectExistingCodeRecoveryReadback({
+        context: { lane: "existing-code" },
+        sourceContract: { contractSha256: "b".repeat(64) },
+        collectBaselines: async () => baselines,
+        collectReadback: async (input) => ({
+          ...readback,
+          environmentMatches:
+            input.expectedPreservationDigestSha256 === undefined,
+        }),
+        verifyBaseline: () => ({
+          baselineMatches: true,
+          preDeployEnvironmentDigestSha256: digest,
+        }),
+      }),
+      (error) =>
+        error.code === "PRODUCTION_RECOVERY_READBACK_MISMATCH" &&
+        error.needsReview === true,
+    );
+  });
+});
 
 function lifecycleFixture() {
   const operation = Object.freeze({
