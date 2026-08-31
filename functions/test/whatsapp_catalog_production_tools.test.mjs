@@ -1218,6 +1218,85 @@ test("authority resolver uses the guarded read-only ref for a clean exact Vox De
   );
 });
 
+test("authority resolver permits only an allowlisted clean descendant for readback-first recovery", async () => {
+  const recoveryRevision = "d".repeat(40);
+  const authority = JSON.stringify({
+    project_id: "spaza-one",
+    project: "Spaza One",
+    component: "app",
+    role: "authority",
+    entity: "vox-dei",
+    account: "github.tsepo-vox-dei",
+    repository: "Vox-Dei-Build/spazaone-app",
+    matched_by: "git_origin",
+  });
+  const baseOutputs = (changedPaths) => [
+    "",
+    `${recoveryRevision}\n`,
+    authority,
+    `${FROZEN_APP_MAIN_COMMIT}\n`,
+    `${FROZEN_APP_MAIN_COMMIT}\n`,
+    `${commit}\n`,
+    `${changedPaths.join("\n")}\n`,
+  ];
+
+  const directOutputs = baseOutputs([
+    "functions/scripts/firebase-function-source-binding.mjs",
+  ]);
+  await assert.rejects(
+    resolveAuthorityAppCommit({
+      expectedCandidateCommit: commit,
+      expectedCurrentMainCommit: FROZEN_APP_MAIN_COMMIT,
+      execFileImpl: async () => ({ stdout: directOutputs.shift() }),
+    }),
+    (error) => error.code === "APP_AUTHORITY_REVIEWED_CANDIDATE_MISMATCH",
+  );
+  assert.equal(directOutputs.length, 2);
+
+  const recoveryOutputs = baseOutputs([
+    "functions/scripts/execute-whatsapp-catalog-production.mjs",
+    "functions/scripts/firebase-function-source-binding.mjs",
+    "functions/scripts/run-whatsapp-catalog-full-reconciliation.mjs",
+    "functions/test/whatsapp_catalog_production_tools.test.mjs",
+  ]);
+  const resolved = await resolveAuthorityAppCommit({
+    expectedCandidateCommit: commit,
+    expectedCurrentMainCommit: FROZEN_APP_MAIN_COMMIT,
+    allowRecoveryExecutorDescendant: true,
+    execFileImpl: async () => ({ stdout: recoveryOutputs.shift() }),
+  });
+  assert.equal(resolved, commit);
+  assert.equal(recoveryOutputs.length, 0);
+
+  const unrelatedOutputs = baseOutputs([
+    "functions/scripts/firebase-function-source-binding.mjs",
+    "functions/src/index.ts",
+  ]);
+  await assert.rejects(
+    resolveAuthorityAppCommit({
+      expectedCandidateCommit: commit,
+      expectedCurrentMainCommit: FROZEN_APP_MAIN_COMMIT,
+      allowRecoveryExecutorDescendant: true,
+      execFileImpl: async () => ({ stdout: unrelatedOutputs.shift() }),
+    }),
+    (error) => error.code === "APP_AUTHORITY_REVIEWED_CANDIDATE_MISMATCH",
+  );
+
+  const nonDescendantOutputs = baseOutputs([
+    "functions/scripts/firebase-function-source-binding.mjs",
+  ]);
+  nonDescendantOutputs[5] = `${"e".repeat(40)}\n`;
+  await assert.rejects(
+    resolveAuthorityAppCommit({
+      expectedCandidateCommit: commit,
+      expectedCurrentMainCommit: FROZEN_APP_MAIN_COMMIT,
+      allowRecoveryExecutorDescendant: true,
+      execFileImpl: async () => ({ stdout: nonDescendantOutputs.shift() }),
+    }),
+    (error) => error.code === "APP_AUTHORITY_REVIEWED_CANDIDATE_MISMATCH",
+  );
+});
+
 test("runner arguments expose only an explicit reviewed recovery switch", () => {
   assert.deepEqual(
     parseRunnerArguments([
@@ -2064,6 +2143,100 @@ test("function readback closes configured receipts without exposing scope values
   assert.equal(missingProviderBuildIdentity.buildIdentitiesComplete, false);
   assert.equal(missingProviderBuildIdentity.buildIdentitySetSha256, null);
   assert.equal(missingProviderBuildIdentity.environmentMatches, false);
+});
+
+test("function readback accepts Firebase's omitted empty secret list and still rejects missing required secrets", async () => {
+  const validated = validateCatalogDeploymentDotenv({
+    lane: "dark-new",
+    text: validDotenv("dark-new"),
+    appCommit: commit,
+  });
+  const environmentVariables = Object.fromEntries(
+    parseStrictDotenv(validated.normalized),
+  );
+  const sourceContract = candidateSourceContractFixture();
+  const firebaseConfig = JSON.stringify({
+    projectId: PRODUCTION_FIREBASE_PROJECT_ID,
+    storageBucket: "pasella-ledger.appspot.com",
+  });
+  const endpoints = NATIVE_CATALOG_NEW_FUNCTIONS.map((id) => {
+    const backendEnvironment = {
+      ...environmentVariables,
+      FIREBASE_CONFIG: firebaseConfig,
+      GCLOUD_PROJECT: PRODUCTION_FIREBASE_PROJECT_ID,
+    };
+    const secretEnvironmentVariables = NATIVE_CATALOG_FUNCTION_SECRET_REFS[
+      id
+    ].map((key, secretIndex) => ({
+      key,
+      projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
+      secret: key,
+      version: String(secretIndex + 1),
+    }));
+    return {
+      ...remoteBuildIdentity(id, "gcfv1"),
+      hash: firebaseEndpointHashSha1({
+        sourceHashSha1: sourceContract.sourceV1HashSha1,
+        environmentVariables: backendEnvironment,
+        secretVersions: Object.fromEntries(
+          secretEnvironmentVariables.map(({ key, version }) => [key, version]),
+        ),
+      }),
+      environmentVariables: {
+        ...backendEnvironment,
+        FUNCTION_TARGET: id,
+        EVENTARC_CLOUD_EVENT_SOURCE: `projects/${PRODUCTION_FIREBASE_PROJECT_ID}/locations/us-central1/functions/${id}`,
+      },
+      ...(secretEnvironmentVariables.length === 0
+        ? {}
+        : { secretEnvironmentVariables }),
+    };
+  });
+
+  const accepted = await collectCatalogFunctionReadback(
+    {
+      lane: "dark-new",
+      validated,
+      candidateSourceContract: sourceContract,
+    },
+    { execFileImpl: async () => ({ stdout: JSON.stringify(endpoints) }) },
+  );
+  assert.equal(accepted.secretReferencesMatch, true);
+  assert.equal(accepted.environmentMatches, true);
+
+  const missingRequired = structuredClone(endpoints);
+  const requiresSecret = missingRequired.find(
+    (endpoint) =>
+      NATIVE_CATALOG_FUNCTION_SECRET_REFS[endpoint.id].length > 0,
+  );
+  delete requiresSecret.secretEnvironmentVariables;
+  const rejectedRequired = await collectCatalogFunctionReadback(
+    {
+      lane: "dark-new",
+      validated,
+      candidateSourceContract: sourceContract,
+    },
+    { execFileImpl: async () => ({ stdout: JSON.stringify(missingRequired) }) },
+  );
+  assert.equal(rejectedRequired.secretReferencesMatch, false);
+  assert.equal(rejectedRequired.environmentMatches, false);
+
+  const malformedEmpty = structuredClone(endpoints);
+  const expectsNoSecret = malformedEmpty.find(
+    (endpoint) =>
+      NATIVE_CATALOG_FUNCTION_SECRET_REFS[endpoint.id].length === 0,
+  );
+  expectsNoSecret.secretEnvironmentVariables = null;
+  const rejectedMalformedEmpty = await collectCatalogFunctionReadback(
+    {
+      lane: "dark-new",
+      validated,
+      candidateSourceContract: sourceContract,
+    },
+    { execFileImpl: async () => ({ stdout: JSON.stringify(malformedEmpty) }) },
+  );
+  assert.equal(rejectedMalformedEmpty.environmentShapesValid, false);
+  assert.equal(rejectedMalformedEmpty.environmentMatches, false);
 });
 
 test("existing-function readback permits only the exact catalog hash-key secret migration", async () => {

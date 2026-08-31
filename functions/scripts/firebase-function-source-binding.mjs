@@ -589,7 +589,14 @@ export async function collectFirebaseGen1RuntimeConfigHashSha1({
 }
 
 function expectedSecretVersionObject(endpoint, expectedSecretKeys) {
-  const remote = endpoint?.secretEnvironmentVariables;
+  // Firebase omits this property entirely when a function has no secret
+  // bindings. Treat that provider representation as the exact empty set, but
+  // continue to fail closed when any secret binding is expected.
+  const remote =
+    endpoint?.secretEnvironmentVariables === undefined &&
+    expectedSecretKeys.length === 0
+      ? []
+      : endpoint?.secretEnvironmentVariables;
   if (!Array.isArray(remote) || remote.length !== expectedSecretKeys.length) {
     return null;
   }

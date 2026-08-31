@@ -2264,6 +2264,10 @@ async function revalidateAuthorityAndCandidate(input) {
     commit = await resolveAuthorityAppCommit({
       expectedCandidateCommit: input.expectedAppCommit,
       expectedCurrentMainCommit: input.expectedCurrentMainCommit,
+      // A readback-first recovery may run from a clean, narrowly allowlisted
+      // executor-fix descendant while it authenticates and mounts the exact
+      // frozen deployment candidate. Direct write paths remain exact-HEAD.
+      allowRecoveryExecutorDescendant: input.recovery != null,
     });
   } catch (_) {
     fail("PRODUCTION_AUTHORITY_RECHECK_FAILED");

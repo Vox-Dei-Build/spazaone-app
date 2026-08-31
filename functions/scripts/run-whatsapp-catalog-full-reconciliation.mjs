@@ -51,6 +51,13 @@ const EXPECTED_AUTHORITY = Object.freeze({
   matched_by: "git_origin",
 });
 
+const RECOVERY_EXECUTOR_ALLOWED_CHANGED_PATHS = Object.freeze([
+  "functions/scripts/execute-whatsapp-catalog-production.mjs",
+  "functions/scripts/firebase-function-source-binding.mjs",
+  "functions/scripts/run-whatsapp-catalog-full-reconciliation.mjs",
+  "functions/test/whatsapp_catalog_production_tools.test.mjs",
+]);
+
 const CODEX_GUARD = "/Users/admin/.codex/identity-governance/bin/codex-guard";
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 export class ReconciliationOperatorError extends Error {
@@ -165,13 +172,15 @@ export async function resolvePasellaBotToken({
 export async function resolveAuthorityAppCommit({
   expectedCandidateCommit,
   expectedCurrentMainCommit,
+  allowRecoveryExecutorDescendant = false,
   execFileImpl = execFile,
   environment = process.env,
 } = {}) {
   if (
     !/^[a-f0-9]{40}$/.test(String(expectedCandidateCommit ?? "")) ||
     !/^[a-f0-9]{40}$/.test(String(expectedCurrentMainCommit ?? "")) ||
-    expectedCurrentMainCommit !== FROZEN_APP_MAIN_COMMIT
+    expectedCurrentMainCommit !== FROZEN_APP_MAIN_COMMIT ||
+    ![true, false].includes(allowRecoveryExecutorDescendant)
   ) {
     throw new ReconciliationOperatorError("APP_AUTHORITY_PROVENANCE_INVALID");
   }
@@ -180,6 +189,8 @@ export async function resolveAuthorityAppCommit({
   let authority;
   let governedMainRevision;
   let mergeBase;
+  let candidateMergeBase;
+  let recoveryChangedPaths;
   const childEnvironment = scrubCredentialEnvironment(environment);
   try {
     status = stdoutText(
@@ -247,6 +258,42 @@ export async function resolveAuthorityAppCommit({
         },
       ),
     ).trim();
+    if (
+      allowRecoveryExecutorDescendant &&
+      revision !== expectedCandidateCommit
+    ) {
+      candidateMergeBase = stdoutText(
+        await execFileImpl(
+          "git",
+          ["merge-base", revision, expectedCandidateCommit],
+          {
+            cwd: APP_REPOSITORY_ROOT,
+            encoding: "utf8",
+            env: childEnvironment,
+          },
+        ),
+      ).trim();
+      recoveryChangedPaths = stdoutText(
+        await execFileImpl(
+          "git",
+          [
+            "diff",
+            "--name-only",
+            "--no-renames",
+            expectedCandidateCommit,
+            revision,
+            "--",
+          ],
+          {
+            cwd: APP_REPOSITORY_ROOT,
+            encoding: "utf8",
+            env: childEnvironment,
+          },
+        ),
+      )
+        .split("\n")
+        .filter(Boolean);
+    }
   } catch (_) {
     throw new ReconciliationOperatorError("APP_AUTHORITY_RESOLUTION_FAILED");
   }
@@ -257,9 +304,21 @@ export async function resolveAuthorityAppCommit({
     throw new ReconciliationOperatorError("APP_AUTHORITY_REVISION_INVALID");
   }
   if (revision !== expectedCandidateCommit) {
-    throw new ReconciliationOperatorError(
-      "APP_AUTHORITY_REVIEWED_CANDIDATE_MISMATCH",
-    );
+    const uniqueChangedPaths = new Set(recoveryChangedPaths ?? []);
+    if (
+      !allowRecoveryExecutorDescendant ||
+      candidateMergeBase !== expectedCandidateCommit ||
+      uniqueChangedPaths.size === 0 ||
+      uniqueChangedPaths.size !== (recoveryChangedPaths ?? []).length ||
+      [...uniqueChangedPaths].some(
+        (changedPath) =>
+          !RECOVERY_EXECUTOR_ALLOWED_CHANGED_PATHS.includes(changedPath),
+      )
+    ) {
+      throw new ReconciliationOperatorError(
+        "APP_AUTHORITY_REVIEWED_CANDIDATE_MISMATCH",
+      );
+    }
   }
   if (
     governedMainRevision !== expectedCurrentMainCommit ||
@@ -273,7 +332,7 @@ export async function resolveAuthorityAppCommit({
   if (!exactAuthority(authority)) {
     throw new ReconciliationOperatorError("APP_AUTHORITY_CHECKOUT_MISMATCH");
   }
-  return revision;
+  return expectedCandidateCommit;
 }
 
 function nonNegativeInteger(value) {
