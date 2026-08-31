@@ -46,6 +46,7 @@ import {
   assertFirebaseCliEnvironmentPreservationSource,
   buildEphemeralFirebaseConfig,
   canonicalFunctionBuildIdentityDigest,
+  canonicalFirestoreIndexConfiguration,
   catalogPolicySourceContract,
   catalogFunctionSelector,
   collectCatalogFunctionReadback,
@@ -2541,6 +2542,38 @@ test("Firestore policy source contracts pin exact rules and TTL selectors", asyn
       readbackOnly: true,
     },
   );
+});
+
+test("Firestore index canonicalization normalizes the provider's implicit name and density defaults", () => {
+  const implicit = canonicalFirestoreIndexConfiguration({
+    indexes: [
+      {
+        collectionGroup: "orders",
+        queryScope: "COLLECTION",
+        fields: [
+          { fieldPath: "merchantId", order: "ASCENDING" },
+          { fieldPath: "createdAt", order: "DESCENDING" },
+        ],
+      },
+    ],
+    fieldOverrides: [],
+  });
+  const explicit = canonicalFirestoreIndexConfiguration({
+    indexes: [
+      {
+        collectionGroup: "orders",
+        queryScope: "COLLECTION",
+        fields: [
+          { fieldPath: "merchantId", order: "ASCENDING" },
+          { fieldPath: "createdAt", order: "DESCENDING" },
+          { fieldPath: "__name__", order: "DESCENDING" },
+        ],
+        density: "SPARSE_ALL",
+      },
+    ],
+    fieldOverrides: [],
+  });
+  assert.deepEqual(implicit, explicit);
 });
 
 test("Firestore rules readback pins the quota project and accepts one provider-qualified source path", async () => {

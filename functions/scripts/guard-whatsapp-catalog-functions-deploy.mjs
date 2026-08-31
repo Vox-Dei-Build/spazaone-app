@@ -717,13 +717,23 @@ export function canonicalFirestoreIndexConfiguration(value) {
           "CATALOG_FIRESTORE_INDEXES_SOURCE_INVALID",
         );
       }
+      const fields = index.fields.map(canonicalIndexField);
+      if (!fields.some((field) => field.fieldPath === "__name__")) {
+        const lastOrderedField = [...fields]
+          .reverse()
+          .find((field) => typeof field.order === "string");
+        fields.push({
+          fieldPath: "__name__",
+          order: lastOrderedField?.order ?? "ASCENDING",
+        });
+      }
       return {
         collectionGroup: index.collectionGroup,
         queryScope: index.queryScope,
-        fields: index.fields.map(canonicalIndexField),
-        ...(index.density !== undefined
-          ? { density: String(index.density) }
-          : {}),
+        fields,
+        // Firestore returns these provider defaults even when an older source
+        // omitted them. Canonicalize both representations to the remote form.
+        density: String(index.density ?? "SPARSE_ALL"),
       };
     })
     .sort((left, right) =>
