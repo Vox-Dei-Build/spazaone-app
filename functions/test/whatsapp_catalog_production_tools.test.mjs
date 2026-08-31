@@ -2543,6 +2543,61 @@ test("Firestore policy source contracts pin exact rules and TTL selectors", asyn
   );
 });
 
+test("Firestore rules readback pins the quota project and accepts one provider-qualified source path", async () => {
+  const source = "rules_version = '2';\nservice cloud.firestore { match /{document=**} { allow read: if false; } }\n";
+  const calls = [];
+  const result = await collectCatalogPolicyReadback("firestore-rules", {
+    execFileImpl: async (command, args) => {
+      calls.push({ kind: "token", command, args });
+      return { stdout: "safe-test-access-token-value\n" };
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ kind: "fetch", url, init });
+      if (url.includes("/releases?")) {
+        return new Response(
+          JSON.stringify({
+            releases: [
+              {
+                name: `projects/${PRODUCTION_FIREBASE_PROJECT_ID}/releases/cloud.firestore`,
+                rulesetName: `projects/${PRODUCTION_FIREBASE_PROJECT_ID}/rulesets/test-ruleset`,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          source: {
+            files: [
+              {
+                name: "/private/tmp/exact-provider-input/firestore.rules",
+                content: source,
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    },
+  });
+  assert.equal(
+    result.activeSourceSha256,
+    createHash("sha256").update(source).digest("hex"),
+  );
+  assert.equal(
+    result.activeRulesetName,
+    `projects/${PRODUCTION_FIREBASE_PROJECT_ID}/rulesets/test-ruleset`,
+  );
+  const fetchCalls = calls.filter((call) => call.kind === "fetch");
+  assert.equal(fetchCalls.length, 2);
+  assert.equal(
+    fetchCalls[0].init.headers["x-goog-user-project"],
+    PRODUCTION_FIREBASE_PROJECT_ID,
+  );
+  assert.equal(fetchCalls[0].init.redirect, "error");
+});
+
 test("Firestore index readback verifies exact project, database, and active TTLs", async () => {
   const calls = [];
   const remoteIndexDocument = JSON.parse(

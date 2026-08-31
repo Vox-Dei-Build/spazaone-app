@@ -1556,7 +1556,12 @@ async function firebaseRulesReadback({
       response = await fetchImpl(url, {
         method: "GET",
         redirect: "error",
-        headers: { authorization: `Bearer ${token}` },
+        headers: {
+          authorization: `Bearer ${token}`,
+          // gcloud user access tokens require an explicit quota project for
+          // the Firebase Rules API. Keep it pinned to the governed target.
+          "x-goog-user-project": PRODUCTION_FIREBASE_PROJECT_ID,
+        },
       });
     } catch (_) {
       throw new CatalogDeploymentGuardError("CATALOG_POLICY_READBACK_FAILED");
@@ -1604,9 +1609,15 @@ async function firebaseRulesReadback({
     const files = Array.isArray(ruleset?.source?.files)
       ? ruleset.source.files
       : [];
-    const firestoreRules = files.find(
-      (file) => String(file?.name ?? "") === "firestore.rules",
+    // Firebase preserves the local deployment path as the source file name.
+    // Match the exact basename and reject ambiguity; the caller still binds
+    // the returned content to the reviewed source SHA-256.
+    const matchingRuleFiles = files.filter(
+      (file) =>
+        path.posix.basename(String(file?.name ?? "")) === "firestore.rules",
     );
+    const firestoreRules =
+      matchingRuleFiles.length === 1 ? matchingRuleFiles[0] : null;
     if (typeof firestoreRules?.content !== "string") {
       throw new CatalogDeploymentGuardError("CATALOG_POLICY_READBACK_FAILED");
     }
