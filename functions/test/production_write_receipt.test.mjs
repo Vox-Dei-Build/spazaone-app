@@ -154,6 +154,8 @@ function finalizedReconciliationArtifact() {
     outboxActiveCount: 7,
     outboxDeletedCount: 2,
     outboxRejectedCount: 0,
+    outboxBlockedCount: 0,
+    outboxFailedCount: 0,
     outboxUnknownCount: 0,
     outboxTotalCount: 9,
     outboxCountsVerified: true,

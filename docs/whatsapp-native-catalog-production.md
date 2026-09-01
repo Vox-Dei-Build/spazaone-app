@@ -628,15 +628,16 @@ authenticated, resumable full reconciliation while delivery is dark:
    and `submitted` outbox counts at zero as `outboxPendingCount`,
    `outboxRetryCount`, `outboxProcessingCount`, and `outboxSubmittedCount`.
    It must also contain the retained terminal audit-row counts as
-   `outboxActiveCount`, `outboxDeletedCount`, and `outboxRejectedCount`, plus
-   the actual (possibly non-zero) `outboxTotalCount`, `outboxUnknownCount=0`,
-   and `outboxCountsVerified=true`.
+   `outboxActiveCount`, `outboxDeletedCount`, `outboxRejectedCount`,
+   `outboxBlockedCount`, and `outboxFailedCount`, plus the actual (possibly
+   non-zero) `outboxTotalCount`, `outboxUnknownCount=0`, and
+   `outboxCountsVerified=true`.
    It must also contain `catalogComplete=true`,
    `setEqualityVerified=true`, zero incomplete merchants, zero malformed
    mappings, a non-empty `completionDigest`, start/completion/verification
-   timestamps, and `redactedReceiptSha256`. The four in-flight counts, three
+   timestamps, and `redactedReceiptSha256`. The four in-flight counts, five
    recognized terminal counts, and an unfiltered total are separate Firestore
-   aggregate queries. All seven recognized counts must sum to the total; any
+   aggregate queries. All nine recognized counts must sum to the total; any
    missing, unknown, malformed, or concurrently changing status produces a
    non-zero unknown delta or failed count verification and blocks completion.
    Terminal `active`, `deleted`, and `rejected` audit rows are not jobs still in

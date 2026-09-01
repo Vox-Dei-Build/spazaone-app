@@ -349,6 +349,8 @@ const OUTBOX_STATUS_KEYS = Object.freeze([
   "active",
   "deleted",
   "rejected",
+  "blocked",
+  "failed",
   "unknown",
 ]);
 
@@ -413,6 +415,8 @@ function redactedPage(value) {
           active: nonNegativeInteger(counts.active),
           deleted: nonNegativeInteger(counts.deleted),
           rejected: nonNegativeInteger(counts.rejected),
+          blocked: nonNegativeInteger(counts.blocked),
+          failed: nonNegativeInteger(counts.failed),
           unknown: nonNegativeInteger(counts.unknown),
         }
       : null;
@@ -728,6 +732,8 @@ function finalizeRedactedReconciliationReceipt(input) {
     outboxActiveCount: input.outboxStatusCounts.active,
     outboxDeletedCount: input.outboxStatusCounts.deleted,
     outboxRejectedCount: input.outboxStatusCounts.rejected,
+    outboxBlockedCount: input.outboxStatusCounts.blocked,
+    outboxFailedCount: input.outboxStatusCounts.failed,
     outboxUnknownCount: input.outboxStatusCounts.unknown,
     outboxTotalCount: input.totalOutboxDocuments,
     outboxCountsVerified: true,

@@ -250,6 +250,8 @@ export const FINALIZED_RECONCILIATION_ARTIFACT_KEYS = Object.freeze([
   "outboxActiveCount",
   "outboxDeletedCount",
   "outboxRejectedCount",
+  "outboxBlockedCount",
+  "outboxFailedCount",
   "outboxUnknownCount",
   "outboxTotalCount",
   "outboxCountsVerified",
@@ -580,6 +582,8 @@ export function validateFinalizedReconciliationArtifact(
     "outboxActiveCount",
     "outboxDeletedCount",
     "outboxRejectedCount",
+    "outboxBlockedCount",
+    "outboxFailedCount",
     "outboxUnknownCount",
     "outboxTotalCount",
     "incompleteMerchantCount",
@@ -599,6 +603,8 @@ export function validateFinalizedReconciliationArtifact(
     artifact.outboxActiveCount,
     artifact.outboxDeletedCount,
     artifact.outboxRejectedCount,
+    artifact.outboxBlockedCount,
+    artifact.outboxFailedCount,
     artifact.outboxUnknownCount,
   ].reduce((sum, count) => sum + count, 0);
   string(

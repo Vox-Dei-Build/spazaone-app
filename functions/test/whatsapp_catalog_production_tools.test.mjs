@@ -349,6 +349,8 @@ function page(overrides) {
       active: 0,
       deleted: 0,
       rejected: 0,
+      blocked: 0,
+      failed: 0,
       unknown: 0,
     },
     stabilityVerified: false,
@@ -726,6 +728,8 @@ test("completed recovery returns only exact aggregate proof without another page
           active: 0,
           deleted: 0,
           rejected: 0,
+          blocked: 0,
+          failed: 0,
           unknown: 0,
         },
       },
@@ -757,6 +761,8 @@ test("completed recovery returns only exact aggregate proof without another page
       active: 0,
       deleted: 0,
       rejected: 0,
+      blocked: 0,
+      failed: 0,
       unknown: 0,
     });
     assert.doesNotMatch(
@@ -777,6 +783,8 @@ test("fresh current stability returns only exact redacted aggregate proof", asyn
       active: 7,
       deleted: 2,
       rejected: 1,
+      blocked: 0,
+      failed: 0,
       unknown: 0,
     };
     const result = await inspectBoundWhatsAppCatalogCurrentStability(
@@ -895,6 +903,8 @@ test("current stability rejects invalid expectations and mismatched live proof b
             active: 0,
             deleted: 0,
             rejected: 0,
+            blocked: 0,
+            failed: 0,
             unknown: 0,
           },
         }),
@@ -953,6 +963,8 @@ test("outbox drain evidence exposes unknown statuses and fails equality", () => 
     active: 0,
     deleted: 0,
     rejected: 0,
+    blocked: 0,
+    failed: 0,
   });
   assert.equal(evidence.pendingOutboxJobs, 0);
   assert.equal(evidence.totalOutboxDocuments, 1);
@@ -965,6 +977,8 @@ test("outbox drain evidence exposes unknown statuses and fails equality", () => 
     active: 0,
     deleted: 0,
     rejected: 0,
+    blocked: 0,
+    failed: 0,
     unknown: 1,
   });
 });
@@ -979,11 +993,43 @@ test("outbox drain evidence accounts for retained terminal audit rows", () => {
     active: 2,
     deleted: 1,
     rejected: 0,
+    blocked: 0,
+    failed: 0,
   });
   assert.equal(evidence.pendingOutboxJobs, 0);
   assert.equal(evidence.totalOutboxDocuments, 3);
   assert.equal(evidence.outboxCountsVerified, true);
   assert.equal(evidence.outboxStatusCounts.unknown, 0);
+});
+
+test("outbox drain evidence recognizes blocked and failed terminal audit rows", () => {
+  const evidence = summarizeWhatsAppCatalogOutboxEvidence({
+    total: 4,
+    pending: 0,
+    retry: 0,
+    processing: 0,
+    submitted: 0,
+    active: 1,
+    deleted: 0,
+    rejected: 0,
+    blocked: 2,
+    failed: 1,
+  });
+  assert.equal(evidence.pendingOutboxJobs, 0);
+  assert.equal(evidence.totalOutboxDocuments, 4);
+  assert.equal(evidence.outboxCountsVerified, true);
+  assert.deepEqual(evidence.outboxStatusCounts, {
+    pending: 0,
+    retry: 0,
+    processing: 0,
+    submitted: 0,
+    active: 1,
+    deleted: 0,
+    rejected: 0,
+    blocked: 2,
+    failed: 1,
+    unknown: 0,
+  });
 });
 
 test("mutation generation is order-independent and changes for every source or outbox mutation", () => {

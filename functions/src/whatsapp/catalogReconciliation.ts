@@ -86,6 +86,8 @@ export type WhatsAppCatalogOutboxStatusCounts = {
   active: number;
   deleted: number;
   rejected: number;
+  blocked: number;
+  failed: number;
   unknown: number;
 };
 
@@ -98,6 +100,8 @@ export function summarizeWhatsAppCatalogOutboxEvidence(input: {
   active: number;
   deleted: number;
   rejected: number;
+  blocked: number;
+  failed: number;
 }): {
   pendingOutboxJobs: number;
   totalOutboxDocuments: number;
@@ -114,7 +118,12 @@ export function summarizeWhatsAppCatalogOutboxEvidence(input: {
   const pendingOutboxJobs =
     input.pending + input.retry + input.processing + input.submitted;
   const knownOutboxDocuments =
-    pendingOutboxJobs + input.active + input.deleted + input.rejected;
+    pendingOutboxJobs +
+    input.active +
+    input.deleted +
+    input.rejected +
+    input.blocked +
+    input.failed;
   const unknown = Math.max(0, input.total - knownOutboxDocuments);
   return {
     pendingOutboxJobs,
@@ -128,6 +137,8 @@ export function summarizeWhatsAppCatalogOutboxEvidence(input: {
       active: input.active,
       deleted: input.deleted,
       rejected: input.rejected,
+      blocked: input.blocked,
+      failed: input.failed,
       unknown,
     },
   };
@@ -142,6 +153,8 @@ const OUTBOX_STATUS_KEYS: readonly (keyof WhatsAppCatalogOutboxStatusCounts)[] =
     "active",
     "deleted",
     "rejected",
+    "blocked",
+    "failed",
     "unknown",
   ];
 
@@ -493,6 +506,8 @@ async function readGlobalMutationEvidence(
     active: 0,
     deleted: 0,
     rejected: 0,
+    blocked: 0,
+    failed: 0,
   };
   for (const document of outbox.docs) {
     const status = text(document.data().status) as keyof typeof statusCounts;
@@ -2159,7 +2174,9 @@ async function currentWhatsAppCatalogStability(
     const terminalOutboxDocuments =
       evidence.outboxStatusCounts.active +
       evidence.outboxStatusCounts.deleted +
-      evidence.outboxStatusCounts.rejected;
+      evidence.outboxStatusCounts.rejected +
+      evidence.outboxStatusCounts.blocked +
+      evidence.outboxStatusCounts.failed;
     const nonterminalOutboxDocuments =
       evidence.outboxStatusCounts.pending +
       evidence.outboxStatusCounts.retry +

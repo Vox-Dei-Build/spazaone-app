@@ -1225,6 +1225,8 @@ const RECONCILIATION_OUTBOX_STATUS_KEYS = Object.freeze([
   "active",
   "deleted",
   "rejected",
+  "blocked",
+  "failed",
   "unknown",
 ]);
 
@@ -1606,6 +1608,8 @@ function finalizePrivateReconciliationArtifact(input) {
     outboxActiveCount: input.outboxStatusCounts.active,
     outboxDeletedCount: input.outboxStatusCounts.deleted,
     outboxRejectedCount: input.outboxStatusCounts.rejected,
+    outboxBlockedCount: input.outboxStatusCounts.blocked,
+    outboxFailedCount: input.outboxStatusCounts.failed,
     outboxUnknownCount: input.outboxStatusCounts.unknown,
     outboxTotalCount: input.totalOutboxDocuments,
     outboxCountsVerified: true,
