@@ -548,6 +548,10 @@ test("reviewed recovery returns exact readback facts before fresh continuation a
   );
   assert.match(executorSource, /conductProductionActionCeremony/);
   assert.match(executorSource, /recoveryReadbackSha256/);
+  assert.match(
+    executorSource,
+    /allowRecoveryExecutorDescendant:\s*input\.reviewedResume === true \|\| input\.recovery != null/,
+  );
 });
 
 test("private lifecycle validators reject malformed recovery and expired dispatch", async () => {
