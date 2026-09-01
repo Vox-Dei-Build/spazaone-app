@@ -212,9 +212,14 @@ test("reconciliation transport calls its one-shot dispatch hook once and never b
 test("reviewed reconciliation is inspection-only until exact continuation facts are authorized", async () => {
   await withPrivateReconciliationTransport(async (runReconciliation) => {
     let requestBody;
+    const authorityInputs = [];
     const recovery = await runReconciliation(
       reconciliationClientOptions({
         reviewedResume: true,
+        resolveCommit: async (input) => {
+          authorityInputs.push(input);
+          return commit;
+        },
         fetchImpl: async (_url, init) => {
           requestBody = JSON.parse(init.body);
           return jsonResponse({
@@ -233,6 +238,13 @@ test("reviewed reconciliation is inspection-only until exact continuation facts 
           });
         },
       }),
+    );
+    assert.equal(authorityInputs.length > 0, true);
+    assert.equal(
+      authorityInputs.every(
+        (input) => input.allowRecoveryExecutorDescendant === true,
+      ),
+      true,
     );
     assert.equal(requestBody.operation, "inspect_recovery");
     assert.deepEqual(recovery, {

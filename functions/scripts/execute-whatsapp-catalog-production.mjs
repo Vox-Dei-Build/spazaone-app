@@ -1772,6 +1772,7 @@ async function runPrivateFullCatalogReconciliation({
     const resolvedCommit = await resolveCommit({
       expectedCandidateCommit: expectedAppCommit,
       expectedCurrentMainCommit,
+      allowRecoveryExecutorDescendant: reviewedResume,
     });
     try {
       await verifyCandidateManifest({

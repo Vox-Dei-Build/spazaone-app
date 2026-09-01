@@ -925,6 +925,7 @@ async function runFullCatalogReconciliation({
     const resolvedCommit = await resolveCommit({
       expectedCandidateCommit: expectedAppCommit,
       expectedCurrentMainCommit,
+      allowRecoveryExecutorDescendant: reviewedResume,
     });
     try {
       await verifyCandidateManifest({
