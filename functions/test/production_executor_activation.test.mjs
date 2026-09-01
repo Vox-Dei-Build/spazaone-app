@@ -577,7 +577,6 @@ test("private lifecycle validators reject malformed recovery and expired dispatc
       );
       const validFacts = {
         outcome: "incomplete",
-        cycleId: "a".repeat(32),
         continuationStateDigestSha256: "c".repeat(64),
         acknowledgedPages: 2,
         productScanComplete: true,
@@ -588,6 +587,14 @@ test("private lifecycle validators reject malformed recovery and expired dispatc
       assert.equal(Object.isFrozen(valid.facts), true);
       assert.deepEqual(valid.facts, validFacts);
       assert.equal(valid.readbackSha256, canonicalSha256(validFacts));
+      assert.throws(
+        () =>
+          exactRecoveryReadback({
+            ...validFacts,
+            cycleId: "invalid",
+          }),
+        /PRODUCTION_RECOVERY_READBACK_REJECTED/,
+      );
       const deploymentEvidence = exactRecoveryReadback({
         outcome: "complete",
         cycleId: "d".repeat(32),
@@ -914,7 +921,6 @@ test("recovery invokes its bound provider once, derives the readback digest, and
     const priorReceiptSha256 = "8".repeat(64);
     const incompleteReadback = {
       outcome: "incomplete",
-      cycleId: "7".repeat(32),
       continuationStateDigestSha256: "6".repeat(64),
       acknowledgedPages: 4,
       productScanComplete: true,
@@ -984,7 +990,6 @@ test("recovery invokes its bound provider once, derives the readback digest, and
     assert.deepEqual(consumed.binding.recovery, {
       mode: "continuation",
       priorReceiptSha256,
-      cycleId: incompleteReadback.cycleId,
       continuationStateDigestSha256:
         incompleteReadback.continuationStateDigestSha256,
       recoveryReadbackSha256: canonicalSha256(incompleteReadback),

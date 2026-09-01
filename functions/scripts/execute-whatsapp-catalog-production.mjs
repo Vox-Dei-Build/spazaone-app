@@ -188,7 +188,7 @@ function liveSessionRecoveryBinding(value = {}) {
         (entry) => entry !== null,
       )) ||
     (mode === "continuation" &&
-      (!/^[a-f0-9]{32}$/.test(String(cycleId ?? "")) ||
+      ((cycleId !== null && !/^[a-f0-9]{32}$/.test(String(cycleId))) ||
         !SHA256.test(String(continuationStateDigestSha256 ?? "")) ||
         !SHA256.test(String(recoveryReadbackSha256 ?? ""))))
   ) {
@@ -748,6 +748,7 @@ function exactRecoveryReadback(value) {
   ) {
     fail("PRODUCTION_RECOVERY_READBACK_REJECTED");
   }
+  const cycleId = value.cycleId === undefined ? null : String(value.cycleId);
   const expectedKeys =
     value.outcome === "complete"
       ? value.evidenceSha256 === undefined
@@ -756,14 +757,19 @@ function exactRecoveryReadback(value) {
       : [
           "acknowledgedPages",
           "continuationStateDigestSha256",
-          "cycleId",
           "mappingScanComplete",
           "outcome",
           "productScanComplete",
+          ...(cycleId === null ? [] : ["cycleId"]),
         ];
   if (
-    canonicalJson(Object.keys(value).sort()) !== canonicalJson(expectedKeys) ||
-    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    canonicalJson(Object.keys(value).sort()) !==
+      canonicalJson(expectedKeys.sort()) ||
+    (value.outcome === "complete" &&
+      !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? ""))) ||
+    (value.outcome === "incomplete" &&
+      cycleId !== null &&
+      !/^[a-f0-9]{32}$/.test(cycleId)) ||
     (value.outcome === "complete" &&
       value.evidenceSha256 !== undefined &&
       !SHA256.test(String(value.evidenceSha256))) ||
@@ -934,7 +940,9 @@ async function mintFreshReconciliationContinuationCapability(
     recovery: {
       mode: "continuation",
       priorReceiptSha256: state.binding.recovery.priorReceiptSha256,
-      cycleId: validatedReadback.cycleId,
+      ...(validatedReadback.cycleId === undefined
+        ? {}
+        : { cycleId: validatedReadback.cycleId }),
       continuationStateDigestSha256:
         validatedReadback.continuationStateDigestSha256,
       recoveryReadbackSha256: state.recoveryReadbackSha256,
@@ -1473,6 +1481,7 @@ async function requestPrivateReconciliationPage(options) {
 function redactedReconciliationRecoveryState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const phase = String(value.phase ?? "");
+  const cycleId = value.cycleId === undefined ? null : String(value.cycleId);
   const acknowledgedPages = nonNegativeInteger(value.acknowledgedPages);
   const continuationStateDigestSha256 = String(
     value.continuationStateDigestSha256 ?? "",
@@ -1495,7 +1504,8 @@ function redactedReconciliationRecoveryState(value) {
   if (
     value.outcome !== "recovery_state" ||
     !new Set(["products", "mappings", "verify", "complete"]).has(phase) ||
-    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    (cycleId !== null && !/^[a-f0-9]{32}$/.test(cycleId)) ||
+    (phase === "complete" && cycleId === null) ||
     acknowledgedPages === null ||
     !SHA256.test(continuationStateDigestSha256) ||
     !/^[a-f0-9]{40}$/.test(deployedAppCommit) ||
@@ -1513,7 +1523,7 @@ function redactedReconciliationRecoveryState(value) {
     return null;
   }
   return {
-    cycleId: value.cycleId,
+    ...(cycleId === null ? {} : { cycleId }),
     phase,
     acknowledgedPages,
     productScanComplete,
@@ -1630,16 +1640,19 @@ function finalizePrivateReconciliationArtifact(input) {
 
 function exactReconciliationContinuationState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const expectedKeys = [
+  const requiredKeys = [
     "acknowledgedPages",
     "continuationStateDigestSha256",
-    "cycleId",
     "mappingScanComplete",
     "productScanComplete",
   ];
+  const cycleId = value.cycleId === undefined ? null : String(value.cycleId);
+  const expectedKeys =
+    cycleId === null ? requiredKeys : [...requiredKeys, "cycleId"];
   if (
-    canonicalJson(Object.keys(value).sort()) !== canonicalJson(expectedKeys) ||
-    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+    canonicalJson(Object.keys(value).sort()) !==
+      canonicalJson(expectedKeys.sort()) ||
+    (cycleId !== null && !/^[a-f0-9]{32}$/.test(cycleId)) ||
     !SHA256.test(String(value.continuationStateDigestSha256 ?? "")) ||
     nonNegativeInteger(value.acknowledgedPages) === null ||
     typeof value.productScanComplete !== "boolean" ||
@@ -1649,7 +1662,7 @@ function exactReconciliationContinuationState(value) {
     return null;
   }
   return Object.freeze({
-    cycleId: value.cycleId,
+    ...(cycleId === null ? {} : { cycleId }),
     continuationStateDigestSha256: value.continuationStateDigestSha256,
     acknowledgedPages: value.acknowledgedPages,
     productScanComplete: value.productScanComplete,
@@ -1883,7 +1896,9 @@ async function runPrivateFullCatalogReconciliation({
       }
       return Object.freeze({
         outcome: "continuation_authorization_required",
-        cycleId: recovery.cycleId,
+        ...(recovery.cycleId === undefined
+          ? {}
+          : { cycleId: recovery.cycleId }),
         continuationStateDigestSha256: recovery.continuationStateDigestSha256,
         acknowledgedPages: recovery.acknowledgedPages,
         productScanComplete: recovery.productScanComplete,
@@ -3172,7 +3187,9 @@ async function executeReconciliation(
   context.remoteWritePlanned = true;
   const continuationState = continuationFacts
     ? {
-        cycleId: continuationFacts.cycleId,
+        ...(continuationFacts.cycleId === undefined
+          ? {}
+          : { cycleId: continuationFacts.cycleId }),
         continuationStateDigestSha256:
           continuationFacts.continuationStateDigestSha256,
         acknowledgedPages: continuationFacts.acknowledgedPages,
@@ -3877,7 +3894,7 @@ async function runReconciliationWithActionCeremony(options) {
       }
       continuationReadback = Object.freeze({
         outcome: "incomplete",
-        cycleId: result.cycleId,
+        ...(result.cycleId === undefined ? {} : { cycleId: result.cycleId }),
         continuationStateDigestSha256: result.continuationStateDigestSha256,
         acknowledgedPages: result.acknowledgedPages,
         productScanComplete: result.productScanComplete,

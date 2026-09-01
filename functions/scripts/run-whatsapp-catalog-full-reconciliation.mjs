@@ -603,6 +603,7 @@ async function requestPage(options) {
 function redactedRecoveryState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const phase = String(value.phase ?? "");
+  const cycleId = value.cycleId === undefined ? null : String(value.cycleId);
   const acknowledgedPages = nonNegativeInteger(value.acknowledgedPages);
   const continuationStateDigestSha256 = String(
     value.continuationStateDigestSha256 ?? "",
@@ -625,6 +626,8 @@ function redactedRecoveryState(value) {
   if (
     value.outcome !== "recovery_state" ||
     !new Set(["products", "mappings", "verify", "complete"]).has(phase) ||
+    (cycleId !== null && !/^[a-f0-9]{32}$/.test(cycleId)) ||
+    (phase === "complete" && cycleId === null) ||
     acknowledgedPages === null ||
     !/^[a-f0-9]{64}$/.test(continuationStateDigestSha256) ||
     !/^[a-f0-9]{40}$/.test(deployedAppCommit) ||
@@ -642,7 +645,7 @@ function redactedRecoveryState(value) {
     return null;
   }
   return {
-    cycleId: String(value.cycleId),
+    ...(cycleId === null ? {} : { cycleId }),
     phase,
     acknowledgedPages,
     productScanComplete,
@@ -787,17 +790,19 @@ export function reconciliationOperationInputSha256({
 
 function exactContinuationState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const expectedKeys = [
+  const requiredKeys = [
     "acknowledgedPages",
     "continuationStateDigestSha256",
-    "cycleId",
     "mappingScanComplete",
     "productScanComplete",
   ];
+  const cycleId = value.cycleId === undefined ? null : String(value.cycleId);
+  const expectedKeys =
+    cycleId === null ? requiredKeys : [...requiredKeys, "cycleId"];
   if (
     JSON.stringify(Object.keys(value).sort()) !==
-      JSON.stringify(expectedKeys) ||
-    !/^[a-f0-9]{32}$/.test(String(value.cycleId ?? "")) ||
+      JSON.stringify(expectedKeys.sort()) ||
+    (cycleId !== null && !/^[a-f0-9]{32}$/.test(cycleId)) ||
     !/^[a-f0-9]{64}$/.test(String(value.continuationStateDigestSha256 ?? "")) ||
     nonNegativeInteger(value.acknowledgedPages) === null ||
     typeof value.productScanComplete !== "boolean" ||
@@ -807,7 +812,7 @@ function exactContinuationState(value) {
     return null;
   }
   return Object.freeze({
-    cycleId: value.cycleId,
+    ...(cycleId === null ? {} : { cycleId }),
     continuationStateDigestSha256: value.continuationStateDigestSha256,
     acknowledgedPages: value.acknowledgedPages,
     productScanComplete: value.productScanComplete,
@@ -1048,7 +1053,9 @@ async function runFullCatalogReconciliation({
       // authorization before invoking the continuation path.
       return Object.freeze({
         outcome: "continuation_authorization_required",
-        cycleId: recovery.cycleId,
+        ...(recovery.cycleId === undefined
+          ? {}
+          : { cycleId: recovery.cycleId }),
         continuationStateDigestSha256: recovery.continuationStateDigestSha256,
         acknowledgedPages: recovery.acknowledgedPages,
         productScanComplete: recovery.productScanComplete,

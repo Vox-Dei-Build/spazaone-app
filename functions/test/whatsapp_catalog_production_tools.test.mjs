@@ -220,7 +220,6 @@ test("reviewed reconciliation is inspection-only until exact continuation facts 
           return jsonResponse({
             outcome: "recovery_state",
             phase: "mappings",
-            cycleId,
             acknowledgedPages: 2,
             productScanComplete: true,
             mappingScanComplete: false,
@@ -238,7 +237,6 @@ test("reviewed reconciliation is inspection-only until exact continuation facts 
     assert.equal(requestBody.operation, "inspect_recovery");
     assert.deepEqual(recovery, {
       outcome: "continuation_authorization_required",
-      cycleId,
       continuationStateDigestSha256: continuationDigest,
       acknowledgedPages: 2,
       productScanComplete: true,
@@ -255,7 +253,6 @@ test("reviewed reconciliation is inspection-only until exact continuation facts 
       reconciliationClientOptions({
         reviewedResume: true,
         continuationState: {
-          cycleId,
           continuationStateDigestSha256: continuationDigest,
           acknowledgedPages: 2,
           productScanComplete: true,
@@ -276,6 +273,7 @@ test("reviewed reconciliation is inspection-only until exact continuation facts 
       bodies[0].expectedContinuationStateDigestSha256,
       continuationDigest,
     );
+    assert.equal(bodies[0].cycleId, undefined);
     assert.equal(artifact.kind, "spazaone_catalog_full_reconciliation");
   });
 });
