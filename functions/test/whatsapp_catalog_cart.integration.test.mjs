@@ -21,6 +21,7 @@ import {
   whatsappCatalogTargetConfigurationDigestSha256,
 } from "../lib/whatsapp/catalogProductionTarget.js";
 import { reconcileMerchantWhatsAppCatalogCompleteness } from "../lib/whatsapp/catalogCompleteness.js";
+import { enqueueMerchantProductCatalogSync } from "../lib/whatsapp/catalogQueue.js";
 import {
   WhatsAppCatalogCartValidationError,
   replaceWhatsAppCatalogCartAtomically,
@@ -318,6 +319,73 @@ const stabilityTargetEnvironment = Object.freeze({
   WHATSAPP_CATALOG_FULL_ROLLOUT_ENABLED: "true",
   WHATSAPP_CATALOG_CANARY_MERCHANT_IDS: "",
   WHATSAPP_PRODUCT_LIST_ENABLED: "false",
+});
+
+test("reconciliation revalidates only the exact legacy image-header block", async () => {
+  const productId = "image_header_recovery";
+  const merchant = {
+    name: "Synthetic Merchant",
+    buildNumber: 88,
+    whatsappOrdering: {
+      orderingUrl: "https://shop.example.test/synthetic-merchant",
+    },
+  };
+  const product = {
+    name: "Synthetic JPEG",
+    sellPriceMinor: 1_500,
+    imageUrl: "https://images.example.test/jpeg-with-alias.jpg",
+    whatsappListed: true,
+    quantity: 5,
+  };
+  const decision = buildMerchantCatalogDecision({
+    merchantId,
+    productId,
+    product,
+    merchant,
+  });
+  await Promise.all([
+    db.doc(`users/${merchantId}`).set(merchant),
+    db.doc(`users/${merchantId}/products/${productId}`).set(product),
+  ]);
+  assert.equal(
+    await enqueueMerchantProductCatalogSync({ merchantId, productId }),
+    "queued",
+  );
+  const mappingRef = db.doc(`whatsappCatalogMappings/${decision.retailerId}`);
+  const outboxRef = db.doc(`whatsappCatalogOutbox/${decision.retailerId}`);
+  await Promise.all([
+    mappingRef.update({
+      status: "blocked",
+      lastErrorCode: "IMAGE_CONTENT_TYPE_UNSUPPORTED",
+    }),
+    outboxRef.update({
+      status: "blocked",
+      lastErrorCode: "IMAGE_CONTENT_TYPE_UNSUPPORTED",
+    }),
+  ]);
+
+  assert.equal(
+    await enqueueMerchantProductCatalogSync({ merchantId, productId }),
+    "queued",
+  );
+  const [requeuedMapping, requeuedOutbox] = await Promise.all([
+    mappingRef.get(),
+    outboxRef.get(),
+  ]);
+  assert.equal(requeuedMapping.get("status"), "pending");
+  assert.equal(requeuedOutbox.get("status"), "pending");
+  assert.equal(requeuedOutbox.get("lastErrorCode"), null);
+  assert.equal(requeuedOutbox.get("attempts"), 0);
+
+  await Promise.all([
+    mappingRef.update({ status: "blocked", lastErrorCode: "OTHER_ERROR" }),
+    outboxRef.update({ status: "blocked", lastErrorCode: "OTHER_ERROR" }),
+  ]);
+  assert.equal(
+    await enqueueMerchantProductCatalogSync({ merchantId, productId }),
+    "unchanged",
+  );
+  assert.equal((await outboxRef.get()).get("status"), "blocked");
 });
 
 async function completeBoundSyntheticReconciliation() {

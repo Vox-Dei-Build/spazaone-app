@@ -22,6 +22,7 @@ import {
 } from "../lib/whatsapp/metaCatalogClient.js";
 import {
   classifyCatalogImageResponse,
+  detectedCatalogImageContentType,
   supportedCatalogImageContentType,
 } from "../lib/whatsapp/catalogImage.js";
 import { catalogRetryDelayMs } from "../lib/whatsapp/catalogWorker.js";
@@ -574,6 +575,35 @@ test("image validation accepts only successful HTTPS JPEG or PNG responses", () 
     true,
   );
   assert.equal(supportedCatalogImageContentType("image/webp"), false);
+  assert.equal(supportedCatalogImageContentType("image/jpg"), true);
+  assert.equal(
+    detectedCatalogImageContentType(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0])),
+    "image/jpeg",
+  );
+  assert.equal(
+    detectedCatalogImageContentType(
+      Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    ),
+    "image/png",
+  );
+  assert.equal(
+    classifyCatalogImageResponse({
+      status: 206,
+      contentType: "binary/octet-stream",
+      detectedContentType: "image/jpeg",
+      finalUrlIsHttps: true,
+    }).state,
+    "valid",
+  );
+  assert.equal(
+    classifyCatalogImageResponse({
+      status: 200,
+      contentType: "text/html",
+      detectedContentType: "image/jpeg",
+      finalUrlIsHttps: true,
+    }).state,
+    "invalid",
+  );
   assert.equal(
     classifyCatalogImageResponse({
       status: 200,

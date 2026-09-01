@@ -14,6 +14,7 @@ export const WHATSAPP_CATALOG_MAPPINGS = "whatsappCatalogMappings";
 
 type OutboxDocument = {
   status?: unknown;
+  lastErrorCode?: unknown;
   desiredRevision?: unknown;
   processingRevision?: unknown;
   lastAppliedRevision?: unknown;
@@ -86,10 +87,22 @@ export async function enqueueMerchantProductCatalogSync(input: {
     const outboxValue = outbox.data() as OutboxDocument | undefined;
     const now = FieldValue.serverTimestamp();
 
+    // A prior release rejected valid JPEG bytes when an origin used the
+    // common image/jpg alias or a generic binary header. Reconciliation may
+    // revalidate only that exact terminal failure; every other unchanged
+    // revision remains idempotent and untouched.
+    const revalidatableImageHeaderBlock =
+      decision.action === "upsert" &&
+      outboxValue?.status === "blocked" &&
+      outboxValue?.lastErrorCode === "IMAGE_CONTENT_TYPE_UNSUPPORTED" &&
+      mapping.data()?.status === "blocked" &&
+      mapping.data()?.lastErrorCode === "IMAGE_CONTENT_TYPE_UNSUPPORTED";
+
     if (!product.exists && !mapping.exists && !outbox.exists) return "skipped";
     if (
       outboxValue?.desiredRevision === decision.revision &&
-      mapping.data()?.desiredRevision === decision.revision
+      mapping.data()?.desiredRevision === decision.revision &&
+      !revalidatableImageHeaderBlock
     ) {
       return "unchanged";
     }

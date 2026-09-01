@@ -10,25 +10,57 @@ export function supportedCatalogImageContentType(value: unknown): boolean {
     .split(";")[0]
     .trim()
     .toLowerCase();
-  return type === "image/jpeg" || type === "image/png";
+  return type === "image/jpeg" || type === "image/jpg" || type === "image/png";
+}
+
+export function detectedCatalogImageContentType(
+  value: Uint8Array,
+): "image/jpeg" | "image/png" | "" {
+  if (
+    value.length >= 3 &&
+    value[0] === 0xff &&
+    value[1] === 0xd8 &&
+    value[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+  const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  return value.length >= png.length && png.every((byte, i) => value[i] === byte)
+    ? "image/png"
+    : "";
 }
 
 export function classifyCatalogImageResponse(input: {
   status: number;
   contentType: string;
   finalUrlIsHttps: boolean;
+  detectedContentType?: string;
 }): CatalogImageProbeResult {
   const contentType = input.contentType.split(";")[0].trim().toLowerCase();
+  const genericBinary =
+    !contentType ||
+    contentType === "application/octet-stream" ||
+    contentType === "binary/octet-stream";
+  const detectedContentType = genericBinary
+    ? String(input.detectedContentType ?? "")
+    : "";
+  const effectiveContentType = supportedCatalogImageContentType(contentType)
+    ? contentType === "image/jpg"
+      ? "image/jpeg"
+      : contentType
+    : supportedCatalogImageContentType(detectedContentType)
+      ? detectedContentType
+      : "";
   if (
     input.finalUrlIsHttps &&
     input.status >= 200 &&
     input.status < 300 &&
-    supportedCatalogImageContentType(contentType)
+    effectiveContentType
   ) {
     return {
       state: "valid",
       code: "IMAGE_OK",
-      contentType,
+      contentType: effectiveContentType,
       httpStatus: input.status,
     };
   }
@@ -71,7 +103,22 @@ async function imageRequest(
       signal: controller.signal,
       headers: method === "GET" ? { Range: "bytes=0-2047" } : undefined,
     });
-    if (response.body) await response.body.cancel().catch(() => undefined);
+    let detectedContentType = "";
+    if (response.body) {
+      if (method === "GET") {
+        const reader = response.body.getReader();
+        try {
+          const first = await reader.read();
+          detectedContentType = detectedCatalogImageContentType(
+            first.value ?? new Uint8Array(),
+          );
+        } finally {
+          await reader.cancel().catch(() => undefined);
+        }
+      } else {
+        await response.body.cancel().catch(() => undefined);
+      }
+    }
     let finalUrlIsHttps = false;
     try {
       finalUrlIsHttps = new URL(response.url).protocol === "https:";
@@ -82,6 +129,7 @@ async function imageRequest(
       status: response.status,
       contentType: response.headers.get("content-type") ?? "",
       finalUrlIsHttps,
+      detectedContentType,
     });
   } catch (_) {
     return {
