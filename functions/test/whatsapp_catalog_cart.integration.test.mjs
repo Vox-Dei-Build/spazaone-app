@@ -86,6 +86,7 @@ async function clear() {
     "whatsappCatalogOutbox",
     "whatsappCatalogSyncState",
     "whatsappCatalogReconciliationRuns",
+    "whatsappCatalogReconciliationDeploymentHandoffs",
     "whatsappCatalogCartReplacements",
     "whatsappCatalogCartStates",
     "merchantCommerceSettings",
@@ -996,6 +997,105 @@ test("full reconciliation resumes across products and mappings, then rechecks af
       assert.equal(duplicate.completionDigest, page.completionDigest);
     },
   );
+});
+
+test("deployment handoff atomically preserves a stranded cycle and changes only its bound revision", async () => {
+  await withEnvironment(stabilityTargetEnvironment, async () => {
+    const priorCommit = "d".repeat(40);
+    let priorBinding;
+    let priorRecovery;
+    await withEnvironment({ BUILD_COMMIT: priorCommit }, async () => {
+      priorBinding = currentWhatsAppCatalogDeploymentBinding();
+      await runWhatsAppCatalogFullReconciliationPage({
+        pageSize: 200,
+        deploymentBinding: priorBinding,
+      });
+      const response = await invokeReconciliationOperator({
+        operation: "inspect_recovery",
+        expectedAppCommit: priorCommit,
+        expectedTargetConfigurationDigestSha256:
+          priorBinding.targetConfigurationDigestSha256,
+      });
+      assert.equal(response.status, 200, JSON.stringify(response.body));
+      priorRecovery = response.body;
+    });
+
+    const currentBinding = currentWhatsAppCatalogDeploymentBinding();
+    assert.equal(currentBinding.deployedAppCommit, stabilityAppCommit);
+    assert.equal(
+      currentBinding.targetConfigurationDigestSha256,
+      priorBinding.targetConfigurationDigestSha256,
+    );
+    const handoff = await invokeReconciliationOperator({
+      operation: "handoff_recovery",
+      expectedAppCommit: stabilityAppCommit,
+      expectedTargetConfigurationDigestSha256:
+        currentBinding.targetConfigurationDigestSha256,
+      expectedPriorAppCommit: priorCommit,
+      expectedPriorContinuationStateDigestSha256:
+        priorRecovery.continuationStateDigestSha256,
+    });
+    assert.equal(handoff.status, 200, JSON.stringify(handoff.body));
+    assert.equal(handoff.body.outcome, "recovery_handed_off");
+    assert.equal(handoff.body.priorDeployedAppCommit, priorCommit);
+    assert.equal(handoff.body.deployedAppCommit, stabilityAppCommit);
+    assert.equal(handoff.body.phase, priorRecovery.phase);
+    assert.equal(
+      handoff.body.acknowledgedPages,
+      priorRecovery.acknowledgedPages,
+    );
+    assert.match(handoff.body.continuationStateDigestSha256, /^[a-f0-9]{64}$/);
+    assert.notEqual(
+      handoff.body.continuationStateDigestSha256,
+      priorRecovery.continuationStateDigestSha256,
+    );
+    assert.match(handoff.body.handoffReceiptSha256, /^[a-f0-9]{64}$/);
+    assert.equal(handoff.body.cycleId, undefined);
+    assert.doesNotMatch(JSON.stringify(handoff.body), /users\//);
+
+    const [state, runs, handoffs, products, outbox] = await Promise.all([
+      db.doc("whatsappCatalogSyncState/fullProductReconciliation").get(),
+      db.collection("whatsappCatalogReconciliationRuns").get(),
+      db.collection("whatsappCatalogReconciliationDeploymentHandoffs").get(),
+      db.collectionGroup("products").get(),
+      db.collection("whatsappCatalogOutbox").get(),
+    ]);
+    assert.equal(state.get("deployedAppCommit"), stabilityAppCommit);
+    assert.equal(runs.size, 1);
+    assert.equal(runs.docs[0].get("deployedAppCommit"), stabilityAppCommit);
+    assert.equal(handoffs.size, 1);
+    assert.equal(handoffs.docs[0].get("priorDeployedAppCommit"), priorCommit);
+    assert.equal(handoffs.docs[0].get("deployedAppCommit"), stabilityAppCommit);
+    assert.equal(products.size, 0);
+    assert.equal(outbox.size, 0);
+
+    const recovery = await invokeReconciliationOperator({
+      operation: "inspect_recovery",
+      expectedAppCommit: stabilityAppCommit,
+      expectedTargetConfigurationDigestSha256:
+        currentBinding.targetConfigurationDigestSha256,
+    });
+    assert.equal(recovery.status, 200, JSON.stringify(recovery.body));
+    assert.equal(
+      recovery.body.continuationStateDigestSha256,
+      handoff.body.continuationStateDigestSha256,
+    );
+
+    const replay = await invokeReconciliationOperator({
+      operation: "handoff_recovery",
+      expectedAppCommit: stabilityAppCommit,
+      expectedTargetConfigurationDigestSha256:
+        currentBinding.targetConfigurationDigestSha256,
+      expectedPriorAppCommit: priorCommit,
+      expectedPriorContinuationStateDigestSha256:
+        priorRecovery.continuationStateDigestSha256,
+    });
+    assert.equal(replay.status, 409);
+    assert.equal(
+      replay.body.code,
+      "RECONCILIATION_DEPLOYMENT_BINDING_MISMATCH",
+    );
+  });
 });
 
 test("authenticated current-stability inspection is fresh, redacted, and performs zero writes", async () => {

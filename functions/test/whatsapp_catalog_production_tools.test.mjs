@@ -69,6 +69,7 @@ import {
   WHATSAPP_CATALOG_RECEIPT_MAX_FUTURE_SKEW_MS,
   assertWhatsAppCatalogMutationEvidenceWithinLimit,
   continueBoundWhatsAppCatalogFullReconciliationPage,
+  handoffBoundWhatsAppCatalogReconciliationDeployment,
   inspectBoundWhatsAppCatalogCurrentStability,
   inspectBoundWhatsAppCatalogReconciliationRecovery,
   runWhatsAppCatalogFullReconciliationBotHttp,
@@ -698,6 +699,71 @@ test("a new deployment cannot adopt a stranded cycle from an old binding", async
       ),
       /RECONCILIATION_DEPLOYMENT_BINDING_MISMATCH/,
     );
+  });
+});
+
+test("an explicit recovery handoff transfers only the deployment commit and opaque continuation", async () => {
+  await withProductionTargetEnvironment({}, async () => {
+    const priorCommit = "d".repeat(40);
+    const nextDigest = "8".repeat(64);
+    const receipt = "9".repeat(64);
+    let writes = 0;
+    const result = await handoffBoundWhatsAppCatalogReconciliationDeployment(
+      {
+        expectedAppCommit: commit,
+        expectedTargetConfigurationDigestSha256: targetDigest,
+        expectedPriorAppCommit: priorCommit,
+        expectedPriorContinuationStateDigestSha256: continuationDigest,
+      },
+      async (input) => {
+        writes += 1;
+        assert.deepEqual(input.priorBinding, {
+          ...productionBinding,
+          deployedAppCommit: priorCommit,
+        });
+        assert.deepEqual(input.deploymentBinding, productionBinding);
+        assert.equal(
+          input.expectedPriorContinuationStateDigestSha256,
+          continuationDigest,
+        );
+        return {
+          outcome: "recovery_handed_off",
+          priorDeployedAppCommit: priorCommit,
+          phase: "products",
+          acknowledgedPages: 911,
+          productScanComplete: false,
+          mappingScanComplete: false,
+          continuationStateDigestSha256: nextDigest,
+          handoffReceiptSha256: receipt,
+          ...productionBinding,
+        };
+      },
+    );
+    assert.equal(writes, 1);
+    assert.equal(result.priorDeployedAppCommit, priorCommit);
+    assert.equal(result.deployedAppCommit, commit);
+    assert.equal(result.acknowledgedPages, 911);
+    assert.equal(result.continuationStateDigestSha256, nextDigest);
+    assert.equal(result.handoffReceiptSha256, receipt);
+    assert.doesNotMatch(JSON.stringify(result), /users\//);
+
+    writes = 0;
+    await assert.rejects(
+      handoffBoundWhatsAppCatalogReconciliationDeployment(
+        {
+          expectedAppCommit: commit,
+          expectedTargetConfigurationDigestSha256: targetDigest,
+          expectedPriorAppCommit: commit,
+          expectedPriorContinuationStateDigestSha256: continuationDigest,
+        },
+        async () => {
+          writes += 1;
+          throw new Error("must not write");
+        },
+      ),
+      (error) => error.code === "RECONCILIATION_HANDOFF_EXPECTATION_INVALID",
+    );
+    assert.equal(writes, 0);
   });
 });
 

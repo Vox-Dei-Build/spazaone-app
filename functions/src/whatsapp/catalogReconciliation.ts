@@ -25,6 +25,8 @@ const RECONCILIATION_STATE_PATH =
   "whatsappCatalogSyncState/productReconciliation";
 const FULL_RECONCILIATION_STATE_PATH =
   "whatsappCatalogSyncState/fullProductReconciliation";
+const RECONCILIATION_DEPLOYMENT_HANDOFFS =
+  "whatsappCatalogReconciliationDeploymentHandoffs";
 const RECONCILIATION_RUN_CLEANUP_STATE_PATH =
   "whatsappCatalogSyncState/reconciliationRunCleanup";
 export const WHATSAPP_CATALOG_RECONCILIATION_RUNS =
@@ -219,6 +221,7 @@ export class WhatsAppCatalogFullReconciliationError extends Error {
       | "RECONCILIATION_EVIDENCE_LIMIT_EXCEEDED"
       | "RECONCILIATION_RECOVERY_NOT_AVAILABLE"
       | "RECONCILIATION_RECOVERY_DIGEST_MISMATCH"
+      | "RECONCILIATION_HANDOFF_EXPECTATION_INVALID"
       | "RECONCILIATION_CURRENT_STABILITY_EXPECTATION_INVALID"
       | "RECONCILIATION_CURRENT_STABILITY_NOT_AVAILABLE"
       | "RECONCILIATION_CURRENT_STABILITY_STALE",
@@ -1654,6 +1657,18 @@ type WhatsAppCatalogRecoveryState = {
   continuationStateDigestSha256: string;
 };
 
+export type WhatsAppCatalogReconciliationDeploymentHandoff =
+  WhatsAppCatalogDeploymentBinding & {
+    outcome: "recovery_handed_off";
+    priorDeployedAppCommit: string;
+    phase: Exclude<FullReconciliationPhase, "complete">;
+    acknowledgedPages: number;
+    productScanComplete: boolean;
+    mappingScanComplete: boolean;
+    continuationStateDigestSha256: string;
+    handoffReceiptSha256: string;
+  };
+
 function continuationStateDigest(
   binding: WhatsAppCatalogDeploymentBinding,
   state: Omit<WhatsAppCatalogRecoveryState, "continuationStateDigestSha256">,
@@ -1680,6 +1695,50 @@ function continuationStateDigest(
       }),
     )
     .digest("hex");
+}
+
+function runningRecoverySnapshot(
+  binding: WhatsAppCatalogDeploymentBinding,
+  rawState: Record<string, unknown>,
+  rawRun: Record<string, unknown>,
+): Omit<WhatsAppCatalogRecoveryState, "continuationStateDigestSha256"> {
+  const state = currentRunState(rawState);
+  const run = currentRunState(rawRun);
+  const pageSize = Number(rawRun.pageSize);
+  if (
+    rawState.schemaVersion !== 1 ||
+    rawRun.schemaVersion !== 1 ||
+    state.status !== "running" ||
+    run.status !== "running" ||
+    !["products", "mappings", "verify"].includes(state.phase) ||
+    state.phase !== run.phase ||
+    !/^[a-f0-9]{32}$/.test(state.cycleId) ||
+    state.cycleId !== run.cycleId ||
+    state.cursorPath !== run.cursorPath ||
+    state.pages !== run.pages ||
+    !Number.isSafeInteger(state.pages) ||
+    state.pages < 0 ||
+    !Number.isSafeInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > FULL_RECONCILIATION_MAX_PAGE_SIZE ||
+    Number(rawState.cycleStartedAtMs) !== Number(rawRun.cycleStartedAtMs)
+  ) {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "RECONCILIATION_RECOVERY_NOT_AVAILABLE",
+    );
+  }
+  assertPersistedDeploymentBinding(rawState, rawRun, binding);
+  return {
+    deploymentBinding: binding,
+    status: "running",
+    cycleId: state.cycleId,
+    cursorPath: state.cursorPath,
+    phase: state.phase as Exclude<FullReconciliationPhase, "complete">,
+    pages: state.pages,
+    pageSize,
+    productScanComplete: state.phase !== "products",
+    mappingScanComplete: state.phase === "verify",
+  };
 }
 
 async function currentRecoveryState(
@@ -1821,6 +1880,236 @@ async function currentRecoveryState(
     ...snapshot,
     continuationStateDigestSha256: continuationStateDigest(binding, snapshot),
   };
+}
+
+type WhatsAppCatalogReconciliationDeploymentHandoffWriter = (input: {
+  priorBinding: WhatsAppCatalogDeploymentBinding;
+  deploymentBinding: WhatsAppCatalogDeploymentBinding;
+  expectedPriorContinuationStateDigestSha256: string;
+}) => Promise<WhatsAppCatalogReconciliationDeploymentHandoff>;
+
+async function handoffCurrentWhatsAppCatalogReconciliationDeployment(input: {
+  priorBinding: WhatsAppCatalogDeploymentBinding;
+  deploymentBinding: WhatsAppCatalogDeploymentBinding;
+  expectedPriorContinuationStateDigestSha256: string;
+}): Promise<WhatsAppCatalogReconciliationDeploymentHandoff> {
+  const config = whatsappCatalogRuntimeConfig();
+  if (
+    !config.queueEnabled ||
+    !config.syncEnabled ||
+    !config.fullRolloutEnabled
+  ) {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "FULL_SYNC_SCOPE_REQUIRED",
+    );
+  }
+  if (
+    String(process.env.WHATSAPP_PRODUCT_LIST_ENABLED ?? "")
+      .trim()
+      .toLowerCase() === "true"
+  ) {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "DELIVERY_MUST_BE_DISABLED",
+    );
+  }
+
+  const prior = await currentRecoveryState(input.priorBinding);
+  if (prior.status !== "running") {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "RECONCILIATION_RECOVERY_NOT_AVAILABLE",
+    );
+  }
+  if (
+    prior.continuationStateDigestSha256 !==
+    input.expectedPriorContinuationStateDigestSha256
+  ) {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "RECONCILIATION_RECOVERY_DIGEST_MISMATCH",
+    );
+  }
+
+  const stateRef = db.doc(FULL_RECONCILIATION_STATE_PATH);
+  const runRef = db.doc(
+    `${WHATSAPP_CATALOG_RECONCILIATION_RUNS}/${prior.cycleId}`,
+  );
+  const handoffReceiptSha256 = createHash("sha256")
+    .update(
+      JSON.stringify({
+        schemaVersion: 1,
+        cycleId: prior.cycleId,
+        priorDeployedAppCommit: input.priorBinding.deployedAppCommit,
+        deployedAppCommit: input.deploymentBinding.deployedAppCommit,
+        targetConfigurationDigestSha256:
+          input.deploymentBinding.targetConfigurationDigestSha256,
+        firebaseProjectId: input.deploymentBinding.firebaseProjectId,
+        catalogId: input.deploymentBinding.catalogId,
+        senderPhoneNumberId: input.deploymentBinding.senderPhoneNumberId,
+        expectedPriorContinuationStateDigestSha256:
+          input.expectedPriorContinuationStateDigestSha256,
+        phase: prior.phase,
+        acknowledgedPages: prior.pages,
+      }),
+    )
+    .digest("hex");
+  const handoffRef = db.doc(
+    `${RECONCILIATION_DEPLOYMENT_HANDOFFS}/${handoffReceiptSha256}`,
+  );
+
+  await db.runTransaction(async (transaction) => {
+    const [stateDocument, runDocument, handoffDocument] = await Promise.all([
+      transaction.get(stateRef),
+      transaction.get(runRef),
+      transaction.get(handoffRef),
+    ]);
+    if (
+      !stateDocument.exists ||
+      !runDocument.exists ||
+      handoffDocument.exists
+    ) {
+      throw new WhatsAppCatalogFullReconciliationError(
+        "RECONCILIATION_RECOVERY_NOT_AVAILABLE",
+      );
+    }
+    const rawState = stateDocument.data() ?? {};
+    const rawRun = runDocument.data() ?? {};
+    const transactional = runningRecoverySnapshot(
+      input.priorBinding,
+      rawState,
+      rawRun,
+    );
+    if (
+      transactional.cycleId !== prior.cycleId ||
+      transactional.cursorPath !== prior.cursorPath ||
+      transactional.phase !== prior.phase ||
+      transactional.pages !== prior.pages ||
+      transactional.pageSize !== prior.pageSize ||
+      continuationStateDigest(input.priorBinding, transactional) !==
+        input.expectedPriorContinuationStateDigestSha256
+    ) {
+      throw new WhatsAppCatalogFullReconciliationError(
+        "RECONCILIATION_RECOVERY_DIGEST_MISMATCH",
+      );
+    }
+
+    const handoffAtMs = Math.max(
+      stateDocument.readTime.toMillis(),
+      runDocument.readTime.toMillis(),
+    );
+    const handoffEvidence = {
+      schemaVersion: 1,
+      cycleId: prior.cycleId,
+      priorDeployedAppCommit: input.priorBinding.deployedAppCommit,
+      deployedAppCommit: input.deploymentBinding.deployedAppCommit,
+      targetConfigurationDigestSha256:
+        input.deploymentBinding.targetConfigurationDigestSha256,
+      firebaseProjectId: input.deploymentBinding.firebaseProjectId,
+      catalogId: input.deploymentBinding.catalogId,
+      senderPhoneNumberId: input.deploymentBinding.senderPhoneNumberId,
+      priorContinuationStateDigestSha256:
+        input.expectedPriorContinuationStateDigestSha256,
+      handoffReceiptSha256,
+      reason: "terminal_outbox_status_domain_correction",
+      phase: prior.phase,
+      acknowledgedPages: prior.pages,
+      handoffAt: FieldValue.serverTimestamp(),
+      handoffAtMs,
+    };
+    const rebound = {
+      ...persistedDeploymentBinding(input.deploymentBinding),
+      latestDeploymentHandoffReceiptSha256: handoffReceiptSha256,
+      deploymentHandoffAt: FieldValue.serverTimestamp(),
+      deploymentHandoffAtMs: handoffAtMs,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedAtMs: handoffAtMs,
+    };
+    transaction.set(stateRef, rebound, { merge: true });
+    transaction.set(runRef, rebound, { merge: true });
+    transaction.create(handoffRef, handoffEvidence);
+  });
+
+  const rebound = await currentRecoveryState(input.deploymentBinding);
+  if (
+    rebound.status !== "running" ||
+    rebound.cycleId !== prior.cycleId ||
+    rebound.cursorPath !== prior.cursorPath ||
+    rebound.phase !== prior.phase ||
+    rebound.pages !== prior.pages ||
+    rebound.pageSize !== prior.pageSize
+  ) {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "RECONCILIATION_RECOVERY_NOT_AVAILABLE",
+    );
+  }
+  return {
+    outcome: "recovery_handed_off",
+    priorDeployedAppCommit: input.priorBinding.deployedAppCommit,
+    phase: rebound.phase as Exclude<FullReconciliationPhase, "complete">,
+    acknowledgedPages: rebound.pages,
+    productScanComplete: rebound.productScanComplete,
+    mappingScanComplete: rebound.mappingScanComplete,
+    continuationStateDigestSha256: rebound.continuationStateDigestSha256,
+    handoffReceiptSha256,
+    ...input.deploymentBinding,
+  };
+}
+
+/**
+ * One-time, fail-closed transfer of an unfinished reconciliation to the exact
+ * deployed corrective revision. Provider target identity, cursor, counters,
+ * and cycle evidence stay unchanged; only the deployment binding is replaced.
+ */
+export async function handoffBoundWhatsAppCatalogReconciliationDeployment(
+  input: {
+    expectedAppCommit: unknown;
+    expectedTargetConfigurationDigestSha256: unknown;
+    expectedPriorAppCommit: unknown;
+    expectedPriorContinuationStateDigestSha256: unknown;
+  },
+  writeHandoff: WhatsAppCatalogReconciliationDeploymentHandoffWriter = handoffCurrentWhatsAppCatalogReconciliationDeployment,
+): Promise<WhatsAppCatalogReconciliationDeploymentHandoff> {
+  const deploymentBinding = assertWhatsAppCatalogDeploymentBinding(input);
+  const priorDeployedAppCommit = text(input.expectedPriorAppCommit);
+  const expectedPriorContinuationStateDigestSha256 = text(
+    input.expectedPriorContinuationStateDigestSha256,
+  );
+  if (
+    !/^[a-f0-9]{40}$/.test(priorDeployedAppCommit) ||
+    priorDeployedAppCommit === deploymentBinding.deployedAppCommit ||
+    !/^[a-f0-9]{64}$/.test(expectedPriorContinuationStateDigestSha256)
+  ) {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "RECONCILIATION_HANDOFF_EXPECTATION_INVALID",
+    );
+  }
+  const priorBinding = {
+    ...deploymentBinding,
+    deployedAppCommit: priorDeployedAppCommit,
+  };
+  const result = await writeHandoff({
+    priorBinding,
+    deploymentBinding,
+    expectedPriorContinuationStateDigestSha256,
+  });
+  if (
+    result.outcome !== "recovery_handed_off" ||
+    result.priorDeployedAppCommit !== priorDeployedAppCommit ||
+    result.deployedAppCommit !== deploymentBinding.deployedAppCommit ||
+    result.targetConfigurationDigestSha256 !==
+      deploymentBinding.targetConfigurationDigestSha256 ||
+    result.firebaseProjectId !== deploymentBinding.firebaseProjectId ||
+    result.catalogId !== deploymentBinding.catalogId ||
+    result.senderPhoneNumberId !== deploymentBinding.senderPhoneNumberId ||
+    !["products", "mappings", "verify"].includes(result.phase) ||
+    !Number.isSafeInteger(result.acknowledgedPages) ||
+    result.acknowledgedPages < 0 ||
+    !/^[a-f0-9]{64}$/.test(result.continuationStateDigestSha256) ||
+    !/^[a-f0-9]{64}$/.test(result.handoffReceiptSha256)
+  ) {
+    throw new WhatsAppCatalogFullReconciliationError(
+      "RECONCILIATION_RECOVERY_NOT_AVAILABLE",
+    );
+  }
+  return result;
 }
 
 type WhatsAppCatalogRecoveryStateReader = (
@@ -2430,6 +2719,17 @@ export const runWhatsAppCatalogFullReconciliationBotHttp = functions
             req.body?.expectedMutationGenerationDigestSha256,
         });
         res.status(200).json(current);
+        return;
+      }
+      if (operation === "handoff_recovery") {
+        const handoff =
+          await handoffBoundWhatsAppCatalogReconciliationDeployment({
+            ...binding,
+            expectedPriorAppCommit: req.body?.expectedPriorAppCommit,
+            expectedPriorContinuationStateDigestSha256:
+              req.body?.expectedPriorContinuationStateDigestSha256,
+          });
+        res.status(200).json(handoff);
         return;
       }
       const result =
