@@ -388,6 +388,54 @@ test("reconciliation revalidates only the exact legacy image-header block", asyn
   assert.equal((await outboxRef.get()).get("status"), "blocked");
 });
 
+test("mapping-only local terminal decisions remain idempotent", async () => {
+  const productId = "local_terminal_mapping";
+  const merchant = {
+    name: "Synthetic Merchant",
+    buildNumber: 88,
+    whatsappOrdering: {
+      orderingUrl: "https://shop.example.test/synthetic-merchant",
+    },
+  };
+  const product = {
+    name: "Synthetic Product Without Image",
+    sellPriceMinor: 1_500,
+    whatsappListed: true,
+    quantity: 5,
+  };
+  const decision = buildMerchantCatalogDecision({
+    merchantId,
+    productId,
+    product,
+    merchant,
+  });
+  assert.equal(decision.action, "delete");
+  await Promise.all([
+    db.doc(`users/${merchantId}`).set(merchant),
+    db.doc(`users/${merchantId}/products/${productId}`).set(product),
+  ]);
+
+  assert.equal(
+    await enqueueMerchantProductCatalogSync({ merchantId, productId }),
+    "blocked",
+  );
+  const mappingRef = db.doc(`whatsappCatalogMappings/${decision.retailerId}`);
+  const outboxRef = db.doc(`whatsappCatalogOutbox/${decision.retailerId}`);
+  const firstMapping = await mappingRef.get();
+  assert.equal(firstMapping.get("status"), "blocked");
+  assert.equal((await outboxRef.get()).exists, false);
+
+  assert.equal(
+    await enqueueMerchantProductCatalogSync({ merchantId, productId }),
+    "unchanged",
+  );
+  const secondMapping = await mappingRef.get();
+  assert.equal(
+    secondMapping.updateTime.toMillis(),
+    firstMapping.updateTime.toMillis(),
+  );
+});
+
 async function completeBoundSyntheticReconciliation() {
   const binding = currentWhatsAppCatalogDeploymentBinding();
   assert.equal(

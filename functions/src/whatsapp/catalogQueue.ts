@@ -85,6 +85,7 @@ export async function enqueueMerchantProductCatalogSync(input: {
       tx.get(mappingRef),
     ]);
     const outboxValue = outbox.data() as OutboxDocument | undefined;
+    const mappingValue = mapping.data();
     const now = FieldValue.serverTimestamp();
 
     // A prior release rejected valid JPEG bytes when an origin used the
@@ -95,14 +96,26 @@ export async function enqueueMerchantProductCatalogSync(input: {
       decision.action === "upsert" &&
       outboxValue?.status === "blocked" &&
       outboxValue?.lastErrorCode === "IMAGE_CONTENT_TYPE_UNSUPPORTED" &&
-      mapping.data()?.status === "blocked" &&
-      mapping.data()?.lastErrorCode === "IMAGE_CONTENT_TYPE_UNSUPPORTED";
+      mappingValue?.status === "blocked" &&
+      mappingValue?.lastErrorCode === "IMAGE_CONTENT_TYPE_UNSUPPORTED";
+
+    // A locally ineligible product has no provider mutation and therefore may
+    // correctly have no outbox document. Treat its exact terminal mapping as
+    // unchanged; otherwise every reconciliation pass rewrites the mapping and
+    // makes the production stability barrier impossible to satisfy.
+    const unchangedLocalTerminalMapping =
+      decision.action === "delete" &&
+      !outbox.exists &&
+      mappingValue?.desiredRevision === decision.revision &&
+      mappingValue?.status === (product.exists ? "blocked" : "deleted") &&
+      !providerMayContainItem(mapping, outbox);
 
     if (!product.exists && !mapping.exists && !outbox.exists) return "skipped";
     if (
-      outboxValue?.desiredRevision === decision.revision &&
-      mapping.data()?.desiredRevision === decision.revision &&
-      !revalidatableImageHeaderBlock
+      (outboxValue?.desiredRevision === decision.revision &&
+        mappingValue?.desiredRevision === decision.revision &&
+        !revalidatableImageHeaderBlock) ||
+      unchangedLocalTerminalMapping
     ) {
       return "unchanged";
     }
