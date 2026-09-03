@@ -726,9 +726,9 @@ test("catalog provider gates fail closed and cap a batch at ten", () => {
   );
 });
 
-test("native product list sends exactly ten merchant retailer IDs in one payload", () => {
+test("native product list sends thirty merchant retailer IDs in one payload", () => {
   const ids = Array.from(
-    { length: 10 },
+    { length: 30 },
     (_, index) => `spz_${String(index).padStart(32, "0")}`,
   );
   const payload = buildMetaWhatsAppProductListPayload({
@@ -751,6 +751,15 @@ test("native product list sends exactly ten merchant retailer IDs in one payload
         recipient: "+27821234567",
         catalogId: "1234567890",
         productRetailerIds: ids.slice(0, 1),
+      }),
+    /WHATSAPP_PRODUCT_LIST_ITEMS_INVALID/,
+  );
+  assert.throws(
+    () =>
+      buildMetaWhatsAppProductListPayload({
+        recipient: "+27821234567",
+        catalogId: "1234567890",
+        productRetailerIds: [...ids, `spz_${"f".repeat(32)}`],
       }),
     /WHATSAPP_PRODUCT_LIST_ITEMS_INVALID/,
   );
@@ -833,15 +842,15 @@ test("catalog paging covers boundary counts without duplicates or skips", () => 
     assert.equal(decision.outcome, "fallback", `count=${count}`);
     assert.equal(decision.reason, "fewer_than_five_ready_products");
   }
-  for (const count of [5, 9, 10]) {
+  for (const count of [5, 9, 10, 11, 22, 30]) {
     const decision = selectNativeCatalogPage({ items: items(count), page: 0 });
     assert.equal(decision.outcome, "ready", `count=${count}`);
-    assert.equal(decision.format, "product_carousel");
+    assert.equal(decision.format, "product_list");
     assert.equal(decision.items.length, count);
     assert.equal(decision.pageCount, 1);
   }
 
-  for (const count of [11, 22]) {
+  for (const count of [31, 60, 61]) {
     const all = items(count);
     const first = selectNativeCatalogPage({ items: all, page: 0 });
     assert.equal(first.outcome, "ready");
@@ -865,13 +874,13 @@ test("catalog paging covers boundary counts without duplicates or skips", () => 
     assert.equal(new Set(flattened).size, count);
     assert.equal(
       pages.at(-1).format,
-      count === 11 ? "single_product" : "product_carousel",
+      count % 30 === 1 ? "single_product" : "product_list",
     );
   }
 });
 
 test("continuation pages require the unchanged ordered catalog version", () => {
-  const items = Array.from({ length: 11 }, (_, index) => ({
+  const items = Array.from({ length: 31 }, (_, index) => ({
     retailerId: `spz_${String(index).padStart(32, "0")}`,
     lastAppliedRevision: String(index).padStart(64, "b"),
   }));
@@ -893,7 +902,7 @@ test("continuation pages require the unchanged ordered catalog version", () => {
     "catalog_changed",
   );
   const changed = items.map((item, index) =>
-    index === 10 ? { ...item, lastAppliedRevision: "d".repeat(64) } : item,
+    index === 30 ? { ...item, lastAppliedRevision: "d".repeat(64) } : item,
   );
   assert.notEqual(orderedCatalogVersion(changed), version);
   assert.equal(
@@ -927,7 +936,7 @@ test("a pending unrelated product gates only a new catalogue session", () => {
   const merchant = {
     whatsappOrdering: { orderingUrl: "https://shop.example.test/merchant-a" },
   };
-  const products = Array.from({ length: 12 }, (_, index) => ({
+  const products = Array.from({ length: 32 }, (_, index) => ({
     id: `product_${index + 1}`,
     data: {
       ...product,
@@ -944,7 +953,7 @@ test("a pending unrelated product gates only a new catalogue session", () => {
       merchant,
     }),
   );
-  const visible = decisions.slice(0, 11).map((decision) => ({
+  const visible = decisions.slice(0, 31).map((decision) => ({
     retailerId: decision.retailerId,
     lastAppliedRevision: decision.revision,
   }));
@@ -952,7 +961,7 @@ test("a pending unrelated product gates only a new catalogue session", () => {
     merchantId,
     merchant,
     products,
-    mappings: decisions.slice(0, 11).map((decision, index) => ({
+    mappings: decisions.slice(0, 31).map((decision, index) => ({
       merchantId,
       productId: products[index].id,
       retailerId: decision.retailerId,
@@ -1116,7 +1125,7 @@ test("native carousel transport performs one provider call and stores one wamid"
 
 test("native Meta transport makes one request and accepts one wamid", async () => {
   const ids = Array.from(
-    { length: 10 },
+    { length: 22 },
     (_, index) => `spz_${String(index).padStart(32, "0")}`,
   );
   const payload = buildMetaWhatsAppProductListPayload({
@@ -1157,7 +1166,10 @@ test("native Meta transport makes one request and accepts one wamid", async () =
   );
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /\/9876543210\/messages$/);
-  assert.equal(JSON.parse(calls[0].init.body).type, "interactive");
+  const sent = JSON.parse(calls[0].init.body);
+  assert.equal(sent.type, "interactive");
+  assert.equal(sent.interactive.type, "product_list");
+  assert.equal(sent.interactive.action.sections[0].product_items.length, 22);
 });
 
 test("definite carousel rejection uses one product-list fallback, but ambiguity does not", async () => {
@@ -1220,6 +1232,80 @@ test("definite carousel rejection uses one product-list fallback, but ambiguity 
           config,
           primaryPayload,
           productListFallbackPayload,
+          fetchImpl: async () => {
+            ambiguousCalls += 1;
+            return new Response(JSON.stringify({ error: { code: 2 } }), {
+              status: 503,
+            });
+          },
+        }),
+        (error) => error.ambiguous === true,
+      );
+      assert.equal(ambiguousCalls, 1);
+    },
+  );
+});
+
+test("product list is primary and a small list uses one carousel only after definite rejection", async () => {
+  const ids = Array.from(
+    { length: 5 },
+    (_, index) => `spz_${String(index).padStart(32, "0")}`,
+  );
+  const config = {
+    environment: "development",
+    enabled: true,
+    providerMode: "test",
+    catalogId: "1234567890",
+    phoneNumberId: "9876543210",
+    graphApiVersion: "v25.0",
+    canaryMerchantIds: new Set(["merchant_a"]),
+    recipientCooldownMs: 7_000,
+    pairLimitPauseMs: 86_400_000,
+    maxAttempts: 3,
+  };
+  const primaryPayload = buildMetaWhatsAppProductListPayload({
+    recipient: "+27821234567",
+    catalogId: config.catalogId,
+    productRetailerIds: ids,
+  });
+  const carouselFallbackPayload = buildMetaWhatsAppProductCarouselPayload({
+    recipient: "+27821234567",
+    catalogId: config.catalogId,
+    productRetailerIds: ids,
+  });
+  await withEnvironmentAsync(
+    { META_WHATSAPP_ACCESS_TOKEN: "test-only-token" },
+    async () => {
+      const calls = [];
+      const accepted = await sendMetaWhatsAppCatalogWithFallback({
+        config,
+        primaryPayload,
+        carouselFallbackPayload,
+        fetchImpl: async (_url, init) => {
+          calls.push(JSON.parse(init.body).interactive.type);
+          return calls.length === 1
+            ? new Response(JSON.stringify({ error: { code: 131009 } }), {
+                status: 400,
+              })
+            : new Response(
+                JSON.stringify({ messages: [{ id: "wamid.carousel-fallback" }] }),
+                { status: 200 },
+              );
+        },
+      });
+      assert.deepEqual(calls, ["product_list", "carousel"]);
+      assert.deepEqual(accepted, {
+        wamid: "wamid.carousel-fallback",
+        format: "product_carousel",
+        providerRequests: 2,
+      });
+
+      let ambiguousCalls = 0;
+      await assert.rejects(
+        sendMetaWhatsAppCatalogWithFallback({
+          config,
+          primaryPayload,
+          carouselFallbackPayload,
           fetchImpl: async () => {
             ambiguousCalls += 1;
             return new Response(JSON.stringify({ error: { code: 2 } }), {

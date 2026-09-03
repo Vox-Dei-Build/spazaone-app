@@ -677,7 +677,7 @@ export async function sendMerchantWhatsAppCatalogBotHandler(
             catalogId: config.catalogId,
             productRetailerId: retailerIds[0],
           })
-        : buildMetaWhatsAppProductCarouselPayload({
+        : buildMetaWhatsAppProductListPayload({
             recipient,
             catalogId: config.catalogId,
             productRetailerIds: retailerIds,
@@ -690,6 +690,16 @@ export async function sendMerchantWhatsAppCatalogBotHandler(
             recipient,
             catalogId: config.catalogId,
             productRetailerIds: retailerIds,
+          })
+        : undefined;
+    const carouselFallbackPayload =
+      pageDecision.format === "product_list" && retailerIds.length <= 10
+        ? buildMetaWhatsAppProductCarouselPayload({
+            recipient,
+            catalogId: config.catalogId,
+            productRetailerIds: retailerIds,
+            page,
+            pageCount: pageDecision.pageCount,
           })
         : undefined;
     const claim = await acquireDelivery({
@@ -712,6 +722,7 @@ export async function sendMerchantWhatsAppCatalogBotHandler(
       metadata,
       primaryPayload,
       productListFallbackPayload,
+      carouselFallbackPayload,
       recipientId,
     };
   });
@@ -730,6 +741,7 @@ export async function sendMerchantWhatsAppCatalogBotHandler(
     metadata,
     primaryPayload,
     productListFallbackPayload,
+    carouselFallbackPayload,
     recipientId,
   } = preDispatch.value;
   if (claim.action !== "send") {
@@ -747,6 +759,7 @@ export async function sendMerchantWhatsAppCatalogBotHandler(
       config,
       primaryPayload,
       ...(productListFallbackPayload ? { productListFallbackPayload } : {}),
+      ...(carouselFallbackPayload ? { carouselFallbackPayload } : {}),
     });
     const actualMetadata = { ...metadata, format: result.format };
     await finishDelivery({

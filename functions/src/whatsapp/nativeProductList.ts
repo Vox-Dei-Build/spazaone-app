@@ -6,7 +6,7 @@ export const WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS = 5;
 export const WHATSAPP_CATALOG_MAX_PAGE_ITEMS = 10;
 export const WHATSAPP_PRODUCT_LIST_MIN_ITEMS =
   WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS;
-export const WHATSAPP_PRODUCT_LIST_MAX_ITEMS = WHATSAPP_CATALOG_MAX_PAGE_ITEMS;
+export const WHATSAPP_PRODUCT_LIST_MAX_ITEMS = 30;
 
 export type MetaWhatsAppMessageProviderMode =
   | "disabled"
@@ -98,7 +98,7 @@ export type CatalogPageItem = {
 export type NativeCatalogPageDecision<T extends CatalogPageItem> =
   | {
       outcome: "ready";
-      format: "product_carousel" | "single_product";
+      format: "product_carousel" | "product_list" | "single_product";
       page: number;
       pageCount: number;
       catalogVersion: string;
@@ -440,12 +440,13 @@ export function normalizeWhatsAppRecipient(value: unknown): string {
 function normalizedRetailerIds(
   values: readonly string[],
   minimum: number,
+  maximum: number,
   errorCode: string,
 ): string[] {
   const ids = values.map((id) => id.trim());
   if (
     ids.length < minimum ||
-    ids.length > WHATSAPP_CATALOG_MAX_PAGE_ITEMS ||
+    ids.length > maximum ||
     new Set(ids).size !== ids.length ||
     ids.some((id) => !/^spz_[a-f0-9]{32}$/.test(id))
   ) {
@@ -487,6 +488,7 @@ export function buildMetaWhatsAppProductCarouselPayload(input: {
   const ids = normalizedRetailerIds(
     input.productRetailerIds,
     2,
+    WHATSAPP_CATALOG_MAX_PAGE_ITEMS,
     "WHATSAPP_PRODUCT_CAROUSEL_ITEMS_INVALID",
   );
   const page = Number(input.page ?? 0);
@@ -536,20 +538,42 @@ export function buildMetaWhatsAppProductListPayload(input: {
   recipient: string;
   catalogId: string;
   productRetailerIds: readonly string[];
+  page?: number;
+  pageCount?: number;
 }): MetaWhatsAppProductListPayload {
   const catalogId = normalizedCatalogId(input.catalogId);
   const ids = normalizedRetailerIds(
     input.productRetailerIds,
     2,
+    WHATSAPP_PRODUCT_LIST_MAX_ITEMS,
     "WHATSAPP_PRODUCT_LIST_ITEMS_INVALID",
   );
+  const page = Number(input.page ?? 0);
+  const pageCount = Number(input.pageCount ?? 1);
+  if (
+    !Number.isSafeInteger(page) ||
+    !Number.isSafeInteger(pageCount) ||
+    page < 0 ||
+    pageCount < 1 ||
+    page >= pageCount
+  ) {
+    throw new Error("WHATSAPP_PRODUCT_LIST_PAGE_INVALID");
+  }
+  const navigation =
+    page + 1 < pageCount && page > 0
+      ? "Send More for the next products or Back for the previous products."
+      : page + 1 < pageCount
+        ? "Send More for the next products."
+        : page > 0
+          ? "Send Back for the previous products."
+          : "Use the WhatsApp cart to choose quantities and send your order.";
   return envelope(input.recipient, {
     type: "product_list",
     header: { type: "text", text: "Shop products" },
     body: {
       text: "Browse pictures and prices from this shop. Select one to view details and choose a quantity.",
     },
-    footer: { text: "Send More or Back to browse pages" },
+    footer: { text: navigation },
     action: {
       catalog_id: catalogId,
       sections: [
@@ -572,6 +596,7 @@ export function buildMetaWhatsAppSingleProductPayload(input: {
   const catalogId = normalizedCatalogId(input.catalogId);
   const [productRetailerId] = normalizedRetailerIds(
     [input.productRetailerId],
+    1,
     1,
     "WHATSAPP_SINGLE_PRODUCT_ITEM_INVALID",
   );
@@ -601,8 +626,9 @@ export function orderedCatalogVersion(
 }
 
 /**
- * Slices an already deterministically ordered projection. A version is bound
- * to every continuation so catalog churn cannot create duplicate or skipped
+ * Slices an already deterministically ordered projection into Meta's native
+ * multi-product surface. Most shops fit in one provider request; a version is
+ * bound to every continuation so larger catalogues cannot duplicate or skip
  * products between explicit More/Back requests.
  */
 export function selectNativeCatalogPage<T extends CatalogPageItem>(input: {
@@ -612,7 +638,7 @@ export function selectNativeCatalogPage<T extends CatalogPageItem>(input: {
 }): NativeCatalogPageDecision<T> {
   const catalogVersion = orderedCatalogVersion(input.items);
   const pageCount = Math.ceil(
-    input.items.length / WHATSAPP_CATALOG_MAX_PAGE_ITEMS,
+    input.items.length / WHATSAPP_PRODUCT_LIST_MAX_ITEMS,
   );
   const fallback = (
     reason: Extract<
@@ -639,15 +665,15 @@ export function selectNativeCatalogPage<T extends CatalogPageItem>(input: {
   if (input.page > 0 && !input.catalogVersion) {
     return fallback("catalog_version_required");
   }
-  const start = input.page * WHATSAPP_CATALOG_MAX_PAGE_ITEMS;
+  const start = input.page * WHATSAPP_PRODUCT_LIST_MAX_ITEMS;
   if (start >= input.items.length) return fallback("page_out_of_range");
   const items = input.items.slice(
     start,
-    start + WHATSAPP_CATALOG_MAX_PAGE_ITEMS,
+    start + WHATSAPP_PRODUCT_LIST_MAX_ITEMS,
   );
   return {
     outcome: "ready",
-    format: items.length === 1 ? "single_product" : "product_carousel",
+    format: items.length === 1 ? "single_product" : "product_list",
     page: input.page,
     pageCount,
     catalogVersion,
@@ -846,6 +872,7 @@ export async function sendMetaWhatsAppCatalogWithFallback(input: {
   config: WhatsAppProductListRuntimeConfig;
   primaryPayload: MetaWhatsAppCatalogPayload;
   productListFallbackPayload?: MetaWhatsAppProductListPayload;
+  carouselFallbackPayload?: MetaWhatsAppProductCarouselPayload;
   fetchImpl?: typeof fetch;
 }): Promise<{
   wamid: string;
@@ -866,22 +893,34 @@ export async function sendMetaWhatsAppCatalogWithFallback(input: {
     });
     return { ...result, format: primaryFormat, providerRequests: 1 };
   } catch (error) {
+    const fallbackPayload =
+      primaryFormat === "product_carousel"
+        ? input.productListFallbackPayload
+        : primaryFormat === "product_list"
+          ? input.carouselFallbackPayload
+          : undefined;
     if (
       !(error instanceof MetaWhatsAppProductListError) ||
       error.retryable ||
       error.ambiguous ||
-      primaryFormat !== "product_carousel" ||
-      !input.productListFallbackPayload
+      !fallbackPayload
     ) {
       throw error;
     }
+    const fallback = await sendMetaWhatsAppCatalog({
+      config: input.config,
+      payload: fallbackPayload,
+      ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
+    });
+    return {
+      ...fallback,
+      format:
+        fallbackPayload.interactive.type === "carousel"
+          ? "product_carousel"
+          : "product_list",
+      providerRequests: 2,
+    };
   }
-  const fallback = await sendMetaWhatsAppCatalog({
-    config: input.config,
-    payload: input.productListFallbackPayload,
-    ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
-  });
-  return { ...fallback, format: "product_list", providerRequests: 2 };
 }
 
 export const sendMetaWhatsAppProductList = sendMetaWhatsAppCatalog;
