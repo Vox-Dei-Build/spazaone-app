@@ -8,7 +8,10 @@ const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-const pubspec = fs.readFileSync(path.join(repositoryRoot, "pubspec.yaml"), "utf8");
+const pubspec = fs.readFileSync(
+  path.join(repositoryRoot, "pubspec.yaml"),
+  "utf8",
+);
 const releaseVersionMatch = pubspec.match(
   /^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$/m,
 );
@@ -46,6 +49,7 @@ const RELEASE_PRESENTATION_FLAGS = [
   "FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED",
   "FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED",
 ];
+const GLOBAL_PRESENTATION_FLAGS = ["FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED"];
 
 function parseArgs(argv) {
   const values = {};
@@ -136,6 +140,22 @@ export function prepareProductionRemoteConfig(template) {
     };
   }
 
+  for (const key of GLOBAL_PRESENTATION_FLAGS) {
+    const existing = object(
+      featureGroup.parameters[key] ?? {},
+      `${key} parameter`,
+    );
+    featureGroup.parameters[key] = {
+      ...existing,
+      defaultValue: { value: "true" },
+      conditionalValues: {},
+      description:
+        "Global merchant-facing WhatsApp catalogue status. " +
+        "Backend rollout state remains authoritative; set false only as an emergency UI kill switch.",
+      valueType: "BOOLEAN",
+    };
+  }
+
   candidate.version = {
     ...(candidate.version ?? {}),
     description:
@@ -160,6 +180,7 @@ function main() {
       releaseBuild: RELEASE_BUILD,
       conditions: RELEASE_CONDITIONS.map(({ name }) => name),
       presentationFlags: RELEASE_PRESENTATION_FLAGS,
+      globalPresentationFlags: GLOBAL_PRESENTATION_FLAGS,
       serverPaymentGatesChanged: false,
     })}\n`,
   );

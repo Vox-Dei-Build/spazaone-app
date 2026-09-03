@@ -273,6 +273,7 @@ const FUNCTION_LANE_SELECTORS = Object.freeze({
     "getMerchantWhatsAppCatalogCompletenessBotHttp",
     "getMerchantWhatsAppProductListBotHttp",
     "getWhatsAppCatalogSyncStatusV1",
+    "getWhatsAppCatalogSyncStatusV2",
     "resolveMerchantWhatsAppCatalogProductBotHttp",
     "sendMerchantWhatsAppCatalogBotHttp",
     "getWhatsAppProductListDeliveryStatusBotHttp",
@@ -293,6 +294,7 @@ const FUNCTION_LANE_SELECTORS = Object.freeze({
     "runWhatsAppCatalogFullReconciliationBotHttp",
     "getMerchantWhatsAppCatalogCompletenessBotHttp",
     "getMerchantWhatsAppProductListBotHttp",
+    "getWhatsAppCatalogSyncStatusV2",
   ],
   "sync-disable": [
     "onMerchantProductCatalogChange",
@@ -301,6 +303,7 @@ const FUNCTION_LANE_SELECTORS = Object.freeze({
     "runWhatsAppCatalogFullReconciliationBotHttp",
     "getMerchantWhatsAppCatalogCompletenessBotHttp",
     "getMerchantWhatsAppProductListBotHttp",
+    "getWhatsAppCatalogSyncStatusV2",
   ],
   "controlled-delivery-enable": [
     "resolveMerchantWhatsAppCatalogProductBotHttp",

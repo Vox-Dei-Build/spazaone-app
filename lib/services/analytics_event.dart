@@ -690,6 +690,97 @@ class ProductDeleted extends AnalyticsEvent {
   Map<String, Object?> get properties => {'group': group};
 }
 
+class WhatsAppCatalogStatusLoaded extends AnalyticsEvent {
+  const WhatsAppCatalogStatusLoaded({
+    required this.rollout,
+    required this.liveBucket,
+    required this.needsAttentionBucket,
+    required this.source,
+    required this.latencyBucket,
+    required this.cacheAgeBucket,
+  });
+
+  final String rollout;
+  final String liveBucket;
+  final String needsAttentionBucket;
+  final String source;
+  final String latencyBucket;
+  final String cacheAgeBucket;
+
+  @override
+  String get name => 'whatsapp_catalog_status_loaded';
+
+  @override
+  Map<String, Object?> get properties => {
+        'rollout': rollout,
+        'live_bucket': liveBucket,
+        'needs_attention_bucket': needsAttentionBucket,
+        'source': source,
+        'latency_bucket': latencyBucket,
+        'cache_age_bucket': cacheAgeBucket,
+      };
+}
+
+class WhatsAppCatalogStatusActionOpened extends AnalyticsEvent {
+  const WhatsAppCatalogStatusActionOpened({
+    required this.status,
+    required this.action,
+  });
+
+  final String status;
+  final String action;
+
+  @override
+  String get name => 'whatsapp_catalog_status_action_opened';
+
+  @override
+  Map<String, Object?> get properties => {
+        'status': status,
+        'action': action,
+      };
+}
+
+class WhatsAppCatalogStatusLoadFailed extends AnalyticsEvent {
+  const WhatsAppCatalogStatusLoadFailed({
+    required this.failure,
+    required this.latencyBucket,
+    required this.cacheAvailable,
+  });
+
+  final String failure;
+  final String latencyBucket;
+  final bool cacheAvailable;
+
+  @override
+  String get name => 'whatsapp_catalog_status_load_failed';
+
+  @override
+  Map<String, Object?> get properties => {
+        'failure': failure,
+        'latency_bucket': latencyBucket,
+        'cache_available': cacheAvailable,
+      };
+}
+
+class StockInvoiceViewerFailed extends AnalyticsEvent {
+  const StockInvoiceViewerFailed({
+    required this.fileType,
+    required this.failure,
+  });
+
+  final String fileType;
+  final String failure;
+
+  @override
+  String get name => 'stock_invoice_viewer_failed';
+
+  @override
+  Map<String, Object?> get properties => {
+        'file_type': fileType,
+        'failure': failure,
+      };
+}
+
 // ---------------------------------------------------------------------------
 // Contact CRUD
 // ---------------------------------------------------------------------------

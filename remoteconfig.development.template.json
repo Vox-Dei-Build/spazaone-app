@@ -18,6 +18,12 @@
       },
       "description": "Keep the current production multi-store and operator experience enabled in development."
     },
+    "FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "description": "Global presentation switch for truthful WhatsApp catalogue sync status. Server rollout remains authoritative."
+    },
     "FEATURE_NUMBER_FIRST_ONBOARDING_ENABLED": {
       "defaultValue": {
         "value": "true"

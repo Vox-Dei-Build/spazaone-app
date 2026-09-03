@@ -57,15 +57,23 @@ test("current release presentation flags preserve production defaults and config
     "false",
   );
   assert.equal(
-    flags.FEATURE_ONLINE_SALES_ENABLED.conditionalValues
-      [`spazaone_${RELEASE_VERSION.replaceAll(".", "")}_android_build_${RELEASE_BUILD}`]
-      .value,
+    flags.FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED.defaultValue.value,
+    "true",
+  );
+  assert.deepEqual(
+    flags.FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED.conditionalValues,
+    {},
+  );
+  assert.equal(
+    flags.FEATURE_ONLINE_SALES_ENABLED.conditionalValues[
+      `spazaone_${RELEASE_VERSION.replaceAll(".", "")}_android_build_${RELEASE_BUILD}`
+    ].value,
     "true",
   );
   assert.equal(
-    flags.FEATURE_ONLINE_SALES_ENABLED.conditionalValues
-      [`spazaone_${RELEASE_VERSION.replaceAll(".", "")}_ios_build_${RELEASE_BUILD}`]
-      .value,
+    flags.FEATURE_ONLINE_SALES_ENABLED.conditionalValues[
+      `spazaone_${RELEASE_VERSION.replaceAll(".", "")}_ios_build_${RELEASE_BUILD}`
+    ].value,
     "true",
   );
   assert.match(

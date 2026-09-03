@@ -23,6 +23,7 @@ class EmulatorQaFeatureProfile {
     required this.customerPaymentRequests,
     required this.supplierOrderPayments,
     required this.merchantOnboardingIntro,
+    required this.whatsAppCatalogStatus,
   });
 
   static const multiStoreKey = 'QA_FEATURE_MULTI_STORE_OPERATORS';
@@ -40,6 +41,7 @@ class EmulatorQaFeatureProfile {
       'QA_FEATURE_CUSTOMER_PAYMENT_REQUESTS';
   static const supplierOrderPaymentsKey = 'QA_FEATURE_SUPPLIER_ORDER_PAYMENTS';
   static const onboardingIntroKey = 'QA_FEATURE_MERCHANT_ONBOARDING_INTRO';
+  static const whatsAppCatalogStatusKey = 'QA_FEATURE_WHATSAPP_CATALOG_STATUS';
 
   static const _multiStoreValue = String.fromEnvironment(multiStoreKey);
   static const _numberFirstValue = String.fromEnvironment(numberFirstKey);
@@ -59,6 +61,8 @@ class EmulatorQaFeatureProfile {
       String.fromEnvironment(supplierOrderPaymentsKey);
   static const _onboardingIntroValue =
       String.fromEnvironment(onboardingIntroKey);
+  static const _whatsAppCatalogStatusValue =
+      String.fromEnvironment(whatsAppCatalogStatusKey);
 
   final bool multiStoreOperators;
   final bool numberFirstOnboarding;
@@ -72,6 +76,7 @@ class EmulatorQaFeatureProfile {
   final bool customerPaymentRequests;
   final bool supplierOrderPayments;
   final bool merchantOnboardingIntro;
+  final bool whatsAppCatalogStatus;
 
   factory EmulatorQaFeatureProfile.fromEnvironment() {
     return EmulatorQaFeatureProfile.fromValues(const {
@@ -87,6 +92,7 @@ class EmulatorQaFeatureProfile {
       customerPaymentRequestsKey: _customerPaymentRequestsValue,
       supplierOrderPaymentsKey: _supplierOrderPaymentsValue,
       onboardingIntroKey: _onboardingIntroValue,
+      whatsAppCatalogStatusKey: _whatsAppCatalogStatusValue,
     });
   }
 
@@ -114,6 +120,7 @@ class EmulatorQaFeatureProfile {
       customerPaymentRequests: requiredBool(customerPaymentRequestsKey),
       supplierOrderPayments: requiredBool(supplierOrderPaymentsKey),
       merchantOnboardingIntro: requiredBool(onboardingIntroKey),
+      whatsAppCatalogStatus: requiredBool(whatsAppCatalogStatusKey),
     );
   }
 }
@@ -193,6 +200,13 @@ class FeatureFlags {
   /// the current behaviour.
   static bool enableMerchantOnboardingIntro = true;
 
+  /// Merchant-facing catalogue status is a standard release feature. Remote
+  /// Config remains an emergency presentation switch; server rollout is
+  /// reported independently and remains authoritative.
+  static bool enableWhatsAppCatalogStatus = true;
+  static final ValueNotifier<bool> whatsAppCatalogStatusEnabled =
+      ValueNotifier<bool>(true);
+
   static Future<void> loadFlags() async {
     final rc = await RemoteConfigService.getInstance();
     _applyFlags(rc);
@@ -225,6 +239,8 @@ class FeatureFlags {
     enableCustomerPaymentRequests = profile.customerPaymentRequests;
     enableSupplierOrderPayments = profile.supplierOrderPayments;
     enableMerchantOnboardingIntro = profile.merchantOnboardingIntro;
+    enableWhatsAppCatalogStatus = profile.whatsAppCatalogStatus;
+    whatsAppCatalogStatusEnabled.value = profile.whatsAppCatalogStatus;
   }
 
   static void _applyFlags(RemoteConfigBoolReader rc) {
@@ -315,5 +331,10 @@ class FeatureFlags {
       'FEATURE_MERCHANT_ONBOARDING_INTRO_ENABLED',
       defaultValue: true,
     );
+    enableWhatsAppCatalogStatus = rc.getBool(
+      'FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED',
+      defaultValue: true,
+    );
+    whatsAppCatalogStatusEnabled.value = enableWhatsAppCatalogStatus;
   }
 }

@@ -50,6 +50,7 @@ const selector = [
   "getMerchantWhatsAppCatalogCompletenessBotHttp",
   "getMerchantWhatsAppProductListBotHttp",
   "getWhatsAppCatalogSyncStatusV1",
+  "getWhatsAppCatalogSyncStatusV2",
   "resolveMerchantWhatsAppCatalogProductBotHttp",
   "sendMerchantWhatsAppCatalogBotHttp",
   "getWhatsAppProductListDeliveryStatusBotHttp",

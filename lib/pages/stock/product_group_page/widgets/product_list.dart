@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
+import 'package:pasella/models/stock/whatsapp_catalog_status.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
+import 'package:pasella/pages/settings/share/share.dart';
+import 'package:pasella/services/analytics_event.dart';
+import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
+import 'package:pasella/utils/support_util.dart';
 
 class ProductList extends StatelessWidget {
   final StockViewModel viewModel;
@@ -18,6 +23,9 @@ class ProductList extends StatelessWidget {
   /// simple placeholder.
   final VoidCallback? onAddProduct;
   final bool showEmptyAction;
+  final WhatsAppCatalogSnapshot? catalogSnapshot;
+  final Future<void> Function()? onCatalogRefresh;
+  final Future<void> Function()? onProductChanged;
 
   const ProductList({
     Key? key,
@@ -25,6 +33,9 @@ class ProductList extends StatelessWidget {
     this.groupName,
     this.onAddProduct,
     this.showEmptyAction = true,
+    this.catalogSnapshot,
+    this.onCatalogRefresh,
+    this.onProductChanged,
   }) : super(key: key);
 
   @override
@@ -67,6 +78,10 @@ class ProductList extends StatelessWidget {
             key: ValueKey<String>(products[index].id!),
             product: products[index],
             docID: products[index].id!,
+            catalogState: catalogSnapshot?.productsById[products[index].id],
+            rollout: catalogSnapshot?.rollout,
+            onCatalogRefresh: onCatalogRefresh,
+            onProductChanged: onProductChanged,
           ),
         );
       },
@@ -79,23 +94,23 @@ class _ProductRow extends StatelessWidget {
     super.key,
     required this.product,
     required this.docID,
+    this.catalogState,
+    this.rollout,
+    this.onCatalogRefresh,
+    this.onProductChanged,
   });
 
   final Product product;
   final String docID;
+  final WhatsAppCatalogProductState? catalogState;
+  final WhatsAppCatalogRollout? rollout;
+  final Future<void> Function()? onCatalogRefresh;
+  final Future<void> Function()? onProductChanged;
 
   @override
   Widget build(BuildContext context) {
     final quantity = product.quantity ?? 0;
-    final status = product.isDropshipListing
-        ? 'Supplier product'
-        : product.whatsappListed
-            ? 'Online'
-            : quantity <= 5
-                ? quantity == 0
-                    ? 'Out of stock'
-                    : 'Low stock'
-                : 'In store';
+    final status = _statusLabel(quantity);
     return Material(
       color: Theme.of(context)
           .colorScheme
@@ -126,44 +141,140 @@ class _ProductRow extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
-        subtitle: Text(
-          product.isDropshipListing
-              ? 'Delivered by supplier'
-              : '$quantity in stock',
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              product.isDropshipListing
+                  ? 'Delivered by supplier'
+                  : '$quantity in stock',
+            ),
+            Semantics(
+              button: catalogState?.action != null &&
+                  catalogState?.action != WhatsAppCatalogProductAction.none,
+              label: 'WhatsApp catalogue status: $status',
+              child: InkWell(
+                onTap: catalogState?.action == WhatsAppCatalogProductAction.none
+                    ? null
+                    : () => _openStatusAction(context),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        status,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: _statusColor(context),
+                            ),
+                      ),
+                    ),
+                    if (catalogState?.action != null &&
+                        catalogState?.action !=
+                            WhatsAppCatalogProductAction.none)
+                      Icon(
+                        Icons.info_outline,
+                        size: 14,
+                        color: _statusColor(context),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  CurrencyUtil.format(product.sellingPrice ?? 0),
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  status,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                ),
-              ],
+            Text(
+              CurrencyUtil.format(product.sellingPrice ?? 0),
+              style: const TextStyle(fontWeight: FontWeight.w800),
             ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right_rounded),
           ],
         ),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => product.isDropshipListing
-                ? DropshipListingPage(product: product, docID: docID)
-                : ProductDetailsPage(docID: docID, product: product),
-          ),
-        ),
+        onTap: () => _openProduct(context),
       ),
     );
+  }
+
+  String _statusLabel(int quantity) {
+    final state = catalogState;
+    if (state != null) {
+      if (rollout == WhatsAppCatalogRollout.notEnabled &&
+          state.reasonCodes.contains('catalogue_not_enabled')) {
+        return 'Waiting for rollout';
+      }
+      return state.status.label;
+    }
+    if (product.isDropshipListing) return 'Supplier product';
+    if (product.whatsappListed) return 'WhatsApp listing requested';
+    if (quantity <= 5) return quantity == 0 ? 'Out of stock' : 'Low stock';
+    return 'In store';
+  }
+
+  Color _statusColor(BuildContext context) {
+    return switch (catalogState?.status) {
+      WhatsAppCatalogProductStatus.live => Colors.green.shade700,
+      WhatsAppCatalogProductStatus.needsAttention ||
+      WhatsAppCatalogProductStatus.reviewRequired ||
+      WhatsAppCatalogProductStatus.supportReview =>
+        Theme.of(context).colorScheme.error,
+      WhatsAppCatalogProductStatus.syncing ||
+      WhatsAppCatalogProductStatus.stale ||
+      WhatsAppCatalogProductStatus.removalSyncing =>
+        Colors.orange.shade800,
+      _ => Theme.of(context).colorScheme.primary,
+    };
+  }
+
+  Future<void> _openProduct(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => product.isDropshipListing
+            ? DropshipListingPage(product: product, docID: docID)
+            : ProductDetailsPage(docID: docID, product: product),
+      ),
+    );
+    await onProductChanged?.call();
+  }
+
+  Future<void> _openStatusAction(BuildContext context) async {
+    final state = catalogState;
+    if (state == null) return;
+    await TelemetryService.instance.capture(
+      WhatsAppCatalogStatusActionOpened(
+        status: state.status.wireValue,
+        action: state.action.wireValue,
+      ),
+    );
+    if (!context.mounted) return;
+    switch (state.action) {
+      case WhatsAppCatalogProductAction.none:
+        return;
+      case WhatsAppCatalogProductAction.editProduct:
+        await _openProduct(context);
+      case WhatsAppCatalogProductAction.completeShopLink:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const SharePage(source: 'catalog_status'),
+          ),
+        );
+        await onProductChanged?.call();
+      case WhatsAppCatalogProductAction.refresh:
+        await onCatalogRefresh?.call();
+      case WhatsAppCatalogProductAction.contactSupport:
+        final reference = state.supportReference;
+        await SupportUtil.sendWhatsAppMessage(
+          context,
+          WhatsAppMessageType.support,
+          messageOverride:
+              'Hi Spaza One Support, I need help with my WhatsApp catalogue. '
+              '${reference == null ? '' : 'Reference: $reference'}',
+        );
+    }
   }
 }
 

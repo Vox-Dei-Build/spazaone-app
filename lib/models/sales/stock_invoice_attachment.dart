@@ -22,6 +22,9 @@ class StockInvoiceAttachment {
   final int sizeBytes;
   final DateTime? uploadedAt;
 
+  bool get isPdf => contentType.toLowerCase() == 'application/pdf';
+  bool get isImage => !isPdf;
+
   factory StockInvoiceAttachment.fromMap(Map<String, dynamic> data) {
     final uploadedValue = data['uploadedAt'];
     DateTime? uploadedAt;
@@ -80,6 +83,10 @@ class StockInvoiceDraft {
       localFile?.uri.pathSegments.last ??
       attachment?.fileName ??
       'Invoice page';
+
+  bool get isPdf =>
+      attachment?.isPdf == true ||
+      (localFile?.path.toLowerCase().endsWith('.pdf') ?? false);
 
   bool get isExisting => attachment != null && localFile == null;
   bool get canRetry =>

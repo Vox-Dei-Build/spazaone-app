@@ -238,7 +238,8 @@ flutter run -d emulator-5554 \
   --dart-define=QA_FEATURE_ACCOUNT_SETTLEMENT_PAYMENTS=false \
   --dart-define=QA_FEATURE_CUSTOMER_PAYMENT_REQUESTS=false \
   --dart-define=QA_FEATURE_SUPPLIER_ORDER_PAYMENTS=false \
-  --dart-define=QA_FEATURE_MERCHANT_ONBOARDING_INTRO=true
+  --dart-define=QA_FEATURE_MERCHANT_ONBOARDING_INTRO=true \
+  --dart-define=QA_FEATURE_WHATSAPP_CATALOG_STATUS=true
 ```
 
 The Auth emulator does not inherit Firebase Console test-phone codes. It

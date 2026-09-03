@@ -79,6 +79,7 @@ export const NATIVE_CATALOG_NEW_FUNCTIONS = Object.freeze([
   "getMerchantWhatsAppCatalogCompletenessBotHttp",
   "getMerchantWhatsAppProductListBotHttp",
   "getWhatsAppCatalogSyncStatusV1",
+  "getWhatsAppCatalogSyncStatusV2",
   "resolveMerchantWhatsAppCatalogProductBotHttp",
   "sendMerchantWhatsAppCatalogBotHttp",
   "getWhatsAppProductListDeliveryStatusBotHttp",
@@ -101,6 +102,7 @@ export const NATIVE_CATALOG_SYNC_FUNCTIONS = Object.freeze([
   "runWhatsAppCatalogFullReconciliationBotHttp",
   "getMerchantWhatsAppCatalogCompletenessBotHttp",
   "getMerchantWhatsAppProductListBotHttp",
+  "getWhatsAppCatalogSyncStatusV2",
 ]);
 
 // These are all new functions introduced by the native-catalogue release. No
@@ -126,6 +128,9 @@ export const NATIVE_CATALOG_FUNCTION_SECRET_REFS = Object.freeze({
   ]),
   getMerchantWhatsAppProductListBotHttp: Object.freeze(["PASELLA_BOT_TOKEN"]),
   getWhatsAppCatalogSyncStatusV1: Object.freeze([]),
+  getWhatsAppCatalogSyncStatusV2: Object.freeze([
+    "WHATSAPP_CATALOG_STATUS_CURSOR_SECRET",
+  ]),
   resolveMerchantWhatsAppCatalogProductBotHttp: Object.freeze([
     "PASELLA_BOT_TOKEN",
     "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
@@ -201,6 +206,7 @@ const FORBIDDEN_ENV_NAMES = Object.freeze([
   "META_CATALOG_ACCESS_TOKEN",
   "META_WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+  "WHATSAPP_CATALOG_STATUS_CURSOR_SECRET",
 ]);
 
 export class CatalogDeploymentGuardError extends Error {
@@ -1230,7 +1236,9 @@ export function verifyExistingCodeEnvironmentTransition({
           !exactSecretReferenceMatches(entry, entry.key) ||
           JSON.stringify(entry) !==
             JSON.stringify(
-              after.secretEnvironment.find((candidate) => candidate.key === entry.key),
+              after.secretEnvironment.find(
+                (candidate) => candidate.key === entry.key,
+              ),
             ),
       ) ||
       after.secretEnvironment.some(
@@ -1449,10 +1457,10 @@ export async function collectCatalogFunctionReadback(
       : expectedPreservationDigestSha256;
   const environmentTransitionMode = configuredOnly
     ? "configured_exact"
-    : existingTransition?.transitionMode ?? null;
+    : (existingTransition?.transitionMode ?? null);
   const preDeployEnvironmentDigestSha256 = configuredOnly
     ? null
-    : existingTransition?.preDeployEnvironmentDigestSha256 ?? null;
+    : (existingTransition?.preDeployEnvironmentDigestSha256 ?? null);
   const environmentTransitionDigestSha256 = configuredOnly
     ? sha256(
         JSON.stringify([
@@ -1461,7 +1469,7 @@ export async function collectCatalogFunctionReadback(
           environmentDigestSha256,
         ]),
       )
-    : existingTransition?.transitionDigestSha256 ?? null;
+    : (existingTransition?.transitionDigestSha256 ?? null);
   let candidateSourceBinding;
   try {
     candidateSourceBinding = verifyCandidateFirebaseFunctionHashes({

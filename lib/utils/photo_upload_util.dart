@@ -135,7 +135,24 @@ class PhotoUploadUtil {
   }) async {
     var source = await showCameraOrGalleryPicker(context);
     if (source == null) return;
+    if (!context.mounted) return;
 
+    await handleImagePickFromSource(
+      context,
+      source,
+      onImagePicked,
+      purpose: purpose,
+    );
+  }
+
+  /// Runs the existing permission, recovery and compression flow for a source
+  /// chosen by a parent surface that offers more than image attachments.
+  Future<void> handleImagePickFromSource(
+    BuildContext context,
+    ImageSource source,
+    FutureOr<void> Function(File?) onImagePicked, {
+    PhotoPermissionPurpose purpose = PhotoPermissionPurpose.product,
+  }) async {
     // Permission strategy by source + platform:
     //
     //   Camera (any platform)

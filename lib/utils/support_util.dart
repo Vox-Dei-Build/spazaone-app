@@ -13,7 +13,10 @@ enum WhatsAppMessageType {
 
 class SupportUtil {
   static Future<void> sendWhatsAppMessage(
-      BuildContext context, WhatsAppMessageType type) async {
+    BuildContext context,
+    WhatsAppMessageType type, {
+    String? messageOverride,
+  }) async {
     try {
       final remoteConfigService = await RemoteConfigService.getInstance();
       final String supportNumber =
@@ -28,7 +31,8 @@ class SupportUtil {
 
       final String formattedNumber =
           formatPhoneNumberForWhatsapp(supportNumber);
-      final String message = Uri.encodeComponent(_getMessageTemplate(type));
+      final String message =
+          Uri.encodeComponent(messageOverride ?? _getMessageTemplate(type));
 
       final Uri whatsappUri =
           Uri.parse('https://wa.me/$formattedNumber?text=$message');

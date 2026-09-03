@@ -150,6 +150,10 @@ class _ProductFormState extends State<ProductForm> {
                     if (double.tryParse(value) == null) {
                       return 'Please enter a valid number';
                     }
+                    if (widget.product.whatsappListed &&
+                        (double.tryParse(value) ?? 0) <= 0) {
+                      return 'Enter a price above zero for WhatsApp listings';
+                    }
                     return null;
                   },
                   onChanged: (value) {
@@ -270,7 +274,7 @@ class _ProductFormState extends State<ProductForm> {
                   secondary: const Icon(Icons.storefront_outlined),
                   title: const Text('List in WhatsApp Store'),
                   subtitle: const Text(
-                    'On: customers can see and order it. Off: internal-only, still usable for stock and sales.',
+                    'On requests a background catalogue sync. A name, positive selling price, product image and shop link are required. Turning this off removes the WhatsApp listing but keeps the product in stock and sales.',
                   ),
                   value: widget.product.whatsappListed,
                   onChanged: (value) {

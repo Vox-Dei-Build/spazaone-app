@@ -187,6 +187,7 @@ export {
   getMerchantWhatsAppCatalogCompletenessBotHttp,
   getMerchantWhatsAppProductListBotHttp,
   getWhatsAppCatalogSyncStatusV1,
+  getWhatsAppCatalogSyncStatusV2,
 } from "./whatsapp/catalogStatus";
 export {
   resolveMerchantWhatsAppCatalogProductBotHttp,

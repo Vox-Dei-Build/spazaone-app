@@ -117,6 +117,8 @@ class RemoteConfigService implements RemoteConfigBoolReader {
               dotenv.env['FEATURE_OTP_RESEND_IN_DIALOG_ENABLED'] == 'true',
           'FEATURE_ONLINE_SALES_ENABLED':
               dotenv.env['FEATURE_ONLINE_SALES_ENABLED'] == 'true',
+          'FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED':
+              dotenv.env['FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED'] != 'false',
           'FEATURE_TOP_UP_PAYSTACK_ENABLED':
               dotenv.env['FEATURE_TOP_UP_PAYSTACK_ENABLED'] == 'true',
           'FEATURE_OWNED_ORDER_PAYMENTS_ENABLED':

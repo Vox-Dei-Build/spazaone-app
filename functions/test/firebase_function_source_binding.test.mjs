@@ -194,6 +194,7 @@ test("checked secret-reference order matches every selected source declaration",
       "src/whatsapp/catalogStatus.ts",
     getMerchantWhatsAppProductListBotHttp: "src/whatsapp/catalogStatus.ts",
     getWhatsAppCatalogSyncStatusV1: "src/whatsapp/catalogStatus.ts",
+    getWhatsAppCatalogSyncStatusV2: "src/whatsapp/catalogStatus.ts",
     resolveMerchantWhatsAppCatalogProductBotHttp:
       "src/whatsapp/nativeProductListDelivery.ts",
     sendMerchantWhatsAppCatalogBotHttp:

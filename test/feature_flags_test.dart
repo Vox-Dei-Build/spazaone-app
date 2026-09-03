@@ -100,6 +100,7 @@ void main() {
       EmulatorQaFeatureProfile.customerPaymentRequestsKey: 'true',
       EmulatorQaFeatureProfile.supplierOrderPaymentsKey: 'true',
       EmulatorQaFeatureProfile.onboardingIntroKey: 'true',
+      EmulatorQaFeatureProfile.whatsAppCatalogStatusKey: 'true',
     });
 
     FeatureFlags.applyEmulatorQaProfile(profile);
@@ -117,6 +118,20 @@ void main() {
     expect(FeatureFlags.enableCustomerPaymentRequests, isTrue);
     expect(FeatureFlags.enableSupplierOrderPayments, isTrue);
     expect(FeatureFlags.enableMerchantOnboardingIntro, isTrue);
+    expect(FeatureFlags.enableWhatsAppCatalogStatus, isTrue);
+  });
+
+  test('WhatsApp catalogue status is enabled by default and can be disabled',
+      () {
+    FeatureFlags.applyFlagsForTesting(_FakeRemoteConfig(const {}));
+    expect(FeatureFlags.enableWhatsAppCatalogStatus, isTrue);
+    expect(FeatureFlags.whatsAppCatalogStatusEnabled.value, isTrue);
+
+    FeatureFlags.applyFlagsForTesting(
+      _FakeRemoteConfig({'FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED': false}),
+    );
+    expect(FeatureFlags.enableWhatsAppCatalogStatus, isFalse);
+    expect(FeatureFlags.whatsAppCatalogStatusEnabled.value, isFalse);
   });
 
   test('emulator QA profile refuses missing or ambiguous values', () {

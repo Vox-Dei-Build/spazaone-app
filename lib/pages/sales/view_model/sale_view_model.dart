@@ -115,21 +115,17 @@ class SalesViewModel extends TransactionViewModel {
         StockInvoiceAttachmentService.maxAttachments) {
       showSnackbar(
         context,
-        'You can attach up to 3 invoice images.',
+        'You can attach up to 3 invoice files.',
         Colors.orange,
       );
       return;
     }
     final file = await _stockInvoiceService.pickAndPrepare(context);
     if (file == null || isDisposed) return;
-    if (await file.length() > StockInvoiceAttachmentService.maxImageBytes) {
-      if (context.mounted) {
-        showSnackbar(
-          context,
-          'That image is larger than 5 MB. Choose a smaller image.',
-          Colors.orange,
-        );
-      }
+    try {
+      await StockInvoiceAttachmentService.validateFile(file);
+    } on StockInvoiceValidationException catch (error) {
+      if (context.mounted) showSnackbar(context, error.message, Colors.orange);
       return;
     }
     stockInvoiceDrafts.add(StockInvoiceDraft.local(file));
@@ -140,14 +136,10 @@ class SalesViewModel extends TransactionViewModel {
     if (index < 0 || index >= stockInvoiceDrafts.length) return;
     final file = await _stockInvoiceService.pickAndPrepare(context);
     if (file == null || isDisposed) return;
-    if (await file.length() > StockInvoiceAttachmentService.maxImageBytes) {
-      if (context.mounted) {
-        showSnackbar(
-          context,
-          'That image is larger than 5 MB. Choose a smaller image.',
-          Colors.orange,
-        );
-      }
+    try {
+      await StockInvoiceAttachmentService.validateFile(file);
+    } on StockInvoiceValidationException catch (error) {
+      if (context.mounted) showSnackbar(context, error.message, Colors.orange);
       return;
     }
     final previousAttachment = stockInvoiceDrafts[index].attachment;
@@ -176,7 +168,7 @@ class SalesViewModel extends TransactionViewModel {
   }
 
   Future<Uint8List?> loadStockInvoicePreview(String storagePath) =>
-      _stockInvoiceService.loadPreview(storagePath);
+      _stockInvoiceService.loadAttachment(storagePath);
 
   Future<_StockInvoiceUploadResult> _uploadStockInvoices(String saleId) async {
     final attachments = <StockInvoiceAttachment>[];
@@ -224,7 +216,7 @@ class SalesViewModel extends TransactionViewModel {
         draft
           ..status = StockInvoiceDraftStatus.failed
           ..errorMessage =
-              'Could not attach this image. The sale can still be saved.'
+              'Could not attach this file. The sale can still be saved.'
           ..progress = 0;
       }
       notifyListeners();

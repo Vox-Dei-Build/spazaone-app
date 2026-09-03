@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/stock_invoice_attachment.dart';
+import 'package:pasella/pages/sales/widgets/stock_invoice_viewer_page.dart';
 import 'package:pasella/services/stock_invoice_attachment_service.dart';
 
 class StockInvoiceAttachmentsField extends StatelessWidget {
@@ -40,7 +41,7 @@ class StockInvoiceAttachmentsField extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Optional · Up to 3 images · No invoice text is read automatically.',
+            'Optional · Up to 3 images or PDFs · 5 MB each · No invoice text is read automatically.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           if (attachments.isNotEmpty) ...[
@@ -87,34 +88,51 @@ class _InvoiceDraftTile extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         child: Column(
           children: [
-            Row(
-              children: [
-                SizedBox(width: 56, height: 56, child: _preview()),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            Semantics(
+              button: true,
+              label: 'Open invoice ${draft.displayName}',
+              child: InkWell(
+                key: ValueKey('open-stock-invoice-${draft.displayName}'),
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _open(context),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
                     children: [
-                      Text(
-                        draft.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _statusText,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color:
-                                  draft.status == StockInvoiceDraftStatus.failed
-                                      ? Theme.of(context).colorScheme.error
-                                      : null,
+                      SizedBox(width: 56, height: 56, child: _preview()),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              draft.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600),
                             ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _statusText,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: draft.status ==
+                                            StockInvoiceDraftStatus.failed
+                                        ? Theme.of(context).colorScheme.error
+                                        : null,
+                                  ),
+                            ),
+                          ],
+                        ),
                       ),
+                      const Icon(Icons.open_in_full_rounded, size: 18),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
             if (draft.status == StockInvoiceDraftStatus.uploading) ...[
               const SizedBox(height: 8),
@@ -146,11 +164,36 @@ class _InvoiceDraftTile extends StatelessWidget {
         return 'Attached securely';
       case StockInvoiceDraftStatus.failed:
         return draft.errorMessage ??
-            'Upload failed. Retry or remove this image.';
+            'Upload failed. Retry or remove this file.';
     }
   }
 
+  Future<void> _open(BuildContext context) {
+    final local = draft.localFile;
+    final attachment = draft.attachment;
+    final lowerName = draft.displayName.toLowerCase();
+    final contentType = draft.isPdf
+        ? 'application/pdf'
+        : lowerName.endsWith('.png')
+            ? 'image/png'
+            : 'image/jpeg';
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => StockInvoiceViewerPage(
+          fileName: draft.displayName,
+          contentType: attachment?.contentType ?? contentType,
+          loadBytes: () async {
+            if (local != null) return local.readAsBytes();
+            if (attachment == null || loadPreview == null) return null;
+            return loadPreview!(attachment.storagePath);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _preview() {
+    if (draft.isPdf) return _placeholder(pdf: true);
     final local = draft.localFile;
     if (local != null) {
       return ClipRRect(
@@ -181,7 +224,7 @@ class _InvoiceDraftTile extends StatelessWidget {
   Widget _imageError(BuildContext context, Object error, StackTrace? stack) =>
       _placeholder();
 
-  Widget _placeholder({bool loading = false}) => DecoratedBox(
+  Widget _placeholder({bool loading = false, bool pdf = false}) => DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(6),
@@ -192,7 +235,11 @@ class _InvoiceDraftTile extends StatelessWidget {
                   dimension: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.receipt_long_outlined),
+              : Icon(
+                  pdf
+                      ? Icons.picture_as_pdf_outlined
+                      : Icons.receipt_long_outlined,
+                ),
         ),
       );
 }

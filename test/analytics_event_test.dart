@@ -71,4 +71,46 @@ void main() {
     });
     expect(shared.properties, {'channel': 'whatsapp'});
   });
+
+  test('catalogue status telemetry contains only aggregate buckets', () {
+    const event = WhatsAppCatalogStatusLoaded(
+      rollout: 'enabled',
+      liveBucket: '10_plus',
+      needsAttentionBucket: '0_4',
+      source: 'network',
+      latencyBucket: 'under_500ms',
+      cacheAgeBucket: 'fresh',
+    );
+
+    expect(event.properties.keys, {
+      'rollout',
+      'live_bucket',
+      'needs_attention_bucket',
+      'source',
+      'latency_bucket',
+      'cache_age_bucket',
+    });
+  });
+
+  test('catalogue and invoice failure telemetry contains no identifiers', () {
+    const catalogue = WhatsAppCatalogStatusLoadFailed(
+      failure: 'offline',
+      latencyBucket: 'over_2s',
+      cacheAvailable: true,
+    );
+    const invoice = StockInvoiceViewerFailed(
+      fileType: 'pdf',
+      failure: 'corrupt_file',
+    );
+
+    expect(catalogue.properties.keys, {
+      'failure',
+      'latency_bucket',
+      'cache_available',
+    });
+    expect(invoice.properties, {
+      'file_type': 'pdf',
+      'failure': 'corrupt_file',
+    });
+  });
 }

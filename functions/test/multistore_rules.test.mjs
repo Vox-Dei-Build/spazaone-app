@@ -529,7 +529,7 @@ test("storage writes are store scoped while product reads stay public", async ()
   );
 });
 
-test("stock invoice images are private and store scoped", async () => {
+test("stock invoice images and PDFs are private and store scoped", async () => {
   const operatorStorage = env.authenticatedContext("operator1").storage();
   const ownInvoice = ref(
     operatorStorage,
@@ -541,6 +541,22 @@ test("stock invoice images are private and store scoped", async () => {
     }),
   );
   await assertSucceeds(getBytes(ownInvoice));
+  await assertSucceeds(
+    uploadString(
+      ref(operatorStorage, "stock_invoices/storeA/sale1/invoice.png"),
+      "png invoice",
+      "raw",
+      { contentType: "image/png" },
+    ),
+  );
+  await assertSucceeds(
+    uploadString(
+      ref(operatorStorage, "stock_invoices/storeA/sale1/invoice.pdf"),
+      "%PDF-1.7 invoice",
+      "raw",
+      { contentType: "application/pdf" },
+    ),
+  );
 
   await assertFails(
     uploadString(
@@ -565,5 +581,116 @@ test("stock invoice images are private and store scoped", async () => {
       "raw",
       { contentType: "text/plain" },
     ),
+  );
+  await assertFails(
+    uploadString(
+      ref(operatorStorage, "stock_invoices/storeA/sale1/too-large.pdf"),
+      "x".repeat(5 * 1024 * 1024 + 1),
+      "raw",
+      { contentType: "application/pdf" },
+    ),
+  );
+});
+
+test("catalogue status callable requires App Check and denies cross-store access", async () => {
+  process.env.WHATSAPP_CATALOG_STATUS_CURSOR_SECRET =
+    "local-emulator-catalogue-cursor-secret-32-bytes";
+  const { getWhatsAppCatalogSyncStatusV2 } = await import(
+    "../lib/whatsapp/catalogStatus.js"
+  );
+  const run = getWhatsAppCatalogSyncStatusV2.run;
+  const app = { appId: "local-app-check" };
+
+  await assert.rejects(
+    run({ storeId: "storeA" }, { app }),
+    (error) => error?.code === "unauthenticated",
+  );
+  await assert.rejects(
+    run({ storeId: "storeA" }, { auth: { uid: "storeA", token: {} } }),
+    (error) => error?.code === "failed-precondition",
+  );
+  await assert.rejects(
+    run(
+      { storeId: "storeA" },
+      { auth: { uid: "operator2", token: {} }, app, rawRequest: {} },
+    ),
+    (error) => error?.code === "permission-denied",
+  );
+});
+
+test("catalogue status callable paginates and detects catalogue drift", async () => {
+  process.env.WHATSAPP_CATALOG_STATUS_CURSOR_SECRET =
+    "local-emulator-catalogue-cursor-secret-32-bytes";
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await Promise.all([
+      setDoc(
+        doc(db, "users/storeA"),
+        {
+          whatsappOrdering: {
+            orderingUrl: "https://shop.example.test/store-a",
+          },
+        },
+        { merge: true },
+      ),
+      ...["a", "b", "c"].map((id) =>
+        setDoc(doc(db, `users/storeA/products/${id}`), {
+          name: `Product ${id}`,
+          sellingPrice: 10,
+          image: `https://cdn.example.test/${id}.jpg`,
+          whatsappListed: true,
+        }),
+      ),
+    ]);
+  });
+  const { getWhatsAppCatalogSyncStatusV2 } = await import(
+    "../lib/whatsapp/catalogStatus.js"
+  );
+  const run = getWhatsAppCatalogSyncStatusV2.run;
+  const context = {
+    auth: { uid: "storeA", token: {} },
+    app: { appId: "local-app-check" },
+    rawRequest: {},
+  };
+  const first = await run({ storeId: "storeA", pageSize: 2 }, context);
+  assert.deepEqual(
+    first.products.map((product) => product.productId),
+    ["a", "b"],
+  );
+  assert.equal(typeof first.nextPageToken, "string");
+  assert.equal(first.retryPermitted, false);
+
+  await assert.rejects(
+    run(
+      {
+        storeId: "storeA",
+        pageSize: 2,
+        pageToken: `${first.nextPageToken.slice(0, -1)}x`,
+      },
+      context,
+    ),
+    (error) =>
+      error?.code === "invalid-argument" &&
+      error?.details?.reason === "INVALID_PAGE_TOKEN",
+  );
+
+  await env.withSecurityRulesDisabled(async (emulatorContext) => {
+    await updateDoc(
+      doc(emulatorContext.firestore(), "users/storeA/products/c"),
+      { name: "Changed product c" },
+    );
+  });
+  await assert.rejects(
+    run(
+      {
+        storeId: "storeA",
+        pageSize: 2,
+        pageToken: first.nextPageToken,
+      },
+      context,
+    ),
+    (error) =>
+      error?.code === "failed-precondition" &&
+      error?.details?.reason === "CATALOG_CHANGED",
   );
 });

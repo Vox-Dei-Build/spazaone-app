@@ -1209,6 +1209,8 @@ PODS:
   - connectivity_plus (0.0.1):
     - Flutter
     - ReachabilitySwift
+  - file_selector_ios (0.0.1):
+    - Flutter
   - Firebase/Analytics (11.15.0):
     - Firebase/Core
   - Firebase/Auth (11.15.0):
@@ -1585,6 +1587,9 @@ PODS:
   - path_provider_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
+  - pdfrx (0.0.6):
+    - Flutter
+    - FlutterMacOS
   - permission_handler_apple (9.3.0):
     - Flutter
   - PostHog (3.57.6)
@@ -1618,6 +1623,7 @@ DEPENDENCIES:
   - cloud_firestore (from `.symlinks/plugins/cloud_firestore/ios`)
   - cloud_functions (from `.symlinks/plugins/cloud_functions/ios`)
   - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - file_selector_ios (from `.symlinks/plugins/file_selector_ios/ios`)
   - firebase_analytics (from `.symlinks/plugins/firebase_analytics/ios`)
   - firebase_app_check (from `.symlinks/plugins/firebase_app_check/ios`)
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
@@ -1636,6 +1642,7 @@ DEPENDENCIES:
   - in_app_review (from `.symlinks/plugins/in_app_review/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
+  - pdfrx (from `.symlinks/plugins/pdfrx/darwin`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - posthog_flutter (from `.symlinks/plugins/posthog_flutter/ios`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
@@ -1696,6 +1703,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/cloud_functions/ios"
   connectivity_plus:
     :path: ".symlinks/plugins/connectivity_plus/ios"
+  file_selector_ios:
+    :path: ".symlinks/plugins/file_selector_ios/ios"
   firebase_analytics:
     :path: ".symlinks/plugins/firebase_analytics/ios"
   firebase_app_check:
@@ -1732,6 +1741,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/package_info_plus/ios"
   path_provider_foundation:
     :path: ".symlinks/plugins/path_provider_foundation/darwin"
+  pdfrx:
+    :path: ".symlinks/plugins/pdfrx/darwin"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
   posthog_flutter:
@@ -1752,6 +1763,7 @@ SPEC CHECKSUMS:
   cloud_firestore: fdcc87898326e396d6ef6df543acf9b5c2034b95
   cloud_functions: 8565a870fbdc2b5046cba8183e972484128b6d8d
   connectivity_plus: 481668c94744c30c53b8895afb39159d1e619bdf
+  file_selector_ios: f92e583d43608aebc2e4a18daac30b8902845502
   Firebase: d99ac19b909cd2c548339c2241ecd0d1599ab02e
   firebase_analytics: 0e25ca1d4001ccedd40b4e5b74c0ec34e18f6425
   firebase_app_check: 03d91956c2f83d4a7ca65a88a14507cd041c085f
@@ -1803,6 +1815,7 @@ SPEC CHECKSUMS:
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: 608fcb11be570ce83519b076ab6a1fffe2474f05
+  pdfrx: 310e84d01e06fd2af26e16507a0e48c27e99195c
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   PostHog: d8b1c5a8e0f1a56b38ecf8eddcc422abd17b5243
   posthog_flutter: 631ab870f7daf1ed190deeb2414eb3e347445f37

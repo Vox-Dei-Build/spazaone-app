@@ -8,7 +8,15 @@ import {
 } from "./catalogConfig";
 import { reconcileMerchantWhatsAppCatalogCompleteness } from "./catalogCompleteness";
 import { collectAllNativeCatalogMappingPages } from "./catalogMappingPages";
-import { WHATSAPP_CATALOG_MAPPINGS } from "./catalogQueue";
+import {
+  WHATSAPP_CATALOG_MAPPINGS,
+  WHATSAPP_CATALOG_OUTBOX,
+} from "./catalogQueue";
+import {
+  decodeWhatsAppCatalogCursor,
+  encodeWhatsAppCatalogCursor,
+  summarizeWhatsAppCatalogStatusV2,
+} from "./catalogStatusV2";
 
 type MappingSummary = {
   productId: string;
@@ -104,6 +112,163 @@ export const getWhatsAppCatalogSyncStatusV1 = functions.https.onCall(
     };
   },
 );
+
+const CATALOG_STATUS_PAGE_SIZE = 100;
+const CATALOG_STATUS_FRESH_MS = 5 * 60 * 1000;
+
+function catalogStatusCursorSecret(): string {
+  const secret = String(
+    process.env.WHATSAPP_CATALOG_STATUS_CURSOR_SECRET ?? "",
+  ).trim();
+  if (secret.length < 32) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Catalogue status is not configured.",
+    );
+  }
+  return secret;
+}
+
+/**
+ * Merchant-facing, sanitized catalogue status. The endpoint intentionally
+ * joins server-owned projection state rather than allowing clients to read
+ * mapping/outbox collections directly.
+ */
+export const getWhatsAppCatalogSyncStatusV2 = functions
+  .runWith({ secrets: ["WHATSAPP_CATALOG_STATUS_CURSOR_SECRET"] })
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Sign in to view catalogue status.",
+      );
+    }
+    if (!context.app) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "App verification is required.",
+      );
+    }
+    const storeId = String(data?.storeId ?? context.auth.uid).trim();
+    await assertCallableStoreAccess(context, storeId);
+    const requestedPageSize = Number(
+      data?.pageSize ?? CATALOG_STATUS_PAGE_SIZE,
+    );
+    if (
+      !Number.isSafeInteger(requestedPageSize) ||
+      requestedPageSize < 1 ||
+      requestedPageSize > CATALOG_STATUS_PAGE_SIZE
+    ) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "pageSize must be between 1 and 100.",
+      );
+    }
+    const cursorSecret = catalogStatusCursorSecret();
+    const rawPageToken = String(data?.pageToken ?? "").trim();
+    const cursor = rawPageToken
+      ? decodeWhatsAppCatalogCursor(rawPageToken, cursorSecret)
+      : null;
+    if (
+      rawPageToken &&
+      (!cursor || cursor.uid !== context.auth.uid || cursor.storeId !== storeId)
+    ) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "The catalogue page token is invalid.",
+        { reason: "INVALID_PAGE_TOKEN" },
+      );
+    }
+
+    const [merchant, products, mappings, outbox] = await Promise.all([
+      db.doc(`users/${storeId}`).get(),
+      db.collection(`users/${storeId}/products`).get(),
+      db
+        .collection(WHATSAPP_CATALOG_MAPPINGS)
+        .where("merchantId", "==", storeId)
+        .get(),
+      db
+        .collection(WHATSAPP_CATALOG_OUTBOX)
+        .where("merchantId", "==", storeId)
+        .get(),
+    ]);
+    let rolloutEnabled = false;
+    try {
+      const config = whatsappCatalogRuntimeConfig();
+      rolloutEnabled = whatsappCatalogMerchantAllowed(config, storeId);
+    } catch (_) {
+      // Configuration faults are intentionally represented as not enabled;
+      // clients never receive environment/provider details.
+    }
+    const checkedAtMs = Date.now();
+    const snapshot = summarizeWhatsAppCatalogStatusV2({
+      merchantId: storeId,
+      merchant: merchant.data() ?? {},
+      products: products.docs.map((product) => ({
+        id: product.id,
+        data: product.data() ?? {},
+      })),
+      mappings: mappings.docs.map((mapping) => ({
+        ...mapping.data(),
+        retailerId: mapping.data().retailerId ?? mapping.id,
+      })),
+      outbox: outbox.docs.map((job) => ({
+        ...job.data(),
+        retailerId: job.data().retailerId ?? job.id,
+      })),
+      rolloutEnabled,
+      checkedAtMs,
+    });
+    if (cursor && cursor.catalogVersion !== snapshot.catalogVersion) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Catalogue changed while loading. Start again.",
+        { reason: "CATALOG_CHANGED" },
+      );
+    }
+    const startIndex = cursor
+      ? snapshot.products.findIndex(
+          (product) => product.productId === cursor.lastProductId,
+        ) + 1
+      : 0;
+    if (cursor && startIndex === 0) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Catalogue changed while loading. Start again.",
+        { reason: "CATALOG_CHANGED" },
+      );
+    }
+    const page = snapshot.products.slice(
+      startIndex,
+      startIndex + requestedPageSize,
+    );
+    const hasNextPage =
+      startIndex + requestedPageSize < snapshot.products.length;
+    const lastProductId = page.at(-1)?.productId;
+    const nextPageToken =
+      hasNextPage && lastProductId
+        ? encodeWhatsAppCatalogCursor(
+            {
+              uid: context.auth.uid,
+              storeId,
+              catalogVersion: snapshot.catalogVersion,
+              lastProductId,
+            },
+            cursorSecret,
+          )
+        : null;
+    return {
+      schemaVersion: 2,
+      checkedAtMs,
+      freshUntilMs: checkedAtMs + CATALOG_STATUS_FRESH_MS,
+      rollout: rolloutEnabled ? "enabled" : "not_enabled",
+      summary: snapshot.summary,
+      products: page,
+      nextPageToken,
+      catalogVersion: snapshot.catalogVersion,
+      retryPermitted: false,
+    };
+  });
 
 /** Trusted Botpress read: only active retailer IDs for the requested merchant. */
 export const getMerchantWhatsAppProductListBotHttp = functions

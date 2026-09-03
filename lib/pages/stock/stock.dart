@@ -11,6 +11,8 @@ import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
+import 'package:pasella/pages/stock/widgets/whatsapp_catalog_status_card.dart';
+import 'package:pasella/services/whatsapp_catalog_status_service.dart';
 import 'package:provider/provider.dart';
 
 class StockPage extends StatefulWidget {
@@ -54,10 +56,16 @@ class _StockPageState extends State<StockPage>
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => StockViewModel()..watchProducts(),
-      child: Consumer<StockViewModel>(
-        builder: (context, viewModel, child) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+            create: (_) => StockViewModel()..watchProducts()),
+        ChangeNotifierProvider(
+          create: (_) => WhatsAppCatalogStatusController()..start(),
+        ),
+      ],
+      child: Consumer2<StockViewModel, WhatsAppCatalogStatusController>(
+        builder: (context, viewModel, catalogStatus, child) {
           return DefaultTabController(
             length: 3,
             child: Scaffold(
@@ -105,11 +113,21 @@ class _StockPageState extends State<StockPage>
                                     );
                                   },
                                 ),
+                                WhatsAppCatalogStatusCard(
+                                  controller: catalogStatus,
+                                ),
                                 Expanded(
                                   child: ProductList(
                                     viewModel: viewModel,
+                                    catalogSnapshot: catalogStatus.snapshot,
+                                    onCatalogRefresh:
+                                        catalogStatus.manualRefresh,
                                     groupName: null,
                                     onAddProduct: _openNewProduct,
+                                    onProductChanged: () =>
+                                        catalogStatus.refresh(
+                                      resetPolling: true,
+                                    ),
                                     showEmptyAction: false,
                                   ),
                                 ),
@@ -153,6 +171,11 @@ class _StockPageState extends State<StockPage>
         .then((_) {
       // snap back to "Product Page" tab when you pop
       _tabController.animateTo(0);
+      if (mounted) {
+        context.read<WhatsAppCatalogStatusController>().refresh(
+              resetPolling: true,
+            );
+      }
     });
   }
 }

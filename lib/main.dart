@@ -36,6 +36,7 @@ import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/services/environment_contract_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
+import 'package:pasella/services/whatsapp_catalog_status_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/phone_util.dart';
@@ -707,6 +708,7 @@ Future<void> _initializeCoreServices() async {
     CrashService.instance.setMerchantId(user?.uid);
     if (user == null) {
       TelemetryService.instance.reset();
+      unawaited(WhatsAppCatalogStatusService.clearAllCachedStatus());
     }
   });
 }

@@ -1723,6 +1723,7 @@ test("new and existing deployment selectors are exact and disjoint", () => {
     "getMerchantWhatsAppCatalogCompletenessBotHttp",
     "getMerchantWhatsAppProductListBotHttp",
     "getWhatsAppCatalogSyncStatusV1",
+    "getWhatsAppCatalogSyncStatusV2",
     "resolveMerchantWhatsAppCatalogProductBotHttp",
     "sendMerchantWhatsAppCatalogBotHttp",
     "getWhatsAppProductListDeliveryStatusBotHttp",
@@ -1743,6 +1744,7 @@ test("new and existing deployment selectors are exact and disjoint", () => {
     "runWhatsAppCatalogFullReconciliationBotHttp",
     "getMerchantWhatsAppCatalogCompletenessBotHttp",
     "getMerchantWhatsAppProductListBotHttp",
+    "getWhatsAppCatalogSyncStatusV2",
   ]);
   assert.deepEqual(NATIVE_CATALOG_DELIVERY_FUNCTIONS, [
     "resolveMerchantWhatsAppCatalogProductBotHttp",
@@ -1774,7 +1776,7 @@ test("new and existing deployment selectors are exact and disjoint", () => {
       ...NATIVE_CATALOG_NEW_FUNCTIONS,
       ...NATIVE_CATALOG_EXISTING_FUNCTIONS,
     ]).size,
-    17,
+    18,
   );
   assert.ok(
     NATIVE_CATALOG_EXISTING_FUNCTIONS.every(
@@ -2329,8 +2331,7 @@ test("function readback accepts Firebase's omitted empty secret list and still r
 
   const missingRequired = structuredClone(endpoints);
   const requiresSecret = missingRequired.find(
-    (endpoint) =>
-      NATIVE_CATALOG_FUNCTION_SECRET_REFS[endpoint.id].length > 0,
+    (endpoint) => NATIVE_CATALOG_FUNCTION_SECRET_REFS[endpoint.id].length > 0,
   );
   delete requiresSecret.secretEnvironmentVariables;
   const rejectedRequired = await collectCatalogFunctionReadback(
@@ -2346,8 +2347,7 @@ test("function readback accepts Firebase's omitted empty secret list and still r
 
   const malformedEmpty = structuredClone(endpoints);
   const expectsNoSecret = malformedEmpty.find(
-    (endpoint) =>
-      NATIVE_CATALOG_FUNCTION_SECRET_REFS[endpoint.id].length === 0,
+    (endpoint) => NATIVE_CATALOG_FUNCTION_SECRET_REFS[endpoint.id].length === 0,
   );
   expectsNoSecret.secretEnvironmentVariables = null;
   const rejectedMalformedEmpty = await collectCatalogFunctionReadback(
@@ -2489,7 +2489,10 @@ test("existing-function readback permits only the exact catalog hash-key secret 
     "exact_catalog_recipient_hash_secret_addition",
   );
   assert.match(after.environmentTransitionDigestSha256, /^[a-f0-9]{64}$/);
-  assert.notEqual(after.environmentDigestSha256, before.environmentDigestSha256);
+  assert.notEqual(
+    after.environmentDigestSha256,
+    before.environmentDigestSha256,
+  );
   assert.equal(
     after.expectedEnvironmentDigestSha256,
     after.environmentDigestSha256,
@@ -2529,35 +2532,35 @@ test("existing-function readback permits only the exact catalog hash-key secret 
       ).environmentVariables.UNEXPECTED_USER_ENV = "changed";
     },
     (rows) => {
-      rows.find(
-        (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
-      ).secretEnvironmentVariables.find(
-        (entry) => entry.key === "PASELLA_BOT_TOKEN",
-      ).version = "99";
+      rows
+        .find((endpoint) => endpoint.id === "getMerchantCatalogBotHttp")
+        .secretEnvironmentVariables.find(
+          (entry) => entry.key === "PASELLA_BOT_TOKEN",
+        ).version = "99";
     },
     (rows) => {
-      rows.find(
-        (endpoint) => endpoint.id === "checkoutCart",
-      ).secretEnvironmentVariables.push({
-        key: "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
-        projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
-        secret: "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
-        version: "1",
-      });
+      rows
+        .find((endpoint) => endpoint.id === "checkoutCart")
+        .secretEnvironmentVariables.push({
+          key: "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+          projectId: PRODUCTION_FIREBASE_PROJECT_NUMBER,
+          secret: "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+          version: "1",
+        });
     },
     (rows) => {
-      rows.find(
-        (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
-      ).secretEnvironmentVariables.find(
-        (entry) => entry.key === "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
-      ).secret = "projects/pasella-ledger/secrets/WRONG_SECRET";
+      rows
+        .find((endpoint) => endpoint.id === "getMerchantCatalogBotHttp")
+        .secretEnvironmentVariables.find(
+          (entry) => entry.key === "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+        ).secret = "projects/pasella-ledger/secrets/WRONG_SECRET";
     },
     (rows) => {
-      rows.find(
-        (endpoint) => endpoint.id === "getMerchantCatalogBotHttp",
-      ).secretEnvironmentVariables.find(
-        (entry) => entry.key === "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
-      ).projectId = "999999999999";
+      rows
+        .find((endpoint) => endpoint.id === "getMerchantCatalogBotHttp")
+        .secretEnvironmentVariables.find(
+          (entry) => entry.key === "WHATSAPP_CATALOG_RECIPIENT_HASH_KEY",
+        ).projectId = "999999999999";
     },
     (rows) => {
       const endpoint = rows.find(
@@ -2575,8 +2578,7 @@ test("existing-function readback permits only the exact catalog hash-key secret 
       functionNames: NATIVE_CATALOG_EXISTING_FUNCTIONS,
       existingEnvironmentBaselines,
       endpoints: changed,
-      expectedPreDeployEnvironmentDigestSha256:
-        before.environmentDigestSha256,
+      expectedPreDeployEnvironmentDigestSha256: before.environmentDigestSha256,
     });
     assert.equal(rejected.transitionMatches, false);
   }
@@ -2699,7 +2701,8 @@ test("Firestore index canonicalization normalizes the provider's implicit name a
 });
 
 test("Firestore rules readback pins the quota project and accepts one provider-qualified source path", async () => {
-  const source = "rules_version = '2';\nservice cloud.firestore { match /{document=**} { allow read: if false; } }\n";
+  const source =
+    "rules_version = '2';\nservice cloud.firestore { match /{document=**} { allow read: if false; } }\n";
   const calls = [];
   const result = await collectCatalogPolicyReadback("firestore-rules", {
     execFileImpl: async (command, args) => {

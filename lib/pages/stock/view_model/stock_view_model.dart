@@ -289,6 +289,16 @@ class StockViewModel with ChangeNotifier {
   }
 
   Stream<List<Product>> streamProductsByGroup(String? groupName) {
+    final override = _productsStreamOverride;
+    if (override != null) {
+      return groupName == null
+          ? override
+          : override.map(
+              (products) => products
+                  .where((product) => product.group == groupName)
+                  .toList(growable: false),
+            );
+    }
     if (groupName != null) {
       return _firestore
           .collection('users')

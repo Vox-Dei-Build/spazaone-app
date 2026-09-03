@@ -1,9 +1,20 @@
 # Handover — merchant WhatsApp catalogue visibility and sync UX
 
-Status: future app work after the native catalogue backend/Botpress rollout
+Status: V2 status and invoice/PDF app support implemented locally; deployment
+and release remain separately governed
 
 Release state: no app release, backend deployment, catalogue sync, or production
 write was performed as part of this handover
+
+Implementation update (3 September 2026): the app now consumes the sanitized,
+App Check-protected `getWhatsAppCatalogSyncStatusV2` callable with tenant-bound
+pagination, one-time catalogue-drift recovery, store/session epoch isolation,
+and a user/store Hive cache. Products use server-derived catalogue states (or
+the explicit `WhatsApp listing requested` fallback) and shops outside backend
+rollout see `Catalogue rollout is not yet enabled for this shop.` The same
+change adds private JPEG/PNG/PDF sales-attachment viewing and selection while
+retaining the existing three-file and 5 MB limits. V1 is unchanged. No backend,
+Storage rule, Remote Config, or app release has been deployed from this work.
 
 ## Outcome to build
 
@@ -45,13 +56,11 @@ server-owned outbox and are synchronized to Meta in the background. A product
 is live only when the current eligible revision has an active mapping and Meta
 has accepted that same revision. Counts alone are not proof of readiness.
 
-The current app already provides the `List in WhatsApp Store` control, requires
-an image before saving a listed product, and shows a local preview. It currently
-labels a listed product as `Online`, but does not call the local backend's
-`getWhatsAppCatalogSyncStatusV1` status contract and cannot distinguish
-eligible, syncing, accepted, stale, or rejected products. Consequently,
-`whatsappListed=true` currently expresses merchant intent, not confirmed live
-customer visibility.
+Before the implementation update above, the app provided the
+`List in WhatsApp Store` control, required an image before saving a listed
+product, and showed a local preview, but labelled merchant intent as `Online`.
+The V2 client now preserves merchant intent separately from server-confirmed
+live customer visibility.
 
 The status callable and catalogue projection in this worktree are local
 implementation, not evidence that production has been deployed or reconciled.

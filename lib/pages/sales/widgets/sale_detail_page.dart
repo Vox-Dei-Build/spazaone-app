@@ -9,6 +9,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 import 'package:pasella/pages/sales/widgets/edit_sale.dart';
+import 'package:pasella/pages/sales/widgets/stock_invoice_viewer_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/services/stock_invoice_attachment_service.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -373,43 +374,61 @@ class _StockInvoiceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(top: 8),
-      child: ListTile(
-        leading: SizedBox.square(
-          dimension: 52,
-          child: FutureBuilder<Uint8List?>(
-            future: loadPreview(attachment.storagePath),
-            builder: (context, snapshot) {
-              final bytes = snapshot.data;
-              if (bytes != null) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Image.memory(
-                    bytes,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.receipt_long_outlined,
-                    ),
+    return Semantics(
+      button: true,
+      label: 'Open invoice ${attachment.fileName}',
+      child: Card(
+        margin: const EdgeInsets.only(top: 8),
+        child: ListTile(
+          leading: SizedBox.square(
+            dimension: 52,
+            child: attachment.isPdf
+                ? const Icon(Icons.picture_as_pdf_outlined)
+                : FutureBuilder<Uint8List?>(
+                    future: loadPreview(attachment.storagePath),
+                    builder: (context, snapshot) {
+                      final bytes = snapshot.data;
+                      if (bytes != null) {
+                        return ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.memory(
+                            bytes,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.receipt_long_outlined,
+                            ),
+                          ),
+                        );
+                      }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      }
+                      return const Icon(Icons.receipt_long_outlined);
+                    },
                   ),
-                );
-              }
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(14),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                );
-              }
-              return const Icon(Icons.receipt_long_outlined);
-            },
+          ),
+          title: Text(
+            attachment.fileName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            attachment.isPdf ? 'Private invoice PDF' : 'Private invoice image',
+          ),
+          trailing: const Icon(Icons.open_in_full_rounded),
+          onTap: () => Navigator.of(context).push<void>(
+            MaterialPageRoute(
+              builder: (_) => StockInvoiceViewerPage(
+                fileName: attachment.fileName,
+                contentType: attachment.contentType,
+                loadBytes: () => loadPreview(attachment.storagePath),
+              ),
+            ),
           ),
         ),
-        title: Text(
-          attachment.fileName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: const Text('Private invoice image'),
       ),
     );
   }
