@@ -331,6 +331,32 @@ export function whatsappProductListMerchantAllowed(
 }
 
 /**
+ * Shop-level rollout check for merchant-facing status surfaces. This avoids
+ * resolving recipient secrets: handset controls are deliberately separate
+ * from whether native catalogue delivery is enabled for the shop itself.
+ */
+export function whatsappProductListMerchantRolloutAllowed(
+  merchantId: string,
+): boolean {
+  const environment = resolveEnvironment();
+  const isEnabled = enabled("WHATSAPP_PRODUCT_LIST_ENABLED");
+  const mode = providerMode(environment);
+  if (!isEnabled || mode === "disabled") return false;
+
+  const catalogConfig = whatsappCatalogRuntimeConfig();
+  const deliveryCanaries = canaryMerchantIds();
+  const deliveryFullRollout = enabled(
+    "WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED",
+  );
+  return (
+    catalogConfig.syncEnabled &&
+    (deliveryFullRollout || deliveryCanaries.has(merchantId)) &&
+    (catalogConfig.fullRolloutEnabled ||
+      catalogConfig.canaryMerchantIds.has(merchantId))
+  );
+}
+
+/**
  * Keyed one-way digest for controlled handset rollout. Plain phone numbers are
  * never stored in configuration or Firestore policy records.
  */

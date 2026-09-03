@@ -42,6 +42,7 @@ import {
   sendMetaWhatsAppProductList,
   whatsappNativeCatalogAccessReason,
   whatsappProductListMerchantAllowed,
+  whatsappProductListMerchantRolloutAllowed,
   whatsappProductListRuntimeConfig,
 } from "../lib/whatsapp/nativeProductList.js";
 import { summarizeProductListDeliveryHealth } from "../lib/whatsapp/nativeProductListStatus.js";
@@ -1695,6 +1696,55 @@ test("native product-list gates require dev-only provider and exact canary", () 
       assert.throws(
         whatsappProductListRuntimeConfig,
         /DEVELOPMENT_META_WHATSAPP_MESSAGE_MODE_INVALID/,
+      );
+    },
+  );
+});
+
+test("merchant rollout status follows native delivery rather than sync", () => {
+  const common = {
+    ...productionCatalogFullScope,
+    SPAZAONE_ENVIRONMENT: "production",
+    SPAZAONE_FIREBASE_PROJECT_ID: "pasella-ledger",
+    WHATSAPP_CATALOG_ID: "1234567890",
+    GCLOUD_PROJECT: undefined,
+    GOOGLE_CLOUD_PROJECT: undefined,
+  };
+
+  withEnvironment(
+    {
+      ...common,
+      WHATSAPP_PRODUCT_LIST_ENABLED: "false",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "disabled",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "false",
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: undefined,
+    },
+    () => {
+      assert.equal(
+        whatsappProductListMerchantRolloutAllowed("merchant_a"),
+        false,
+      );
+    },
+  );
+
+  withEnvironment(
+    {
+      ...common,
+      WHATSAPP_PRODUCT_LIST_ENABLED: "true",
+      META_WHATSAPP_MESSAGE_PROVIDER_MODE: "live",
+      WHATSAPP_PRODUCT_LIST_CANARY_MERCHANT_IDS: "merchant_a",
+      WHATSAPP_PRODUCT_LIST_FULL_ROLLOUT_ENABLED: "false",
+      WHATSAPP_CATALOG_RECIPIENT_HASH_KEY: undefined,
+    },
+    () => {
+      assert.equal(
+        whatsappProductListMerchantRolloutAllowed("merchant_a"),
+        true,
+      );
+      assert.equal(
+        whatsappProductListMerchantRolloutAllowed("merchant_b"),
+        false,
       );
     },
   );

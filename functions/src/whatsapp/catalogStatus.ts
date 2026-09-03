@@ -12,6 +12,7 @@ import {
   WHATSAPP_CATALOG_MAPPINGS,
   WHATSAPP_CATALOG_OUTBOX,
 } from "./catalogQueue";
+import { whatsappProductListMerchantRolloutAllowed } from "./nativeProductList";
 import {
   decodeWhatsAppCatalogCursor,
   encodeWhatsAppCatalogCursor,
@@ -194,8 +195,7 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
     ]);
     let rolloutEnabled = false;
     try {
-      const config = whatsappCatalogRuntimeConfig();
-      rolloutEnabled = whatsappCatalogMerchantAllowed(config, storeId);
+      rolloutEnabled = whatsappProductListMerchantRolloutAllowed(storeId);
     } catch (_) {
       // Configuration faults are intentionally represented as not enabled;
       // clients never receive environment/provider details.
