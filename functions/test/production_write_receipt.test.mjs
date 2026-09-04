@@ -37,6 +37,7 @@ import {
   PRODUCTION_NATIVE_CATALOG_TARGET,
   nativeCatalogTargetConfigurationDigestSha256,
 } from "../scripts/whatsapp-catalog-production-target.mjs";
+import { catalogFunctionSelector } from "../scripts/guard-whatsapp-catalog-functions-deploy.mjs";
 
 const skipPinnedMachineAttestation =
   process.env.SPAZAONE_SKIP_PINNED_MACHINE_ATTESTATION === "1";
@@ -301,6 +302,21 @@ test("needs-review receipt is closed, redacted, sealed, and never retryable", ()
   );
   assert.equal(receipt.operation.operatorAuditOnly, true);
   assert.match(receipt.redactedReceiptSha256, /^[a-f0-9]{64}$/);
+});
+
+test("delivery receipt contracts match the guarded deployment selectors", () => {
+  for (const lane of [
+    "controlled-delivery-enable",
+    "all-eligible-delivery-enable",
+    "delivery-disable",
+  ]) {
+    const guardedSelector = catalogFunctionSelector(lane);
+    assert.doesNotThrow(() =>
+      buildNeedsReviewProductionWriteReceipt(
+        needsReviewInput({ lane, selector: guardedSelector }),
+      ),
+    );
+  }
 });
 
 test("provider scratch audit evidence is redacted and bounded", () => {
