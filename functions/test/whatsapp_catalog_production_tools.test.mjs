@@ -1747,6 +1747,7 @@ test("new and existing deployment selectors are exact and disjoint", () => {
     "getWhatsAppCatalogSyncStatusV2",
   ]);
   assert.deepEqual(NATIVE_CATALOG_DELIVERY_FUNCTIONS, [
+    "getWhatsAppCatalogSyncStatusV2",
     "resolveMerchantWhatsAppCatalogProductBotHttp",
     "sendMerchantWhatsAppCatalogBotHttp",
     "getWhatsAppProductListDeliveryStatusBotHttp",
@@ -1808,6 +1809,18 @@ test("new and existing deployment selectors are exact and disjoint", () => {
     catalogFunctionSelector("sync-enable"),
     catalogFunctionSelector("sync-disable"),
   );
+  for (const lane of [
+    "controlled-delivery-enable",
+    "all-eligible-delivery-enable",
+    "delivery-disable",
+  ]) {
+    assert.ok(
+      catalogFunctionSelector(lane)
+        .split(",")
+        .includes("functions:getWhatsAppCatalogSyncStatusV2"),
+      `${lane} must update the merchant-facing rollout status`,
+    );
+  }
   assert.ok(
     !NATIVE_CATALOG_DELIVERY_FUNCTIONS.includes("getMerchantCatalogBotHttp"),
   );
@@ -2137,7 +2150,7 @@ test("function readback closes configured receipts without exposing scope values
     },
   );
   assert.equal(readback.environmentMatches, true);
-  assert.equal(readback.functionCount, 5);
+  assert.equal(readback.functionCount, NATIVE_CATALOG_DELIVERY_FUNCTIONS.length);
   assert.equal(readback.region, "us-central1");
   assert.match(readback.environmentDigestSha256, /^[a-f0-9]{64}$/);
   assert.equal(

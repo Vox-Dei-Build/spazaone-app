@@ -109,6 +109,10 @@ export const NATIVE_CATALOG_SYNC_FUNCTIONS = Object.freeze([
 // pre-existing production function is ever redeployed with a catalogue dotenv,
 // so an unknown remote environment cannot be replaced during cutover.
 export const NATIVE_CATALOG_DELIVERY_FUNCTIONS = Object.freeze([
+  // This callable derives its rollout state from the same per-function
+  // environment as delivery. Keep it in every delivery transition so the
+  // merchant app cannot report a stale rollout after enablement or rollback.
+  "getWhatsAppCatalogSyncStatusV2",
   "resolveMerchantWhatsAppCatalogProductBotHttp",
   "sendMerchantWhatsAppCatalogBotHttp",
   "getWhatsAppProductListDeliveryStatusBotHttp",
