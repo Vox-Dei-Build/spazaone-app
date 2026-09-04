@@ -14,7 +14,7 @@ const execFile = promisify(nodeExecFile);
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 export const APP_REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "../..");
 export const FROZEN_APP_MAIN_COMMIT =
-  "ba39230648261bf354a6fba3bea82b282d124120";
+  "14e93964a18c211a208966b0fdd44138e2ddc943";
 export const PRODUCTION_CANDIDATE_RECEIPT_NAMES = Object.freeze([
   "appBuildLintReceiptSha256",
   "appWhatsAppCatalogTestsReceiptSha256",

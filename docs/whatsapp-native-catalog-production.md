@@ -111,7 +111,7 @@ Every helper invocation requires `--expected-app-commit` and
 exact clean 40-character `HEAD`, or a current-main value other than the frozen
 governed revision. The authority check also
 requires that commit to descend from frozen app-main base
-`ba39230648261bf354a6fba3bea82b282d124120`. Before an authorized write, the
+`14e93964a18c211a208966b0fdd44138e2ddc943`. Before an authorized write, the
 high-level executor itself queries governed GitHub metadata through the
 registered Vox Dei authority and requires current remote `main` to equal that
 frozen base, then repeats the check immediately before every write-capable
@@ -195,18 +195,18 @@ separate lanes:
   into the same one-invocation read-only provider-input image. If either the
   source dotenv check or pinned-CLI preservation contract cannot be proved,
   the lane fails closed before deployment.
-- `sync-enable` later updates only the six synchronization/reconciliation
-  functions. It uses the same isolated dotenv mechanism. Native customer
-  delivery remains disabled.
-- `controlled-delivery-enable` updates only the five newly introduced native
-  delivery functions. It requires at least one exact merchant ID and at least
-  one keyed recipient digest, keeps all-eligible delivery off, and enables the
-  live WhatsApp message provider.
-- `all-eligible-delivery-enable` updates those same five new delivery functions
-  with empty controlled scopes and the full-delivery switch on.
-- `delivery-disable` updates only those five new delivery functions, keeps
-  catalogue synchronization live, and turns customer delivery and its message
-  provider off.
+- `sync-enable` later updates the six synchronization/reconciliation functions
+  plus the merchant-facing V2 status callable. It uses the same isolated
+  dotenv mechanism. Native customer delivery remains disabled.
+- `controlled-delivery-enable` updates the five native delivery functions plus
+  the merchant-facing V2 status callable. It requires at least one exact
+  merchant ID and at least one keyed recipient digest, keeps all-eligible
+  delivery off, and enables the live WhatsApp message provider.
+- `all-eligible-delivery-enable` updates those same six functions with empty
+  controlled scopes and the full-delivery switch on.
+- `delivery-disable` updates those same six functions, keeps catalogue
+  synchronization live, and turns customer delivery and its message provider
+  off.
 - `sync-disable` is a separate final rollback lane for only the six sync
   functions. It turns queueing, synchronization, and the catalogue provider
   off. Run it only after `delivery-disable` and a reviewed outbox drain.
@@ -674,9 +674,9 @@ sequence is:
 2. With separate all-eligible authorization, dry-run and then execute
    `all-eligible-delivery-enable`. Verify fresh remote configuration shows
    delivery enabled, empty controlled scopes, full delivery enabled, and both
-   providers live on the exact five-function selector.
+   providers live on the exact six-function selector.
 3. To stop customer delivery, dry-run and then execute `delivery-disable` on
-   that same five-function selector. This is the first rollback action and does
+   that same six-function selector. This is the first rollback action and does
    not stop catalogue synchronization or mutate catalogue/customer data.
 4. Only after fresh aggregate evidence accounts for all `pending`, `retry`,
    `processing`, and `submitted` outbox jobs, matches the unfiltered total, and
