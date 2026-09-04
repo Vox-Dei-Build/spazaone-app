@@ -28,6 +28,7 @@ import {
   persistNeedsReviewProductionWriteReceipt,
   validateProductionWriteReceipt,
 } from "../scripts/production-write-receipt.mjs";
+
 import {
   FROZEN_APP_MAIN_COMMIT,
   canonicalProductionCandidateManifestBytes,
@@ -37,6 +38,9 @@ import {
   nativeCatalogTargetConfigurationDigestSha256,
 } from "../scripts/whatsapp-catalog-production-target.mjs";
 
+const skipPinnedMachineAttestation =
+  process.env.SPAZAONE_SKIP_PINNED_MACHINE_ATTESTATION === "1";
+const hostBoundTest = skipPinnedMachineAttestation ? test.skip : test;
 const commit = "c".repeat(40);
 const sourceSha256 = appCommitSourceSha256(commit);
 const operationInputSha256 = "4".repeat(64);
@@ -569,7 +573,7 @@ test("post-link uncertainty remains needs-review and non-retryable", async () =>
   }
 });
 
-test("production toolchain pins executable identities and explicit account/project", async () => {
+hostBoundTest("production toolchain pins executable identities and explicit account/project", async () => {
   const calls = [];
   const toolchain = await assertPinnedProductionToolchain({
     environment: {

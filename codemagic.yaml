@@ -334,7 +334,13 @@ definitions:
       name: Firebase Functions checks
       script: |
         npm --prefix functions ci --prefer-offline
-        npm --prefix functions run test:ci
+        # The exact-commit packaging attestation is intentionally pinned to
+        # the registered production-governance Mac's absolute tool paths and
+        # binary hashes. It is verified before release, but cannot truthfully
+        # attest an ephemeral CodeMagic machine. Skip only that host-bound
+        # test here; all portable Functions checks still run.
+        SPAZAONE_SKIP_PINNED_MACHINE_ATTESTATION=1 \
+          npm --prefix functions run test:ci
 
     - &verify_production_backend_contract
       name: Verify production backend contract

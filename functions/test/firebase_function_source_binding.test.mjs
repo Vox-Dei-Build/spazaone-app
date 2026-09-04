@@ -23,8 +23,15 @@ import {
 } from "../scripts/guard-whatsapp-catalog-functions-deploy.mjs";
 
 const require = createRequire(import.meta.url);
-const pinnedFirebaseFs = require("/opt/homebrew/lib/node_modules/firebase-tools/lib/fsAsync.js");
-const pinnedFirebaseHash = require("/opt/homebrew/lib/node_modules/firebase-tools/lib/deploy/functions/cache/hash.js");
+const skipPinnedMachineAttestation =
+  process.env.SPAZAONE_SKIP_PINNED_MACHINE_ATTESTATION === "1";
+const hostBoundTest = skipPinnedMachineAttestation ? test.skip : test;
+const pinnedFirebaseFs = skipPinnedMachineAttestation
+  ? undefined
+  : require("/opt/homebrew/lib/node_modules/firebase-tools/lib/fsAsync.js");
+const pinnedFirebaseHash = skipPinnedMachineAttestation
+  ? undefined
+  : require("/opt/homebrew/lib/node_modules/firebase-tools/lib/deploy/functions/cache/hash.js");
 
 const commit = "c".repeat(40);
 const projectId = "pasella-ledger";
@@ -115,7 +122,7 @@ async function withCandidateSource(callback) {
   }
 }
 
-test("pinned firebase-tools hash implementation is present", async () => {
+hostBoundTest("pinned firebase-tools hash implementation is present", async () => {
   assert.match(
     await assertPinnedFirebaseFunctionHashImplementation(),
     /^[a-f0-9]{64}$/,
@@ -128,7 +135,7 @@ test("pinned firebase-tools hash implementation is present", async () => {
   );
 });
 
-test("runtime and endpoint hashes reproduce firebase-tools 15.21.0", () => {
+hostBoundTest("runtime and endpoint hashes reproduce firebase-tools 15.21.0", () => {
   const firebaseConfig = {
     projectId,
     storageBucket: "pasella-ledger.appspot.com",
@@ -183,7 +190,7 @@ test("runtime and endpoint hashes reproduce firebase-tools 15.21.0", () => {
   );
 });
 
-test("checked secret-reference order matches every selected source declaration", async () => {
+hostBoundTest("checked secret-reference order matches every selected source declaration", async () => {
   const sourceFiles = {
     onMerchantProductCatalogChange: "src/whatsapp/catalogQueue.ts",
     syncWhatsAppMerchantCatalog: "src/whatsapp/catalogWorker.ts",
@@ -233,7 +240,7 @@ test("checked secret-reference order matches every selected source declaration",
   }
 });
 
-test("candidate contract binds Git blobs, exact generated inventory, and package bytes", async () => {
+hostBoundTest("candidate contract binds Git blobs, exact generated inventory, and package bytes", async () => {
   await withCandidateSource(async ({ root, functionsDirectory, tracked }) => {
     const pinnedFiles = (
       await pinnedFirebaseFs.readdirRecursive({
@@ -339,7 +346,7 @@ test("candidate contract binds Git blobs, exact generated inventory, and package
   });
 });
 
-test("candidate contract rejects unresolved Firebase parameter declarations", async () => {
+hostBoundTest("candidate contract rejects unresolved Firebase parameter declarations", async () => {
   await withCandidateSource(async ({ root, functionsDirectory, tracked }) => {
     const paramsModule = ["firebase-functions", "params"].join("/");
     tracked["src/index.ts"] =
@@ -363,7 +370,7 @@ test("candidate contract rejects unresolved Firebase parameter declarations", as
   });
 });
 
-test("candidate contract rejects a tracked byte that is not from the reviewed commit", async () => {
+hostBoundTest("candidate contract rejects a tracked byte that is not from the reviewed commit", async () => {
   await withCandidateSource(async ({ root, functionsDirectory, tracked }) => {
     await writeFile(
       path.join(functionsDirectory, "src/index.ts"),
@@ -383,7 +390,7 @@ test("candidate contract rejects a tracked byte that is not from the reviewed co
   });
 });
 
-test("runtime-config collector returns only a digest and clears command buffers", async () => {
+hostBoundTest("runtime-config collector returns only a digest and clears command buffers", async () => {
   const firebaseConfig = JSON.stringify({ projectId, storageBucket: "bucket" });
   const legacy = { twilio: { token: "fixture-token-never-output" } };
   const outputs = [];
@@ -468,7 +475,7 @@ function normalizedEndpoint({
   };
 }
 
-test("configured and existing lanes require candidate-derived provider hashes", () => {
+hostBoundTest("configured and existing lanes require candidate-derived provider hashes", () => {
   const configuredEnvironmentEntries = [["BUILD_COMMIT", commit]];
   const firebaseConfig = JSON.stringify({ projectId, storageBucket: "bucket" });
   const configuredBackendEnvironment = {
@@ -576,7 +583,7 @@ test("configured and existing lanes require candidate-derived provider hashes", 
   assert.equal(stale.candidateSourceBindingMatches, false);
 });
 
-test("secret order/version, selector, region, codebase, and source are fail closed", () => {
+hostBoundTest("secret order/version, selector, region, codebase, and source are fail closed", () => {
   const source = sourceContract();
   const firebaseConfig = JSON.stringify({ projectId });
   const environmentVariables = {

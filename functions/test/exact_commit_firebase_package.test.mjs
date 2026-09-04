@@ -26,197 +26,217 @@ import {
 const execFile = promisify(nodeExecFile);
 const repositoryRoot = path.resolve("..");
 
-test("exact Git commit is rebuilt offline with a pinned production dependency closure", async () => {
-  const { stdout } = await execFile("/usr/bin/git", [
-    "-C",
-    repositoryRoot,
-    "rev-parse",
-    "HEAD",
-  ]);
-  const expectedAppCommit = stdout.trim();
-  let prepared;
-  let mounted;
-  let workspace;
-  try {
-    prepared = await prepareExactCommitFirebasePackage({
+const skipPinnedMachineAttestation =
+  process.env.SPAZAONE_SKIP_PINNED_MACHINE_ATTESTATION === "1";
+
+test(
+  "exact Git commit is rebuilt offline with a pinned production dependency closure",
+  {
+    skip: skipPinnedMachineAttestation
+      ? "requires the registered production-governance Mac toolchain"
+      : false,
+  },
+  async () => {
+    const { stdout } = await execFile("/usr/bin/git", [
+      "-C",
       repositoryRoot,
-      expectedAppCommit,
-      temporaryRoot: await realpath(os.tmpdir()),
-    });
-    assert.equal(prepared.expectedAppCommit, expectedAppCommit);
-    assert.equal(prepared.builtFromExactCommit, true);
-    assert.equal(prepared.offlineInstall, true);
-    assert.equal(prepared.scriptsDisabledDuringInstall, true);
-    assert.equal(prepared.productionDependenciesIncluded, true);
-    assert.equal(prepared.authorizesProduction, false);
-    assert.match(prepared.gitTreeSha1, /^[a-f0-9]{40}$/);
-    assert.match(prepared.gitArchiveSha256, /^[a-f0-9]{64}$/);
-    assert.match(prepared.generatedLibInventorySha256, /^[a-f0-9]{64}$/);
-    assert.match(prepared.dependencyClosureSha256, /^[a-f0-9]{64}$/);
-    assert.ok(prepared.dependencyFileCount > 100);
-    assert.equal(
-      (await verifyExactCommitFirebasePackage(prepared)).verified,
-      true,
-    );
-    assert.match(
-      await readFile(
-        exactCommitFirebasePackagePath(prepared, "functions/lib/index.js"),
-        "utf8",
-      ),
-      /sourceMappingURL|exports|export/,
-    );
-    assert.match(
-      await readFile(
-        exactCommitFirebasePackagePath(
-          prepared,
-          "functions/node_modules/firebase-functions/package.json",
+      "rev-parse",
+      "HEAD",
+    ]);
+    const expectedAppCommit = stdout.trim();
+    let prepared;
+    let mounted;
+    let workspace;
+    try {
+      prepared = await prepareExactCommitFirebasePackage({
+        repositoryRoot,
+        expectedAppCommit,
+        temporaryRoot: await realpath(os.tmpdir()),
+      });
+      assert.equal(prepared.expectedAppCommit, expectedAppCommit);
+      assert.equal(prepared.builtFromExactCommit, true);
+      assert.equal(prepared.offlineInstall, true);
+      assert.equal(prepared.scriptsDisabledDuringInstall, true);
+      assert.equal(prepared.productionDependenciesIncluded, true);
+      assert.equal(prepared.authorizesProduction, false);
+      assert.match(prepared.gitTreeSha1, /^[a-f0-9]{40}$/);
+      assert.match(prepared.gitArchiveSha256, /^[a-f0-9]{64}$/);
+      assert.match(prepared.generatedLibInventorySha256, /^[a-f0-9]{64}$/);
+      assert.match(prepared.dependencyClosureSha256, /^[a-f0-9]{64}$/);
+      assert.ok(prepared.dependencyFileCount > 100);
+      assert.equal(
+        (await verifyExactCommitFirebasePackage(prepared)).verified,
+        true,
+      );
+      assert.match(
+        await readFile(
+          exactCommitFirebasePackagePath(prepared, "functions/lib/index.js"),
+          "utf8",
         ),
-        "utf8",
-      ),
-      /"name":\s*"firebase-functions"/,
-    );
+        /sourceMappingURL|exports|export/,
+      );
+      assert.match(
+        await readFile(
+          exactCommitFirebasePackagePath(
+            prepared,
+            "functions/node_modules/firebase-functions/package.json",
+          ),
+          "utf8",
+        ),
+        /"name":\s*"firebase-functions"/,
+      );
 
-    const generatedPath = exactCommitFirebasePackagePath(
-      prepared,
-      "functions/lib/index.js",
-    );
-    const generatedBytes = await readFile(generatedPath);
-    await writeFile(generatedPath, "mutated after preparation\n");
-    await assert.rejects(
-      verifyExactCommitFirebasePackage(prepared),
-      (error) =>
-        error instanceof ExactCommitFirebasePackageError &&
-        error.code === "EXACT_COMMIT_PACKAGE_CHANGED",
-    );
-    await writeFile(generatedPath, generatedBytes);
-    generatedBytes.fill(0);
-    assert.equal(
-      (await verifyExactCommitFirebasePackage(prepared)).verified,
-      true,
-    );
+      const generatedPath = exactCommitFirebasePackagePath(
+        prepared,
+        "functions/lib/index.js",
+      );
+      const generatedBytes = await readFile(generatedPath);
+      await writeFile(generatedPath, "mutated after preparation\n");
+      await assert.rejects(
+        verifyExactCommitFirebasePackage(prepared),
+        (error) =>
+          error instanceof ExactCommitFirebasePackageError &&
+          error.code === "EXACT_COMMIT_PACKAGE_CHANGED",
+      );
+      await writeFile(generatedPath, generatedBytes);
+      generatedBytes.fill(0);
+      assert.equal(
+        (await verifyExactCommitFirebasePackage(prepared)).verified,
+        true,
+      );
 
-    mounted = await mountExactCommitFirebasePackageReadOnly(prepared);
-    assert.equal(
-      (await verifyMountedExactCommitFirebasePackage(mounted)).kernelReadOnly,
-      true,
-    );
-    workspace = await createFirebaseProductionSessionWorkspace({
-      mountedPackage: mounted,
-      projectId: "pasella-ledger",
-      lane: "firestore-rules",
-      temporaryRoot: await realpath(os.tmpdir()),
-    });
-    const verifiedWorkspace =
-      await verifyFirebaseProductionSessionWorkspace(workspace);
-    assert.equal(verifiedWorkspace.sourceKernelReadOnly, true);
-    assert.equal(verifiedWorkspace.providerInputKernelReadOnly, true);
-    assert.equal(workspace.writableOverlay, false);
-    assert.match(workspace.providerInputInventorySha256, /^[a-f0-9]{64}$/);
-    const configPath = firebaseProviderWorkspacePath(workspace, "config");
-    await assert.rejects(writeFile(configPath, "must not replace config\n"), {
-      code: "EROFS",
-    });
-    const scratchPath = firebaseProviderWorkspacePath(workspace, "scratch");
-    await writeFile(path.join(scratchPath, "provider.tmp"), "bounded scratch");
-    await assert.rejects(
-      verifyFirebaseProductionSessionWorkspace(workspace),
-      (error) => error.code === "FIREBASE_PRODUCTION_SESSION_SCRATCH_CHANGED",
-    );
-    const afterUse = await verifyFirebaseProductionSessionWorkspace(workspace, {
-      allowScratchChanges: true,
-    });
-    assert.equal(afterUse.providerScratchEntryCount, 1);
-    assert.equal(
-      (await inspectFirebaseProviderWorkspace(workspace))
-        .providerScratchEntryCount,
-      1,
-    );
-    await cleanupFirebaseProviderWorkspace(workspace);
-    workspace = null;
+      mounted = await mountExactCommitFirebasePackageReadOnly(prepared);
+      assert.equal(
+        (await verifyMountedExactCommitFirebasePackage(mounted)).kernelReadOnly,
+        true,
+      );
+      workspace = await createFirebaseProductionSessionWorkspace({
+        mountedPackage: mounted,
+        projectId: "pasella-ledger",
+        lane: "firestore-rules",
+        temporaryRoot: await realpath(os.tmpdir()),
+      });
+      const verifiedWorkspace =
+        await verifyFirebaseProductionSessionWorkspace(workspace);
+      assert.equal(verifiedWorkspace.sourceKernelReadOnly, true);
+      assert.equal(verifiedWorkspace.providerInputKernelReadOnly, true);
+      assert.equal(workspace.writableOverlay, false);
+      assert.match(workspace.providerInputInventorySha256, /^[a-f0-9]{64}$/);
+      const configPath = firebaseProviderWorkspacePath(workspace, "config");
+      await assert.rejects(writeFile(configPath, "must not replace config\n"), {
+        code: "EROFS",
+      });
+      const scratchPath = firebaseProviderWorkspacePath(workspace, "scratch");
+      await writeFile(
+        path.join(scratchPath, "provider.tmp"),
+        "bounded scratch",
+      );
+      await assert.rejects(
+        verifyFirebaseProductionSessionWorkspace(workspace),
+        (error) => error.code === "FIREBASE_PRODUCTION_SESSION_SCRATCH_CHANGED",
+      );
+      const afterUse = await verifyFirebaseProductionSessionWorkspace(
+        workspace,
+        {
+          allowScratchChanges: true,
+        },
+      );
+      assert.equal(afterUse.providerScratchEntryCount, 1);
+      assert.equal(
+        (await inspectFirebaseProviderWorkspace(workspace))
+          .providerScratchEntryCount,
+        1,
+      );
+      await cleanupFirebaseProviderWorkspace(workspace);
+      workspace = null;
 
-    workspace = await createFirebaseProductionSessionWorkspace({
-      mountedPackage: mounted,
-      projectId: "pasella-ledger",
-      lane: "dark-new",
-      dotenvText: "SPAZAONE_ENVIRONMENT=production\n",
-      temporaryRoot: await realpath(os.tmpdir()),
-    });
-    assert.equal(
-      (await verifyFirebaseProductionSessionWorkspace(workspace))
-        .providerInputKernelReadOnly,
-      true,
-    );
-    const functionConfigPath = firebaseProviderWorkspacePath(
-      workspace,
-      "config",
-    );
-    const functionConfig = JSON.parse(
-      await readFile(functionConfigPath, "utf8"),
-    );
-    assert.equal(functionConfig.functions.length, 1);
-    assert.equal(
-      functionConfig.functions[0].source,
-      firebaseProviderWorkspacePath(workspace, "functions-source"),
-    );
-    assert.match(
-      functionConfig.functions[0].configDir,
-      /provider-input-readonly\/config$/,
-    );
-    await assert.rejects(
-      writeFile(
-        path.join(functionConfig.functions[0].configDir, ".env.pasella-ledger"),
-        "must not replace dotenv\n",
-      ),
-      { code: "EROFS" },
-    );
-    await cleanupFirebaseProviderWorkspace(workspace);
-    workspace = null;
+      workspace = await createFirebaseProductionSessionWorkspace({
+        mountedPackage: mounted,
+        projectId: "pasella-ledger",
+        lane: "dark-new",
+        dotenvText: "SPAZAONE_ENVIRONMENT=production\n",
+        temporaryRoot: await realpath(os.tmpdir()),
+      });
+      assert.equal(
+        (await verifyFirebaseProductionSessionWorkspace(workspace))
+          .providerInputKernelReadOnly,
+        true,
+      );
+      const functionConfigPath = firebaseProviderWorkspacePath(
+        workspace,
+        "config",
+      );
+      const functionConfig = JSON.parse(
+        await readFile(functionConfigPath, "utf8"),
+      );
+      assert.equal(functionConfig.functions.length, 1);
+      assert.equal(
+        functionConfig.functions[0].source,
+        firebaseProviderWorkspacePath(workspace, "functions-source"),
+      );
+      assert.match(
+        functionConfig.functions[0].configDir,
+        /provider-input-readonly\/config$/,
+      );
+      await assert.rejects(
+        writeFile(
+          path.join(
+            functionConfig.functions[0].configDir,
+            ".env.pasella-ledger",
+          ),
+          "must not replace dotenv\n",
+        ),
+        { code: "EROFS" },
+      );
+      await cleanupFirebaseProviderWorkspace(workspace);
+      workspace = null;
 
-    workspace = await createFirebaseProductionSessionWorkspace({
-      mountedPackage: mounted,
-      projectId: "pasella-ledger",
-      lane: "full-reconciliation",
-      dotenvText: "",
-      temporaryRoot: await realpath(os.tmpdir()),
-    });
-    const reconciliationConfig = JSON.parse(
-      await readFile(
-        firebaseProviderWorkspacePath(workspace, "config"),
-        "utf8",
-      ),
-    );
-    assert.equal(reconciliationConfig.functions.length, 1);
-    assert.equal(
-      reconciliationConfig.functions[0].source,
-      firebaseProviderWorkspacePath(workspace, "functions-source"),
-    );
-    assert.equal(
-      Object.hasOwn(reconciliationConfig.functions[0], "configDir"),
-      false,
-    );
-    assert.equal(workspace.dotenvSha256, null);
-    await assert.rejects(
-      createFirebaseProductionSessionWorkspace({
+      workspace = await createFirebaseProductionSessionWorkspace({
         mountedPackage: mounted,
         projectId: "pasella-ledger",
         lane: "full-reconciliation",
-        dotenvText: "SPAZAONE_ENVIRONMENT=production\n",
+        dotenvText: "",
         temporaryRoot: await realpath(os.tmpdir()),
-      }),
-      (error) =>
-        error instanceof ExactCommitFirebasePackageError &&
-        error.code === "FIREBASE_PRODUCTION_SESSION_DOTENV_INVALID",
-    );
-  } finally {
-    if (workspace) await cleanupFirebaseProviderWorkspace(workspace);
-    if (prepared) {
-      await cleanupExactCommitFirebasePackage({
-        mountedPackage: mounted,
-        packageDescriptor: prepared,
       });
+      const reconciliationConfig = JSON.parse(
+        await readFile(
+          firebaseProviderWorkspacePath(workspace, "config"),
+          "utf8",
+        ),
+      );
+      assert.equal(reconciliationConfig.functions.length, 1);
+      assert.equal(
+        reconciliationConfig.functions[0].source,
+        firebaseProviderWorkspacePath(workspace, "functions-source"),
+      );
+      assert.equal(
+        Object.hasOwn(reconciliationConfig.functions[0], "configDir"),
+        false,
+      );
+      assert.equal(workspace.dotenvSha256, null);
+      await assert.rejects(
+        createFirebaseProductionSessionWorkspace({
+          mountedPackage: mounted,
+          projectId: "pasella-ledger",
+          lane: "full-reconciliation",
+          dotenvText: "SPAZAONE_ENVIRONMENT=production\n",
+          temporaryRoot: await realpath(os.tmpdir()),
+        }),
+        (error) =>
+          error instanceof ExactCommitFirebasePackageError &&
+          error.code === "FIREBASE_PRODUCTION_SESSION_DOTENV_INVALID",
+      );
+    } finally {
+      if (workspace) await cleanupFirebaseProviderWorkspace(workspace);
+      if (prepared) {
+        await cleanupExactCommitFirebasePackage({
+          mountedPackage: mounted,
+          packageDescriptor: prepared,
+        });
+      }
     }
-  }
-});
+  },
+);
 
 test("kernel read-only proof requires EROFS rather than owner chmod", async () => {
   const root = await realpath(

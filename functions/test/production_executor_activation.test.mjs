@@ -34,6 +34,9 @@ const reconciliationPath = path.resolve(
   "scripts/run-whatsapp-catalog-full-reconciliation.mjs",
 );
 const packagePath = path.resolve("package.json");
+const skipPinnedMachineAttestation =
+  process.env.SPAZAONE_SKIP_PINNED_MACHINE_ATTESTATION === "1";
+const hostBoundTest = skipPinnedMachineAttestation ? test.skip : test;
 
 function directExecutorEnvironment() {
   return {
@@ -1044,7 +1047,7 @@ test("recovery invokes its bound provider once, derives the readback digest, and
   });
 });
 
-test("direct executor invocation is rejected before any writer gate", () => {
+hostBoundTest("direct executor invocation is rejected before any writer gate", () => {
   const result = spawnSync(
     PINNED_NODE_RUNTIME.executablePath,
     [executorPath, "deployment", "--execute"],
@@ -1064,7 +1067,7 @@ test("direct executor invocation is rejected before any writer gate", () => {
   );
 });
 
-test("external launcher pins the executor and strips NODE_OPTIONS before Node", async () => {
+hostBoundTest("external launcher pins the executor and strips NODE_OPTIONS before Node", async () => {
   const source = await readFile(launcherPath, "utf8");
   const stat = await lstat(launcherPath);
   assert.equal(stat.isFile(), true);
