@@ -4,37 +4,25 @@ import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/analytics_event.dart';
-import 'package:pasella/services/dynamic_pricing_service.dart';
-import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/payment_receipt_tracker.dart';
-import 'package:pasella/shared/billing/cost_breakdown.dart';
-import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
+import 'package:pasella/shared/billing/optional_transaction_messaging.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
-import 'package:pasella/utils/sms_pricing_util.dart';
 
 class AddPaymentViewModel extends TransactionViewModel {
   final String customerName;
   final String customerId;
   final String? mobileNumber;
-  late final DynamicPricingService pricingService;
   String paymentMethod = 'cash';
 
   AddPaymentViewModel({
     required this.customerName,
     required this.customerId,
     this.mobileNumber,
-  }) {
-    _initServices();
-  }
-
-  Future<void> _initServices() async {
-    pricingService = await DynamicPricingService.initialize();
-    notifyListeners();
-  }
+  });
 
   Future<void> addPaymentTransaction(BuildContext context) async {
     if (isLoading) return;
@@ -73,12 +61,6 @@ class AddPaymentViewModel extends TransactionViewModel {
     };
 
     try {
-      final smsCost = SMSPricingUtil.calculateCost(
-        text: SMSMessages.paymentConfirmationShort,
-        unitCost: pricingService.smsPaymentTemplatePrice,
-      );
-      final whatsappCost = pricingService.whatsappUtilityPrice;
-
       // Pre-flight cost confirmation sheet — user explicitly confirms
       // the deduction before it happens (no surprise charge). The sheet
       // returns a tri-state outcome:
@@ -87,33 +69,16 @@ class AddPaymentViewModel extends TransactionViewModel {
       //   * dismissed -> sheet was closed without an explicit choice
       // Only send and skip commit the payment. Closing the drawer asks the
       // merchant whether to keep editing or discard before any write.
-      CostSheetOutcome outcome = CostSheetOutcome.skip;
-      double quotedTotal = smsCost;
-      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
-        final expectedChannel =
-            await MessagingNotificationService.resolveExpectedChannel(
-                mobileNumber!);
-        final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Payment recorded',
-          subtitle: 'Message to $customerName',
-          whatsappCost: whatsappCost,
-          smsCost: smsCost,
-          expected: expectedChannel,
-        );
-        quotedTotal = breakdown.total;
-        outcome = await CostConfirmationSheet.showOutcome(
-          context,
-          breakdown: breakdown,
-          confirmLabel: 'Send receipt',
-          skipLabel: 'Done without sending',
-          confirmDismissal: true,
-        );
-      } else {
-        // No mobile number on file — there was never a message path,
-        // so the only honest outcome is "skip" (record only). No sheet,
-        // no surprise.
-        outcome = CostSheetOutcome.skip;
-      }
+      final messagingDecision = await chooseOptionalTransactionMessage(
+        context,
+        mobileNumber: mobileNumber,
+        customerName: customerName,
+        smsText: SMSMessages.paymentConfirmationShort,
+        smsPrice: TransactionSmsPrice.payment,
+        title: 'Payment recorded',
+        confirmLabel: 'Send receipt',
+      );
+      final outcome = messagingDecision.outcome;
 
       if (!outcome.shouldCommit) {
         if (outcome.shouldDiscard && context.mounted) {
@@ -155,13 +120,19 @@ class AddPaymentViewModel extends TransactionViewModel {
       // as a last-resort fallback only — should rarely fire now.
       // Affordability gate uses the primary channel cost the user just
       // confirmed.
-      final canProceed = outcome.shouldSend &&
-          await BalanceCheckUtil.checkBalanceAndProceed(
-              context, userId, quotedTotal);
+      var canProceed = false;
+      if (messagingDecision.canSend) {
+        canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+          context,
+          userId,
+          messagingDecision.quotedTotal!,
+        );
+      }
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,
-            "Payment", mobileNumber);
+            "Payment", mobileNumber,
+            pricingSnapshot: messagingDecision.pricingSnapshot!);
       } else if (outcome.isSilent &&
           mobileNumber != null &&
           mobileNumber!.isNotEmpty) {

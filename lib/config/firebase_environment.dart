@@ -26,6 +26,22 @@ class FirebaseEnvironment {
     defaultValue: '',
   );
 
+  /// Development packages are commonly installed directly on test devices,
+  /// including release-mode builds used to check production optimisations.
+  /// Those installs cannot satisfy Play Integrity or App Attest distribution
+  /// checks, so the development Firebase apps use their registered debug
+  /// tokens. Production keeps the platform attestation providers in release
+  /// mode, while ordinary debug builds preserve the existing debug-provider
+  /// behaviour.
+  static bool shouldUseDebugAppCheckProviders({
+    bool? debugMode,
+    SpazaEnvironment? runtimeEnvironment,
+  }) {
+    final isDebugBuild = debugMode ?? kDebugMode;
+    final environment = runtimeEnvironment ?? SpazaRuntimeEnvironment.current;
+    return isDebugBuild || environment == SpazaEnvironment.development;
+  }
+
   /// Mobile flavors carry their Firebase identity in the native Android and
   /// iOS configuration selected by Gradle/Xcode. Using the `.env`-backed
   /// generated options on those platforms would bypass that flavor selection

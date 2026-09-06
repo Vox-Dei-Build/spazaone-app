@@ -6,25 +6,20 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
-import 'package:pasella/services/dynamic_pricing_service.dart';
-import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
-import 'package:pasella/shared/billing/cost_breakdown.dart';
-import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
+import 'package:pasella/shared/billing/optional_transaction_messaging.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
-import 'package:pasella/utils/sms_pricing_util.dart';
 
 class AddCreditViewModel extends TransactionViewModel {
   final String customerName;
   final String customerId;
   final String? mobileNumber;
   DateTime repaymentDate = DateTime.now().add(const Duration(days: 30));
-  late final DynamicPricingService pricingService;
 
   /// Cached ranked product suggestions for this customer, computed from
   /// the most recent N credit transactions on this customer's ledger.
@@ -51,7 +46,6 @@ class AddCreditViewModel extends TransactionViewModel {
     this.mobileNumber,
   }) {
     _initialiseAsync();
-    _initServices();
   }
 
   Future<void> _initialiseAsync() async {
@@ -144,11 +138,6 @@ class AddCreditViewModel extends TransactionViewModel {
     notifyListeners();
   }
 
-  Future<void> _initServices() async {
-    pricingService = await DynamicPricingService.initialize();
-    notifyListeners();
-  }
-
   Future<void> addCreditTransaction(BuildContext context) async {
     setLoading(true);
 
@@ -177,12 +166,6 @@ class AddCreditViewModel extends TransactionViewModel {
         'products': selectedProducts,
       };
 
-      final smsCost = SMSPricingUtil.calculateCost(
-        text: SMSMessages.creditConfirmationShort,
-        unitCost: pricingService.smsReminderTemplatePrice,
-      );
-      final whatsappCost = pricingService.whatsappUtilityPrice;
-
       // Pre-flight cost confirmation. Tri-state outcome:
       //   * send      -> dispatcher charges + SMS goes out
       //   * skip      -> merchant explicitly chose "record only"
@@ -190,32 +173,16 @@ class AddCreditViewModel extends TransactionViewModel {
       // Only send and skip are permission to commit. Closing the drawer
       // asks whether to keep editing or discard before any Firestore or
       // inventory write is allowed.
-      CostSheetOutcome outcome = CostSheetOutcome.skip;
-      double quotedTotal = smsCost;
-      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
-        final expectedChannel =
-            await MessagingNotificationService.resolveExpectedChannel(
-          mobileNumber!,
-        );
-        final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Transaction recorded',
-          subtitle: 'Message to $customerName',
-          whatsappCost: whatsappCost,
-          smsCost: smsCost,
-          expected: expectedChannel,
-        );
-        quotedTotal = breakdown.total;
-        outcome = await CostConfirmationSheet.showOutcome(
-          context,
-          breakdown: breakdown,
-          confirmLabel: 'Send confirmation',
-          skipLabel: 'Done without sending',
-          confirmDismissal: true,
-        );
-      } else {
-        // No number on file — the only honest outcome is "record only".
-        outcome = CostSheetOutcome.skip;
-      }
+      final messagingDecision = await chooseOptionalTransactionMessage(
+        context,
+        mobileNumber: mobileNumber,
+        customerName: customerName,
+        smsText: SMSMessages.creditConfirmationShort,
+        smsPrice: TransactionSmsPrice.credit,
+        title: 'Transaction recorded',
+        confirmLabel: 'Send confirmation',
+      );
+      final outcome = messagingDecision.outcome;
 
       if (!outcome.shouldCommit) {
         if (outcome.shouldDiscard && context.mounted) {
@@ -267,12 +234,14 @@ class AddCreditViewModel extends TransactionViewModel {
       // Safety net for race conditions (balance changed since the
       // sheet). Affordability gate uses the primary channel cost the
       // user just confirmed.
-      final canProceed = outcome.shouldSend &&
-          await BalanceCheckUtil.checkBalanceAndProceed(
-            context,
-            userId,
-            quotedTotal,
-          );
+      var canProceed = false;
+      if (messagingDecision.canSend) {
+        canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+          context,
+          userId,
+          messagingDecision.quotedTotal!,
+        );
+      }
 
       String successMessage = 'Transaction added successfully.';
       Color successColor = Colors.green;
@@ -285,6 +254,7 @@ class AddCreditViewModel extends TransactionViewModel {
           customerName,
           "Credit",
           mobileNumber,
+          pricingSnapshot: messagingDecision.pricingSnapshot!,
         );
         successMessage = 'Transaction added and confirmation sent.';
       } else if (mobileNumber != null && mobileNumber!.isNotEmpty) {

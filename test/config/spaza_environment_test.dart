@@ -91,6 +91,40 @@ void main() {
   });
 
   group('FirebaseEnvironment', () {
+    test('uses debug App Check providers for release-mode development builds',
+        () {
+      expect(
+        FirebaseEnvironment.shouldUseDebugAppCheckProviders(
+          debugMode: false,
+          runtimeEnvironment: SpazaEnvironment.development,
+        ),
+        isTrue,
+      );
+    });
+
+    test('uses platform App Check providers for release-mode production builds',
+        () {
+      expect(
+        FirebaseEnvironment.shouldUseDebugAppCheckProviders(
+          debugMode: false,
+          runtimeEnvironment: SpazaEnvironment.production,
+        ),
+        isFalse,
+      );
+    });
+
+    test('preserves debug App Check providers for debug builds', () {
+      for (final environment in SpazaEnvironment.values) {
+        expect(
+          FirebaseEnvironment.shouldUseDebugAppCheckProviders(
+            debugMode: true,
+            runtimeEnvironment: environment,
+          ),
+          isTrue,
+        );
+      }
+    });
+
     test('uses flavor-selected native options on physical mobile builds', () {
       for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
         expect(

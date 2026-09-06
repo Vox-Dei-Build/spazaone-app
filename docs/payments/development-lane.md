@@ -14,7 +14,10 @@ appear in a development runtime contract.
 The Android product flavors and iOS schemes enforce this matrix. Dart also
 validates it before connecting, then verifies the same environment and project
 against the deployed `getEnvironmentInfo` Function. Development builds display
-a persistent DEV banner.
+a persistent DEV banner. The development flavor uses Firebase App Check's
+registered debug provider even when compiled in release mode, so a directly
+installed QA build does not attempt store-distribution attestation. Production
+release builds continue to use Play Integrity or App Attest.
 
 The downloaded development Firebase configuration files and generated `.env`
 files are ignored. Materialize app configuration from the registered Firebase

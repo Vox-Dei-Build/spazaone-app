@@ -27,9 +27,13 @@ class MessagingNotificationService {
   MessagingNotificationService._(this.welcome_message, this.credit_transaction,
       this.payment_transaction, this.reminder_message, this.pricingService);
 
-  static Future<MessagingNotificationService> create() async {
+  static Future<MessagingNotificationService> create({
+    MessagingPricingSnapshotV1? pricingSnapshot,
+  }) async {
     final remoteConfigService = await RemoteConfigService.getInstance();
-    final pricingService = await DynamicPricingService.initialize();
+    final pricingService = pricingSnapshot == null
+        ? await DynamicPricingService.initialize()
+        : DynamicPricingService(remoteConfigService, pricingSnapshot);
 
     return MessagingNotificationService._(
         remoteConfigService.getString('TWILIO_WELCOME_MESSAGE_TID'),

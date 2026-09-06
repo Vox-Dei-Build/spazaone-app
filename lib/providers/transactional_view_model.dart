@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
+import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/services/messaging_notification_service.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -466,16 +467,18 @@ class TransactionViewModel extends ChangeNotifier {
   }
 
   Future<void> sendSMS(
-    String currentUserId,
-    String customerId,
-    double amountEntered,
-    String customerName,
-    String transactionType,
-    String? mobileNumber,
-  ) async {
+      String currentUserId,
+      String customerId,
+      double amountEntered,
+      String customerName,
+      String transactionType,
+      String? mobileNumber,
+      {MessagingPricingSnapshotV1? pricingSnapshot}) async {
     try {
       MessagingNotificationService notificationService =
-          await MessagingNotificationService.create();
+          await MessagingNotificationService.create(
+        pricingSnapshot: pricingSnapshot,
+      );
       await notificationService.sendConfirmationMessage(
         currentUserId,
         customerId,

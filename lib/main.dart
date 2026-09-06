@@ -612,10 +612,15 @@ Future<void> _initializeCoreServices() async {
   // Firebase services in monitoring mode while older releases age out; new
   // security-sensitive HTTP functions verify these tokens immediately.
   if (!FirebaseEnvironment.useEmulators) {
+    final useDebugAppCheckProviders =
+        FirebaseEnvironment.shouldUseDebugAppCheckProviders();
     await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+      androidProvider: useDebugAppCheckProviders
+          ? AndroidProvider.debug
+          : AndroidProvider.playIntegrity,
+      appleProvider: useDebugAppCheckProviders
+          ? AppleProvider.debug
+          : AppleProvider.appAttest,
     );
   }
 

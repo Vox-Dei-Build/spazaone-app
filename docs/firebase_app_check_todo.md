@@ -17,9 +17,10 @@ them.
 ## Current state (verified, 2026-08)
 
 - `firebase_app_check: ^0.3.2` is declared in `pubspec.yaml`.
-- The plugin is activated after Firebase initialization. Debug builds use the
-  debug provider; signed release builds use Play Integrity on Android and App
-  Attest on iOS.
+- The plugin is activated after Firebase initialization. Debug builds and the
+  isolated development flavor use registered debug providers, including
+  release-mode APKs installed directly for device QA. Production release builds
+  use Play Integrity on Android and App Attest on iOS.
 - Manual HTTP clients attach an `X-Firebase-AppCheck` header where required:
   - `lib/pages/sales/widgets/online_sales_list.dart:149`
   - `lib/pages/sales/widgets/online_sale_detail_page.dart:49`

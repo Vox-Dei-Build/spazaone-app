@@ -5,15 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
-import 'package:pasella/services/dynamic_pricing_service.dart';
-import 'package:pasella/services/messaging_notification_service.dart';
-import 'package:pasella/shared/billing/cost_breakdown.dart';
-import 'package:pasella/shared/billing/cost_confirmation_sheet.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
+import 'package:pasella/shared/billing/optional_transaction_messaging.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/balance_check_util.dart';
 import 'package:pasella/utils/show_toast.dart';
-import 'package:pasella/utils/sms_pricing_util.dart';
 
 class EditTransactionViewModel extends TransactionViewModel {
   final String customerName;
@@ -27,7 +23,6 @@ class EditTransactionViewModel extends TransactionViewModel {
   bool get isProductsLoading => _isProductsLoading;
   String get transactionLabel =>
       transactionType == 'Credit' ? 'Transaction' : transactionType;
-  late final DynamicPricingService pricingService;
 
   EditTransactionViewModel({
     required this.customerName,
@@ -38,17 +33,11 @@ class EditTransactionViewModel extends TransactionViewModel {
     this.mobileNumber,
   }) {
     loadTransactionDetails();
-    _initServices();
   }
 
   /// Updates the credit's repayment date and notifies listeners.
   void setRepaymentDate(DateTime value) {
     repaymentDate = value;
-    notifyListeners();
-  }
-
-  Future<void> _initServices() async {
-    pricingService = await DynamicPricingService.initialize();
     notifyListeners();
   }
 
@@ -147,43 +136,26 @@ class EditTransactionViewModel extends TransactionViewModel {
     }
 
     try {
-      final smsCost = SMSPricingUtil.calculateCost(
-        text: transactionType == "Credit"
-            ? SMSMessages.creditConfirmationShort
-            : SMSMessages.paymentConfirmationShort,
-        unitCost: transactionType == "Credit"
-            ? pricingService.smsReminderTemplatePrice
-            : pricingService.smsPaymentTemplatePrice,
-      );
-      final whatsappCost = pricingService.whatsappUtilityPrice;
-
       // Pre-flight cost confirmation. Tri-state outcome — explicit
       // skip is now a first-class action, no more silent "cancel == no
       // message". Show both channel prices and bias the highlighted
       // total to whichever channel the dispatcher will most likely
       // use, so the user isn't quoted SMS when they'll actually be
       // charged WhatsApp (or vice versa).
-      CostSheetOutcome outcome = CostSheetOutcome.skip;
-      double quotedTotal = smsCost;
-      if (mobileNumber != null && mobileNumber!.isNotEmpty) {
-        final expectedChannel =
-            await MessagingNotificationService.resolveExpectedChannel(
-                mobileNumber!);
-        final breakdown = CostBreakdown.singleMessageMultiChannel(
-          title: 'Send updated $transactionLabel notification?',
-          subtitle: 'Message to $customerName',
-          whatsappCost: whatsappCost,
-          smsCost: smsCost,
-          expected: expectedChannel,
-        );
-        quotedTotal = breakdown.total;
-        outcome = await CostConfirmationSheet.showOutcome(
-          context,
-          breakdown: breakdown,
-          confirmLabel: 'Send',
-          confirmDismissal: true,
-        );
-      }
+      final messagingDecision = await chooseOptionalTransactionMessage(
+        context,
+        mobileNumber: mobileNumber,
+        customerName: customerName,
+        smsText: transactionType == 'Credit'
+            ? SMSMessages.creditConfirmationShort
+            : SMSMessages.paymentConfirmationShort,
+        smsPrice: transactionType == 'Credit'
+            ? TransactionSmsPrice.credit
+            : TransactionSmsPrice.payment,
+        title: 'Send updated $transactionLabel notification?',
+        confirmLabel: 'Send',
+      );
+      final outcome = messagingDecision.outcome;
 
       if (!outcome.shouldCommit) {
         if (outcome.shouldDiscard && context.mounted) {
@@ -260,13 +232,19 @@ class EditTransactionViewModel extends TransactionViewModel {
 
       // Safety net for race conditions. Affordability gate uses the
       // primary channel cost the user just confirmed.
-      final canProceed = outcome.shouldSend &&
-          await BalanceCheckUtil.checkBalanceAndProceed(
-              context, currentUserId, quotedTotal);
+      var canProceed = false;
+      if (messagingDecision.canSend) {
+        canProceed = await BalanceCheckUtil.checkBalanceAndProceed(
+          context,
+          currentUserId,
+          messagingDecision.quotedTotal!,
+        );
+      }
 
       if (canProceed) {
         await sendSMS(currentUserId, customerId, amountEntered, customerName,
-            transactionType, mobileNumber);
+            transactionType, mobileNumber,
+            pricingSnapshot: messagingDecision.pricingSnapshot!);
       } else if (outcome.isSilent &&
           mobileNumber != null &&
           mobileNumber!.isNotEmpty) {
