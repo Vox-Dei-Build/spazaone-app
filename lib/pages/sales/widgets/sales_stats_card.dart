@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 class SalesStatsCard extends StatelessWidget {
@@ -35,6 +36,7 @@ class SalesStatsCard extends StatelessWidget {
           endDate: endDate,
           onRecordSale: onRecordSale,
           hasCurrentData: viewModel.recordedSalesReader.hasCurrentData,
+          isLoading: viewModel.recordedSalesReader.isLoading,
         ),
       );
 }
@@ -53,6 +55,7 @@ class SalesSummaryCard extends StatelessWidget {
     this.endDate,
     this.onRecordSale,
     this.hasCurrentData = true,
+    this.isLoading = false,
   });
 
   final double sales;
@@ -65,6 +68,7 @@ class SalesSummaryCard extends StatelessWidget {
   final DateTime? endDate;
   final VoidCallback? onRecordSale;
   final bool hasCurrentData;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +94,9 @@ class SalesSummaryCard extends StatelessWidget {
     // A missing or failed read is not a verified zero-sales period. Keep
     // recording available, but show no financial figures until the range loads.
     if (!hasCurrentData) {
+      if (isLoading) {
+        return SalesSummarySkeleton(onRecordSale: onRecordSale);
+      }
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         child: Align(
@@ -318,6 +325,64 @@ class SalesSummaryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Mirrors the recorded-sales summary while its totals are loading.
+class SalesSummarySkeleton extends StatelessWidget {
+  const SalesSummarySkeleton({super.key, this.onRecordSale});
+
+  final VoidCallback? onRecordSale;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey('recorded-sales-summary-loading'),
+        margin: const EdgeInsets.fromLTRB(4, 8, 4, 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border.all(color: SpazaColors.border),
+          borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SpazaShimmer(
+              semanticsLabel: 'Loading sales totals',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SpazaSkeletonBox(height: 12, width: 82),
+                  SizedBox(height: 12),
+                  SpazaSkeletonBox(height: 30, width: 154),
+                  SizedBox(height: 12),
+                  SpazaSkeletonBox(height: 11, width: 68),
+                  SizedBox(height: 14),
+                  SpazaSkeletonBox(height: 11, width: 132),
+                ],
+              ),
+            ),
+            if (onRecordSale != null) ...[
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                key: const ValueKey('record-sale-action'),
+                onPressed: onRecordSale,
+                style: FilledButton.styleFrom(
+                  backgroundColor: kPrimaryColor,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(52),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(SpazaRadius.control),
+                  ),
+                ),
+                icon: const Icon(SpazaIcons.add, size: 20),
+                label: const Text('Record sale'),
+              ),
+            ],
+          ],
+        ),
+      );
 }
 
 class _DetailValue extends StatelessWidget {

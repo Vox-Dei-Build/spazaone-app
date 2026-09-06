@@ -11,6 +11,7 @@ import 'package:pasella/pages/sales/models/sale_edit_result.dart';
 import 'package:pasella/pages/sales/widgets/edit_sale.dart';
 import 'package:pasella/pages/sales/widgets/stock_invoice_viewer_page.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/shared/widgets/transaction_detail_widgets.dart';
 import 'package:pasella/services/stock_invoice_attachment_service.dart';
 import 'package:pasella/utils/currency_util.dart';
@@ -214,9 +215,23 @@ class SaleDetailsContent extends StatelessWidget {
                   future: productsFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: CircularProgressIndicator()),
+                      return const SpazaShimmer(
+                        semanticsLabel: 'Loading sold products',
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SpazaSkeletonLine(widthFactor: .58, height: 14),
+                              SizedBox(height: 10),
+                              SpazaSkeletonLine(widthFactor: .36, height: 11),
+                              SizedBox(height: 18),
+                              SpazaSkeletonLine(widthFactor: .66, height: 14),
+                              SizedBox(height: 10),
+                              SpazaSkeletonLine(widthFactor: .42, height: 11),
+                            ],
+                          ),
+                        ),
                       );
                     }
                     if (snapshot.hasError) {

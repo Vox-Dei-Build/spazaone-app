@@ -7,6 +7,7 @@ import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/utils/show_toast.dart';
 
@@ -148,7 +149,7 @@ class _BusinessNamePageState extends State<BusinessNamePage> {
           : const CustomAppBar(title: 'Business name'),
       body: SafeArea(
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const _BusinessNameFormSkeleton()
             : BusinessNameForm(
                 controller: _controller,
                 formKey: _formKey,
@@ -165,6 +166,30 @@ class _BusinessNamePageState extends State<BusinessNamePage> {
     }
     return scaffold;
   }
+}
+
+class _BusinessNameFormSkeleton extends StatelessWidget {
+  const _BusinessNameFormSkeleton();
+
+  @override
+  Widget build(BuildContext context) => const SpazaShimmer(
+        semanticsLabel: 'Loading business details',
+        child: Padding(
+          padding: EdgeInsets.all(SpazaSpace.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SpazaSkeletonLine(widthFactor: .94, height: 12),
+              SizedBox(height: 9),
+              SpazaSkeletonLine(widthFactor: .72, height: 12),
+              SizedBox(height: SpazaSpace.xl),
+              SpazaSkeletonBox(height: 56),
+              SizedBox(height: SpazaSpace.sm),
+              SpazaSkeletonBox(height: 48),
+            ],
+          ),
+        ),
+      );
 }
 
 /// Form presentation shared by the authenticated route and local design review.

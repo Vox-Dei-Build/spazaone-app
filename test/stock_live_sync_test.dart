@@ -53,4 +53,54 @@ void main() {
     expect(viewModel.products.first.quantity, 12);
     expect(viewModel.checkLowStock().map((product) => product.name), ['Milk']);
   });
+
+  test('report state and full product list share one upstream subscription',
+      () async {
+    final source = _CountingStream<List<Product>>();
+    final viewModel = StockViewModel(
+      userId: 'merchant-1',
+      productsStream: source,
+    );
+    addTearDown(() async {
+      viewModel.dispose();
+      await source.close();
+    });
+
+    viewModel.watchProducts();
+    final listValues = <List<Product>>[];
+    final listSubscription =
+        viewModel.streamProductsByGroup(null).listen(listValues.add);
+    addTearDown(listSubscription.cancel);
+
+    source.add([Product(id: 'bread', name: 'Bread', quantity: 3)]);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(source.listenCount, 1);
+    expect(viewModel.products.single.id, 'bread');
+    expect(listValues.single.single.id, 'bread');
+  });
+}
+
+class _CountingStream<T> extends Stream<T> {
+  final StreamController<T> _controller = StreamController<T>.broadcast();
+  int listenCount = 0;
+
+  void add(T value) => _controller.add(value);
+  Future<void> close() => _controller.close();
+
+  @override
+  StreamSubscription<T> listen(
+    void Function(T event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    listenCount++;
+    return _controller.stream.listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
+  }
 }

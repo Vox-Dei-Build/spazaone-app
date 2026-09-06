@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/tutorial_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
 import 'package:pasella/pages/transactions/widgets/customer_balance_hero.dart';
@@ -8,6 +9,7 @@ import 'package:pasella/pages/transactions/widgets/pay_later_action_bar.dart';
 import 'package:pasella/pages/transactions/widgets/transactions_list_view.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:provider/provider.dart';
 
@@ -96,7 +98,7 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
               ),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const TransactionListSkeleton();
                 } else if (snapshot.hasError) {
                   return const Center(
                     child: Text(
@@ -169,6 +171,79 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
             ),
           ),
         )),
+      );
+}
+
+/// Loading preview for the customer ledger's date marker and message bubbles.
+class TransactionListSkeleton extends StatelessWidget {
+  const TransactionListSkeleton({super.key, this.itemCount = 4});
+
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        key: const ValueKey('transaction-list-loading-scroll'),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          SpazaShimmer(
+            key: const ValueKey('transaction-list-loading-shimmer'),
+            semanticsLabel: 'Loading customer transactions',
+            child: Column(
+              children: [
+                const Center(
+                  child: SpazaSkeletonBox(
+                    width: 82,
+                    height: 26,
+                    radius: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (var index = 0; index < itemCount; index++)
+                  _TransactionBubbleSkeleton(alignRight: index.isOdd),
+              ],
+            ),
+          ),
+        ],
+      );
+}
+
+class _TransactionBubbleSkeleton extends StatelessWidget {
+  const _TransactionBubbleSkeleton({required this.alignRight});
+
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: .78,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              border: Border.all(color: SpazaColors.border),
+              borderRadius: BorderRadius.circular(SpazaRadius.control),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    SpazaSkeletonBox(height: 20, width: 20, radius: 10),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: SpazaSkeletonLine(widthFactor: .62, height: 18),
+                    ),
+                    SizedBox(width: 12),
+                    SpazaSkeletonBox(height: 11, width: 34),
+                  ],
+                ),
+                SizedBox(height: 10),
+                SpazaSkeletonLine(widthFactor: .72, height: 12),
+              ],
+            ),
+          ),
+        ),
       );
 }
 

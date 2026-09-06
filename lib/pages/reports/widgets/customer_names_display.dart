@@ -4,6 +4,7 @@ import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/date_util.dart';
 import 'package:pasella/utils/phone_util.dart';
@@ -37,7 +38,13 @@ class CustomersWithBadLoansTile extends StatelessWidget {
       future: customersWithBadLoansFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const CircularProgressIndicator();
+          return const SpazaListSkeleton(
+            semanticsLabel: 'Loading customer report',
+            itemCount: 3,
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+          );
         } else if (snapshot.hasError) {
           return const Text('Could not load customer details.');
         } else {

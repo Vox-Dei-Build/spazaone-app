@@ -1,37 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class OrderSkeleton extends StatelessWidget {
   const OrderSkeleton({super.key});
   @override
   Widget build(BuildContext context) {
-    Widget box({double h = 12, double w = double.infinity}) => Container(
-          height: h,
-          width: w,
-          decoration: BoxDecoration(
-            color: Colors.grey,
-            borderRadius: BorderRadius.circular(8),
-          ),
-        );
-    return Shimmer.fromColors(
-      baseColor: Colors.black12,
-      highlightColor: Colors.black26,
+    return const SpazaShimmer(
+      semanticsLabel: 'Loading order',
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         title: Row(children: [
-          box(w: 80),
-          const SizedBox(width: 8),
-          box(w: 56, h: 20),
+          SpazaSkeletonBox(width: 80, height: 12),
+          SizedBox(width: 8),
+          SpazaSkeletonBox(width: 56, height: 20),
         ]),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
+          padding: EdgeInsets.only(top: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              box(w: 180),
-              const SizedBox(height: 8),
-              box(w: 120),
+              SpazaSkeletonBox(width: 180, height: 12),
+              SizedBox(height: 8),
+              SpazaSkeletonBox(width: 120, height: 12),
             ],
           ),
         ),

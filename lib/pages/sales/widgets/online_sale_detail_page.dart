@@ -12,6 +12,7 @@ import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/status_pill.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_avatar.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class OnlineSaleDetailPage extends StatefulWidget {
   final String orderId;
@@ -440,8 +441,9 @@ class OnlineSaleDetailContent extends StatelessWidget {
 class _Loading extends StatelessWidget {
   const _Loading();
   @override
-  Widget build(BuildContext context) =>
-      const Center(child: CircularProgressIndicator());
+  Widget build(BuildContext context) => const SpazaDetailSkeleton(
+        semanticsLabel: 'Loading online sale details',
+      );
 }
 
 class _Empty extends StatelessWidget {

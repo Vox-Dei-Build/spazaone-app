@@ -15,7 +15,7 @@ import 'package:pasella/pages/ecommerce/orders_management/widgets/orders_summary
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_avatar.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/status_pill.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'online_sale_detail_page.dart';
 
 class LedgerSale {
@@ -556,8 +556,10 @@ class _OnlineStatusChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selColor = Theme.of(context).colorScheme.primary;
-    final unSelBg =
-        Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.6);
+    final unSelBg = Theme.of(context)
+        .colorScheme
+        .surfaceContainerHighest
+        .withValues(alpha: 0.6);
     const statuses = OnlineStatusFilter.values;
 
     final h = height ?? 40.0;
@@ -662,20 +664,19 @@ class _LoadingList extends StatelessWidget {
           ),
         );
 
-    return ListView.separated(
-      padding: EdgeInsets.fromLTRB(hPad, vPad, hPad, vPad),
-      itemCount: 6,
-      separatorBuilder: (_, __) => SizedBox(height: itemGap),
-      itemBuilder: (_, __) => Shimmer.fromColors(
-        baseColor: Colors.black12,
-        highlightColor: Colors.black26,
-        child: Container(
+    return SpazaShimmer(
+      semanticsLabel: 'Loading online sales',
+      child: ListView.separated(
+        padding: EdgeInsets.fromLTRB(hPad, vPad, hPad, vPad),
+        itemCount: 6,
+        separatorBuilder: (_, __) => SizedBox(height: itemGap),
+        itemBuilder: (_, __) => Container(
           padding: EdgeInsets.symmetric(
             horizontal: SizeConfig.imageSizeMultiplier * 2.2, // match list
             vertical: SizeConfig.heightMultiplier * 1.0,
           ),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.4),
+            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(
               SizeConfig.imageSizeMultiplier * 2.8,
             ),

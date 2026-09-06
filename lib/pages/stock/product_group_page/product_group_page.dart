@@ -76,8 +76,11 @@ class ProductGroupPage extends StatelessWidget {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) =>
-                        GlobalSearchPage(isGroupSearch: true, groupName: name),
+                    builder: (context) => GlobalSearchPage(
+                      isGroupSearch: true,
+                      groupName: name,
+                      productsStream: viewModel.streamProducts(),
+                    ),
                   ),
                 );
               },

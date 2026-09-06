@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/services/payment_setup_service.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 String merchantSettlementStatusLabel(MerchantSettlement settlement) {
   if (settlement.testOnly) return 'Test only — not sent to bank';
@@ -110,10 +110,9 @@ class _MoneyPayoutsLoading extends StatelessWidget {
   const _MoneyPayoutsLoading();
 
   @override
-  Widget build(BuildContext context) => Shimmer.fromColors(
+  Widget build(BuildContext context) => SpazaShimmer(
         key: const ValueKey('online-payments-loading-shimmer'),
-        baseColor: Colors.black12,
-        highlightColor: Colors.black26,
+        semanticsLabel: 'Loading online payments',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

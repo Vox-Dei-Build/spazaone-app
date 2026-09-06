@@ -18,6 +18,7 @@ import {
   encodeWhatsAppCatalogCursor,
   summarizeWhatsAppCatalogStatusV2,
 } from "./catalogStatusV2";
+import { buildMerchantCatalogDecision } from "./catalogProjection";
 
 type MappingSummary = {
   productId: string;
@@ -114,8 +115,147 @@ export const getWhatsAppCatalogSyncStatusV1 = functions.https.onCall(
   },
 );
 
-const CATALOG_STATUS_PAGE_SIZE = 100;
+// A merchant currently has about 430 products. The old 100-item ceiling made
+// the client call this function five times for one refresh, while every page
+// rebuilt the same whole-catalogue snapshot. Keep the response comfortably
+// below callable limits while covering normal catalogues in one scan.
+const CATALOG_STATUS_PAGE_SIZE = 1_000;
+const LEGACY_CATALOG_STATUS_PAGE_SIZE = 100;
+const CATALOG_STATUS_PATCH_SIZE = 100;
 const CATALOG_STATUS_FRESH_MS = 5 * 60 * 1000;
+
+function requestedProductIds(data: unknown): string[] | null {
+  const value = (data as { productIds?: unknown } | null)?.productIds;
+  if (value === undefined) return null;
+  if (
+    !Array.isArray(value) ||
+    value.length < 1 ||
+    value.length > CATALOG_STATUS_PATCH_SIZE ||
+    value.some((item) => typeof item !== "string")
+  ) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `productIds must contain 1-${CATALOG_STATUS_PATCH_SIZE} product IDs.`,
+    );
+  }
+  const productIds = [...new Set(value)];
+  if (
+    productIds.length > CATALOG_STATUS_PATCH_SIZE ||
+    productIds.some(
+      (productId) =>
+        !productId ||
+        productId.trim() !== productId ||
+        productId.includes("/") ||
+        productId.length > 1_500,
+    )
+  ) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      `productIds must contain at most ${CATALOG_STATUS_PATCH_SIZE} valid product IDs.`,
+    );
+  }
+  return productIds;
+}
+
+function catalogStatusRolloutEnabled(storeId: string): boolean {
+  try {
+    return whatsappProductListMerchantRolloutAllowed(storeId);
+  } catch (_) {
+    // Configuration faults are intentionally represented as not enabled;
+    // clients never receive environment/provider details.
+    return false;
+  }
+}
+
+/**
+ * Recheck only products which the client already knows are in flight. Mapping
+ * and outbox document IDs are deterministic, so direct document reads avoid
+ * rescanning every merchant-owned projection for each polling tick.
+ */
+async function catalogStatusPatch(input: {
+  storeId: string;
+  productIds: readonly string[];
+  rolloutEnabled: boolean;
+}) {
+  const merchantRef = db.doc(`users/${input.storeId}`);
+  const productRefs = input.productIds.map((productId) =>
+    db.doc(`users/${input.storeId}/products/${productId}`),
+  );
+  const [merchant, ...productDocuments] = await db.getAll(
+    merchantRef,
+    ...productRefs,
+  );
+  const products = productDocuments
+    .map((product, index) => ({
+      id: input.productIds[index],
+      snapshot: product,
+    }))
+    .filter((product) => product.snapshot.exists);
+  const retailerIds = products.map(
+    (product) =>
+      buildMerchantCatalogDecision({
+        merchantId: input.storeId,
+        productId: product.id,
+        product: product.snapshot.data(),
+        merchant: merchant.data(),
+      }).retailerId,
+  );
+  const [mappingDocuments, outboxDocuments] = await Promise.all([
+    retailerIds.length
+      ? db.getAll(
+          ...retailerIds.map((retailerId) =>
+            db.doc(`${WHATSAPP_CATALOG_MAPPINGS}/${retailerId}`),
+          ),
+        )
+      : [],
+    retailerIds.length
+      ? db.getAll(
+          ...retailerIds.map((retailerId) =>
+            db.doc(`${WHATSAPP_CATALOG_OUTBOX}/${retailerId}`),
+          ),
+        )
+      : [],
+  ]);
+  const checkedAtMs = Date.now();
+  const snapshot = summarizeWhatsAppCatalogStatusV2({
+    merchantId: input.storeId,
+    merchant: merchant.data() ?? {},
+    products: products.map((product) => ({
+      id: product.id,
+      data: product.snapshot.data() ?? {},
+    })),
+    mappings: mappingDocuments
+      .filter((mapping) => mapping.exists)
+      .map((mapping) => ({
+        ...mapping.data(),
+        retailerId: mapping.data()?.retailerId ?? mapping.id,
+      })),
+    outbox: outboxDocuments
+      .filter((job) => job.exists)
+      .map((job) => ({
+        ...job.data(),
+        retailerId: job.data()?.retailerId ?? job.id,
+      })),
+    rolloutEnabled: input.rolloutEnabled,
+    checkedAtMs,
+  });
+  const foundProductIds = new Set(products.map((product) => product.id));
+  return {
+    schemaVersion: 2,
+    partial: true,
+    checkedAtMs,
+    freshUntilMs: checkedAtMs + CATALOG_STATUS_FRESH_MS,
+    rollout: input.rolloutEnabled ? "enabled" : "not_enabled",
+    summary: snapshot.summary,
+    products: snapshot.products,
+    removedProductIds: input.productIds.filter(
+      (productId) => !foundProductIds.has(productId),
+    ),
+    nextPageToken: null,
+    catalogVersion: snapshot.catalogVersion,
+    retryPermitted: false,
+  };
+}
 
 function catalogStatusCursorSecret(): string {
   const secret = String(
@@ -152,6 +292,17 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
     }
     const storeId = String(data?.storeId ?? context.auth.uid).trim();
     await assertCallableStoreAccess(context, storeId);
+    const productIds = requestedProductIds(data);
+    const rolloutEnabled = catalogStatusRolloutEnabled(storeId);
+    if (productIds) {
+      if (String(data?.pageToken ?? "").trim()) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "A partial status request cannot include a page token.",
+        );
+      }
+      return catalogStatusPatch({ storeId, productIds, rolloutEnabled });
+    }
     const requestedPageSize = Number(
       data?.pageSize ?? CATALOG_STATUS_PAGE_SIZE,
     );
@@ -162,9 +313,16 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
     ) {
       throw new functions.https.HttpsError(
         "invalid-argument",
-        "pageSize must be between 1 and 100.",
+        `pageSize must be between 1 and ${CATALOG_STATUS_PAGE_SIZE}.`,
       );
     }
+    // Released clients explicitly request 100. Serving the larger safe page
+    // immediately removes their five identical source scans; the signed
+    // cursor contract continues to work for catalogues above 1,000 products.
+    const effectivePageSize =
+      requestedPageSize === LEGACY_CATALOG_STATUS_PAGE_SIZE
+        ? CATALOG_STATUS_PAGE_SIZE
+        : requestedPageSize;
     const cursorSecret = catalogStatusCursorSecret();
     const rawPageToken = String(data?.pageToken ?? "").trim();
     const cursor = rawPageToken
@@ -193,13 +351,6 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
         .where("merchantId", "==", storeId)
         .get(),
     ]);
-    let rolloutEnabled = false;
-    try {
-      rolloutEnabled = whatsappProductListMerchantRolloutAllowed(storeId);
-    } catch (_) {
-      // Configuration faults are intentionally represented as not enabled;
-      // clients never receive environment/provider details.
-    }
     const checkedAtMs = Date.now();
     const snapshot = summarizeWhatsAppCatalogStatusV2({
       merchantId: storeId,
@@ -240,10 +391,10 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
     }
     const page = snapshot.products.slice(
       startIndex,
-      startIndex + requestedPageSize,
+      startIndex + effectivePageSize,
     );
     const hasNextPage =
-      startIndex + requestedPageSize < snapshot.products.length;
+      startIndex + effectivePageSize < snapshot.products.length;
     const lastProductId = page.at(-1)?.productId;
     const nextPageToken =
       hasNextPage && lastProductId

@@ -17,6 +17,7 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
@@ -608,7 +609,9 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 title: 'Order #${widget.orderId}',
                 onBackPressed: _closePage,
               ),
-              body: const Center(child: CircularProgressIndicator()),
+              body: const SpazaDetailSkeleton(
+                semanticsLabel: 'Loading order details',
+              ),
             );
           }
           if (!snapshot.hasData || (snapshot.data ?? {}).isEmpty) {

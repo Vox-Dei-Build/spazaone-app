@@ -8,6 +8,7 @@ import 'package:pasella/pages/promote/widgets/promotions/view_promotion/promotio
 import 'package:pasella/pages/promote/widgets/confirmation_dialog.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 /// PAS-UX-18: a promotion is in a terminal state once the backend has
 /// written one of `complete`, `partial` or `failed`. `saved` is
@@ -155,57 +156,64 @@ class _ViewPromotionPageState extends State<ViewPromotionPage> {
           onPressed: _actionLoading ? null : _confirmDelete,
         ),
       ),
-      body: _loading || _actionLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Expanded(
-                  child: PromotionDetailContent(
-                    promo: promo,
-                    templateContent: vm.currentTemplateContent,
-                    shopName: vm.shopName,
-                    estimatedCost: vm.totalPrice,
-                    customers: vm.customers,
-                    selectedCustomerIds: vm.selectedCustomerIds.toSet(),
-                    mediaUrl: vm.currentMediaUrl,
-                  ),
-                ),
-                if (status == 'saved' || _isTerminalStatus(status))
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(
-                      LayoutConstants.spaceLg,
-                      LayoutConstants.spaceMd,
-                      LayoutConstants.spaceLg,
-                      LayoutConstants.spaceSm,
-                    ),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(
-                        top: BorderSide(color: Color(0xFFE0E5E1)),
+      body: _loading
+          ? const SpazaDetailSkeleton(
+              semanticsLabel: 'Loading campaign details',
+            )
+          : _actionLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    Expanded(
+                      child: PromotionDetailContent(
+                        promo: promo,
+                        templateContent: vm.currentTemplateContent,
+                        shopName: vm.shopName,
+                        estimatedCost: vm.totalPrice,
+                        customers: vm.customers,
+                        selectedCustomerIds: vm.selectedCustomerIds.toSet(),
+                        mediaUrl: vm.currentMediaUrl,
                       ),
                     ),
-                    child: SafeArea(
-                      top: false,
-                      child: status == 'saved'
-                          ? WalletAffordabilityFooter(
-                              cost: vm.totalPrice,
-                              confirmLabel: 'Send campaign',
-                              confirmIcon: Icons.send_outlined,
-                              busy: _actionLoading,
-                              onConfirm: () => _sendNow(promo['id'] as String),
-                            )
-                          : SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                onPressed: _actionLoading ? null : _runAgain,
-                                icon: const Icon(Icons.replay_rounded),
-                                label: const Text('Run this campaign again'),
-                              ),
-                            ),
-                    ),
-                  ),
-              ],
-            ),
+                    if (status == 'saved' || _isTerminalStatus(status))
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(
+                          LayoutConstants.spaceLg,
+                          LayoutConstants.spaceMd,
+                          LayoutConstants.spaceLg,
+                          LayoutConstants.spaceSm,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          border: Border(
+                            top: BorderSide(color: Color(0xFFE0E5E1)),
+                          ),
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: status == 'saved'
+                              ? WalletAffordabilityFooter(
+                                  cost: vm.totalPrice,
+                                  confirmLabel: 'Send campaign',
+                                  confirmIcon: Icons.send_outlined,
+                                  busy: _actionLoading,
+                                  onConfirm: () =>
+                                      _sendNow(promo['id'] as String),
+                                )
+                              : SizedBox(
+                                  width: double.infinity,
+                                  child: FilledButton.icon(
+                                    onPressed:
+                                        _actionLoading ? null : _runAgain,
+                                    icon: const Icon(Icons.replay_rounded),
+                                    label:
+                                        const Text('Run this campaign again'),
+                                  ),
+                                ),
+                        ),
+                      ),
+                  ],
+                ),
     );
   }
 }

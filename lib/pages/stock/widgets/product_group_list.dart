@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/models/stock/product_group_model.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'product_group_card.dart';
 
 class ProductGroupList extends StatelessWidget {
@@ -14,7 +15,28 @@ class ProductGroupList extends StatelessWidget {
       stream: viewModel.streamProductGroups(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return Scaffold(
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: SpazaShimmer(
+                  semanticsLabel: 'Loading product groups',
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    childAspectRatio: 2,
+                    crossAxisSpacing: 20,
+                    mainAxisSpacing: 20,
+                    children: const [
+                      SpazaSkeletonBox(height: 72),
+                      SpazaSkeletonBox(height: 72),
+                      SpazaSkeletonBox(height: 72),
+                      SpazaSkeletonBox(height: 72),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
         }
         if (snapshot.hasError) {
           return const Center(

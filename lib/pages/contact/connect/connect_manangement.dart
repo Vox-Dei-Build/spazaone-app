@@ -3,6 +3,7 @@ import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/contact/connect/widgets/message_list_view.dart';
 import 'package:pasella/pages/contact/view_model/connect_management_view_model.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class ConnectManagementPage extends StatefulWidget {
   final String customerId;
@@ -54,10 +55,13 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
           children: [
             child!,
             if (isLoading)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black45,
-                  child: const Center(child: CircularProgressIndicator()),
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: SpazaColors.canvas,
+                  child: SpazaListSkeleton(
+                    semanticsLabel: 'Loading customer messages',
+                    itemCount: 5,
+                  ),
                 ),
               ),
           ],
@@ -113,7 +117,10 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
                     stream: connectManagementViewModel.streamMessages(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const SpazaListSkeleton(
+                          semanticsLabel: 'Loading customer messages',
+                          itemCount: 5,
+                        );
                       } else if (snapshot.hasError) {
                         return const Center(
                           child: Text(

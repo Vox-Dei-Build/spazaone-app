@@ -6,6 +6,7 @@ import 'package:pasella/shared/billing/cost_breakdown.dart';
 import 'package:pasella/shared/billing/cost_sheet_outcome.dart';
 import 'package:pasella/shared/billing/wallet_balance_provider.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/utils/currency_util.dart';
 
@@ -372,7 +373,10 @@ class CostConfirmationSheet extends StatelessWidget {
             // in which case it's suppressed entirely and the close (X)
             // icon in the header is the only non-confirm exit.
             if (loading)
-              const Center(child: CircularProgressIndicator())
+              const SpazaShimmer(
+                semanticsLabel: 'Loading wallet balance',
+                child: SpazaSkeletonBox(height: 48),
+              )
             else if (canAfford)
               Column(
                 children: [

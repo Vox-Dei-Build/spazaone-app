@@ -1057,14 +1057,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ),
         ),
         ChangeNotifierProvider<PromotionsViewModel>(
-          create: (context) {
-            final vm = PromotionsViewModel();
-            // defer load until after first frame:
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              vm.loadInitialData();
-            });
-            return vm;
-          },
+          create: (context) => PromotionsViewModel(),
         ),
       ],
       child: PostHogWidget(

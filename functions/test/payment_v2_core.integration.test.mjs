@@ -29,7 +29,10 @@ import {
   releaseOwnedInventoryReservation,
   reserveOwnedInventoryForSale,
 } from "../lib/payments/v2/inventoryReservations.js";
-import { applyVerifiedAccountSettlementV2 } from "../lib/payments/v2/accountSettlements.js";
+import {
+  applyVerifiedAccountSettlementV2,
+  expireAccountSettlementIntentsBatch,
+} from "../lib/payments/v2/accountSettlements.js";
 import {
   applyVerifiedSupplierPaymentV2,
   supplierPaymentEconomics,
@@ -199,13 +202,10 @@ test("stale initialized payments alert once and resolve without financial mutati
   const recentIntentId = `pi_${"b".repeat(64)}`;
   const historicalPaidBatch = db.batch();
   for (let index = 0; index < 201; index += 1) {
-    historicalPaidBatch.set(
-      db.doc(`paymentIntents/historical-paid-${index}`),
-      {
-        status: "paid",
-        initializedAt: admin.firestore.Timestamp.fromMillis(0),
-      },
-    );
+    historicalPaidBatch.set(db.doc(`paymentIntents/historical-paid-${index}`), {
+      status: "paid",
+      initializedAt: admin.firestore.Timestamp.fromMillis(0),
+    });
   }
   await historicalPaidBatch.commit();
   await db.doc(`paymentIntents/${staleIntentId}`).set({
@@ -1480,6 +1480,86 @@ test("account settlement projects one verified payment and one refund reversal",
   assert.ok(reversal);
   assert.equal(reversal.get("type"), "Credit");
   assert.equal(reversal.get("amountMinor"), 4_000);
+});
+
+test("account settlement expiry skips historical terminal intents", async () => {
+  const cutoff = admin.firestore.Timestamp.fromMillis(Date.now());
+  const historical = db.batch();
+  for (let index = 0; index < 100; index += 1) {
+    historical.set(db.doc(`paymentIntents/historical-terminal-${index}`), {
+      purpose: "account_settlement",
+      status: "paid",
+      expiresAt: admin.firestore.Timestamp.fromMillis(
+        cutoff.toMillis() - 2 * 24 * 60 * 60 * 1_000 - index,
+      ),
+    });
+  }
+  await historical.commit();
+
+  const paymentRequestId = "expiry-payment-request";
+  const initializedIntentId = "expiry-initialized-repayment";
+  await Promise.all([
+    db.doc("paymentIntents/expiry-created-account").set({
+      purpose: "account_settlement",
+      status: "created",
+      expiresAt: admin.firestore.Timestamp.fromMillis(
+        cutoff.toMillis() - 60 * 60 * 1_000,
+      ),
+    }),
+    db.doc(`paymentIntents/${initializedIntentId}`).set({
+      purpose: "repayment_installment",
+      status: "initialized",
+      paymentRequestId,
+      expiresAt: admin.firestore.Timestamp.fromMillis(
+        cutoff.toMillis() - 30 * 60 * 1_000,
+      ),
+    }),
+    db.doc("paymentIntents/expiry-future-account").set({
+      purpose: "account_settlement",
+      status: "created",
+      expiresAt: admin.firestore.Timestamp.fromMillis(
+        cutoff.toMillis() + 60 * 60 * 1_000,
+      ),
+    }),
+    db.doc("paymentIntents/expiry-created-order").set({
+      purpose: "merchant_order",
+      status: "created",
+      expiresAt: admin.firestore.Timestamp.fromMillis(
+        cutoff.toMillis() - 60 * 60 * 1_000,
+      ),
+    }),
+    db.doc(`customerPaymentRequests/${paymentRequestId}`).set({
+      status: "link_created",
+      lastPaymentIntentId: initializedIntentId,
+    }),
+  ]);
+
+  assert.deepEqual(await expireAccountSettlementIntentsBatch(cutoff), {
+    matched: 2,
+    expired: 2,
+  });
+  assert.equal(
+    (await db.doc("paymentIntents/expiry-created-account").get()).get("status"),
+    "expired",
+  );
+  assert.equal(
+    (await db.doc(`paymentIntents/${initializedIntentId}`).get()).get("status"),
+    "expired",
+  );
+  assert.equal(
+    (await db.doc("paymentIntents/expiry-future-account").get()).get("status"),
+    "created",
+  );
+  assert.equal(
+    (await db.doc("paymentIntents/expiry-created-order").get()).get("status"),
+    "created",
+  );
+  assert.equal(
+    (await db.doc(`customerPaymentRequests/${paymentRequestId}`).get()).get(
+      "status",
+    ),
+    "customer_engaged",
+  );
 });
 
 test("repayment installments advance and complete the active plan exactly once", async () => {

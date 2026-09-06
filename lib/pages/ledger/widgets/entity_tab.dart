@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/customer/customer_model.dart';
@@ -71,6 +72,9 @@ class EntityTab extends StatefulWidget {
 
 class _EntityTabState extends State<EntityTab> {
   List<CustomerWithTransactions> allEntities = [];
+  late Stream<List<CustomerWithTransactions>> _entitiesStream;
+  String? _streamStoreId;
+  bool _listeningToStoreSession = false;
   int _streamGeneration = 0;
 
   @override
@@ -78,6 +82,7 @@ class _EntityTabState extends State<EntityTab> {
     super.initState();
     widget.searchTextNotifier.value = null;
     widget.searchTextNotifier.addListener(_handleSearch);
+    _configureEntitiesStream();
   }
 
   @override
@@ -88,6 +93,10 @@ class _EntityTabState extends State<EntityTab> {
       widget.searchTextNotifier.addListener(_handleSearch);
       _handleSearch();
     }
+    if (oldWidget.category != widget.category ||
+        oldWidget.entitiesStream != widget.entitiesStream) {
+      _configureEntitiesStream(incrementGeneration: true);
+    }
   }
 
   void _handleSearch() {
@@ -95,15 +104,57 @@ class _EntityTabState extends State<EntityTab> {
     setState(() {});
   }
 
-  Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions() {
-    final String currentUserId = StoreSession.instance.storeId;
+  void _configureEntitiesStream({bool incrementGeneration = false}) {
+    final override = widget.entitiesStream;
+    if (override != null) {
+      if (_listeningToStoreSession) {
+        StoreSession.instance.removeListener(_handleStoreChanged);
+        _listeningToStoreSession = false;
+      }
+      _streamStoreId = null;
+      _entitiesStream = override();
+    } else {
+      if (!_listeningToStoreSession) {
+        StoreSession.instance.addListener(_handleStoreChanged);
+        _listeningToStoreSession = true;
+      }
+      _streamStoreId = StoreSession.instance.storeId;
+      _entitiesStream = streamEntitiesWithTransactions(
+        currentUserId: _streamStoreId!,
+        category: widget.category,
+      );
+    }
+    if (incrementGeneration) _streamGeneration++;
+  }
+
+  void _handleStoreChanged() {
+    final nextStoreId = StoreSession.instance.storeId;
+    if (!mounted || nextStoreId == _streamStoreId) return;
+    setState(() {
+      _streamStoreId = nextStoreId;
+      _entitiesStream = streamEntitiesWithTransactions(
+        currentUserId: nextStoreId,
+        category: widget.category,
+      );
+      _streamGeneration++;
+    });
+  }
+
+  void _retryEntitiesStream() {
+    setState(() => _configureEntitiesStream(incrementGeneration: true));
+  }
+
+  Stream<List<CustomerWithTransactions>> streamEntitiesWithTransactions({
+    required String currentUserId,
+    required String category,
+  }) {
     if (currentUserId.isEmpty) return Stream.value([]);
 
     Query query = FirebaseFirestore.instance
         .collection('users')
         .doc(currentUserId)
         .collection('customers')
-        .where("category", isEqualTo: widget.category);
+        .where("category", isEqualTo: category);
 
     final customersStream = query
         .orderBy("lastTransaction.date", descending: true)
@@ -198,16 +249,15 @@ class _EntityTabState extends State<EntityTab> {
           horizontal: SizeConfig.imageSizeMultiplier * 2,
         ),
         child: StreamBuilder<List<CustomerWithTransactions>>(
-          key: ValueKey(
-            dataModel.selectedSortByFilter +
-                dataModel.reminderDateFilter.toString() +
-                _streamGeneration.toString(),
-          ),
-          stream:
-              widget.entitiesStream?.call() ?? streamEntitiesWithTransactions(),
+          key: ValueKey(_streamGeneration),
+          stream: _entitiesStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return const SpazaListSkeleton(
+                semanticsLabel: 'Loading customers',
+                itemCount: 6,
+                padding: EdgeInsets.only(top: 4, bottom: 16),
+              );
             }
 
             // A failed Firestore read is not an empty customer list. Surface
@@ -237,9 +287,7 @@ class _EntityTabState extends State<EntityTab> {
                       const SizedBox(height: 8),
                       TextButton.icon(
                         key: const ValueKey('customer-stream-retry'),
-                        onPressed: () {
-                          setState(() => _streamGeneration++);
-                        },
+                        onPressed: _retryEntitiesStream,
                         icon: const Icon(Icons.refresh_rounded),
                         label: const Text('Try again'),
                       ),
@@ -419,6 +467,9 @@ class _EntityTabState extends State<EntityTab> {
   @override
   void dispose() {
     widget.searchTextNotifier.removeListener(_handleSearch);
+    if (_listeningToStoreSession) {
+      StoreSession.instance.removeListener(_handleStoreChanged);
+    }
     super.dispose();
   }
 }

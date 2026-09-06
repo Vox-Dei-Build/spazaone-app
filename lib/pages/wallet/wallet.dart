@@ -20,7 +20,7 @@ import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/feature_flags.dart';
 import 'package:pasella/utils/wallet_utils.dart';
 import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 /// Legacy enum values are retained for deep-link compatibility. In 4.8,
 /// `withdraw` opens Online payments and `topUp` opens Add money.
@@ -359,10 +359,9 @@ class _WalletHubLoading extends StatelessWidget {
           ),
         );
 
-    return Shimmer.fromColors(
+    return SpazaShimmer(
       key: const ValueKey('wallet-loading-shimmer'),
-      baseColor: Colors.black12,
-      highlightColor: Colors.black26,
+      semanticsLabel: 'Loading wallet',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -385,10 +384,9 @@ class _WalletBalancePanelLoading extends StatelessWidget {
   const _WalletBalancePanelLoading();
 
   @override
-  Widget build(BuildContext context) => Shimmer.fromColors(
+  Widget build(BuildContext context) => SpazaShimmer(
         key: const ValueKey('wallet-balance-loading-shimmer'),
-        baseColor: Colors.black12,
-        highlightColor: Colors.black26,
+        semanticsLabel: 'Loading wallet balance',
         child: Container(
           height: 180,
           decoration: BoxDecoration(

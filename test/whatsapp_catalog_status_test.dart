@@ -29,6 +29,46 @@ class _MemoryStoreStorage implements StoreSessionStorage {
   ) async {}
 }
 
+class _FakeCatalogService extends WhatsAppCatalogStatusService {
+  _FakeCatalogService({
+    required this.cached,
+    this.patch,
+  }) : super(userIdProvider: () => 'owner-a');
+
+  final WhatsAppCatalogSnapshot? cached;
+  final WhatsAppCatalogStatusPatch? patch;
+  int fullFetches = 0;
+  int patchFetches = 0;
+
+  @override
+  Future<WhatsAppCatalogSnapshot?> readCache(
+    String storeId, {
+    DateTime? now,
+  }) async =>
+      cached;
+
+  @override
+  Future<WhatsAppCatalogSnapshot> fetch(String storeId) async {
+    fullFetches++;
+    return cached!;
+  }
+
+  @override
+  Future<WhatsAppCatalogStatusPatch> fetchProductStatuses(
+    String storeId,
+    Iterable<String> productIds,
+  ) async {
+    patchFetches++;
+    return patch!;
+  }
+
+  @override
+  Future<void> writeCache(
+    String storeId,
+    WhatsAppCatalogSnapshot snapshot,
+  ) async {}
+}
+
 Map<String, dynamic> page({
   required List<Map<String, dynamic>> products,
   String? token,
@@ -89,6 +129,63 @@ WhatsAppCatalogSnapshot summarySnapshot({
   );
 }
 
+WhatsAppCatalogSnapshot statusSnapshot({
+  required DateTime checkedAt,
+  required WhatsAppCatalogProductState productState,
+  bool fromCache = true,
+}) =>
+    WhatsAppCatalogSnapshot(
+      checkedAtMs: checkedAt.millisecondsSinceEpoch,
+      freshUntilMs:
+          checkedAt.add(const Duration(minutes: 5)).millisecondsSinceEpoch,
+      rollout: WhatsAppCatalogRollout.enabled,
+      summary: WhatsAppCatalogSummary(
+        totalProducts: 1,
+        eligible: 1,
+        live: productState.status == WhatsAppCatalogProductStatus.live ? 1 : 0,
+        syncing:
+            productState.status == WhatsAppCatalogProductStatus.syncing ? 1 : 0,
+        needsAttention: 0,
+        removalSyncing: 0,
+        supportReview: 0,
+        canBrowseFive: false,
+        canBrowseTen: false,
+      ),
+      products: [productState],
+      catalogVersion: 'version-a',
+      fromCache: fromCache,
+    );
+
+WhatsAppCatalogProductState productState(
+  String id,
+  WhatsAppCatalogProductStatus status,
+) =>
+    WhatsAppCatalogProductState(
+      productId: id,
+      status: status,
+      reasonCodes: const [],
+      action: WhatsAppCatalogProductAction.none,
+      updatedAtMs: 1000,
+    );
+
+Future<StoreSession> storeSession() async {
+  final session = StoreSession.testing(
+    userIdProvider: () => 'owner-a',
+    bootstrapLoader: () async => {
+      'stores': [
+        const StoreMembership(
+          storeId: 'store-a',
+          storeName: 'Store A',
+          role: StoreRole.owner,
+        ).toMap(),
+      ],
+    },
+    storage: _MemoryStoreStorage(),
+  );
+  await session.bootstrap();
+  return session;
+}
+
 _SummaryController _summaryController(
   WhatsAppCatalogSnapshot snapshot,
 ) =>
@@ -133,10 +230,12 @@ void main() {
 
   test('service loads and merges every page', () async {
     final requestedTokens = <String?>[];
+    final requestedPageSizes = <int>[];
     final service = WhatsAppCatalogStatusService(
       userIdProvider: () => '',
       pageLoader: ({required storeId, required pageSize, pageToken}) async {
         requestedTokens.add(pageToken);
+        requestedPageSizes.add(pageSize);
         return pageToken == null
             ? page(products: [product('a', 'live')], token: 'next')
             : page(products: [product('b', 'syncing')]);
@@ -146,8 +245,64 @@ void main() {
     final result = await service.fetch('store-a');
 
     expect(requestedTokens, [null, 'next']);
+    expect(requestedPageSizes, [1000, 1000]);
     expect(result.products.map((item) => item.productId), ['a', 'b']);
     expect(result.productsById['a']?.status, WhatsAppCatalogProductStatus.live);
+  });
+
+  test('service coalesces concurrent whole-catalogue refreshes', () async {
+    final response = Completer<Map<String, dynamic>>();
+    var calls = 0;
+    final service = WhatsAppCatalogStatusService(
+      userIdProvider: () => '',
+      pageLoader: ({required storeId, required pageSize, pageToken}) {
+        calls++;
+        return response.future;
+      },
+    );
+
+    final first = service.fetch('store-a');
+    final second = service.fetch('store-a');
+    response.complete(page(products: [product('a', 'live')]));
+
+    final results = await Future.wait([first, second]);
+    expect(calls, 1);
+    expect(identical(results.first, results.last), isTrue);
+  });
+
+  test('pending status refreshes are split into bounded direct-read patches',
+      () async {
+    final batchSizes = <int>[];
+    final service = WhatsAppCatalogStatusService(
+      userIdProvider: () => '',
+      pageLoader: ({required storeId, required pageSize, pageToken}) async =>
+          page(products: const []),
+      patchLoader: ({required storeId, required productIds}) async {
+        batchSizes.add(productIds.length);
+        return {
+          ...page(
+            products: productIds
+                .where((productId) => productId != 'missing')
+                .map((productId) => product(productId, 'live'))
+                .toList(),
+          ),
+          'partial': true,
+          'removedProductIds': [
+            if (productIds.contains('missing')) 'missing',
+          ],
+        };
+      },
+    );
+    final productIds = [
+      for (var index = 0; index < 100; index++) 'product-$index',
+      'missing',
+    ];
+
+    final patch = await service.fetchProductStatuses('store-a', productIds);
+
+    expect(batchSizes, [100, 1]);
+    expect(patch.products, hasLength(100));
+    expect(patch.removedProductIds, {'missing'});
   });
 
   test('service restarts pagination once when catalogue changes', () async {
@@ -253,6 +408,74 @@ void main() {
     storeAResponse.complete(page(products: [product('store-a-item', 'live')]));
     await tester.pumpAndSettle();
     expect(controller.snapshot?.products.single.productId, 'store-b-item');
+  });
+
+  testWidgets('fresh cached status avoids a full fetch on open and resume',
+      (tester) async {
+    final now = DateTime(2026, 9, 6, 12);
+    final service = _FakeCatalogService(
+      cached: statusSnapshot(
+        checkedAt: now,
+        productState: productState('a', WhatsAppCatalogProductStatus.live),
+      ),
+    );
+    final controller = WhatsAppCatalogStatusController(
+      service: service,
+      storeSession: await storeSession(),
+      enabled: () => true,
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+
+    controller.start();
+    await tester.pump();
+    controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+    controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(service.fullFetches, 0);
+    expect(controller.snapshot?.fromCache, isTrue);
+  });
+
+  testWidgets('polling patches pending products without a full refresh',
+      (tester) async {
+    final now = DateTime(2026, 9, 6, 12);
+    final initial = statusSnapshot(
+      checkedAt: now,
+      productState: productState('a', WhatsAppCatalogProductStatus.syncing),
+    );
+    final service = _FakeCatalogService(
+      cached: initial,
+      patch: WhatsAppCatalogStatusPatch(
+        products: [productState('a', WhatsAppCatalogProductStatus.live)],
+        removedProductIds: const {},
+      ),
+    );
+    final controller = WhatsAppCatalogStatusController(
+      service: service,
+      storeSession: await storeSession(),
+      enabled: () => true,
+      now: () => now,
+      pollIntervals: const [Duration(milliseconds: 1)],
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+
+    controller.start();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump();
+
+    expect(service.fullFetches, 0);
+    expect(service.patchFetches, 1);
+    expect(
+      controller.statusFor('a')?.status,
+      WhatsAppCatalogProductStatus.live,
+    );
+    expect(controller.snapshot?.summary.live, 1);
+    expect(controller.snapshot?.checkedAtMs, initial.checkedAtMs);
+    expect(controller.snapshot?.fromCache, isTrue);
   });
 
   for (final live in [4, 5, 10]) {

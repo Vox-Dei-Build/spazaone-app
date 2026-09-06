@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class OrderStatusChipsSkeleton extends StatelessWidget {
   const OrderStatusChipsSkeleton({super.key});
@@ -16,9 +16,8 @@ class OrderStatusChipsSkeleton extends StatelessWidget {
           ),
         );
 
-    return Shimmer.fromColors(
-      baseColor: Colors.black12,
-      highlightColor: Colors.black26,
+    return SpazaShimmer(
+      semanticsLabel: 'Loading order filters',
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: SizeConfig.imageSizeMultiplier * 3,
@@ -61,9 +60,8 @@ class OrdersSummaryBarSkeleton extends StatelessWidget {
           ),
         );
 
-    return Shimmer.fromColors(
-      baseColor: Colors.black12,
-      highlightColor: Colors.black26,
+    return SpazaShimmer(
+      semanticsLabel: 'Loading order summary',
       child: Padding(
         padding: EdgeInsets.fromLTRB(
           SizeConfig.imageSizeMultiplier * 3,

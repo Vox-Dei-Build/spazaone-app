@@ -10,6 +10,7 @@ import 'package:pasella/pages/promote/widgets/promotions/view_promotion/view_pro
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/utils/text_sanitizer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class PromotionsTab extends StatefulWidget {
   const PromotionsTab({Key? key}) : super(key: key);
@@ -23,9 +24,10 @@ class _PromotionsTabState extends State<PromotionsTab> {
   Widget build(BuildContext context) {
     final vm = Provider.of<PromotionsViewModel>(context);
     if (vm.loadingPromotions) {
-      return const Center(
-          child:
-              CircularProgressIndicator(semanticsLabel: 'Loading promotions'));
+      return const SpazaListSkeleton(
+        semanticsLabel: 'Loading promotions',
+        itemCount: 4,
+      );
     }
     final promos = vm.promotionsReports;
 

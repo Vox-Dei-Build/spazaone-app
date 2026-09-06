@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/constants/constants.dart';
@@ -105,6 +107,60 @@ void main() {
     await tester.pumpAndSettle();
     expect(attempts, 2);
     expect(find.text('Add your first customer'), findsOneWidget);
+  });
+
+  testWidgets('local search and filters keep the customer listener subscribed',
+      (
+    tester,
+  ) async {
+    final search = ValueNotifier<String?>(null);
+    final hasCustomers = ValueNotifier<bool>(false);
+    final appModel = AppModel();
+    var factoryCalls = 0;
+    var subscriptions = 0;
+    final source = StreamController<List<CustomerWithTransactions>>.broadcast(
+      onListen: () => subscriptions++,
+    );
+    addTearDown(() async {
+      search.dispose();
+      hasCustomers.dispose();
+      appModel.dispose();
+      await source.close();
+    });
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AppModel>.value(
+        value: appModel,
+        child: MaterialApp(
+          home: EntityTab(
+            category: 'Customer',
+            emptyAsset: 'assets/images/customer.webp',
+            emptyText: 'Add your first customer',
+            searchTextNotifier: search,
+            hasCustomersNotifier: hasCustomers,
+            entitiesStream: () {
+              factoryCalls++;
+              return source.stream;
+            },
+          ),
+        ),
+      ),
+    );
+    source.add(const []);
+    await tester.pumpAndSettle();
+
+    expect(factoryCalls, 1);
+    expect(subscriptions, 1);
+
+    search.value = 'naledi';
+    await tester.pump();
+    appModel.updatesortByFilter('Name');
+    await tester.pump();
+    appModel.updateReminderFilter(0);
+    await tester.pump();
+
+    expect(factoryCalls, 1);
+    expect(subscriptions, 1);
   });
 
   testWidgets('customer row shows channel and phone without a status pill', (

@@ -8,8 +8,8 @@ import 'package:pasella/pages/sales/widgets/online_sales_list.dart';
 import 'package:pasella/pages/stock/dropship/commerce_orders_page.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/shared/widgets/workspace_context_header.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'package:shimmer/shimmer.dart';
 
 enum OnlineOrderSourceFilter { all, owned, supplier }
 
@@ -578,10 +578,9 @@ class _OnlineOrdersLoading extends StatelessWidget {
           ),
         );
 
-    return Shimmer.fromColors(
+    return SpazaShimmer(
       key: const ValueKey('online-orders-loading-shimmer'),
-      baseColor: Colors.black12,
-      highlightColor: Colors.black26,
+      semanticsLabel: 'Loading online orders',
       child: Column(
         children: [
           for (var index = 0; index < 5; index++)

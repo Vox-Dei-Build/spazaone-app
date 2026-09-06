@@ -9,7 +9,7 @@ import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/shared/widgets/onboarding/merchant_setup_state.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 /// Callbacks the merchant setup card fires when the user taps into a step.
 ///
@@ -266,17 +266,11 @@ class _SetupSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final baseColor =
-        theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6);
-    final highlightColor = theme.colorScheme.surface;
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(LayoutConstants.spaceLg),
-        child: Shimmer.fromColors(
-          baseColor: baseColor,
-          highlightColor: highlightColor,
+        child: SpazaShimmer(
+          semanticsLabel: 'Loading shop setup',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

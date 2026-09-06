@@ -5,6 +5,7 @@ import 'package:pasella/pages/contact/contact_management.dart';
 import 'package:pasella/pages/reports/business_report/widgets/customer_activity_timeline.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/services/store_session.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:provider/provider.dart';
 
 /// Reads the same per-customer range as the balance summary and shows every
@@ -131,9 +132,12 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           if (!widget.showLoadingIndicator) return const SizedBox.shrink();
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: CircularProgressIndicator()),
+          return const SpazaListSkeleton(
+            semanticsLabel: 'Loading customer activity',
+            itemCount: 4,
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(vertical: 12),
           );
         }
         if (snapshot.hasError) {

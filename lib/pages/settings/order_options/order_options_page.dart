@@ -2,6 +2,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/services/merchant_ordering_options_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 typedef OrderingOptionsLoader = Future<MerchantOrderingOptions> Function();
 typedef OrderingOptionsSaver = Future<MerchantOrderingOptions> Function({
@@ -118,7 +119,9 @@ class _OrderOptionsPageState extends State<OrderOptionsPage> {
     return Scaffold(
       appBar: const CustomAppBar(title: 'Order options'),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SpazaDetailSkeleton(
+              semanticsLabel: 'Loading order options',
+            )
           : !_loaded
               ? ListView(
                   padding: const EdgeInsets.all(24),

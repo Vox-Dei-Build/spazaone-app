@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 Widget MetricTile(
@@ -14,7 +15,13 @@ Widget MetricTile(
     future: fetchMetric(),
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting) {
-        return CircularProgressIndicator();
+        return const SpazaShimmer(
+          semanticsLabel: 'Loading report metric',
+          child: ListTile(
+            title: SpazaSkeletonLine(widthFactor: .45, height: 12),
+            trailing: SpazaSkeletonBox(height: 16, width: 72),
+          ),
+        );
       } else if (snapshot.hasError) {
         return const Text('Unavailable');
       } else {

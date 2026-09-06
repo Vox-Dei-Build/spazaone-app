@@ -621,6 +621,15 @@ test("catalogue status callable requires App Check and denies cross-store access
 test("catalogue status callable paginates and detects catalogue drift", async () => {
   process.env.WHATSAPP_CATALOG_STATUS_CURSOR_SECRET =
     "local-emulator-catalogue-cursor-secret-32-bytes";
+  const catalogProductIds = [
+    "a",
+    "b",
+    "c",
+    ...Array.from(
+      { length: 100 },
+      (_, index) => `z${String(index).padStart(3, "0")}`,
+    ),
+  ];
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await Promise.all([
@@ -633,7 +642,7 @@ test("catalogue status callable paginates and detects catalogue drift", async ()
         },
         { merge: true },
       ),
-      ...["a", "b", "c"].map((id) =>
+      ...catalogProductIds.map((id) =>
         setDoc(doc(db, `users/storeA/products/${id}`), {
           name: `Product ${id}`,
           sellingPrice: 10,
@@ -659,6 +668,34 @@ test("catalogue status callable paginates and detects catalogue drift", async ()
   );
   assert.equal(typeof first.nextPageToken, "string");
   assert.equal(first.retryPermitted, false);
+
+  // Legacy app builds explicitly send 100. The backend expands that request
+  // so a >100-product catalogue no longer causes identical full scans.
+  const full = await run({ storeId: "storeA", pageSize: 100 }, context);
+  assert.equal(full.products.length, catalogProductIds.length);
+  assert.equal(full.products[0].productId, "a");
+  assert.equal(full.products.at(-1).productId, "z099");
+  assert.equal(full.nextPageToken, null);
+
+  const patch = await run(
+    { storeId: "storeA", productIds: ["a", "missing"] },
+    context,
+  );
+  assert.equal(patch.partial, true);
+  assert.deepEqual(
+    patch.products.map((product) => product.productId),
+    ["a"],
+  );
+  assert.deepEqual(patch.removedProductIds, ["missing"]);
+  assert.equal(patch.nextPageToken, null);
+
+  await assert.rejects(
+    run(
+      { storeId: "storeA", productIds: ["a"], pageToken: first.nextPageToken },
+      context,
+    ),
+    (error) => error?.code === "invalid-argument",
+  );
 
   await assert.rejects(
     run(

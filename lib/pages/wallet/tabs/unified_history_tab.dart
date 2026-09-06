@@ -7,7 +7,7 @@ import 'package:pasella/pages/wallet/widgets/icon_helper.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/wallet/widgets/wallet_activity_tile.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class UnifiedHistoryTab extends StatefulWidget {
   final WalletViewModel viewModel;
@@ -125,10 +125,9 @@ class _WalletHistoryLoading extends StatelessWidget {
   const _WalletHistoryLoading();
 
   @override
-  Widget build(BuildContext context) => Shimmer.fromColors(
+  Widget build(BuildContext context) => SpazaShimmer(
         key: const ValueKey('wallet-history-loading-shimmer'),
-        baseColor: Colors.black12,
-        highlightColor: Colors.black26,
+        semanticsLabel: 'Loading wallet activity',
         child: Column(
           children: [
             for (var index = 0; index < 5; index++)

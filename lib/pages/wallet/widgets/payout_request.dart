@@ -4,6 +4,7 @@ import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 
 class PayoutPage extends StatefulWidget {
@@ -38,7 +39,9 @@ class _PayoutPageState extends State<PayoutPage> {
           stream: walletViewModel.walletStateStream,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const SpazaDetailSkeleton(
+                semanticsLabel: 'Loading payout balance',
+              );
             }
 
             final walletState = snapshot.data!;

@@ -3,6 +3,7 @@ import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 /// Lightweight product summary attached to a promotion as the
 /// "linked product" (PAS-UX-rel #5 Option B). Kept intentionally
@@ -234,7 +235,11 @@ class _ProductPickerSheetState extends State<ProductPickerSheet> {
 
   Widget _buildList(ThemeData theme) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SpazaListSkeleton(
+        semanticsLabel: 'Loading products',
+        itemCount: 4,
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      );
     }
     if (_error != null) {
       return Center(

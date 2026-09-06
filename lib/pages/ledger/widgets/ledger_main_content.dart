@@ -55,8 +55,20 @@ class LedgerMainContent extends StatelessWidget {
                     hasCustomersNotifier: ledgerViewModel.hasCustomersNotifier,
                     onAddCustomer: onAddCustomer,
                   ),
-                  const BusinessReportPage(view: ReportView.activity),
-                  const BusinessReportPage(view: ReportView.summary),
+                  LedgerDeferredTab(
+                    tabIndexNotifier: tabIndexNotifier,
+                    tabIndex: 1,
+                    builder: (_) => const BusinessReportPage(
+                      view: ReportView.activity,
+                    ),
+                  ),
+                  LedgerDeferredTab(
+                    tabIndexNotifier: tabIndexNotifier,
+                    tabIndex: 2,
+                    builder: (_) => const BusinessReportPage(
+                      view: ReportView.summary,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -64,5 +76,86 @@ class LedgerMainContent extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Defers report construction until its tab is selected for the first time.
+///
+/// `TabBarView` may lay out a neighbouring page in advance. The Activity page
+/// fans out across customer transaction subcollections, so constructing it
+/// while the merchant is still on Customers creates avoidable Firestore reads.
+class LedgerDeferredTab extends StatefulWidget {
+  const LedgerDeferredTab({
+    super.key,
+    required this.tabIndexNotifier,
+    required this.tabIndex,
+    required this.builder,
+  });
+
+  final ValueNotifier<int> tabIndexNotifier;
+  final int tabIndex;
+  final WidgetBuilder builder;
+
+  @override
+  State<LedgerDeferredTab> createState() => _LedgerDeferredTabState();
+}
+
+class _LedgerDeferredTabState extends State<LedgerDeferredTab> {
+  late bool _activated;
+  TabController? _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _activated = widget.tabIndexNotifier.value == widget.tabIndex;
+    widget.tabIndexNotifier.addListener(_handleTabChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextController = DefaultTabController.maybeOf(context);
+    if (!identical(_tabController, nextController)) {
+      _tabController?.removeListener(_handleTabChanged);
+      _tabController = nextController;
+      _tabController?.addListener(_handleTabChanged);
+    }
+    _activateIfSelected();
+  }
+
+  @override
+  void didUpdateWidget(covariant LedgerDeferredTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tabIndexNotifier != widget.tabIndexNotifier) {
+      oldWidget.tabIndexNotifier.removeListener(_handleTabChanged);
+      widget.tabIndexNotifier.addListener(_handleTabChanged);
+    }
+    _activateIfSelected();
+  }
+
+  void _handleTabChanged() {
+    if (!mounted || _activated || !_isSelected) return;
+    setState(() => _activated = true);
+  }
+
+  bool get _isSelected =>
+      widget.tabIndexNotifier.value == widget.tabIndex ||
+      _tabController?.index == widget.tabIndex;
+
+  void _activateIfSelected() {
+    if (!_activated && _isSelected) _activated = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_activated) return const SizedBox.shrink();
+    return widget.builder(context);
+  }
+
+  @override
+  void dispose() {
+    widget.tabIndexNotifier.removeListener(_handleTabChanged);
+    _tabController?.removeListener(_handleTabChanged);
+    super.dispose();
   }
 }

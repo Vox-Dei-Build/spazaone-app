@@ -12,7 +12,7 @@ import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/widgets/private_region.dart';
 import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class ProfileAppBar extends StatefulWidget implements PreferredSizeWidget {
   final CustomerBalanceSummaryProvider customerBalanceSummaryProvider;
@@ -117,9 +117,8 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                             padding: EdgeInsets.symmetric(
                                 vertical: SizeConfig.heightMultiplier * 0.5,
                                 horizontal: SizeConfig.imageSizeMultiplier * 2),
-                            child: Shimmer.fromColors(
-                              baseColor: Colors.black12,
-                              highlightColor: Colors.black26,
+                            child: SpazaShimmer(
+                              semanticsLabel: 'Loading customer status',
                               child: Container(
                                 width: SizeConfig.imageSizeMultiplier * 15,
                                 height: SizeConfig.heightMultiplier * 1,

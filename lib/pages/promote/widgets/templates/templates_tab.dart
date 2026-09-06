@@ -6,6 +6,7 @@ import 'package:pasella/pages/promote/utils/template_status.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
 import 'package:pasella/pages/promote/widgets/templates/view_template/template_detail_page.dart';
 import 'package:pasella/shared/widgets/empty_state_onboarding.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/text_sanitizer.dart';
 import 'package:provider/provider.dart';
 
@@ -22,7 +23,10 @@ class _TemplatesTabState extends State<TemplatesTab> {
     final viewModel = Provider.of<PromotionsViewModel>(context);
 
     if (viewModel.loadingTemplates) {
-      return const Center(child: CircularProgressIndicator());
+      return const SpazaListSkeleton(
+        semanticsLabel: 'Loading message templates',
+        itemCount: 4,
+      );
     }
 
     final templates = viewModel.templates;
@@ -91,8 +95,7 @@ class _EmptyState extends StatelessWidget {
     return const EmptyStateOnboarding(
       icon: Icons.library_books_outlined,
       headline: 'No templates yet',
-      subtitle:
-          'Templates are pre-approved messages you can send to your '
+      subtitle: 'Templates are pre-approved messages you can send to your '
           'customers. Tap "Create Template" below to get started.',
       tutorialKey: TutorialConfig.TUTORIAL_RUN_PROMOTIONS,
       tutorialTitle: 'How to create and use templates',

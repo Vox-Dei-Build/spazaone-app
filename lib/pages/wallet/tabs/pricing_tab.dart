@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/constants/constants.dart';
@@ -124,10 +125,16 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
           Expanded(
               child: IndexedStack(index: _selectedSection, children: [
             _messagesLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const SpazaListSkeleton(
+                    semanticsLabel: 'Loading message pricing',
+                    itemCount: 4,
+                  )
                 : _messageCosts(),
             _paymentsLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const SpazaListSkeleton(
+                    semanticsLabel: 'Loading payment pricing',
+                    itemCount: 4,
+                  )
                 : _paymentCosts(),
           ])),
         ],

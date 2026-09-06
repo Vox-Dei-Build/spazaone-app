@@ -9,6 +9,7 @@ import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
@@ -209,7 +210,10 @@ class _SharePageState extends State<SharePage> {
               if (_loading)
                 const SizedBox(
                   height: 280,
-                  child: Center(child: CircularProgressIndicator()),
+                  child: SpazaDetailSkeleton(
+                    semanticsLabel: 'Loading ordering link',
+                    padding: EdgeInsets.zero,
+                  ),
                 )
               else if (_error != null)
                 _ErrorPanel(message: _error!, onRetry: _loadOrderingLink)

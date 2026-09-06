@@ -8,6 +8,7 @@ import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/models/stock/products_initial_data.dart';
 import 'package:pasella/pages/stock/product_group_page/product_group_page.dart';
 import 'package:pasella/utils/string_utils.dart';
+import 'package:rxdart/rxdart.dart';
 
 class StockViewModel with ChangeNotifier {
   final FirebaseFirestore? _firestoreOverride;
@@ -22,6 +23,13 @@ class StockViewModel with ChangeNotifier {
   String? errorMessage;
   List<Product> products = [];
   StreamSubscription<List<Product>>? _productsSubscription;
+
+  /// One full-catalogue listener feeds both the in-memory report state and the
+  /// Products tab. Without replay/sharing, `watchProducts()` and
+  /// `ProductList` each subscribed to the same Firestore query, doubling the
+  /// initial document reads and every subsequent changed-document read.
+  late final Stream<List<Product>> _sharedProductsStream =
+      _buildProductsStream().shareReplay(maxSize: 1);
 
   StockViewModel({
     FirebaseFirestore? firestore,
@@ -273,7 +281,7 @@ class StockViewModel with ChangeNotifier {
     }
   }
 
-  Stream<List<Product>> streamProducts() {
+  Stream<List<Product>> _buildProductsStream() {
     final override = _productsStreamOverride;
     if (override != null) return override;
     return _firestore
@@ -288,37 +296,28 @@ class StockViewModel with ChangeNotifier {
         );
   }
 
+  Stream<List<Product>> streamProducts() => _sharedProductsStream;
+
   Stream<List<Product>> streamProductsByGroup(String? groupName) {
+    if (groupName == null) return streamProducts();
+
     final override = _productsStreamOverride;
     if (override != null) {
-      return groupName == null
-          ? override
-          : override.map(
-              (products) => products
-                  .where((product) => product.group == groupName)
-                  .toList(growable: false),
-            );
+      return streamProducts().map(
+        (products) => products
+            .where((product) => product.group == groupName)
+            .toList(growable: false),
+      );
     }
-    if (groupName != null) {
-      return _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('products')
-          .where('group', isEqualTo: groupName)
-          .snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => Product.fromMap(doc.data(), doc.id))
-              .toList());
-    } else {
-      return _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('products')
-          .snapshots()
-          .map((snapshot) => snapshot.docs
-              .map((doc) => Product.fromMap(doc.data(), doc.id))
-              .toList());
-    }
+    return _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('products')
+        .where('group', isEqualTo: groupName)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => Product.fromMap(doc.data(), doc.id))
+            .toList());
   }
 
   List<Product> checkLowStock() {

@@ -10,6 +10,7 @@ import 'package:pasella/pages/promote/widgets/promotions/create_promotions/revie
 import 'package:pasella/services/whatsapp_capability_cache.dart';
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/shared/widgets/wizard_stepper.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/phone_util.dart';
@@ -258,7 +259,9 @@ class _ProductPromotionPageState extends State<ProductPromotionPage> {
       appBar: const CustomAppBar(title: 'Promote product'),
       bottomNavigationBar: _buildBottomAction(vm),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SpazaDetailSkeleton(
+              semanticsLabel: 'Loading product promotion',
+            )
           : _result?.isOk == true
               ? _SuccessView(
                   productName: widget.product.name.trim(),

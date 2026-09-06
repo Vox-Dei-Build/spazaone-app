@@ -13,6 +13,7 @@ import 'package:pasella/pages/stock/dropship/dropship_listing_page.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
 
@@ -73,10 +74,10 @@ class _ProductListState extends State<ProductList> {
       stream: _productsStream,
       builder: (BuildContext context, AsyncSnapshot<List<Product>> snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _withHeader(const Padding(
-            padding: EdgeInsets.all(24),
-            child: Center(child: CircularProgressIndicator()),
-          ));
+          return ProductCatalogueSkeleton(
+            header: widget.header,
+            showFilters: widget.groupName == null,
+          );
         }
         if (snapshot.hasError) {
           return _withHeader(const Padding(
@@ -171,6 +172,101 @@ class _ProductListState extends State<ProductList> {
         );
     }
   }
+}
+
+/// Initial Products loader shaped like the compact catalogue rows.
+class ProductCatalogueSkeleton extends StatelessWidget {
+  const ProductCatalogueSkeleton({
+    super.key,
+    this.header,
+    this.showFilters = true,
+    this.itemCount = 5,
+  });
+
+  final Widget? header;
+  final bool showFilters;
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        key: const ValueKey('product-catalogue-loading-scroll'),
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          if (header != null) header!,
+          SpazaShimmer(
+            key: const ValueKey('product-catalogue-loading-shimmer'),
+            semanticsLabel: 'Loading products',
+            child: Column(
+              children: [
+                if (showFilters)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(0, 4, 0, 8),
+                    child: Row(
+                      children: [
+                        SpazaSkeletonBox(height: 38, width: 70, radius: 20),
+                        SizedBox(width: 8),
+                        SpazaSkeletonBox(height: 38, width: 94, radius: 20),
+                        SizedBox(width: 8),
+                        SpazaSkeletonBox(height: 38, width: 104, radius: 20),
+                      ],
+                    ),
+                  ),
+                for (var index = 0; index < itemCount; index++)
+                  const _ProductCatalogueRowSkeleton(),
+              ],
+            ),
+          ),
+        ],
+      );
+}
+
+class _ProductCatalogueRowSkeleton extends StatelessWidget {
+  const _ProductCatalogueRowSkeleton();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: SpazaColors.border),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 260 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 19;
+              return Row(
+                children: [
+                  const SpazaSkeletonBox(height: 40, width: 40, radius: 12),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SpazaSkeletonLine(widthFactor: .72, height: 14),
+                        const SizedBox(height: 7),
+                        const SpazaSkeletonLine(widthFactor: .46, height: 11),
+                        if (stacked) ...[
+                          const SizedBox(height: 7),
+                          const SpazaSkeletonLine(widthFactor: .34, height: 13),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (!stacked) ...[
+                    const SizedBox(width: 12),
+                    const SpazaSkeletonBox(height: 14, width: 64),
+                    const SizedBox(width: 26),
+                  ],
+                ],
+              );
+            },
+          ),
+        ),
+      );
 }
 
 enum _StockFilter { all, low, out }

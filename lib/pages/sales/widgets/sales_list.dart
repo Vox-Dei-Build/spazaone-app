@@ -5,8 +5,8 @@ import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/sales/widgets/sale_detail_page.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'package:shimmer/shimmer.dart';
 
 class SalesList extends StatefulWidget {
   final SalesViewModel viewModel;
@@ -52,7 +52,10 @@ class _SalesListState extends State<SalesList> {
                 RecordedSalesReadError(onRetry: reader.retry),
               );
             }
-            return _buildShimmerPlaceholder();
+            return RecordedSalesListSkeleton(
+              header: widget.header,
+              bottomPadding: widget.bottomPadding,
+            );
           }
 
           final Widget? notice = failed
@@ -131,39 +134,122 @@ class _SalesListState extends State<SalesList> {
       ],
     );
   }
+}
 
-  Widget _buildShimmerPlaceholder() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.only(bottom: widget.bottomPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+/// Content-shaped initial loader for the Recorded Sales list.
+///
+/// The date controls and record-sale action stay available while the read is
+/// in flight. Placeholder rows mirror the two-column sale layout and adapt to
+/// the same narrow / large-text breakpoint as [RecordedSaleTile].
+class RecordedSalesListSkeleton extends StatelessWidget {
+  const RecordedSalesListSkeleton({
+    super.key,
+    this.header = const [],
+    this.bottomPadding = 0,
+    this.itemCount = 5,
+  });
+
+  final List<Widget> header;
+  final double bottomPadding;
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: EdgeInsets.only(bottom: bottomPadding),
         children: [
-          ...widget.header,
-          ...List<Widget>.filled(
-            5,
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-              child: Shimmer.fromColors(
-                baseColor: SpazaColors.subtle,
-                highlightColor: SpazaColors.surface,
-                child: Container(
-                  width: double.infinity,
-                  height: 80,
-                  decoration: const BoxDecoration(
-                    color: SpazaColors.surface,
-                    borderRadius: BorderRadius.all(
-                      Radius.circular(SpazaRadius.control),
-                    ),
-                  ),
-                ),
-              ),
+          ...header,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
+            child: Text(
+              'Entries',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            growable: false,
+          ),
+          SpazaShimmer(
+            key: const ValueKey('recorded-sales-loading-shimmer'),
+            semanticsLabel: 'Loading recorded sales',
+            child: Column(
+              children: [
+                for (var index = 0; index < itemCount; index++)
+                  const _RecordedSaleRowSkeleton(),
+              ],
+            ),
           ),
         ],
-      ),
-    );
-  }
+      );
+}
+
+class _RecordedSaleRowSkeleton extends StatelessWidget {
+  const _RecordedSaleRowSkeleton();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 80),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          decoration: BoxDecoration(
+            border: Border.all(color: SpazaColors.border),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stack = constraints.maxWidth < 300 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 19;
+              if (stack) {
+                return const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SpazaSkeletonLine(widthFactor: .52, height: 14),
+                    SizedBox(height: 7),
+                    SpazaSkeletonLine(widthFactor: .24, height: 11),
+                    SizedBox(height: 12),
+                    SpazaSkeletonLine(widthFactor: .42, height: 18),
+                    SizedBox(height: 7),
+                    SpazaSkeletonLine(widthFactor: .58, height: 11),
+                  ],
+                );
+              }
+              return const Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SpazaSkeletonLine(widthFactor: .62, height: 14),
+                        SizedBox(height: 8),
+                        SpazaSkeletonLine(widthFactor: .34, height: 11),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 28),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        SpazaSkeletonLine(
+                          widthFactor: .64,
+                          height: 18,
+                          alignment: Alignment.centerRight,
+                        ),
+                        SizedBox(height: 8),
+                        SpazaSkeletonLine(
+                          widthFactor: .82,
+                          height: 11,
+                          alignment: Alignment.centerRight,
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 28),
+                ],
+              );
+            },
+          ),
+        ),
+      );
 }
 
 /// Recoverable read feedback, distinct from a verified empty sales period.

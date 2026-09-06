@@ -5,6 +5,7 @@ import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:provider/provider.dart';
 
 class StoreManagementPage extends StatefulWidget {
@@ -427,11 +428,12 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                   future: _operatorsFor(session),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(),
-                        ),
+                      return const SpazaListSkeleton(
+                        semanticsLabel: 'Loading store team',
+                        itemCount: 3,
+                        shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.symmetric(vertical: 8),
                       );
                     }
                     if (snapshot.hasError) {

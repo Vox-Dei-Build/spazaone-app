@@ -11,10 +11,89 @@ import 'package:pasella/utils/sms_pricing_util.dart';
 
 const productPromotionTemplateKind = 'product_promotion_v1';
 
+typedef PromotionsPricingLoader
+    = Future<({double whatsappPrice, double smsPricePerSegment})> Function();
+
+class PromotionsPricingLoadResult {
+  const PromotionsPricingLoadResult.available({
+    required this.whatsappPrice,
+    required this.smsPricePerSegment,
+  }) : error = null;
+
+  const PromotionsPricingLoadResult.unavailable(
+    MessagingPricingUnavailable failure,
+  )   : error = failure,
+        whatsappPrice = null,
+        smsPricePerSegment = null;
+
+  final double? whatsappPrice;
+  final double? smsPricePerSegment;
+  final MessagingPricingUnavailable? error;
+
+  bool get isAvailable => error == null;
+}
+
+/// Converts every pricing dependency failure into UI state before it reaches
+/// `Future.wait` in the Marketing page's initial load.
+@visibleForTesting
+Future<PromotionsPricingLoadResult> resolvePromotionsPricing(
+  PromotionsPricingLoader loader,
+) async {
+  try {
+    final pricing = await loader();
+    if (!pricing.whatsappPrice.isFinite ||
+        pricing.whatsappPrice <= 0 ||
+        !pricing.smsPricePerSegment.isFinite ||
+        pricing.smsPricePerSegment <= 0) {
+      throw const MessagingPricingUnavailable();
+    }
+    return PromotionsPricingLoadResult.available(
+      whatsappPrice: pricing.whatsappPrice,
+      smsPricePerSegment: pricing.smsPricePerSegment,
+    );
+  } on Exception catch (error) {
+    return PromotionsPricingLoadResult.unavailable(
+      MessagingPricingUnavailable.fromError(error),
+    );
+  }
+}
+
+/// Shares a merchant's active initial-load request without retaining completed
+/// data as a freshness cache. Concurrent callers reuse the same reads, while a
+/// later explicit page load still refreshes customer and promotion data.
+@visibleForTesting
+class PromotionsInitialLoadCoalescer {
+  String? _merchantId;
+  Future<void>? _pending;
+
+  Future<void> run(String merchantId, Future<void> Function() loader) {
+    final pending = _pending;
+    if (_merchantId == merchantId && pending != null) return pending;
+
+    _merchantId = merchantId;
+    late final Future<void> tracked;
+    tracked = Future<void>.sync(loader).whenComplete(() {
+      if (identical(_pending, tracked)) {
+        _pending = null;
+        _merchantId = null;
+      }
+    });
+    _pending = tracked;
+    return tracked;
+  }
+
+  void clear() {
+    _merchantId = null;
+    _pending = null;
+  }
+}
+
 class PromotionsViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   late final StreamSubscription<User?> _authSubscription;
   String _activeMerchantId = '';
+  final PromotionsInitialLoadCoalescer _initialLoadCoalescer =
+      PromotionsInitialLoadCoalescer();
 
   PromotionsViewModel() {
     _activeMerchantId = userId;
@@ -130,6 +209,7 @@ class PromotionsViewModel extends ChangeNotifier {
   }
 
   void _clearMerchantScopedState() {
+    _initialLoadCoalescer.clear();
     selectedTemplateId = null;
     selectedCustomerIds = [];
     totalPrice = 0.0;
@@ -158,13 +238,16 @@ class PromotionsViewModel extends ChangeNotifier {
       return;
     }
 
-    await Future.wait([
-      fetchTemplates(merchantId: merchantId),
-      fetchMessageShopName(merchantId: merchantId),
-      initializePricing(),
-      fetchCustomers(merchantId: merchantId),
-      fetchPromotionsReports(merchantId: merchantId), // if needed
-    ]);
+    await _initialLoadCoalescer.run(
+      merchantId,
+      () => Future.wait([
+        fetchTemplates(merchantId: merchantId),
+        fetchMessageShopName(merchantId: merchantId),
+        initializePricing(),
+        fetchCustomers(merchantId: merchantId),
+        fetchPromotionsReports(merchantId: merchantId),
+      ]),
+    );
   }
 
   /// if templates‐only tab needs less, you can also add:
@@ -227,20 +310,23 @@ class PromotionsViewModel extends ChangeNotifier {
     _pricingUnavailableMessage = null;
     notifyListeners();
     try {
-      final pricingService = await DynamicPricingService.initialize();
+      final result = await resolvePromotionsPricing(() async {
+        final pricingService = await DynamicPricingService.initialize();
+        return (
+          whatsappPrice: pricingService.whatsappPromotionPrice,
+          smsPricePerSegment: pricingService.smsReminderTemplatePrice,
+        );
+      });
       if (!_isStillCurrentMerchant(merchantId)) return false;
-      whatsappPrice = pricingService.whatsappPromotionPrice;
-      smsPricePerSegment = pricingService.smsReminderTemplatePrice;
-      if (!messagingPricingAvailable) {
-        throw const MessagingPricingUnavailable();
+      if (result.isAvailable) {
+        whatsappPrice = result.whatsappPrice;
+        smsPricePerSegment = result.smsPricePerSegment;
+        return true;
       }
-      return true;
-    } on MessagingPricingUnavailable catch (error) {
-      if (_isStillCurrentMerchant(merchantId)) {
-        whatsappPrice = null;
-        smsPricePerSegment = null;
-        _pricingUnavailableMessage = error.message;
-      }
+
+      whatsappPrice = null;
+      smsPricePerSegment = null;
+      _pricingUnavailableMessage = result.error!.message;
       return false;
     } finally {
       if (_isStillCurrentMerchant(merchantId)) {

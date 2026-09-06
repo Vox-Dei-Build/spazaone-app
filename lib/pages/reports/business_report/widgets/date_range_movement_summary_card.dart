@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
@@ -13,7 +14,10 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
     return Consumer<BalanceSummaryProvider>(
       builder: (context, provider, child) {
         if (provider.isLedgerLoading) {
-          return const Center(child: CircularProgressIndicator());
+          return const SpazaShimmer(
+            semanticsLabel: 'Loading activity summary',
+            child: SpazaSkeletonBox(height: 146),
+          );
         }
         final summary = provider.balanceSummary;
         return CustomerActivitySummary(

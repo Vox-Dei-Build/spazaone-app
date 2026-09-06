@@ -12,6 +12,7 @@ import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/services/payment_setup_service.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/utils/support_util.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class BankingDetailsTab extends StatefulWidget {
   const BankingDetailsTab({super.key});
@@ -264,7 +265,9 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
           child: Text('Choose a shop to view banking details.'));
     }
     if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SpazaDetailSkeleton(
+        semanticsLabel: 'Loading banking details',
+      );
     }
 
     final journey = _effectiveJourney(viewModel);

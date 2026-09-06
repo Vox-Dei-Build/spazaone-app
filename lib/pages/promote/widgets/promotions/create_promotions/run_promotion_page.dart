@@ -13,6 +13,7 @@ import 'package:pasella/pages/promote/widgets/templates/create_template/template
 import 'package:pasella/shared/billing/wallet_affordability_footer.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/shared/widgets/wizard_stepper.dart';
 import 'package:provider/provider.dart';
 
@@ -595,9 +596,13 @@ class _RunPromotionPageState extends State<RunPromotionPage> {
                 child: _buildNavigationButtons(),
               ),
         body: vm.loadingTemplates
-            ? const Center(child: CircularProgressIndicator())
+            ? const SpazaDetailSkeleton(
+                semanticsLabel: 'Loading promotion setup',
+              )
             : calculating
-                ? const Center(child: CircularProgressIndicator())
+                ? const SpazaDetailSkeleton(
+                    semanticsLabel: 'Updating promotion details',
+                  )
                 : Padding(
                     padding: LayoutConstants.padding10Horizontal,
                     child: Column(

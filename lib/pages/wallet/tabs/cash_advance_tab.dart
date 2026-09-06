@@ -4,6 +4,7 @@ import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/pages/wallet/widgets/payout_request.dart';
 import 'package:pasella/utils/feature_flags.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class CashAdvanceTab extends StatefulWidget {
   const CashAdvanceTab({super.key});
@@ -36,7 +37,9 @@ class _CashAdvanceTabState extends State<CashAdvanceTab> {
       stream: walletVM.walletStateStream,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return const SpazaDetailSkeleton(
+            semanticsLabel: 'Loading cash advance',
+          );
         }
 
         final walletState = snapshot.data!;

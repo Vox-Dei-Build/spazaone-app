@@ -5,6 +5,7 @@ import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/transactions/edit_transaction/edit_transaction.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/shared/widgets/transaction_detail_widgets.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
@@ -113,7 +114,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         future: _transactionFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const SpazaDetailSkeleton(
+              semanticsLabel: 'Loading transaction details',
+            );
           }
           if (!snapshot.hasData || snapshot.hasError) {
             return const Center(
@@ -263,9 +266,27 @@ class _TransactionProductRow extends StatelessWidget {
             .get(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: LinearProgressIndicator(),
+            return const SpazaShimmer(
+              semanticsLabel: 'Loading transaction product',
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    SpazaSkeletonBox(height: 36, width: 36),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SpazaSkeletonLine(widthFactor: .62, height: 13),
+                          SizedBox(height: 8),
+                          SpazaSkeletonLine(widthFactor: .36, height: 10),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             );
           }
           if (snapshot.hasError ||

@@ -23,6 +23,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/transaction_util.dart';
 
@@ -395,22 +396,46 @@ class _LoadingShell extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _SheetChrome.grabber(),
-            const SizedBox(height: 40),
-            const CircularProgressIndicator(),
-            const SizedBox(height: 24),
-            const Text(
-              'Loading insights…',
-              style: TextStyle(
-                color: SpazaColors.muted,
-                fontSize: 16,
+        child: SpazaShimmer(
+          semanticsLabel: 'Loading customer insights',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SheetChrome.grabber(),
+              const SizedBox(height: 20),
+              const Row(
+                children: [
+                  SpazaSkeletonBox(height: 44, width: 44),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SpazaSkeletonLine(widthFactor: .28, height: 10),
+                        SizedBox(height: 8),
+                        SpazaSkeletonLine(widthFactor: .56, height: 18),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 40),
-          ],
+              const SizedBox(height: 24),
+              const SpazaSkeletonBox(height: 112),
+              const SizedBox(height: 24),
+              for (var index = 0; index < 4; index++) ...[
+                const Row(
+                  children: [
+                    Expanded(child: SpazaSkeletonLine(widthFactor: .52)),
+                    SizedBox(width: 20),
+                    SpazaSkeletonBox(height: 14, width: 76),
+                  ],
+                ),
+                if (index < 3) const SizedBox(height: 18),
+              ],
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );

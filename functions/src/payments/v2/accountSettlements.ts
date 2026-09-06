@@ -37,6 +37,16 @@ import { executePaystackRefundV2 } from "./refunds";
 const ACCOUNT_CHANNELS = ["card", "eft", "capitec_pay", "qr"] as const;
 type AccountChannel = (typeof ACCOUNT_CHANNELS)[number];
 
+const EXPIRABLE_ACCOUNT_SETTLEMENT_PURPOSES = [
+  "account_settlement",
+  "repayment_installment",
+] as const;
+const EXPIRABLE_ACCOUNT_SETTLEMENT_STATUSES = [
+  "created",
+  "initialized",
+] as const;
+const MAX_ACCOUNT_SETTLEMENT_EXPIRIES_PER_RUN = 100;
+
 function id(value: unknown, field: string): string {
   const result = String(value ?? "").trim();
   if (!/^[A-Za-z0-9_-]{1,200}$/.test(result)) {
@@ -826,62 +836,77 @@ export async function applyVerifiedAccountSettlementV2(
  * can no longer confirm a late charge. Provider truth still wins in the
  * verified webhook path above, which remains idempotent after this marker.
  */
+export async function expireAccountSettlementIntentsBatch(
+  cutoff: Timestamp = Timestamp.now(),
+): Promise<{ matched: number; expired: number }> {
+  const candidates = await db
+    .collection("paymentIntents")
+    .where("purpose", "in", [...EXPIRABLE_ACCOUNT_SETTLEMENT_PURPOSES])
+    .where("status", "in", [...EXPIRABLE_ACCOUNT_SETTLEMENT_STATUSES])
+    .where("expiresAt", "<=", cutoff)
+    .orderBy("expiresAt", "asc")
+    .limit(MAX_ACCOUNT_SETTLEMENT_EXPIRIES_PER_RUN)
+    .get();
+  let expired = 0;
+  for (const intent of candidates.docs) {
+    const changed = await db.runTransaction(async (tx) => {
+      const liveIntent = await tx.get(intent.ref);
+      const liveData = liveIntent.data() ?? {};
+      const purpose = String(liveData.purpose ?? "");
+      const status = String(liveData.status ?? "");
+      const expiresAt = liveData.expiresAt;
+      if (
+        !liveIntent.exists ||
+        !EXPIRABLE_ACCOUNT_SETTLEMENT_PURPOSES.includes(
+          purpose as (typeof EXPIRABLE_ACCOUNT_SETTLEMENT_PURPOSES)[number],
+        ) ||
+        !EXPIRABLE_ACCOUNT_SETTLEMENT_STATUSES.includes(
+          status as (typeof EXPIRABLE_ACCOUNT_SETTLEMENT_STATUSES)[number],
+        ) ||
+        !(expiresAt instanceof Timestamp) ||
+        expiresAt.toMillis() > cutoff.toMillis()
+      ) {
+        return false;
+      }
+
+      const paymentRequestId = String(liveData.paymentRequestId ?? "");
+      const requestRef = paymentRequestId
+        ? db.doc(`customerPaymentRequests/${paymentRequestId}`)
+        : null;
+      const request = requestRef ? await tx.get(requestRef) : null;
+      const now = FieldValue.serverTimestamp();
+      tx.update(intent.ref, {
+        status: "expired",
+        previousStatus: status,
+        expiredAt: now,
+        updatedAt: now,
+      });
+      if (
+        requestRef &&
+        request?.exists &&
+        shouldReopenPaymentRequestAfterExpiry({
+          requestStatus: request.get("status"),
+          lastPaymentIntentId: request.get("lastPaymentIntentId"),
+          expiredIntentId: intent.id,
+        })
+      ) {
+        tx.update(requestRef, {
+          status: "customer_engaged",
+          lastExpiredPaymentIntentId: intent.id,
+          updatedAt: now,
+        });
+      }
+      return true;
+    });
+    if (changed) expired += 1;
+  }
+  return { matched: candidates.size, expired };
+}
+
 export const expireAccountSettlementIntents = functions.pubsub
   .schedule("every 15 minutes")
   .onRun(async () => {
-    const expired = await db
-      .collection("paymentIntents")
-      .where("expiresAt", "<=", Timestamp.now())
-      .limit(100)
-      .get();
-    for (const intent of expired.docs) {
-      const data = intent.data() ?? {};
-      if (
-        !["account_settlement", "repayment_installment"].includes(
-          String(data.purpose ?? ""),
-        ) ||
-        !["created", "initialized"].includes(String(data.status ?? ""))
-      ) {
-        continue;
-      }
-      const paymentRequestId = String(data.paymentRequestId ?? "");
-      await db.runTransaction(async (tx) => {
-        const liveIntent = await tx.get(intent.ref);
-        const liveData = liveIntent.data() ?? {};
-        if (
-          !liveIntent.exists ||
-          !["created", "initialized"].includes(String(liveData.status ?? ""))
-        ) {
-          return;
-        }
-        const now = FieldValue.serverTimestamp();
-        tx.update(intent.ref, {
-          status: "expired",
-          previousStatus: String(liveData.status ?? "initialized"),
-          expiredAt: now,
-          updatedAt: now,
-        });
-        if (!paymentRequestId) return;
-        const requestRef = db.doc(
-          `customerPaymentRequests/${paymentRequestId}`,
-        );
-        const request = await tx.get(requestRef);
-        if (
-          request.exists &&
-          shouldReopenPaymentRequestAfterExpiry({
-            requestStatus: request.get("status"),
-            lastPaymentIntentId: request.get("lastPaymentIntentId"),
-            expiredIntentId: intent.id,
-          })
-        ) {
-          tx.update(requestRef, {
-            status: "customer_engaged",
-            lastExpiredPaymentIntentId: intent.id,
-            updatedAt: now,
-          });
-        }
-      });
-    }
+    await expireAccountSettlementIntentsBatch();
     return null;
   });
 

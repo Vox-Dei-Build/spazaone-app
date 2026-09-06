@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   accountOutstandingMinor,
@@ -60,4 +61,32 @@ test("repayment installments never overpay the final balance", () => {
     }),
     900,
   );
+});
+
+test("scheduled expiry filters actionable settlement intents before its limit", () => {
+  const source = readFileSync(
+    new URL("../src/payments/v2/accountSettlements.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /collection\("paymentIntents"\)[\s\S]*?\.where\("purpose",\s*"in",[\s\S]*?\.where\("status",\s*"in",[\s\S]*?\.where\("expiresAt",\s*"<=",\s*cutoff\)[\s\S]*?\.orderBy\("expiresAt",\s*"asc"\)[\s\S]*?\.limit\(MAX_ACCOUNT_SETTLEMENT_EXPIRIES_PER_RUN\)/,
+  );
+
+  const indexes = JSON.parse(
+    readFileSync(new URL("../../firestore.indexes.json", import.meta.url)),
+  );
+  const expiryIndex = indexes.indexes.find(
+    (index) =>
+      index.collectionGroup === "paymentIntents" &&
+      index.queryScope === "COLLECTION" &&
+      JSON.stringify(index.fields) ===
+        JSON.stringify([
+          { fieldPath: "purpose", order: "ASCENDING" },
+          { fieldPath: "status", order: "ASCENDING" },
+          { fieldPath: "expiresAt", order: "ASCENDING" },
+          { fieldPath: "__name__", order: "ASCENDING" },
+        ]),
+  );
+  assert.ok(expiryIndex);
 });

@@ -13,6 +13,7 @@ import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/pages/reports/widgets/customer_names_display.dart';
 import 'package:pasella/pages/reports/widgets/report_date_filter_bar.dart';
 import 'package:pasella/shared/view_models/balance_summary_view_model.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
 
@@ -171,12 +172,12 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                         onClear: _clearDateFilter,
                       ),
                       if (isDateViewLoading)
-                        Padding(
-                          padding: EdgeInsets.symmetric(
-                            vertical: SizeConfig.heightMultiplier * 5,
-                          ),
-                          child: const Center(
-                            child: CircularProgressIndicator(),
+                        const SizedBox(
+                          height: 300,
+                          child: SpazaListSkeleton(
+                            semanticsLabel: 'Loading customer activity report',
+                            itemCount: 4,
+                            padding: EdgeInsets.fromLTRB(6, 12, 6, 16),
                           ),
                         ),
                       Offstage(
@@ -516,7 +517,23 @@ class _ReportSectionLoader extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: SizeConfig.heightMultiplier * 18,
-      child: const Center(child: CircularProgressIndicator()),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: SpazaShimmer(
+          semanticsLabel: 'Loading business summary',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SpazaSkeletonLine(widthFactor: .36, height: 12),
+              SizedBox(height: 12),
+              SpazaSkeletonLine(widthFactor: .58, height: 24),
+              SizedBox(height: 12),
+              SpazaSkeletonLine(widthFactor: .82, height: 11),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

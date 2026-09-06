@@ -16,6 +16,7 @@ import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/services/payment_receipt_tracker.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 const _earningStatuses = {
   'paid',
@@ -34,7 +35,10 @@ class CommerceOrdersPage extends StatelessWidget {
       stream: CommerceService().watchOrders(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const SpazaListSkeleton(
+            semanticsLabel: 'Loading dropship orders',
+            itemCount: 5,
+          );
         }
         if (snapshot.hasError) {
           return const _OrdersEmpty(

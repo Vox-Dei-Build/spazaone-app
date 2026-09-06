@@ -16,6 +16,21 @@ typedef WhatsAppCatalogPageLoader = Future<Map<String, dynamic>> Function({
   String? pageToken,
 });
 
+typedef WhatsAppCatalogPatchLoader = Future<Map<String, dynamic>> Function({
+  required String storeId,
+  required List<String> productIds,
+});
+
+class WhatsAppCatalogStatusPatch {
+  const WhatsAppCatalogStatusPatch({
+    required this.products,
+    required this.removedProductIds,
+  });
+
+  final List<WhatsAppCatalogProductState> products;
+  final Set<String> removedProductIds;
+}
+
 class WhatsAppCatalogChangedException implements Exception {
   const WhatsAppCatalogChangedException();
 }
@@ -23,9 +38,11 @@ class WhatsAppCatalogChangedException implements Exception {
 class WhatsAppCatalogStatusService {
   WhatsAppCatalogStatusService({
     WhatsAppCatalogPageLoader? pageLoader,
+    WhatsAppCatalogPatchLoader? patchLoader,
     Box<dynamic>? cache,
     String Function()? userIdProvider,
   })  : _pageLoader = pageLoader ?? _loadPage,
+        _patchLoader = patchLoader ?? _loadPatch,
         _cacheOverride = cache,
         _userIdProvider = userIdProvider ??
             (() => FirebaseAuth.instance.currentUser?.uid ?? '');
@@ -33,17 +50,34 @@ class WhatsAppCatalogStatusService {
   static const freshFor = Duration(minutes: 5);
   static const retainFor = Duration(hours: 24);
   static const _cachePrefix = 'whatsapp_catalog_status_v2::';
+  static const _pageSize = 1000;
+  static const _patchSize = 100;
 
   final WhatsAppCatalogPageLoader _pageLoader;
+  final WhatsAppCatalogPatchLoader _patchLoader;
   final Box<dynamic>? _cacheOverride;
   final String Function() _userIdProvider;
+  final Map<String, Future<WhatsAppCatalogSnapshot>> _inFlightFetches = {};
 
   Box<dynamic>? get _cache {
     if (_cacheOverride != null) return _cacheOverride;
     return Hive.isBoxOpen('appBox') ? Hive.box('appBox') : null;
   }
 
-  Future<WhatsAppCatalogSnapshot> fetch(String storeId) async {
+  Future<WhatsAppCatalogSnapshot> fetch(String storeId) {
+    final existing = _inFlightFetches[storeId];
+    if (existing != null) return existing;
+    late final Future<WhatsAppCatalogSnapshot> request;
+    request = _fetchWithRetry(storeId).whenComplete(() {
+      if (identical(_inFlightFetches[storeId], request)) {
+        _inFlightFetches.remove(storeId);
+      }
+    });
+    _inFlightFetches[storeId] = request;
+    return request;
+  }
+
+  Future<WhatsAppCatalogSnapshot> _fetchWithRetry(String storeId) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
         return await _fetchPages(storeId);
@@ -65,7 +99,7 @@ class WhatsAppCatalogStatusService {
       try {
         page = await _pageLoader(
           storeId: storeId,
-          pageSize: 100,
+          pageSize: _pageSize,
           pageToken: token,
         ).timeout(const Duration(seconds: 12));
       } on FirebaseFunctionsException catch (error) {
@@ -105,6 +139,48 @@ class WhatsAppCatalogStatusService {
     final snapshot = WhatsAppCatalogSnapshot.fromMap(complete);
     await writeCache(storeId, snapshot);
     return snapshot;
+  }
+
+  /// Refreshes only product states already known to be in flight. The backend
+  /// serves this with direct document reads instead of three whole-catalogue
+  /// queries, keeping status polling proportional to pending work.
+  Future<WhatsAppCatalogStatusPatch> fetchProductStatuses(
+    String storeId,
+    Iterable<String> productIds,
+  ) async {
+    final requested = productIds
+        .map((productId) => productId.trim())
+        .where((productId) => productId.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    final products = <WhatsAppCatalogProductState>[];
+    final removed = <String>{};
+    for (var start = 0; start < requested.length; start += _patchSize) {
+      final end = (start + _patchSize).clamp(0, requested.length);
+      final ids = requested.sublist(start, end);
+      final response = await _patchLoader(
+        storeId: storeId,
+        productIds: ids,
+      ).timeout(const Duration(seconds: 12));
+      if (response['schemaVersion'] != 2 || response['partial'] != true) {
+        throw const FormatException('Unsupported catalogue status patch.');
+      }
+      products.addAll(
+        (response['products'] as List? ?? const []).map(
+          (product) => WhatsAppCatalogProductState.fromMap(
+            Map<String, dynamic>.from(product as Map),
+          ),
+        ),
+      );
+      removed.addAll(
+        (response['removedProductIds'] as List? ?? const [])
+            .map((productId) => productId.toString()),
+      );
+    }
+    return WhatsAppCatalogStatusPatch(
+      products: List.unmodifiable(products),
+      removedProductIds: Set.unmodifiable(removed),
+    );
   }
 
   Future<WhatsAppCatalogSnapshot?> readCache(
@@ -176,6 +252,20 @@ class WhatsAppCatalogStatusService {
     });
     return Map<String, dynamic>.from(result.data as Map);
   }
+
+  static Future<Map<String, dynamic>> _loadPatch({
+    required String storeId,
+    required List<String> productIds,
+  }) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'getWhatsAppCatalogSyncStatusV2',
+    );
+    final result = await callable.call(<String, dynamic>{
+      'storeId': storeId,
+      'productIds': productIds,
+    });
+    return Map<String, dynamic>.from(result.data as Map);
+  }
 }
 
 class WhatsAppCatalogStatusController extends ChangeNotifier
@@ -185,15 +275,21 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
     StoreSession? storeSession,
     bool Function()? enabled,
     DateTime Function()? now,
+    List<Duration> pollIntervals = const [
+      Duration(seconds: 30),
+      Duration(seconds: 90),
+    ],
   })  : _service = service ?? WhatsAppCatalogStatusService(),
         _storeSession = storeSession ?? StoreSession.instance,
         _enabled = enabled ?? (() => FeatureFlags.enableWhatsAppCatalogStatus),
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _pollIntervals = List.unmodifiable(pollIntervals);
 
   final WhatsAppCatalogStatusService _service;
   final StoreSession _storeSession;
   final bool Function() _enabled;
   final DateTime Function() _now;
+  final List<Duration> _pollIntervals;
   WhatsAppCatalogSnapshot? snapshot;
   bool loading = false;
   String? errorMessage;
@@ -283,6 +379,10 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
         loading = false;
         notifyListeners();
         unawaited(_captureLoaded(cached, Duration.zero));
+        if (!cached.isStaleAt(_now())) {
+          _schedulePolling();
+          return;
+        }
       }
     }
     final stopwatch = Stopwatch()..start();
@@ -327,21 +427,105 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
     _pollTimer?.cancel();
     if (!_isForeground ||
         snapshot?.hasPendingWork != true ||
+        _pollIntervals.isEmpty ||
         _pollElapsed >= const Duration(minutes: 2)) {
       return;
     }
-    const intervals = [
-      Duration(seconds: 5),
-      Duration(seconds: 10),
-      Duration(seconds: 20),
-      Duration(seconds: 30),
-    ];
-    final requestedDelay = intervals[_pollIndex.clamp(0, intervals.length - 1)];
+    final requestedDelay =
+        _pollIntervals[_pollIndex.clamp(0, _pollIntervals.length - 1)];
     final remaining = const Duration(minutes: 2) - _pollElapsed;
     final delay = requestedDelay <= remaining ? requestedDelay : remaining;
     _pollIndex += 1;
     _pollElapsed += delay;
-    _pollTimer = Timer(delay, () => unawaited(refresh()));
+    _pollTimer = Timer(delay, () => unawaited(_refreshPendingStatuses()));
+  }
+
+  Future<void> _refreshPendingStatuses() async {
+    final current = snapshot;
+    if (_disposed || current == null || _storeId.isEmpty || !enabled) return;
+    final pendingIds = current.products
+        .where(
+          (product) =>
+              product.status == WhatsAppCatalogProductStatus.syncing ||
+              product.status == WhatsAppCatalogProductStatus.removalSyncing,
+        )
+        .map((product) => product.productId)
+        .where((productId) => productId.isNotEmpty)
+        .toList(growable: false);
+    if (pendingIds.isEmpty) return;
+    final requestEpoch = ++_epoch;
+    try {
+      final patch = await _service.fetchProductStatuses(_storeId, pendingIds);
+      if (!_isCurrent(requestEpoch, _storeId)) return;
+      final updated = {
+        for (final product in patch.products) product.productId: product,
+      };
+      final merged = current.products
+          .where(
+            (product) => !patch.removedProductIds.contains(product.productId),
+          )
+          .map((product) => updated[product.productId] ?? product)
+          .toList(growable: false);
+      snapshot = WhatsAppCatalogSnapshot(
+        checkedAtMs: current.checkedAtMs,
+        freshUntilMs: current.freshUntilMs,
+        rollout: current.rollout,
+        summary: _summaryAfterPatch(current.summary, merged),
+        products: merged,
+        catalogVersion: current.catalogVersion,
+        fromCache: current.fromCache,
+      );
+      await _service.writeCache(_storeId, snapshot!);
+      if (!_isCurrent(requestEpoch, _storeId)) return;
+      errorMessage = null;
+      notifyListeners();
+      _schedulePolling();
+    } catch (error) {
+      if (!_isCurrent(requestEpoch, _storeId)) return;
+      unawaited(
+        TelemetryService.instance.capture(
+          WhatsAppCatalogStatusLoadFailed(
+            failure: _failureCategory(error),
+            latencyBucket: 'poll',
+            cacheAvailable: true,
+          ),
+        ),
+      );
+      _schedulePolling();
+    }
+  }
+
+  static WhatsAppCatalogSummary _summaryAfterPatch(
+    WhatsAppCatalogSummary previous,
+    List<WhatsAppCatalogProductState> products,
+  ) {
+    int count(WhatsAppCatalogProductStatus status) =>
+        products.where((product) => product.status == status).length;
+    final live = count(WhatsAppCatalogProductStatus.live);
+    final syncing = count(WhatsAppCatalogProductStatus.syncing);
+    final removalSyncing = count(WhatsAppCatalogProductStatus.removalSyncing);
+    final supportReview = count(WhatsAppCatalogProductStatus.supportReview);
+    final needsAttention = products
+        .where(
+          (product) => const {
+            WhatsAppCatalogProductStatus.needsAttention,
+            WhatsAppCatalogProductStatus.stale,
+            WhatsAppCatalogProductStatus.reviewRequired,
+            WhatsAppCatalogProductStatus.supportReview,
+          }.contains(product.status),
+        )
+        .length;
+    return WhatsAppCatalogSummary(
+      totalProducts: products.length,
+      eligible: previous.eligible.clamp(0, products.length),
+      live: live,
+      syncing: syncing,
+      needsAttention: needsAttention,
+      removalSyncing: removalSyncing,
+      supportReview: supportReview,
+      canBrowseFive: live >= 5,
+      canBrowseTen: live >= 10,
+    );
   }
 
   Future<void> _captureLoaded(
@@ -401,7 +585,11 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _isForeground = state == AppLifecycleState.resumed;
     if (_isForeground) {
-      unawaited(refresh(resetPolling: true));
+      if (snapshot == null || isStale) {
+        unawaited(refresh(resetPolling: true));
+      } else {
+        _schedulePolling();
+      }
     } else {
       _pollTimer?.cancel();
     }

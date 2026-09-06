@@ -7,6 +7,7 @@ import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/models/commerce/cj_supplier_product.dart';
 import 'package:pasella/services/commerce_service.dart';
 import 'package:pasella/utils/currency_util.dart';
+import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
 class SupplierCatalogPage extends StatefulWidget {
   const SupplierCatalogPage({
@@ -1389,21 +1390,10 @@ class _CatalogueLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 14),
-            Text(
-              'Loading products…',
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+    return const SpazaListSkeleton(
+      semanticsLabel: 'Loading supplier products',
+      itemCount: 5,
+      padding: EdgeInsets.all(12),
     );
   }
 }

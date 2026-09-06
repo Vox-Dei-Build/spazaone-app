@@ -130,7 +130,10 @@ class _StockPageContentState extends State<StockPageContent>
                                 onTap: () {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => const GlobalSearchPage(),
+                                      builder: (_) => GlobalSearchPage(
+                                        productsStream:
+                                            viewModel.streamProducts(),
+                                      ),
                                     ),
                                   );
                                 },
