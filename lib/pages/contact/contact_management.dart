@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
+import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/contact/connect/connect_manangement.dart';
 import 'package:pasella/pages/ecommerce/orders_management/orders_management_page.dart';
 import 'package:pasella/pages/transactions/transactions_management/transactions_management.dart';
@@ -85,6 +85,8 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
+
     return ChangeNotifierProvider(
       create: (_) => customerManagementViewModel,
       child: DefaultTabController(
@@ -98,26 +100,86 @@ class _CustomerManagementPageState extends State<CustomerManagementPage>
               padding: const EdgeInsets.symmetric(horizontal: 0),
               child: Column(
                 children: [
-                  Consumer<CustomerManagementViewModel>(
-                    builder: (context, model, _) => WorkspaceSectionTabs(
-                      controller: _tabController,
-                      tabs: [
-                        const WorkspaceSectionTab(
-                          label: 'Pay later',
-                          semanticLabel: 'Pay later',
-                        ),
-                        WorkspaceSectionTab(
-                          label: 'Orders',
-                          semanticLabel: 'Orders',
-                          badgeCount: model.ordersUnreadCount,
-                        ),
-                        WorkspaceSectionTab(
-                          label: 'Messages',
-                          semanticLabel: 'Messages',
-                          badgeCount: model.unreadMessagesCount,
-                        ),
-                      ],
+                  TabBar(
+                    controller: _tabController,
+                    labelStyle: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                      fontWeight: FontWeight.normal,
                     ),
+                    unselectedLabelStyle: TextStyle(
+                      fontSize: SizeConfig.textMultiplier * 1.8,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    tabs: [
+                      const Tab(text: 'Pay Later'),
+                      Consumer<CustomerManagementViewModel>(
+                        builder: (context, model, child) {
+                          final count = model.ordersUnreadCount;
+                          return Tab(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Orders'),
+                                if (count > 0)
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      left: SizeConfig.imageSizeMultiplier * 1,
+                                    ),
+                                    child: CircleAvatar(
+                                      radius:
+                                          SizeConfig.imageSizeMultiplier * 2.3,
+                                      backgroundColor: Colors.red,
+                                      child: Text(
+                                        count.toString(),
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      Consumer<CustomerManagementViewModel>(
+                        // 🔥 Wrap this tab with Consumer
+                        builder: (context, model, child) {
+                          return Tab(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Messages'),
+                                if (model.unreadMessagesCount >
+                                    0) // 🔥 Show badge only if unread messages exist
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      left: SizeConfig.imageSizeMultiplier * 1,
+                                    ),
+                                    child: CircleAvatar(
+                                      radius:
+                                          SizeConfig.imageSizeMultiplier * 2.3,
+                                      backgroundColor: Colors.green,
+                                      child: Text(
+                                        model.unreadMessagesCount.toString(),
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize:
+                                              SizeConfig.textMultiplier * 1.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                   Expanded(
                     child: TabBarView(

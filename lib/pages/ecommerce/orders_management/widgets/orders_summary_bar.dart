@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/config/size_config.dart';
 
 class OrdersSummaryBar extends StatelessWidget {
   const OrdersSummaryBar(
@@ -12,36 +13,63 @@ class OrdersSummaryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
+    final countLabel = '$count ${count == 1 ? 'order' : 'orders'}';
+    final countText = Text(
+      countLabel,
+      style: TextStyle(
+        fontWeight: FontWeight.w500,
+        fontSize: SizeConfig.textMultiplier * 1.8,
+      ),
+    );
+    final totals = Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          totalText,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: SizeConfig.textMultiplier * 2,
+          ),
+        ),
+        Text(
+          rangeText,
+          style: TextStyle(
+            fontSize: SizeConfig.textMultiplier * 1.4,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ],
+    );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Wrap(
-        spacing: 16,
-        runSpacing: 6,
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            '$count ${count == 1 ? 'order' : 'orders'}',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+      key: const ValueKey('orders-summary-bar'),
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.imageSizeMultiplier * 3,
+        SizeConfig.heightMultiplier * 1.2,
+        SizeConfig.imageSizeMultiplier * 3,
+        SizeConfig.heightMultiplier * 1.2,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
+          if (constraints.maxWidth < 280 || largeText) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                countText,
+                SizedBox(height: SizeConfig.heightMultiplier * 0.7),
+                Align(alignment: Alignment.centerRight, child: totals),
+              ],
+            );
+          }
+          return Row(
             children: [
-              Text(
-                totalText,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              Text(
-                rangeText,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Expanded(child: countText),
+              totals,
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }

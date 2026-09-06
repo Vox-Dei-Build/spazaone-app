@@ -7,6 +7,7 @@ import 'package:pasella/pages/contact/view_model/customer_management_view_model.
 import 'package:pasella/pages/reports/customer_report/widgets/customer_report_panel.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
+import 'package:pasella/shared/widgets/payment_status_pill.dart';
 import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/widgets/private_region.dart';
@@ -25,7 +26,8 @@ class ProfileAppBar extends StatefulWidget implements PreferredSizeWidget {
   State<ProfileAppBar> createState() => _ProfileAppBarState();
 
   @override
-  Size get preferredSize => const Size.fromHeight(80);
+  Size get preferredSize =>
+      const Size.fromHeight(kToolbarHeight); // Default AppBar height
 }
 
 class _ProfileAppBarState extends State<ProfileAppBar> {
@@ -61,15 +63,13 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
     final bool isNPA = netBalance < 0;
 
     return AppBar(
-      leadingWidth: 48,
-      toolbarHeight: 80,
+      leadingWidth: 30,
       title: Row(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
           profilePicture(context, customerName,
               viewModel.profileImageDisplayUrl, mobileNumber, isNPA,
               displayIcons: true,
-              radius: 20,
               profileImage: viewModel.profileImage,
               balance: netBalance,
               showNPAIndicator: false),
@@ -96,14 +96,17 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                         Flexible(
                           child: Text(
                             customerName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
+                            style: TextStyle(
+                              fontSize: SizeConfig.textMultiplier * 2,
+                              fontWeight: FontWeight.w900,
                             ),
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.start,
                           ),
                         ),
+                        SizedBox(width: SizeConfig.imageSizeMultiplier * 1.2),
+                        if (!viewModel.isLoading)
+                          PaymentStatusPill(balance: netBalance, dense: true),
                       ],
                     ),
                     SizedBox(height: SizeConfig.heightMultiplier * 0.3),
@@ -147,7 +150,7 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                                     ? WaBrandColour.tealGreenLighter
                                     : Colors.blue
                                 : Colors.red,
-                            size: 14,
+                            size: SizeConfig.textMultiplier * 1.5,
                           ),
                           SizedBox(width: SizeConfig.imageSizeMultiplier * 1),
                           Expanded(
@@ -157,8 +160,8 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
                                       ? "Uses WhatsApp"
                                       : "Likely Only SMS"
                                   : "No mobile number",
-                              style: const TextStyle(
-                                fontSize: 14,
+                              style: TextStyle(
+                                fontSize: SizeConfig.textMultiplier * 1.5,
                                 color: Colors.grey,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -217,28 +220,29 @@ class _ProfileAppBarState extends State<ProfileAppBar> {
             }
           },
           itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-            const PopupMenuItem<String>(
+            PopupMenuItem<String>(
               value: 'edit',
               child: ListTile(
-                leading: Icon(Icons.create_outlined),
+                leading: const Icon(Icons.create_outlined),
                 title: Text(
                   'Edit Customer',
                   style: TextStyle(
-                    fontSize: 18, // Responsive font size
-                    fontWeight: FontWeight.w500,
+                    fontSize:
+                        SizeConfig.textMultiplier * 2, // Responsive font size
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
             ),
-            const PopupMenuItem<String>(
+            PopupMenuItem<String>(
               value: 'delete',
               child: ListTile(
-                leading: Icon(Icons.delete, color: Colors.red),
+                leading: const Icon(Icons.delete, color: Colors.red),
                 title: Text(
                   'Delete Customer',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
+                    fontSize: SizeConfig.textMultiplier * 2,
+                    fontWeight: FontWeight.w900,
                     color: Colors.red, // Highlight delete option in red
                   ),
                 ),

@@ -38,10 +38,10 @@ class OrderDateHeader extends StatelessWidget {
           ),
           child: Text(
             _humanize(date),
-            style: const TextStyle(
-              fontSize: 13,
+            style: TextStyle(
+              fontSize: SizeConfig.textMultiplier * 1.35,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF4B5563),
+              color: const Color(0xFF4B5563),
               letterSpacing: 0.2,
             ),
           ),

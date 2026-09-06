@@ -128,8 +128,8 @@ class _Chip extends StatelessWidget {
     final bg = selected ? kTertiaryColor : const Color(0xFFF1F3F5);
     final fg = selected ? Colors.white : const Color(0xFF1A1F2B);
     final countBg = selected
-        ? Colors.white.withOpacity(0.22)
-        : Colors.black.withOpacity(0.06);
+        ? Colors.white.withValues(alpha: .22)
+        : Colors.black.withValues(alpha: .06);
 
     return Material(
       color: bg,
@@ -149,7 +149,7 @@ class _Chip extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: fg,
-                  fontSize: 13,
+                  fontSize: SizeConfig.textMultiplier * 1.55,
                   fontWeight: FontWeight.w600,
                   height: 1.0,
                 ),
@@ -169,7 +169,7 @@ class _Chip extends StatelessWidget {
                     count > 99 ? '99+' : '$count',
                     style: TextStyle(
                       color: fg,
-                      fontSize: 13,
+                      fontSize: SizeConfig.textMultiplier * 1.2,
                       fontWeight: FontWeight.w700,
                       height: 1.0,
                     ),
@@ -235,7 +235,7 @@ class _MoreChip extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: fg,
-                  fontSize: 13,
+                  fontSize: SizeConfig.textMultiplier * 1.55,
                   fontWeight: FontWeight.w600,
                   height: 1.0,
                 ),
@@ -290,12 +290,12 @@ class _MoreStatusesSheet extends StatelessWidget {
                 SizeConfig.imageSizeMultiplier * 5,
                 SizeConfig.heightMultiplier * 0.8,
               ),
-              child: const Text(
+              child: Text(
                 'Filter by status',
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF111827),
+                  fontSize: SizeConfig.textMultiplier * 1.9,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF111827),
                 ),
               ),
             ),
@@ -329,7 +329,7 @@ class _MoreStatusesSheet extends StatelessWidget {
                             child: Text(
                               s.label,
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: SizeConfig.textMultiplier * 1.7,
                                 fontWeight:
                                     isSel ? FontWeight.w700 : FontWeight.w500,
                                 color: const Color(0xFF1A1F2B),

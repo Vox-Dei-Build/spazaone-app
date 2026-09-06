@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/reports/business_report_model.dart';
+import 'package:pasella/pages/ecommerce/orders_management/widgets/order_search_field.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_row.dart';
+import 'package:pasella/pages/ecommerce/orders_management/widgets/orders_summary_bar.dart';
 import 'package:pasella/pages/ecommerce/widgets/order_status.dart';
 import 'package:pasella/pages/reports/business_report/business_report.dart';
 
@@ -33,19 +35,79 @@ void main() {
                 const CollectedBadge(text: 'Uncollected', color: Colors.orange),
           )))));
       expect(find.byType(Card), findsNothing);
-      expect(find.text('3 items · 12:45 · #123456'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              widget.textSpan
+                      ?.toPlainText()
+                      .contains('3 items  ·  12:45  ·  #123456') ==
+                  true,
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Uncollected'), findsOneWidget);
+      final amount = tester.getRect(find.text('R1 250,00'));
+      final chevron = tester.getRect(find.byIcon(Icons.chevron_right_rounded));
+      expect(amount.center.dy, closeTo(chevron.center.dy, .1));
+      expect(
+        tester.getRect(find.text('Uncollected')).top,
+        greaterThan(amount.bottom),
+      );
       if (scale == 1) {
         expect(tester.getSize(find.byType(OrderRow)).height,
             lessThanOrEqualTo(90));
       }
-      final amount = tester.getRect(find.text('R1 250,00'));
       expect(amount.right, lessThanOrEqualTo(scale == 1 ? 390 : 320));
       await tester.tap(find.text('R1 250,00'));
       expect(opened, 1);
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('orders summary keeps production left and right anchors',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            OrdersSummaryBar(
+              count: 1,
+              totalText: 'R200,00',
+              rangeText: 'All time',
+            ),
+          ],
+        ),
+      ),
+    ));
+
+    expect(find.text('1 order'), findsOneWidget);
+    expect(
+        tester.getSize(find.byKey(const ValueKey('orders-summary-bar'))).width,
+        390);
+    expect(tester.getRect(find.text('1 order')).left, lessThanOrEqualTo(16));
+    expect(
+        tester.getRect(find.text('R200,00')).right, greaterThanOrEqualTo(374));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('production order search stays compact', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: OrderSearchField(controller: controller, onChanged: (_) {}),
+      ),
+    ));
+
+    expect(
+        tester.getSize(find.byType(TextField)).height, lessThanOrEqualTo(52));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('summary gives follow-up rows room without explanatory header',
       (tester) async {
