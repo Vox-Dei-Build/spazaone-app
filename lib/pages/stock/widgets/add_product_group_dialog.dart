@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
@@ -33,18 +33,16 @@ class _AddProductGroupDialogState extends State<AddProductGroupDialog> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return AnimatedBuilder(
       animation: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
           ),
           child: Container(
-            padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 4),
+            padding: const EdgeInsets.all(20),
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.8,
               maxWidth: MediaQuery.of(context).size.width * 0.8,
@@ -55,19 +53,19 @@ class _AddProductGroupDialogState extends State<AddProductGroupDialog> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    const Text(
                       "Create Product Group",
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2,
+                        fontSize: 18,
                       ),
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    const SizedBox(height: 16),
                     if (vm.errorMessage != null)
                       Text(
                         vm.errorMessage!,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.red,
-                          fontSize: SizeConfig.textMultiplier * 1.8,
+                          fontSize: 16,
                         ),
                       ),
                     CustomTextField(
@@ -84,19 +82,18 @@ class _AddProductGroupDialogState extends State<AddProductGroupDialog> {
                         return null;
                       },
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    const SizedBox(height: 16),
                     CustomButton(
                       onTap: vm.isLoading
                           ? () {}
                           : () async {
-                              if (_formKey.currentState?.validate() ??
-                                  false) {
+                              if (_formKey.currentState?.validate() ?? false) {
                                 await vm.onAddProductGroup(context);
                               }
                             },
-                      margin: EdgeInsets.symmetric(
-                        horizontal: SizeConfig.imageSizeMultiplier * 2.5,
-                        vertical: SizeConfig.heightMultiplier * 1,
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
                       title: vm.isLoading ? 'Loading...' : 'Done',
                     ),

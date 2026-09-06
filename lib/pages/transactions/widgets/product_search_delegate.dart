@@ -61,9 +61,7 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
         builder: (context, _) {
           final basketCount = viewModel.selectedProducts.length;
           return IconButton(
-            tooltip: basketCount > 0
-                ? 'Done — $basketCount in basket'
-                : 'Done',
+            tooltip: basketCount > 0 ? 'Done — $basketCount in basket' : 'Done',
             icon: Badge(
               isLabelVisible: basketCount > 0,
               label: Text('$basketCount'),
@@ -111,9 +109,9 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
 
     if (matches.isEmpty) {
       return ListTile(
-        title: Text(
+        title: const Text(
           'No products found. Add a new product.',
-          style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
+          style: TextStyle(fontSize: 18),
         ),
         leading: Icon(Icons.add, size: SizeConfig.imageSizeMultiplier * 6),
         onTap: () async {
@@ -181,14 +179,14 @@ class ProductSearchDelegate extends SearchDelegate<Product?> {
           ),
           title: Text(
             productName,
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 2,
+            style: const TextStyle(
+              fontSize: 18,
               fontWeight: FontWeight.w600,
             ),
           ),
           subtitle: Text(
             subtitleParts.join('  •  '),
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.45),
+            style: const TextStyle(fontSize: 13),
           ),
           trailing: stock <= 0
               ? OutlinedButton.icon(
@@ -410,9 +408,8 @@ class _QuantityPromptDialogState extends State<_QuantityPromptDialog> {
   void initState() {
     super.initState();
     _controller = TextEditingController(
-      text: widget.initialQuantity <= 0
-          ? '1'
-          : widget.initialQuantity.toString(),
+      text:
+          widget.initialQuantity <= 0 ? '1' : widget.initialQuantity.toString(),
     );
   }
 

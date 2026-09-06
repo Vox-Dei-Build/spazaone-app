@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/services/store_session.dart';
@@ -950,12 +951,19 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                 SafeArea(
                   child: Column(
                     children: [
-                      TabBar(
-                        controller: _tabController,
-                        tabs: const [
-                          Tab(text: 'Overview'),
-                          Tab(text: 'Products'),
-                        ],
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: WorkspaceSectionTabs(
+                          controller: _tabController,
+                          tabs: const [
+                            WorkspaceSectionTab(
+                                label: 'Overview',
+                                semanticLabel: 'Order overview'),
+                            WorkspaceSectionTab(
+                                label: 'Products',
+                                semanticLabel: 'Order products'),
+                          ],
+                        ),
                       ),
                       Expanded(
                         child: TabBarView(

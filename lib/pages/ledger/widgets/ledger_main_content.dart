@@ -37,11 +37,11 @@ class LedgerMainContent extends StatelessWidget {
       builder: (context, balanceSummary, child) {
         return Column(
           children: [
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            const SizedBox(height: 8),
             const PrimaryWorkspaceHeader(
               shareSource: 'customers_header',
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            const SizedBox(height: 8),
             LedgerTabBarWithFilter(tabIndexNotifier: tabIndexNotifier),
             // In-flow slot for cards that should sit inside the page
             // rhythm (after the tab context) rather than crowning the

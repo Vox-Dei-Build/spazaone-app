@@ -1,17 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
-import 'package:pasella/pages/auth/widgets/logo_display.dart';
+import 'package:pasella/pages/auth/widgets/login_ui.dart';
 import 'package:pasella/pages/dashboard/dashboard.dart';
-import 'package:pasella/shared/widgets/custom_text_button.dart';
-import 'package:pasella/shared/widgets/custom_text_field.dart';
-import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/utils/feature_flags.dart';
-import 'package:pasella/utils/phone_util.dart';
 import 'package:pasella/widgets/consent_modal.dart';
-import 'package:pasella/widgets/private_region.dart';
 
 /// PAS-UX-22: number-first onboarding entry screen.
 ///
@@ -89,6 +83,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
   }
 
   Future<void> _onContinue() async {
+    if (_authFlowInProgress || _authViewModel.isLoading.value) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() => _authFlowInProgress = true);
     try {
@@ -102,54 +97,6 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         setState(() => _authFlowInProgress = false);
       }
     }
-  }
-
-  Widget _buildPhoneField() {
-    return PrivateRegion(
-      child: CustomTextField(
-        label: 'Mobile Number',
-        hintText: 'e.g. 082 123 4567',
-        prefixIcon: Icons.phone,
-        controller: _phoneController,
-        textInputType: TextInputType.phone,
-        autofillHints: const [AutofillHints.telephoneNumber],
-        textInputAction: TextInputAction.done,
-        onFieldSubmitted: (_) => _onContinue(),
-        validator: (value) {
-          if (value == null || value.isEmpty) {
-            return 'This field is required';
-          }
-          if (!isValidSAPhoneNumber(value)) {
-            return kSAOnlyPhoneMessage;
-          }
-          return null;
-        },
-      ),
-    );
-  }
-
-  Widget _buildContinueAction() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: _authViewModel.isLoading,
-      builder: (context, isLoading, _) {
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            CustomButton(
-              title: 'Continue',
-              onTap: isLoading ? () {} : _onContinue,
-              color: Colors.green,
-              icon: Icons.arrow_forward,
-              fontSize: SizeConfig.textMultiplier * 2,
-            ),
-            if (isLoading)
-              const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-          ],
-        );
-      },
-    );
   }
 
   @override
@@ -184,81 +131,14 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
     );
   }
 
-  Widget _buildEntryScaffold(BuildContext context) {
-    SizeConfig().init(context);
-    final compactLandscape = usesCompactLandscapeLayout(context);
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final showHelperCopy = !(compactLandscape && keyboardVisible);
-
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 6,
-              vertical: compactLandscape ? 12 : SizeConfig.heightMultiplier * 3,
-            ),
-            child: Form(
-              key: _formKey,
-              child: ResponsiveAuthLayout(
-                branding: const LogoDisplay(),
-                form: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Mirrors PAS-AUTH-01 copy pattern: make it explicit that
-                    // the mobile number is the account and an SMS code is on
-                    // the way. Avoids any "where do I sign up?" ambiguity.
-                    Text(
-                      'Enter your mobile number to start',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2.4,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    SizedBox(
-                      height:
-                          showHelperCopy ? SizeConfig.heightMultiplier * 1 : 0,
-                    ),
-                    if (showHelperCopy)
-                      Text(
-                        "We'll text you a 6-digit code. No password needed.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.6,
-                          color: Colors.grey[700],
-                          height: 1.3,
-                        ),
-                      )
-                    else
-                      const SizedBox.shrink(),
-                    SizedBox(
-                      height: compactLandscape && keyboardVisible
-                          ? 6
-                          : SizeConfig.heightMultiplier * 3,
-                    ),
-                    if (compactLandscape)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(child: _buildPhoneField()),
-                          const SizedBox(width: 8),
-                          SizedBox(width: 150, child: _buildContinueAction()),
-                        ],
-                      )
-                    else ...[
-                      _buildPhoneField(),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      _buildContinueAction(),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
+  Widget _buildEntryScaffold(BuildContext context) =>
+      ValueListenableBuilder<bool>(
+        valueListenable: _authViewModel.isLoading,
+        builder: (context, isLoading, _) => PhoneAuthScreen(
+          controller: _phoneController,
+          formKey: _formKey,
+          isLoading: isLoading || _authFlowInProgress,
+          onContinue: _onContinue,
         ),
-      ),
-    );
-  }
+      );
 }

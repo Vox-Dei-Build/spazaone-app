@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/transactions/widgets/repayment_plan_sheet.dart';
 import 'package:pasella/services/customer_payment_request_service.dart';
 import 'package:pasella/services/repayment_plan_service.dart';
@@ -105,7 +105,6 @@ class _CustomerPaymentRequestPanelState
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
     if (!_shouldLoad) return const SizedBox.shrink();
     final overview = _overview;
     final phoneMissing = overview?.reason == 'phone_missing' ||
@@ -116,7 +115,7 @@ class _CustomerPaymentRequestPanelState
     final statusText = _statusText(overview);
 
     return Padding(
-      padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 1.2),
+      padding: const EdgeInsets.only(top: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -133,69 +132,68 @@ class _CustomerPaymentRequestPanelState
                             ? _load
                             : null,
             style: FilledButton.styleFrom(
-              backgroundColor: phoneMissing
-                  ? const Color(0xFFF3F4F6)
-                  : const Color(0xFF168B3F),
+              backgroundColor:
+                  phoneMissing ? SpazaColors.subtle : SpazaColors.action,
               foregroundColor:
-                  phoneMissing ? const Color(0xFF29295B) : Colors.white,
-              disabledBackgroundColor: const Color(0xFFE5E7EB),
-              disabledForegroundColor: const Color(0xFF6B7280),
-              minimumSize: Size.fromHeight(
-                SizeConfig.heightMultiplier * 5.8,
+                  phoneMissing ? SpazaColors.heading : Colors.white,
+              disabledBackgroundColor: SpazaColors.border,
+              disabledForegroundColor: SpazaColors.muted,
+              minimumSize: const Size.fromHeight(
+                52,
               ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(
-                  SizeConfig.heightMultiplier * 1.4,
+                  SpazaRadius.control,
                 ),
               ),
             ),
             icon: _sending || _loading
-                ? SizedBox.square(
-                    dimension: SizeConfig.imageSizeMultiplier * 4,
-                    child: const CircularProgressIndicator(
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFF29295B),
+                      color: SpazaColors.heading,
                     ),
                   )
                 : Icon(
                     phoneMissing ? Icons.phone_outlined : Icons.send_rounded),
             label: Text(
               _buttonLabel(phoneMissing, overview),
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
           if (!phoneMissing && overview?.onlinePaymentsReady == true) ...[
-            SizedBox(height: SizeConfig.heightMultiplier * 0.8),
+            const SizedBox(height: 8),
             OutlinedButton.icon(
               key: const Key('customer-create-repayment-plan-button'),
               onPressed: _creatingPlan ? null : _createRepaymentPlan,
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF29295B),
-                minimumSize: Size.fromHeight(
-                  SizeConfig.heightMultiplier * 5.8,
+                foregroundColor: SpazaColors.heading,
+                minimumSize: const Size.fromHeight(
+                  52,
                 ),
-                side: const BorderSide(color: Color(0xFF29295B)),
+                side: const BorderSide(color: SpazaColors.heading),
               ),
               icon: _creatingPlan
-                  ? SizedBox.square(
-                      dimension: SizeConfig.imageSizeMultiplier * 4,
-                      child: const CircularProgressIndicator(strokeWidth: 2),
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.calendar_month_outlined),
               label: Text(
                 _creatingPlan ? 'Creating plan…' : 'Set repayment plan',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: const TextStyle(fontWeight: FontWeight.w500),
               ),
             ),
           ],
           if (statusText != null) ...[
-            SizedBox(height: SizeConfig.heightMultiplier * 0.7),
+            const SizedBox(height: 8),
             Text(
               statusText,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: const Color(0xFF6B7280),
-                fontSize: SizeConfig.textMultiplier * 1.45,
+              style: const TextStyle(
+                color: SpazaColors.muted,
+                fontSize: 13,
               ),
             ),
           ],
@@ -357,7 +355,7 @@ class _CustomerPaymentRequestPanelState
       showSnackbar(
         context,
         'Repayment plan created: ${CurrencyUtil.format(result.installmentAmountMinor / 100)} per payment.',
-        const Color(0xFF168B3F),
+        SpazaColors.action,
       );
     } catch (error) {
       if (!mounted) return;
@@ -438,7 +436,7 @@ class _PaymentRequestConfirmationSheet extends StatelessWidget {
             Text(
               '$customerName will receive this by $channel.',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF6B7280),
+                color: SpazaColors.muted,
               ),
             ),
             const SizedBox(height: 20),
@@ -467,8 +465,8 @@ class _PaymentRequestConfirmationSheet extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F7F6),
-                borderRadius: BorderRadius.circular(16),
+                color: SpazaColors.subtle,
+                borderRadius: BorderRadius.circular(SpazaRadius.control),
               ),
               child: Text(overview.messagePreview),
             ),
@@ -478,7 +476,7 @@ class _PaymentRequestConfirmationSheet extends StatelessWidget {
                   ? 'They can choose a full or partial secure payment in WhatsApp.'
                   : 'This sends a reminder only. No payment link will be included.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF6B7280),
+                color: SpazaColors.muted,
               ),
             ),
             if (!overview.onlinePaymentsReady) ...[
@@ -492,7 +490,7 @@ class _PaymentRequestConfirmationSheet extends StatelessWidget {
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF168B3F),
+                backgroundColor: SpazaColors.action,
                 minimumSize: const Size.fromHeight(52),
               ),
               child: const Text('Send request'),
@@ -523,7 +521,7 @@ class _RequestDetail extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: Color(0xFF6B7280)),
+              style: const TextStyle(color: SpazaColors.muted),
             ),
           ),
           const SizedBox(width: 16),
@@ -531,7 +529,7 @@ class _RequestDetail extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.end,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
         ],

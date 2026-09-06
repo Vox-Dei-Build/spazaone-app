@@ -14,7 +14,8 @@ class ActionsDock extends StatelessWidget {
     // Cap the dock between 120 and ~1/3 of screen height
     final maxH = h * 0.33;
     return Material(
-      elevation: 8,
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 0,
       child: SafeArea(
         top: false,
         minimum: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

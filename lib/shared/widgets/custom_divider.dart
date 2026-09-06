@@ -1,3 +1,4 @@
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/material.dart';
 
 class CustomDivider extends StatelessWidget {
@@ -11,8 +12,8 @@ class CustomDivider extends StatelessWidget {
       child: Divider(
         indent: 10.0,
         endIndent: 10.0,
-        thickness: 1.5,
-        color: Colors.green,
+        thickness: 1,
+        color: SpazaColors.border,
       ),
     );
   }

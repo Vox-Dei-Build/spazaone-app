@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/shared/widgets/loom_video_page.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
@@ -52,7 +52,7 @@ class EmptyStateOnboarding extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
+    final theme = Theme.of(context);
 
     final hasCta = ctaLabel != null && onCtaTap != null;
 
@@ -66,57 +66,41 @@ class EmptyStateOnboarding extends StatelessWidget {
     }
 
     return ScrollableCenteredContent(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.imageSizeMultiplier * 6,
-        vertical: 12,
-      ),
+      padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             icon,
-            size: SizeConfig.imageSizeMultiplier * 18,
-            color: Colors.grey.withOpacity(0.5),
+            size: 48,
+            color: SpazaColors.muted,
           ),
-          SizedBox(height: SizeConfig.heightMultiplier * 2),
+          const SizedBox(height: 16),
           Text(
             headline,
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 2.2,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
+            style: theme.textTheme.titleLarge,
             textAlign: TextAlign.center,
           ),
           if (subtitle != null) ...[
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            const SizedBox(height: 8),
             Text(
               subtitle!,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.6,
-                color: Colors.grey[700],
-                height: 1.3,
-              ),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: SpazaColors.muted),
               textAlign: TextAlign.center,
             ),
           ],
           if (hasCta) ...[
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
+            const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: onCtaTap,
               icon: Icon(ctaIcon),
               label: Text(ctaLabel!),
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.imageSizeMultiplier * 6,
-                  vertical: SizeConfig.heightMultiplier * 1.5,
-                ),
-              ),
             ),
           ],
           if (tutorialUrl != null) ...[
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            const SizedBox(height: 8),
             TextButton.icon(
               onPressed: () {
                 Navigator.of(context).push(

@@ -137,8 +137,8 @@ class _BasicInfoStepState extends State<BasicInfoStep> {
         const SizedBox(height: 4),
         Text(
           'A friendly name to help you find this template later. We\'ll generate a WhatsApp-compatible ID for you.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.disabledColor),
+          style:
+              theme.textTheme.bodySmall?.copyWith(color: theme.disabledColor),
         ),
         SizedBox(height: SizeConfig.heightMultiplier * 2),
 
@@ -182,8 +182,8 @@ class _BasicInfoStepState extends State<BasicInfoStep> {
         // Rules checklist
         Text(
           'Requirements',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(fontWeight: FontWeight.w600),
+          style:
+              theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 6),
         ...rules.map((r) => _RuleRow(rule: r)),
@@ -201,8 +201,7 @@ class _BasicInfoStepState extends State<BasicInfoStep> {
           ),
           children: const [
             _ExampleRow(input: 'Summer Sale 2026', output: 'summer_sale_2026'),
-            _ExampleRow(
-                input: 'Weekly Specials', output: 'weekly_specials'),
+            _ExampleRow(input: 'Weekly Specials', output: 'weekly_specials'),
             _ExampleRow(
                 input: 'New Stock — Chicken!', output: 'new_stock_chicken'),
           ],
@@ -239,8 +238,8 @@ class _RuleRow extends StatelessWidget {
       icon = const Icon(Icons.check_circle, size: 16, color: Colors.green);
       color = Colors.green.shade700;
     } else {
-      icon =
-          Icon(Icons.radio_button_unchecked, size: 16, color: theme.disabledColor);
+      icon = Icon(Icons.radio_button_unchecked,
+          size: 16, color: theme.disabledColor);
       color = theme.disabledColor;
     }
     return Padding(

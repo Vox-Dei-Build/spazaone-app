@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
 import 'package:pasella/pages/stock/widgets/whatsapp_listing_preview.dart';
@@ -12,12 +12,14 @@ class ProductForm extends StatefulWidget {
   final GlobalKey<FormState> formKey;
   final Product product;
   final String? initialGroup;
+  final Future<String?> Function()? loadShopName;
 
   const ProductForm({
     Key? key,
     required this.formKey,
     required this.product,
     this.initialGroup,
+    this.loadShopName,
   }) : super(key: key);
 
   @override
@@ -48,7 +50,7 @@ class _ProductFormState extends State<ProductForm> {
 
   Future<void> _loadShopName() async {
     try {
-      final name = await fetchShopName();
+      final name = await (widget.loadShopName?.call() ?? fetchShopName());
       if (!mounted) return;
       setState(() {
         _shopName = name;
@@ -60,8 +62,6 @@ class _ProductFormState extends State<ProductForm> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
-
     return Consumer<ProductViewModel>(
       builder: (context, viewModel, child) {
         final selectedGroup = widget.product.group ?? widget.initialGroup;
@@ -93,8 +93,8 @@ class _ProductFormState extends State<ProductForm> {
                 ),
                 const SizedBox(height: 24),
                 CustomTextField(
-                  label: "Product Name*",
-                  hintText: "Enter Product Name",
+                  label: "Product name*",
+                  hintText: "Enter product name",
                   prefixIcon: Icons.edit,
                   controller: viewModel.nameController,
                   textInputAction: TextInputAction.next,
@@ -109,7 +109,7 @@ class _ProductFormState extends State<ProductForm> {
                     widget.product.name = value;
                   },
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                const SizedBox(height: 16),
                 CustomTextField(
                   label: "Cost*",
                   hintText: "Cost",
@@ -136,10 +136,10 @@ class _ProductFormState extends State<ProductForm> {
                     decimal: true,
                   ),
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 1.5),
+                const SizedBox(height: 12),
                 CustomTextField(
-                  label: "Selling Price*",
-                  hintText: "Selling Price",
+                  label: "Selling price*",
+                  hintText: "Selling price",
                   prefixIcon: Icons.money,
                   controller: viewModel.sellingPriceController,
                   textInputAction: TextInputAction.next,
@@ -175,27 +175,27 @@ class _ProductFormState extends State<ProductForm> {
                 // Kept as a single muted line under the row
                 // so the answer is on-screen without adding
                 // visual weight.
-                Padding(
+                const Padding(
                   padding: EdgeInsets.only(
-                    left: SizeConfig.imageSizeMultiplier * 1.5,
-                    top: SizeConfig.heightMultiplier * 0.25,
+                    left: 8,
+                    top: 4,
                   ),
                   child: Row(
                     children: [
                       Icon(
                         Icons.lock_outline,
-                        size: SizeConfig.imageSizeMultiplier * 3.2,
-                        color: Colors.grey[600],
+                        size: 16,
+                        color: SpazaColors.muted,
                       ),
                       SizedBox(
-                        width: SizeConfig.imageSizeMultiplier * 1.2,
+                        width: 4,
                       ),
                       Expanded(
                         child: Text(
                           'Cost is internal. Customers only see the selling price.',
                           style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.4,
-                            color: Colors.grey[700],
+                            fontSize: 13,
+                            color: SpazaColors.muted,
                           ),
                         ),
                       ),
@@ -210,17 +210,17 @@ class _ProductFormState extends State<ProductForm> {
                 if (_cost != null &&
                     _sellingPrice != null &&
                     _sellingPrice! < _cost!) ...[
-                  SizedBox(height: SizeConfig.heightMultiplier * 1),
+                  const SizedBox(height: 8),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
                         Icons.info_outline,
-                        size: SizeConfig.imageSizeMultiplier * 4,
+                        size: 20,
                         color: Colors.orange[700],
                       ),
-                      SizedBox(
-                        width: SizeConfig.imageSizeMultiplier * 1.5,
+                      const SizedBox(
+                        width: 8,
                       ),
                       Expanded(
                         child: Text(
@@ -228,7 +228,7 @@ class _ProductFormState extends State<ProductForm> {
                           'cost. You will record a loss on '
                           'each sale.',
                           style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.5,
+                            fontSize: 13,
                             color: Colors.orange[800],
                           ),
                         ),
@@ -236,7 +236,7 @@ class _ProductFormState extends State<ProductForm> {
                     ],
                   ),
                 ],
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                const SizedBox(height: 16),
                 CustomTextField(
                   label: "Quantity*",
                   hintText: "Enter 0 if unsure",
@@ -268,11 +268,11 @@ class _ProductFormState extends State<ProductForm> {
                   },
                   textInputType: TextInputType.number,
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                const SizedBox(height: 16),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.storefront_outlined),
-                  title: const Text('List in WhatsApp Store'),
+                  title: const Text('List in WhatsApp store'),
                   subtitle: const Text(
                     'On requests a background catalogue sync. A name, positive selling price, product image and shop link are required. Turning this off removes the WhatsApp listing but keeps the product in stock and sales.',
                   ),
@@ -306,8 +306,8 @@ class _ProductFormState extends State<ProductForm> {
                   child: widget.product.whatsappListed
                       ? Padding(
                           key: const ValueKey('wa-preview-on'),
-                          padding: EdgeInsets.only(
-                            top: SizeConfig.heightMultiplier * 0.5,
+                          padding: const EdgeInsets.only(
+                            top: 4,
                           ),
                           child: WhatsappListingPreview(
                             name: viewModel.nameController.text,
@@ -333,25 +333,25 @@ class _ProductFormState extends State<ProductForm> {
                 // never a surprise. Hidden as soon as an image
                 // is attached or the toggle is turned back off.
                 if (widget.product.whatsappListed && !viewModel.hasImage) ...[
-                  SizedBox(height: SizeConfig.heightMultiplier * 1),
+                  const SizedBox(height: 8),
                   Row(
                     key: const ValueKey('wa-image-required-cue'),
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(
                         Icons.info_outline,
-                        size: SizeConfig.imageSizeMultiplier * 4,
+                        size: 20,
                         color: Colors.orange[700],
                       ),
-                      SizedBox(
-                        width: SizeConfig.imageSizeMultiplier * 1.5,
+                      const SizedBox(
+                        width: 8,
                       ),
                       Expanded(
                         child: Text(
                           'Add a product image before listing '
                           'this for WhatsApp orders.',
                           style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.5,
+                            fontSize: 13,
                             color: Colors.orange[800],
                           ),
                         ),
@@ -359,7 +359,7 @@ class _ProductFormState extends State<ProductForm> {
                     ],
                   ),
                 ],
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
+                const SizedBox(height: 16),
                 // Progressive disclosure: keep optional fields out
                 // of the merchant's way during initial create. Auto
                 // expands when an existing product already has data
@@ -386,7 +386,6 @@ class _ProductFormState extends State<ProductForm> {
                         decoration: const InputDecoration(
                           labelText: 'Product group (optional)',
                           prefixIcon: Icon(Icons.category_outlined),
-                          border: OutlineInputBorder(),
                         ),
                         items: availableGroups
                             .map(
@@ -403,8 +402,8 @@ class _ProductFormState extends State<ProductForm> {
                           });
                         },
                       ),
-                      SizedBox(
-                        height: SizeConfig.heightMultiplier * 2,
+                      const SizedBox(
+                        height: 16,
                       ),
                       CustomTextField(
                         label: "Company",
@@ -417,8 +416,8 @@ class _ProductFormState extends State<ProductForm> {
                           widget.product.company = value;
                         },
                       ),
-                      SizedBox(
-                        height: SizeConfig.heightMultiplier * 2,
+                      const SizedBox(
+                        height: 16,
                       ),
                       CustomTextField(
                         label: "Description",
@@ -458,7 +457,7 @@ class _ProductImagePicker extends StatelessWidget {
       button: true,
       label: viewModel.hasImage ? 'Change product photo' : 'Add product photo',
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
         onTap: viewModel.isLoading
             ? null
             : () => viewModel.handleImagePick(context, product),
@@ -468,12 +467,12 @@ class _ProductImagePicker extends StatelessWidget {
           decoration: BoxDecoration(
             color:
                 theme.colorScheme.surfaceContainerHighest.withValues(alpha: .5),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
           ),
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(SpazaRadius.control),
                 child: SizedBox(
                   width: 88,
                   height: 88,
@@ -502,7 +501,7 @@ class _ProductImagePicker extends StatelessWidget {
                           ? 'Product photo'
                           : 'Add a product photo',
                       style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),

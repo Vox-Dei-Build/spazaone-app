@@ -5,9 +5,44 @@ import 'package:pasella/services/store_session.dart';
 class MessagingPricingUnavailable implements Exception {
   const MessagingPricingUnavailable([
     this.message = 'Messaging pricing is temporarily unavailable.',
-  ]);
+  ]) : code = 'unavailable';
 
+  const MessagingPricingUnavailable.withCode(this.code, this.message);
+
+  final String code;
   final String message;
+
+  factory MessagingPricingUnavailable.fromError(Object error) {
+    if (error is MessagingPricingUnavailable) return error;
+    if (error is FirebaseFunctionsException) {
+      switch (error.code) {
+        case 'unauthenticated':
+          return const MessagingPricingUnavailable.withCode('unauthenticated',
+              'Sign in again to load current message prices.');
+        case 'permission-denied':
+          return const MessagingPricingUnavailable.withCode('permission-denied',
+              'You do not have access to this shop’s message prices. Review the active shop and try again.');
+        case 'failed-precondition':
+          if (error.message == 'App verification is required.') {
+            return const MessagingPricingUnavailable.withCode(
+                'app-check-required',
+                'This app could not be verified to load prices. Reopen it and try again. If this continues, contact support.');
+          }
+          return const MessagingPricingUnavailable.withCode(
+              'failed-precondition',
+              'Current message prices are not available yet. Try again later.');
+        case 'not-found':
+        case 'unimplemented':
+          return const MessagingPricingUnavailable.withCode('not-found',
+              'The message pricing service is unavailable. Try again later.');
+        case 'deadline-exceeded':
+        case 'unavailable':
+          return const MessagingPricingUnavailable.withCode('unavailable',
+              'Current message prices could not load. Check your connection and try again.');
+      }
+    }
+    return const MessagingPricingUnavailable();
+  }
 
   @override
   String toString() => message;
@@ -29,7 +64,10 @@ class MessagingPricingSnapshotV1 {
   factory MessagingPricingSnapshotV1.fromMap(Map<String, dynamic> data) {
     int requiredMinor(String key) {
       final value = data[key];
-      if (value is! num || value.toInt() <= 0) {
+      if (value is! num ||
+          !value.isFinite ||
+          value <= 0 ||
+          value.toInt() != value) {
         throw const MessagingPricingUnavailable();
       }
       return value.toInt();
@@ -68,24 +106,30 @@ class DynamicPricingService {
     MessagingPricingLoader? loader,
   }) async {
     final remoteConfigService = await RemoteConfigService.getInstance();
+    final snapshot = await loadSnapshot(loader: loader);
+    return DynamicPricingService(remoteConfigService, snapshot);
+  }
+
+  /// Reads the server-owned message rates independently of payment-fee config.
+  /// Error codes remain safe to present; response details are never exposed.
+  static Future<MessagingPricingSnapshotV1> loadSnapshot({
+    MessagingPricingLoader? loader,
+    String? storeId,
+  }) async {
     try {
-      final storeId = StoreSession.instance.storeId;
+      final activeStore = storeId ?? StoreSession.instance.storeId;
       final data = loader == null
           ? Map<String, dynamic>.from(
               (await FirebaseFunctions.instance
                       .httpsCallable('getMessagingPricingV1')
-                      .call({if (storeId.isNotEmpty) 'storeId': storeId}))
+                      .call(
+                          {if (activeStore.isNotEmpty) 'storeId': activeStore}))
                   .data as Map,
             )
-          : await loader(storeId);
-      return DynamicPricingService(
-        remoteConfigService,
-        MessagingPricingSnapshotV1.fromMap(data),
-      );
-    } on MessagingPricingUnavailable {
-      rethrow;
-    } catch (_) {
-      throw const MessagingPricingUnavailable();
+          : await loader(activeStore);
+      return MessagingPricingSnapshotV1.fromMap(data);
+    } catch (error) {
+      throw MessagingPricingUnavailable.fromError(error);
     }
   }
 

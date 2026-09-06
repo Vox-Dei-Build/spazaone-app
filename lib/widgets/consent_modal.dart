@@ -1,3 +1,4 @@
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../constants/constants.dart';
@@ -57,7 +58,8 @@ class ConsentModal extends StatefulWidget {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(SpazaRadius.sheet)),
       ),
       builder: (_) => const _PostAuthConsentSheet(),
     );
@@ -148,7 +150,8 @@ class _ConsentModalState extends State<ConsentModal> {
       canPop: false,
       child: Dialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SpazaRadius.sheet)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
@@ -195,8 +198,8 @@ class _ConsentModalState extends State<ConsentModal> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                    color: SpazaColors.heading,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -205,7 +208,7 @@ class _ConsentModalState extends State<ConsentModal> {
                   'anytime in Settings → Privacy.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 13,
                     height: 1.4,
                     color: kSecondaryAccent,
                   ),
@@ -241,7 +244,8 @@ class _ConsentModalState extends State<ConsentModal> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(SpazaRadius.control),
                       ),
                     ),
                     child: const Text(
@@ -304,7 +308,7 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(24, 20, 24, 20 + bottomInset),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -330,8 +334,8 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
                     'Privacy choices',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
+                      fontWeight: FontWeight.w500,
+                      color: SpazaColors.heading,
                     ),
                   ),
                 ),
@@ -342,7 +346,7 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
               'Choose what Spaza One can collect. You can change this anytime '
               'in Settings → Privacy.',
               style: TextStyle(
-                fontSize: 13.5,
+                fontSize: 13,
                 height: 1.4,
                 color: kSecondaryAccent,
               ),
@@ -356,7 +360,7 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
               ),
               child: const Text(
@@ -372,7 +376,7 @@ class _PostAuthConsentSheetState extends State<_PostAuthConsentSheet> {
                 foregroundColor: kSecondaryAccent,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
               ),
               child: const Text(
@@ -419,9 +423,9 @@ class _ConsentOptionCard extends StatelessWidget {
       opacity: disabled ? 0.55 : 1.0,
       child: Material(
         color: kHighLightColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
           onTap: disabled ? null : () => onChanged!(!value),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -447,7 +451,7 @@ class _ConsentOptionCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                          color: SpazaColors.heading,
                         ),
                       ),
                       const SizedBox(height: 2),

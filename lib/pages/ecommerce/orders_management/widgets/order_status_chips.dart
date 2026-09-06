@@ -33,7 +33,7 @@ class OrderStatusChips extends StatelessWidget {
                   s.label,
                   style: TextStyle(
                     fontWeight: FontWeight.w500,
-                    fontSize: SizeConfig.textMultiplier * 1.6,
+                    fontSize: 13,
                     color: s == selected ? Colors.white : Colors.black87,
                   ),
                 ),

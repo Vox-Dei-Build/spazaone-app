@@ -69,6 +69,14 @@ void main() {
       },
     );
 
+    testWidgets(
+        'does not duplicate the page action when no handler is supplied',
+        (tester) async {
+      await pumpEmpty(tester, showOnboarding: true);
+      expect(find.text('No products yet'), findsOneWidget);
+      expect(find.text('Add product'), findsNothing);
+    });
+
     testWidgets('CTA fires the passed handler', (tester) async {
       var tapped = false;
       await pumpEmpty(

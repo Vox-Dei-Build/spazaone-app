@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/auth/login/login.dart';
 import 'package:pasella/services/account_deletion_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -84,10 +84,8 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Delete Account'),
+      appBar: const CustomAppBar(title: 'Delete account'),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -140,12 +138,12 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                     onPressed:
                         !_isLoading && _isConfirmed ? _handleDelete : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade600,
+                      backgroundColor: Theme.of(context).colorScheme.error,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     icon: _isLoading
-                        ? SizedBox(
+                        ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
@@ -153,7 +151,7 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.delete_forever),
+                        : const Icon(SpazaIcons.delete),
                     label: Text(
                       _isLoading ? 'Deleting...' : 'Delete my account',
                       style: const TextStyle(fontWeight: FontWeight.bold),

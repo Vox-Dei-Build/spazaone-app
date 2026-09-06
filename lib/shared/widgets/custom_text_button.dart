@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
-import 'package:pasella/constants/constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
 class CustomButton extends StatelessWidget {
   const CustomButton({
@@ -32,59 +31,47 @@ class CustomButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
-    final borderRadius = BorderRadius.circular(
-      radius ?? SizeConfig.imageSizeMultiplier * 4,
-    );
-
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Semantics(
       button: true,
       enabled: !isDisabled,
       label: title,
+      onTap: isDisabled ? null : onTap,
       excludeSemantics: true,
       child: Container(
-        margin:
-            margin ??
-            EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 2,
-            ),
-        height: height ?? SizeConfig.heightMultiplier * 7,
+        margin: margin ?? const EdgeInsets.symmetric(horizontal: 8),
         width: width ?? double.infinity,
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Material(
-          color: isDisabled ? Colors.grey.shade400 : (color ?? kPrimaryColor),
-          borderRadius: borderRadius,
-          child: InkWell(
-            onTap: isDisabled ? null : onTap,
-            borderRadius: borderRadius,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon != null)
-                  Padding(
-                    padding: EdgeInsets.only(
-                      right: SizeConfig.imageSizeMultiplier * 2,
-                    ),
-                    child: Icon(
-                      icon,
-                      color: Colors.white,
-                      size: iconSize ?? SizeConfig.imageSizeMultiplier * 6,
-                    ),
-                  ),
-                Flexible(
-                  child: Text(
-                    title,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: fontSize ?? SizeConfig.textMultiplier * 2,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+        constraints: BoxConstraints(
+            minHeight: (height ?? 52).clamp(48, double.infinity).toDouble()),
+        child: FilledButton(
+          onPressed: isDisabled ? null : onTap,
+          style: FilledButton.styleFrom(
+            backgroundColor: color ?? colors.primary,
+            foregroundColor: colors.onPrimary,
+            disabledBackgroundColor: colors.onSurface.withValues(alpha: .08),
+            disabledForegroundColor: colors.onSurface.withValues(alpha: .38),
+            minimumSize: const Size(48, 52),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.circular(radius ?? SpazaRadius.control),
             ),
+            textStyle: theme.textTheme.labelLarge?.copyWith(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: iconSize ?? 20),
+                const SizedBox(width: 8),
+              ],
+              Flexible(child: Text(title, textAlign: TextAlign.center)),
+            ],
           ),
         ),
       ),

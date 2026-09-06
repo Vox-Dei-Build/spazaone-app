@@ -96,9 +96,8 @@ class CustomerSelectionStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(heading,
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: SizeConfig.textMultiplier * 2)),
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           Expanded(
             child: _EmptyCustomerSelection(
               hiddenWithoutNumberCount: hiddenWithoutNumberCount,
@@ -117,9 +116,7 @@ class CustomerSelectionStep extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(heading,
-            style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: SizeConfig.textMultiplier * 2)),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         if (recommendationText != null)
           Padding(
             padding: EdgeInsets.symmetric(
@@ -211,9 +208,8 @@ class CustomerSelectionStep extends StatelessWidget {
             value: allCustomers,
             onChanged: (_) => onAllCustomersChanged(!allCustomers),
             title: Text(allCustomersLabel,
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: SizeConfig.textMultiplier * 2))),
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 18))),
         Expanded(
           child: ListView.builder(
             itemCount: customers.length,
@@ -259,16 +255,15 @@ class CustomerSelectionStep extends StatelessWidget {
                     Expanded(
                       child: Text(
                         name,
-                        style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.8,
-                            fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w500),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     Text(
                       CurrencyUtil.format(balance),
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.6,
+                        fontSize: 13,
                         color: balance >= 0 ? Colors.green : Colors.red,
                         fontWeight: FontWeight.bold,
                       ),

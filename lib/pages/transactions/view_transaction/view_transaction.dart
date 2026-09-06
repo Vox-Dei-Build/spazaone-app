@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/pages/transactions/edit_transaction/edit_transaction.dart';
@@ -24,7 +25,7 @@ class TransactionDetailScreen extends StatefulWidget {
   });
 
   @override
-  _TransactionDetailScreenState createState() =>
+  State<TransactionDetailScreen> createState() =>
       _TransactionDetailScreenState();
 }
 
@@ -62,6 +63,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       appBar: CustomAppBar(
         title: 'Transaction Details for ${widget.customerName}',
         trailing: IconButton(
+          tooltip: 'Edit transaction',
           icon: const Icon(Icons.edit),
           onPressed: () async {
             final result = await Navigator.of(context).push<bool>(
@@ -91,9 +93,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: im * 5.0,
-            vertical: hm * 2.0,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
           ),
           child: FutureBuilder<DocumentSnapshot>(
             future: _transactionFuture,
@@ -105,10 +107,10 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               if (!snapshot.hasData ||
                   snapshot.hasError ||
                   !snapshot.data!.exists) {
-                return Center(
+                return const Center(
                   child: Text(
                     'Error loading transaction data.',
-                    style: TextStyle(fontSize: tm * 3.0),
+                    style: TextStyle(fontSize: 16),
                   ),
                 );
               }
@@ -136,12 +138,12 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
               return ListView(
                 children: [
                   Card(
-                    elevation: 4.0,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.0),
+                      borderRadius: BorderRadius.circular(SpazaRadius.control),
                     ),
                     child: Padding(
-                      padding: EdgeInsets.all(hm * 2.0),
+                      padding: const EdgeInsets.all(20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -191,15 +193,15 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     return ListTile(
       title: Text(
         title,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: tm * 2.0,
+        style: const TextStyle(
+          fontWeight: FontWeight.w500,
+          fontSize: 16,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(
-          fontSize: tm * 1.8,
+        style: const TextStyle(
+          fontSize: 16,
         ),
       ),
     );
@@ -214,11 +216,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   ) {
     final uid = StoreSession.instance.storeId;
     return ListTile(
-      title: Text(
+      title: const Text(
         'Products',
         style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: tm * 2.0,
+          fontWeight: FontWeight.w500,
+          fontSize: 16,
         ),
       ),
       subtitle: products.isNotEmpty
@@ -245,13 +247,13 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                     if (snapshot.hasError) {
                       return Text(
                         'Error fetching product with ID: $productId',
-                        style: TextStyle(fontSize: tm * 1.8),
+                        style: const TextStyle(fontSize: 16),
                       );
                     }
                     if (!snapshot.hasData || !snapshot.data!.exists) {
                       return Text(
                         'Unknown product with ID: $productId',
-                        style: TextStyle(fontSize: tm * 1.8),
+                        style: const TextStyle(fontSize: 16),
                       );
                     }
                     final data =
@@ -273,9 +275,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                 );
               }).toList(),
             )
-          : Text(
+          : const Text(
               'No products associated with this transaction.',
-              style: TextStyle(fontSize: tm * 1.8),
+              style: TextStyle(fontSize: 16),
             ),
     );
   }
@@ -294,7 +296,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         vertical: hm * 1.0,
       ),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10.0),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Padding(
         padding: EdgeInsets.all(im * 2.0),
@@ -311,9 +313,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                 Expanded(
                   child: Text(
                     formatStringToCamelCase(productName),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: tm * 2.0,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 16,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -323,16 +325,16 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
             SizedBox(height: hm * 1.0),
             Text(
               'Quantity: $quantity',
-              style: TextStyle(
-                fontSize: tm * 1.8,
+              style: const TextStyle(
+                fontSize: 16,
               ),
             ),
             SizedBox(height: hm * 0.5),
             Text(
               'Selling Price: ${formatMoney(sellingPrice)}',
-              style: TextStyle(
+              style: const TextStyle(
                 fontStyle: FontStyle.italic,
-                fontSize: tm * 1.8,
+                fontSize: 16,
               ),
             ),
           ],

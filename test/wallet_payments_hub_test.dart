@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/services/payment_setup_service.dart';
 
@@ -27,6 +28,54 @@ MerchantPaymentOverview _overview({bool ready = false}) =>
     );
 
 void main() {
+  testWidgets(
+      'hub actions and unavailable status stay readable with large text',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var onlineTaps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: kCustomThemeData,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: WalletHubMenu(
+              campaignBalance: 6500,
+              sharedCampaignCredits: true,
+              hasPendingPayment: true,
+              overview: null,
+              overviewLoading: false,
+              overviewHasError: true,
+              showBalance: true,
+              showOnlinePayments: true,
+              showCosts: true,
+              onAddMoney: () {},
+              onBalance: () {},
+              onOnlinePayments: () => onlineTaps++,
+              onCosts: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Payment confirmation in progress'), findsOneWidget);
+    expect(find.text('Setup status unavailable'), findsOneWidget);
+    expect(find.text('Ready'), findsNothing);
+    await tester.ensureVisible(find.text('Online payments'));
+    await tester.tap(find.text('Online payments'));
+    expect(onlineTaps, 1);
+    await tester.ensureVisible(find.text('Costs & limits'));
+    expect(find.text('Costs & limits').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('wallet hub uses a content-shaped shimmer while loading',
       (tester) async {
     await tester.pumpWidget(

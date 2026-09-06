@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/pages/wallet/widgets/full_repayment_report.dart';
 import 'package:pasella/shared/widgets/custom_text_button.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/utils/wallet_utils.dart';
 
@@ -27,10 +27,9 @@ class _SuspensionPaywallState extends State<SuspensionPaywall> {
     final walletState = widget.walletState;
 
     return Scaffold(
-      backgroundColor: Colors.red[50],
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(SizeConfig.heightMultiplier * 3),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
           child: FutureBuilder<WalletBreakdown>(
             future: _breakdown,
             builder: (context, snapshot) {
@@ -39,26 +38,26 @@ class _SuspensionPaywallState extends State<SuspensionPaywall> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Icon(Icons.warning_amber_rounded,
-                      size: 80, color: Colors.red),
-                  SizedBox(height: SizeConfig.heightMultiplier * 4),
-                  Text(
+                      size: 48, color: SpazaColors.error),
+                  const SizedBox(height: 20),
+                  const Text(
                     'Account Suspended',
                     style: TextStyle(
-                      color: Colors.red.shade800,
+                      color: SpazaColors.error,
                       fontWeight: FontWeight.bold,
-                      fontSize: SizeConfig.textMultiplier * 2.5,
+                      fontSize: 27,
                     ),
                   ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 3),
-                  Text(
+                  const SizedBox(height: 16),
+                  const Text(
                     'Your account has been suspended due to missed repayments.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.grey[700],
-                      fontSize: SizeConfig.textMultiplier * 1.8,
+                      color: SpazaColors.muted,
+                      fontSize: 16,
                     ),
                   ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 7),
+                  const SizedBox(height: 24),
                   _infoTile('Fee Charged', b.advanceFee),
                   _infoTile('Amount Due', b.amountDue),
                   _infoTile('Bank Fee', b.bankFee),
@@ -66,16 +65,16 @@ class _SuspensionPaywallState extends State<SuspensionPaywall> {
                   const Divider(height: 32, thickness: 1),
                   _infoTile('Total Owed', b.totalOwed, isBold: true),
                   _infoTile('Suspended', b.suspended),
-                  const Spacer(),
+                  const SizedBox(height: 24),
                   CustomButton(
                     title: 'Pay Back Now',
                     onTap: () =>
                         _walletVM.sendRepaymentWhatsAppMessage(context),
-                    color: Colors.green,
+                    color: SpazaColors.action,
                     icon: Icons.payment,
-                    fontSize: SizeConfig.textMultiplier * 2,
+                    fontSize: 14,
                   ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: CustomButton(
@@ -89,9 +88,9 @@ class _SuspensionPaywallState extends State<SuspensionPaywall> {
                           ),
                         );
                       },
-                      color: Colors.red,
+                      color: SpazaColors.heading,
                       icon: Icons.receipt_long,
-                      fontSize: SizeConfig.textMultiplier * 2,
+                      fontSize: 14,
                     ),
                   ),
                 ],
@@ -105,18 +104,19 @@ class _SuspensionPaywallState extends State<SuspensionPaywall> {
 
   Widget _infoTile(String label, String value, {bool isBold = false}) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 6,
+        alignment: WrapAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.8)),
+          Text(label, style: const TextStyle(fontSize: 16)),
           Text(
             value,
             style: TextStyle(
               fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-              fontSize: SizeConfig.textMultiplier * 1.8,
-              color: isBold ? Colors.red.shade900 : Colors.black,
+              fontSize: 16,
+              color: isBold ? SpazaColors.error : SpazaColors.ink,
             ),
           ),
         ],

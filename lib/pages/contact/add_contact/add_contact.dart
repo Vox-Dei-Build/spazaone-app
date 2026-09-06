@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/app_urls.dart';
 import 'package:pasella/pages/contact/view_model/add_contact_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -151,7 +151,7 @@ class AddContactPage extends StatelessWidget {
             child: GestureDetector(
               onTap: () => FocusScope.of(context).unfocus(),
               child: Scaffold(
-                backgroundColor: Colors.white,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                 appBar: const CustomAppBar(title: 'Add Customer'),
                 body: SafeArea(
                   child: Consumer<AppModel>(
@@ -275,7 +275,7 @@ class _AvatarHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = SizeConfig.heightMultiplier * 8;
+    const radius = 56.0;
     return Center(
       child: SizedBox(
         width: radius * 2,
@@ -349,7 +349,7 @@ class _NamePreview extends StatelessWidget {
           hasName ? viewModel.nameController.text : 'New $categoryLabel',
           textAlign: TextAlign.center,
           style: kSectionHeaderStyle.copyWith(
-            color: hasName ? Colors.black87 : kSecondaryAccent,
+            color: hasName ? SpazaColors.ink : kSecondaryAccent,
           ),
         ),
         const SizedBox(height: 2),
@@ -367,10 +367,10 @@ class _ImportFromContactsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: kHighLightColor,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(SpazaRadius.control),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
@@ -398,7 +398,7 @@ class _ImportFromContactsCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: Colors.black87,
+                        color: SpazaColors.ink,
                       ),
                     ),
                     SizedBox(height: 2),
@@ -489,9 +489,9 @@ class _ConsentRowState extends State<_ConsentRow> {
             child: Text.rich(
               TextSpan(
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 13,
                   height: 1.4,
-                  color: Colors.black87,
+                  color: SpazaColors.ink,
                 ),
                 children: [
                   const TextSpan(

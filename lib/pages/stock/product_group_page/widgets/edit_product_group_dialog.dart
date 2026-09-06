@@ -57,13 +57,11 @@ class _EditProductGroupDialogState extends State<EditProductGroupDialog> {
         final vm = widget.viewModel;
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(
-                SizeConfig.imageSizeMultiplier * 2),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: SingleChildScrollView(
             child: Container(
-              padding:
-                  EdgeInsets.all(SizeConfig.imageSizeMultiplier * 5),
+              padding: const EdgeInsets.all(22),
               constraints: BoxConstraints(
                 maxHeight: SizeConfig.screenHeight * 0.8,
                 maxWidth: SizeConfig.screenWidth * 0.8,
@@ -73,19 +71,19 @@ class _EditProductGroupDialogState extends State<EditProductGroupDialog> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
+                    const Text(
                       "Edit Product Group",
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 2,
+                        fontSize: 18,
                       ),
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    const SizedBox(height: 16),
                     if (vm.errorMessage != null)
                       Text(
                         vm.errorMessage!,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.red,
-                          fontSize: SizeConfig.textMultiplier * 1.8,
+                          fontSize: 16,
                         ),
                       ),
                     CustomTextField(
@@ -102,13 +100,12 @@ class _EditProductGroupDialogState extends State<EditProductGroupDialog> {
                         return null;
                       },
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 2),
+                    const SizedBox(height: 16),
                     CustomButton(
                       onTap: vm.isLoading
                           ? () {}
                           : () async {
-                              if (_formKey.currentState?.validate() ??
-                                  false) {
+                              if (_formKey.currentState?.validate() ?? false) {
                                 await vm.editProductGroup(
                                   context,
                                   widget.groupName,
@@ -116,9 +113,9 @@ class _EditProductGroupDialogState extends State<EditProductGroupDialog> {
                                 );
                               }
                             },
-                      margin: EdgeInsets.symmetric(
-                        horizontal: SizeConfig.imageSizeMultiplier * 2.5,
-                        vertical: SizeConfig.heightMultiplier * 1,
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
                       title: vm.isLoading ? 'Loading...' : 'Done',
                     ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
@@ -68,7 +69,7 @@ class _EditCustomerPageState extends State<EditCustomerPage> {
                     Text(
                       'Customer details',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w500,
                           ),
                     ),
                     const SizedBox(height: 4),
@@ -127,9 +128,9 @@ class _PhotoEditor extends StatelessWidget {
     final theme = Theme.of(context);
     return Material(
       color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .5),
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(SpazaRadius.control),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         onTap: viewModel.isLoading
             ? null
             : () => viewModel.handleImagePick(context),
@@ -157,7 +158,7 @@ class _PhotoEditor extends StatelessWidget {
                           ? 'New photo selected'
                           : 'Customer photo',
                       style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),

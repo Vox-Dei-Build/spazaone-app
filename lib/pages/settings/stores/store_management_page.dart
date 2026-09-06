@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -279,7 +280,6 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
       appBar: const CustomAppBar(title: 'Stores & team'),
       body: Consumer<StoreSession>(
         builder: (context, session, _) {
@@ -313,7 +313,7 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 _ActiveStoreCard(session: session),
-                const SizedBox(height: 26),
+                const SizedBox(height: SpazaSpace.xl),
                 Row(
                   children: [
                     Expanded(
@@ -337,7 +337,7 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                   elevation: 0,
                   clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(SpazaRadius.surface),
                     side: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
                   child: Column(
@@ -363,7 +363,7 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                Icons.storefront_outlined,
+                                SpazaIcons.shop,
                                 color: active
                                     ? theme.colorScheme.primary
                                     : theme.colorScheme.onSurfaceVariant,
@@ -383,7 +383,7 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                                     Icons.check_circle_rounded,
                                     color: theme.colorScheme.primary,
                                   )
-                                : const Icon(Icons.chevron_right_rounded),
+                                : const Icon(SpazaIcons.next),
                           ),
                           if (index < session.stores.length - 1)
                             const Divider(height: 1, indent: 70),
@@ -392,7 +392,7 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                     }),
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: SpazaSpace.xl),
                 Row(
                   children: [
                     Expanded(
@@ -514,7 +514,8 @@ class _StoreManagementPageState extends State<StoreManagementPage> {
                       elevation: 0,
                       clipBehavior: Clip.antiAlias,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius:
+                            BorderRadius.circular(SpazaRadius.surface),
                         side: BorderSide(
                           color: theme.colorScheme.outlineVariant,
                         ),
@@ -559,7 +560,7 @@ class _StoreAccessStateCard extends StatelessWidget {
       margin: EdgeInsets.zero,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
         side: BorderSide(color: theme.colorScheme.outlineVariant),
       ),
       child: Padding(
@@ -645,74 +646,58 @@ class _ActiveStoreCard extends StatelessWidget {
   final StoreSession session;
 
   @override
+  Widget build(BuildContext context) => ActiveStoreSummary(
+        storeName: session.activeStoreName,
+        role: session.activeStore == null
+            ? null
+            : _roleLabel(session.activeStore!.role),
+      );
+}
+
+/// Read-only context above the store and team management actions.
+class ActiveStoreSummary extends StatelessWidget {
+  const ActiveStoreSummary({super.key, required this.storeName, this.role});
+
+  final String storeName;
+  final String? role;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(SpazaSpace.md),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
         border: Border.all(color: theme.colorScheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Row(
         children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Icon(Icons.store_rounded, color: primary),
+          const SizedBox.square(
+            dimension: 36,
+            child: Icon(SpazaIcons.shop, size: 22),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: SpazaSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'ACTIVE STORE',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: primary,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.7,
+                  role == null ? 'Active store' : 'Active store · $role',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: SpazaSpace.xs),
                 Text(
-                  session.activeStoreName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
+                  storeName,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
-          if (session.activeStore != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                _roleLabel(session.activeStore!.role),
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
         ],
       ),
     );

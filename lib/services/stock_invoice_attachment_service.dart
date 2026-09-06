@@ -56,40 +56,52 @@ class StockInvoiceAttachmentService {
   Future<File?> pickAndPrepare(BuildContext context) async {
     final source = await showModalBottomSheet<StockInvoicePickSource>(
       context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              title: Text('Attach stock invoice'),
-              subtitle: Text('Choose an image or a PDF up to 5 MB.'),
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            key: const ValueKey('stock-invoice-source-scroll'),
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ListTile(
+                  title: Text('Attach stock invoice'),
+                  subtitle: Text('Choose an image or a PDF up to 5 MB.'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt_outlined),
+                  title: const Text('Camera'),
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    StockInvoicePickSource.camera,
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Photo library'),
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    StockInvoicePickSource.gallery,
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.picture_as_pdf_outlined),
+                  title: const Text('PDF from Files'),
+                  onTap: () => Navigator.pop(
+                    sheetContext,
+                    StockInvoicePickSource.pdf,
+                  ),
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Camera'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                StockInvoicePickSource.camera,
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Photo library'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                StockInvoicePickSource.gallery,
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('PDF from Files'),
-              onTap: () => Navigator.pop(
-                sheetContext,
-                StockInvoicePickSource.pdf,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

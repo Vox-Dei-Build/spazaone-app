@@ -188,8 +188,8 @@ class _PromotionsPageState extends State<PromotionsPage>
       ),
       label: Text(
         current.fabLabel,
-        style: TextStyle(
-          fontSize: SizeConfig.textMultiplier * 2,
+        style: const TextStyle(
+          fontSize: 18,
           color: Colors.white,
         ),
       ),

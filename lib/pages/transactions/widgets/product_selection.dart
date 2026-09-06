@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/transactions/widgets/product_search_delegate.dart';
 import 'package:pasella/pages/transactions/widgets/quantity_input_sheet.dart';
@@ -15,8 +15,6 @@ class ProductSelectionWidget<T extends TransactionViewModel>
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     final totalProducts = viewModel.products.length;
     final selectedCount = viewModel.selectedProducts.length;
 
@@ -29,20 +27,19 @@ class ProductSelectionWidget<T extends TransactionViewModel>
             child: Text(
               'Recently bought',
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.8,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey[700],
               ),
             ),
           ),
-          SizedBox(height: SizeConfig.heightMultiplier * 1),
+          const SizedBox(height: 8),
           SizedBox(
-            height: SizeConfig.heightMultiplier * 5,
+            height: 52,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: viewModel.suggestedProducts.length,
-              separatorBuilder: (_, __) =>
-                  SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (chipCtx, index) {
                 final product = viewModel.suggestedProducts[index];
                 final label =
@@ -52,12 +49,12 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                 return ActionChip(
                   avatar: Icon(
                     alreadyInCart ? Icons.check : Icons.add,
-                    size: SizeConfig.imageSizeMultiplier * 4,
+                    size: 16,
                   ),
                   label: Text(
                     label,
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.7,
+                    style: const TextStyle(
+                      fontSize: 16,
                     ),
                   ),
                   onPressed: () {
@@ -67,11 +64,10 @@ class ProductSelectionWidget<T extends TransactionViewModel>
               },
             ),
           ),
-          SizedBox(height: SizeConfig.heightMultiplier * 2),
+          const SizedBox(height: 16),
         ],
         InkWell(
-          borderRadius:
-              BorderRadius.circular(SizeConfig.imageSizeMultiplier * 4),
+          borderRadius: BorderRadius.circular(16),
           onTap: () async {
             await viewModel.loadProducts();
             if (!context.mounted) return;
@@ -81,51 +77,52 @@ class ProductSelectionWidget<T extends TransactionViewModel>
             );
           },
           child: Container(
-            padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius:
-                  BorderRadius.circular(SizeConfig.imageSizeMultiplier * 4),
-              color: Colors.grey.shade50,
+              border: Border.all(color: SpazaColors.border),
+              borderRadius: BorderRadius.circular(16),
+              color: SpazaColors.canvas,
             ),
             child: Row(
               children: [
                 Container(
-                  width: SizeConfig.imageSizeMultiplier * 11,
-                  height: SizeConfig.imageSizeMultiplier * 11,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(
-                      SizeConfig.imageSizeMultiplier * 3,
+                      12,
                     ),
                   ),
                   child: Icon(
                     Icons.search,
-                    size: SizeConfig.imageSizeMultiplier * 6,
+                    size: 24,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-                SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Find products to add',
                         style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 2,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+                      const SizedBox(height: 4),
                       Text(
                         totalProducts > 0
                             ? 'Search by product name, then set the exact quantity you want.'
                             : 'Search products or create a new one if it is not listed yet.',
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.55,
-                          color: Colors.grey.shade700,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: SpazaColors.muted,
                         ),
                       ),
                     ],
@@ -137,17 +134,17 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                     Text(
                       'Browse',
                       style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.55,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
-                    SizedBox(height: SizeConfig.heightMultiplier * 0.4),
+                    const SizedBox(height: 4),
                     Text(
                       '$selectedCount selected',
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.35,
-                        color: Colors.grey.shade600,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: SpazaColors.muted,
                       ),
                     ),
                   ],
@@ -156,7 +153,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
             ),
           ),
         ),
-        SizedBox(height: SizeConfig.heightMultiplier * 2),
+        const SizedBox(height: 16),
         if (viewModel.selectedProducts.isNotEmpty)
           Column(
             children: [
@@ -170,11 +167,11 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                 final stock = viewModel.availableStockFor(entry.key);
 
                 return Card(
-                  margin: EdgeInsets.only(
-                    bottom: SizeConfig.heightMultiplier * 1.2,
+                  margin: const EdgeInsets.only(
+                    bottom: 12,
                   ),
                   child: Padding(
-                    padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
+                    padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -187,29 +184,26 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                                 children: [
                                   Text(
                                     productName,
-                                    style: TextStyle(
-                                      fontSize:
-                                          SizeConfig.textMultiplier * 1.95,
-                                      fontWeight: FontWeight.w700,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  SizedBox(
-                                    height: SizeConfig.heightMultiplier * 0.5,
+                                  const SizedBox(
+                                    height: 4,
                                   ),
                                   Text(
                                     'Unit price: ${CurrencyUtil.format(unitPrice)}',
-                                    style: TextStyle(
-                                      fontSize:
-                                          SizeConfig.textMultiplier * 1.55,
-                                      color: Colors.grey.shade700,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: SpazaColors.muted,
                                     ),
                                   ),
                                   Text(
                                     'Available stock: $stock',
-                                    style: TextStyle(
-                                      fontSize:
-                                          SizeConfig.textMultiplier * 1.45,
-                                      color: Colors.grey.shade600,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: SpazaColors.muted,
                                     ),
                                   ),
                                 ],
@@ -230,36 +224,33 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                                 );
                               },
                               child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal:
-                                      SizeConfig.imageSizeMultiplier * 3,
-                                  vertical: SizeConfig.heightMultiplier * 0.9,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
                                 ),
                                 decoration: BoxDecoration(
                                   color: Theme.of(context)
                                       .colorScheme
                                       .primary
-                                      .withOpacity(0.08),
+                                      .withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(
-                                    SizeConfig.imageSizeMultiplier * 3,
+                                    12,
                                   ),
                                 ),
                                 child: Column(
                                   children: [
-                                    Text(
+                                    const Text(
                                       'Qty',
                                       style: TextStyle(
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 1.25,
-                                        color: Colors.grey.shade700,
+                                        fontSize: 13,
+                                        color: SpazaColors.muted,
                                       ),
                                     ),
                                     Text(
                                       quantity.toString(),
-                                      style: TextStyle(
-                                        fontSize:
-                                            SizeConfig.textMultiplier * 2.1,
-                                        fontWeight: FontWeight.w700,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ],
@@ -268,13 +259,13 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                             ),
                           ],
                         ),
-                        SizedBox(height: SizeConfig.heightMultiplier * 1.2),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
                             IconButton(
-                              icon: Icon(
+                              icon: const Icon(
                                 Icons.remove_circle_outline,
-                                size: SizeConfig.imageSizeMultiplier * 6,
+                                size: 24,
                               ),
                               onPressed: () {
                                 viewModel.updateProductQuantity(
@@ -288,16 +279,16 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                               child: Text(
                                 'Line total: ${CurrencyUtil.format(unitPrice * quantity)}',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.7,
+                                style: const TextStyle(
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                             IconButton(
-                              icon: Icon(
+                              icon: const Icon(
                                 Icons.add_circle_outline,
-                                size: SizeConfig.imageSizeMultiplier * 6,
+                                size: 24,
                               ),
                               onPressed: () {
                                 viewModel.updateProductQuantity(
@@ -315,7 +306,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                 );
               }),
               SizedBox(
-                height: SizeConfig.heightMultiplier * 4,
+                height: 16,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -325,7 +316,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                         color: viewModel.currentPage > 0
                             ? Colors.green
                             : Colors.grey,
-                        size: SizeConfig.imageSizeMultiplier * 6,
+                        size: 24,
                       ),
                       onPressed: viewModel.previousPage,
                     ),
@@ -337,7 +328,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
                                 viewModel.selectedProducts.length
                             ? Colors.green
                             : Colors.grey,
-                        size: SizeConfig.imageSizeMultiplier * 6,
+                        size: 24,
                       ),
                       onPressed: viewModel.nextPage,
                     ),
@@ -347,14 +338,14 @@ class ProductSelectionWidget<T extends TransactionViewModel>
             ],
           )
         else
-          Column(
+          const Column(
             children: [
-              SizedBox(height: SizeConfig.heightMultiplier * 3),
+              SizedBox(height: 16),
               Center(
                 child: Text(
                   'No products added yet',
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
+                    fontSize: 18,
                     fontStyle: FontStyle.italic,
                     color: Colors.grey,
                   ),

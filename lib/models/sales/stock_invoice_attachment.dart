@@ -84,9 +84,19 @@ class StockInvoiceDraft {
       attachment?.fileName ??
       'Invoice page';
 
-  bool get isPdf =>
-      attachment?.isPdf == true ||
-      (localFile?.path.toLowerCase().endsWith('.pdf') ?? false);
+  /// A replacement retains the uploaded metadata for cleanup after saving.
+  /// Its preview and validation must describe the newly selected local file.
+  String get contentType {
+    final localPath = localFile?.path.toLowerCase();
+    if (localPath != null) {
+      if (localPath.endsWith('.pdf')) return 'application/pdf';
+      if (localPath.endsWith('.png')) return 'image/png';
+      return 'image/jpeg';
+    }
+    return attachment?.contentType ?? 'image/jpeg';
+  }
+
+  bool get isPdf => contentType.toLowerCase() == 'application/pdf';
 
   bool get isExisting => attachment != null && localFile == null;
   bool get canRetry =>

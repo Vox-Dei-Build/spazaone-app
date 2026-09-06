@@ -9,7 +9,7 @@ class FilterBottomSheet extends StatefulWidget {
   const FilterBottomSheet({super.key});
 
   @override
-  _FilterBottomSheetState createState() => _FilterBottomSheetState();
+  State<FilterBottomSheet> createState() => _FilterBottomSheetState();
 }
 
 class _FilterBottomSheetState extends State<FilterBottomSheet> {
@@ -44,7 +44,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               const SizedBox(height: 20.0),
               const Text(
                 'Filter',
-                style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 5.0),
               const Divider(color: kHighLightColor),

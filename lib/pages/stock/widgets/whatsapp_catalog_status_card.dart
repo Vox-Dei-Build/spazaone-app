@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/models/stock/whatsapp_catalog_status.dart';
 import 'package:pasella/services/whatsapp_catalog_status_service.dart';
 
@@ -13,12 +14,115 @@ class WhatsAppCatalogStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!controller.enabled) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const ValueKey('whatsapp-catalog-status-entry'),
+        borderRadius: BorderRadius.circular(SpazaRadius.small),
+        onTap: () => _openDetails(context),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(SpazaIcons.shop, size: 20, color: SpazaColors.muted),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('WhatsApp catalogue',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: SpazaColors.ink,
+                            fontWeight: FontWeight.w500,
+                          )),
+                      const SizedBox(height: 2),
+                      Text(
+                        _summary(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: SpazaColors.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Icon(SpazaIcons.next, size: 18, color: SpazaColors.muted),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _summary() {
+    if (controller.loading) return 'Checking status…';
+    final snapshot = controller.snapshot;
+    if (snapshot == null) return 'Status unavailable';
+    if (snapshot.rollout != WhatsAppCatalogRollout.enabled) {
+      return 'Listing not enabled yet';
+    }
+    final summary = snapshot.summary;
+    final counts = [
+      '${summary.live} live',
+      if (summary.syncing > 0) '${summary.syncing} syncing',
+      if (summary.needsAttention > 0)
+        '${summary.needsAttention} need attention',
+      if (summary.removalSyncing > 0)
+        '${summary.removalSyncing} removal${summary.removalSyncing == 1 ? '' : 's'} syncing',
+    ].join(' · ');
+    return controller.isStale || snapshot.fromCache
+        ? 'Last checked: $counts'
+        : counts;
+  }
+
+  void _openDetails(BuildContext context) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .8,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: AnimatedBuilder(
+              animation: controller,
+              builder: (_, __) => _CatalogStatusDetails(controller: controller),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The full status, refresh action and guidance stay available on demand.
+class _CatalogStatusDetails extends StatelessWidget {
+  const _CatalogStatusDetails({required this.controller});
+
+  final WhatsAppCatalogStatusController controller;
+
+  @override
+  Widget build(BuildContext context) {
     final snapshot = controller.snapshot;
     if (!controller.enabled) return const SizedBox.shrink();
     if (snapshot == null) {
       return Card(
         key: const ValueKey('whatsapp-catalog-status-unavailable'),
-        margin: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        margin: const EdgeInsets.fromLTRB(0, 0, 0, 8),
         child: ListTile(
           leading: controller.loading
               ? const SizedBox.square(
@@ -50,7 +154,7 @@ class WhatsAppCatalogStatusCard extends StatelessWidget {
     final rolloutEnabled = snapshot.rollout == WhatsAppCatalogRollout.enabled;
     return Card(
       key: const ValueKey('whatsapp-catalog-status-summary'),
-      margin: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 8),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
         child: Column(
@@ -64,7 +168,7 @@ class WhatsAppCatalogStatusCard extends StatelessWidget {
                   child: Text(
                     'WhatsApp catalogue',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w500,
                         ),
                   ),
                 ),
@@ -173,7 +277,7 @@ class _Metric extends StatelessWidget {
             Text(
               '$value',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
             ),
             Text(label, style: Theme.of(context).textTheme.labelSmall),

@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/pages/stock/stock.dart';
 
 void main() {
-  testWidgets('product search and add share one compact toolbar', (
+  testWidgets('product title leads a clear search and add toolbar', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
@@ -22,17 +22,40 @@ void main() {
       ),
     );
 
+    expect(find.text('Products'), findsOneWidget);
     expect(find.text('Search products'), findsOneWidget);
     expect(find.text('Add'), findsOneWidget);
     expect(
       tester.getSize(find.byType(ProductWorkspaceToolbar)).height,
-      lessThan(70),
+      lessThan(128),
     );
 
     await tester.tap(find.byKey(const ValueKey('search-products-launcher')));
     await tester.tap(find.byKey(const ValueKey('add-product-action')));
     expect(searchTaps, 1);
     expect(addTaps, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('product toolbar remains usable with large text', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var added = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: Scaffold(
+            body: ProductWorkspaceToolbar(
+              onTap: () {},
+              onAddProduct: () => added = true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('add-product-action')));
+    expect(added, isTrue);
     expect(tester.takeException(), isNull);
   });
 

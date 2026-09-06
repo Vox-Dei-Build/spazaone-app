@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/promote/widgets/templates/create_template/force_boilerplate.dart';
@@ -301,7 +302,7 @@ class ContentStep extends StatelessWidget {
                   'which forces a more expensive Unicode encoding. '
                   'Removing it can cut the cost in half.',
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.4,
+                    fontSize: 13,
                     color: Colors.orange[800],
                     fontStyle: FontStyle.italic,
                   ),
@@ -311,10 +312,10 @@ class ContentStep extends StatelessWidget {
               color: Colors.grey,
               thickness: SizeConfig.heightMultiplier * 0,
             ),
-            Text(
+            const Text(
               'This is the cost per customer. Final cost will depend on how many customers you send to.',
               style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.5,
+                fontSize: 13,
                 color: Colors.grey,
               ),
             ),
@@ -333,22 +334,21 @@ class _TemplatePurposeNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+        color: SpazaColors.subtle,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.25),
+          color: SpazaColors.border,
         ),
       ),
-      child: Row(
+      child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, color: theme.colorScheme.primary),
-          const SizedBox(width: 10),
-          const Expanded(
+          Icon(Icons.info_outline, color: SpazaColors.muted),
+          SizedBox(width: 10),
+          Expanded(
             child: Text(
               'Step 1 of 2: create a reusable message for WhatsApp approval. '
               'After approval, run a promotion to attach a stock product and '

@@ -47,7 +47,7 @@ class _LedgerPageState extends State<LedgerPage> {
       child: Scaffold(
         body: SafeArea(
           child: Padding(
-            padding: LayoutConstants.padding10Horizontal,
+            padding: LayoutConstants.workspacePadding,
             // The customer setup checklist now mounts inside
             // CustomerTab. Keeping it inside the Customers surface
             // makes the first action ("add a customer") match the

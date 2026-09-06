@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/services.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/models/wallet/banking_detail_model.dart';
 import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
 import 'package:pasella/pages/wallet/widgets/add_banking_details.dart';
-import 'package:pasella/shared/widgets/custom_text_button.dart';
 import 'package:pasella/widgets/private_region.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/services/payment_setup_service.dart';
@@ -22,27 +22,72 @@ class BankingDetailsTab extends StatefulWidget {
 
 class _BankingDetailsTabState extends State<BankingDetailsTab>
     with WidgetsBindingObserver {
-  late WalletViewModel walletViewModel;
+  WalletViewModel? walletViewModel;
+  int _loadGeneration = 0;
   late String _merchantId;
   MerchantPaymentOverview? _overview;
   Object? _overviewError;
   bool isLoading = true;
   bool isVerifying = false;
+  bool _detailsLoaded = false;
+  bool _editing = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _merchantId = StoreSession.instance.storeId;
-    walletViewModel = WalletViewModel();
+    if (_merchantId.isNotEmpty) walletViewModel = WalletViewModel();
     _loadBankingDetails();
+    StoreSession.instance.addListener(_onStoreChanged);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    walletViewModel.dispose();
+    StoreSession.instance.removeListener(_onStoreChanged);
+    walletViewModel?.dispose();
     super.dispose();
+  }
+
+  void _onStoreChanged() {
+    if (!mounted) return;
+    if (StoreSession.instance.storeId != _merchantId) {
+      unawaited(_refreshForCurrentStore());
+    } else {
+      // Membership may resolve after the account read. Rebuild edit access
+      // when the current owner's or administrator's role becomes available.
+      setState(() {});
+    }
+  }
+
+  bool get _canEdit =>
+      _detailsLoaded &&
+      StoreSession.instance.storeId == _merchantId &&
+      StoreSession.instance.canManageOperators;
+
+  Future<void> _editBankingDetails() async {
+    if (!_canEdit || _editing || isVerifying) return;
+    final merchantId = _merchantId;
+    final viewModel = walletViewModel;
+    if (viewModel == null) return;
+    _editing = true;
+    try {
+      final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => AddBankingDetailsPage(
+          initialDetails: viewModel.bankingDetails,
+          isEditing: viewModel.editingDocumentId != null,
+          canEdit: () =>
+              StoreSession.instance.storeId == merchantId &&
+              StoreSession.instance.canManageOperators,
+          onSave: viewModel.saveBankingDetails,
+        ),
+      ));
+      if (!mounted || merchantId != _merchantId || saved != true) return;
+      await _loadBankingDetails();
+    } finally {
+      _editing = false;
+    }
   }
 
   @override
@@ -55,28 +100,53 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
   Future<void> _refreshForCurrentStore() async {
     final currentMerchantId = StoreSession.instance.storeId;
     if (currentMerchantId != _merchantId) {
-      walletViewModel.dispose();
+      _loadGeneration++;
+      walletViewModel?.dispose();
+      walletViewModel = null;
       _merchantId = currentMerchantId;
-      walletViewModel = WalletViewModel();
+      _detailsLoaded = false;
+      _overview = null;
+      _overviewError = null;
+      isVerifying = false;
+      if (currentMerchantId.isNotEmpty) walletViewModel = WalletViewModel();
     }
     await _loadBankingDetails();
   }
 
   Future<void> _loadBankingDetails() async {
     if (!mounted) return;
+    final viewModel = walletViewModel;
+    if (viewModel == null || _merchantId.isEmpty) {
+      setState(() => isLoading = false);
+      return;
+    }
+    final generation = ++_loadGeneration;
     setState(() => isLoading = true);
     final merchantId = _merchantId;
     MerchantPaymentOverview? overview;
     Object? overviewError;
+    var detailsLoaded = false;
     try {
-      await walletViewModel.initializeBankingDetails();
+      await viewModel.initializeBankingDetails();
+      if (!mounted ||
+          merchantId != _merchantId ||
+          generation != _loadGeneration ||
+          viewModel != walletViewModel) {
+        return;
+      }
+      detailsLoaded = true;
       overview = await PaymentSetupService.overview(merchantId);
     } catch (error) {
       overviewError = error;
     }
     if (!mounted) return;
-    if (merchantId != _merchantId) return;
+    if (merchantId != _merchantId ||
+        generation != _loadGeneration ||
+        viewModel != walletViewModel) {
+      return;
+    }
     setState(() {
+      _detailsLoaded = detailsLoaded;
       _overview = overview;
       _overviewError = overviewError;
       isLoading = false;
@@ -84,8 +154,8 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
   }
 
   Future<void> _requestVerification() async {
-    final bankingDetailsId = walletViewModel.editingDocumentId;
-    if (bankingDetailsId == null || isVerifying) return;
+    final bankingDetailsId = walletViewModel?.editingDocumentId;
+    if (bankingDetailsId == null || isVerifying || !_canEdit) return;
     final merchantId = _merchantId;
     setState(() => isVerifying = true);
     try {
@@ -115,30 +185,35 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
         );
       await FCMService().requestPermissionIfNeeded(context);
     } on PaymentSetupException catch (error) {
-      if (!mounted) return;
+      if (!mounted || merchantId != _merchantId) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message), backgroundColor: Colors.red),
       );
     } finally {
-      if (mounted) setState(() => isVerifying = false);
+      if (mounted && merchantId == _merchantId) {
+        setState(() => isVerifying = false);
+      }
     }
   }
 
   Future<void> _verifyForOnlineSettlements() async {
-    if (isVerifying) return;
+    final bankingDetailsId = walletViewModel?.editingDocumentId;
+    if (isVerifying || !_canEdit || bankingDetailsId == null) return;
     final merchantId = _merchantId;
     final details = await showDialog<BankAccountVerificationDetails>(
       context: context,
       builder: (_) => BankAccountVerificationDialog(
         initialAccountType:
-            walletViewModel.accountType.text.trim().toLowerCase(),
+            walletViewModel?.accountType.text.trim().toLowerCase() ??
+                'personal',
       ),
     );
     if (details == null || !mounted) return;
-    if (merchantId != _merchantId) {
+    if (merchantId != _merchantId || !_canEdit) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('The active shop changed. Review its details first.'),
+          content: Text(
+              'Shop access changed. Review the current shop before verifying.'),
         ),
       );
       return;
@@ -147,7 +222,7 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
     try {
       final result = await PaymentSetupService.prepareSettlementProfile(
         merchantId: merchantId,
-        bankingDetailsId: walletViewModel.editingDocumentId!,
+        bankingDetailsId: bankingDetailsId,
         accountType: details.accountType,
         documentType: details.documentType,
         documentNumber: details.documentNumber,
@@ -170,22 +245,29 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
         await FCMService().requestPermissionIfNeeded(context);
       }
     } on PaymentSetupException catch (error) {
-      if (!mounted) return;
+      if (!mounted || merchantId != _merchantId) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.message), backgroundColor: Colors.red),
       );
     } finally {
-      if (mounted) setState(() => isVerifying = false);
+      if (mounted && merchantId == _merchantId) {
+        setState(() => isVerifying = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final viewModel = walletViewModel;
+    if (_merchantId.isEmpty || viewModel == null) {
+      return const Center(
+          child: Text('Choose a shop to view banking details.'));
+    }
     if (isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final journey = _effectiveJourney;
+    final journey = _effectiveJourney(viewModel);
     return RefreshIndicator(
       onRefresh: _refreshForCurrentStore,
       child: SingleChildScrollView(
@@ -196,71 +278,31 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
+              BankingDetailsPanel(
+                detailsLoaded: _detailsLoaded,
+                onRetry: _refreshForCurrentStore,
+                details: viewModel.editingDocumentId == null
+                    ? null
+                    : viewModel.bankingDetails,
+                canEdit: _canEdit,
+                isBusy: isVerifying,
+                onEdit: _editBankingDetails,
+              ),
+              const SizedBox(height: 16),
               MerchantVerificationJourneyCard(
                 journey: journey,
                 isSubmitting: isVerifying,
                 hasStatusError: _overviewError != null,
-                onRequest: walletViewModel.editingDocumentId == null ||
-                        !StoreSession.instance.canManageOperators
+                onRequest: viewModel.editingDocumentId == null || !_canEdit
                     ? null
                     : _requestVerification,
-                onVerify: StoreSession.instance.canManageOperators
-                    ? _verifyForOnlineSettlements
-                    : null,
+                onVerify: _canEdit ? _verifyForOnlineSettlements : null,
                 onRetry: _refreshForCurrentStore,
                 onSupport: () => SupportUtil.sendWhatsAppMessage(
                   context,
                   WhatsAppMessageType.support,
                 ),
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
-              if (walletViewModel.editingDocumentId == null)
-                Text(
-                  'Add banking details before store deposits or withdrawals need to be paid out.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: SizeConfig.textMultiplier * 1.5,
-                  ),
-                )
-              else
-                BankingDetailsSummary(
-                  bankName: walletViewModel.bankName.text,
-                  accountHolderName: walletViewModel.accountHolderName.text,
-                  accountNumber: walletViewModel.accountNumber.text,
-                  accountType: walletViewModel.accountType.text,
-                  branchCode: walletViewModel.branchCode.text,
-                  reference: walletViewModel.reference.text,
-                ),
-              SizedBox(height: SizeConfig.heightMultiplier * 2),
-              if (StoreSession.instance.canManageOperators)
-                CustomButton(
-                  title: 'Add / Edit Bank Account',
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AddBankingDetailsPage(
-                          walletViewModel: walletViewModel,
-                        ),
-                      ),
-                    );
-                    await _loadBankingDetails();
-                  },
-                  color: Colors.green,
-                  icon: Icons.add,
-                  fontSize: SizeConfig.textMultiplier * 2,
-                  width: SizeConfig.imageSizeMultiplier * 65,
-                ),
-              if (walletViewModel.editingDocumentId != null &&
-                  !StoreSession.instance.canManageOperators) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'Only the store owner or an administrator can verify the bank account for online sales.',
-                  textAlign: TextAlign.center,
-                ),
-              ],
             ],
           ),
         ),
@@ -268,23 +310,22 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
     );
   }
 
-  MerchantVerificationJourney get _effectiveJourney {
+  MerchantVerificationJourney _effectiveJourney(WalletViewModel viewModel) {
     final overview = _overview;
     if (overview == null) {
       return MerchantVerificationJourney(
-        stage: walletViewModel.editingDocumentId == null
+        stage: viewModel.editingDocumentId == null
             ? 'missing_information'
             : 'not_started',
         reason: 'status_unavailable',
-        hasSavedBankingDetails: walletViewModel.editingDocumentId != null,
+        hasSavedBankingDetails: viewModel.editingDocumentId != null,
       );
     }
     final journey = overview.verification;
-    if (journey.stage != 'approved' ||
-        walletViewModel.editingDocumentId == null) {
+    if (journey.stage != 'approved' || viewModel.editingDocumentId == null) {
       return journey;
     }
-    final digits = walletViewModel.accountNumber.text.replaceAll(
+    final digits = viewModel.accountNumber.text.replaceAll(
       RegExp(r'\D'),
       '',
     );
@@ -298,14 +339,14 @@ class _BankingDetailsTabState extends State<BankingDetailsTab>
         : journey.bankName;
     final bankChanged = savedMasked.isNotEmpty &&
         (savedMasked != approvedMasked ||
-            walletViewModel.bankName.text.trim() != approvedBank);
+            viewModel.bankName.text.trim() != approvedBank);
     return bankChanged
         ? MerchantVerificationJourney(
             stage: 'ready_to_submit',
             reason: 'bank_details_changed',
             requestStatus: journey.requestStatus,
             hasSavedBankingDetails: true,
-            bankName: walletViewModel.bankName.text.trim(),
+            bankName: viewModel.bankName.text.trim(),
             maskedAccount: savedMasked,
           )
         : journey;
@@ -466,21 +507,27 @@ class MerchantVerificationJourneyCard extends StatelessWidget {
       key: const ValueKey('merchant-verification-journey'),
       decoration: BoxDecoration(
         color: kHighLightColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(icon, color: kPrimaryColor, size: 30),
+            Icon(
+              icon,
+              color: journey.stage == 'approved'
+                  ? kPrimaryColor
+                  : SpazaColors.muted,
+              size: 30,
+            ),
             const SizedBox(height: 12),
             Text(
               title,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: kTertiaryColor,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
             ),
             const SizedBox(height: 8),
@@ -742,6 +789,89 @@ class _BankAccountVerificationDialogState
   }
 }
 
+/// The saved account and its next action stay together above verification.
+class BankingDetailsPanel extends StatelessWidget {
+  const BankingDetailsPanel({
+    super.key,
+    required this.details,
+    required this.canEdit,
+    required this.onEdit,
+    this.isBusy = false,
+    this.detailsLoaded = true,
+    this.onRetry,
+  });
+
+  final bool detailsLoaded;
+  final VoidCallback? onRetry;
+  final BankingDetails? details;
+  final bool canEdit;
+  final VoidCallback onEdit;
+  final bool isBusy;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!detailsLoaded) {
+      return Card(
+          child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                      'Your bank details could not be loaded. Please try again before making changes.'),
+                  if (onRetry != null)
+                    TextButton.icon(
+                        onPressed: onRetry,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try again')),
+                ],
+              )));
+    }
+    final saved = details;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (saved != null)
+        BankingDetailsSummary(
+          bankName: saved.bankName,
+          accountHolderName: saved.accountHolderName,
+          accountNumber: saved.accountNumber,
+          accountType: saved.accountType,
+          branchCode: saved.branchCode,
+          reference: saved.reference,
+          onEdit: canEdit && !isBusy ? onEdit : null,
+        )
+      else
+        Card(
+            child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Payout bank account',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    const Text(
+                        'Add the account that should receive payouts from your shop.'),
+                    if (canEdit) ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        key: const ValueKey('add-banking-details'),
+                        onPressed: isBusy ? null : onEdit,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add banking details',
+                            textAlign: TextAlign.center),
+                      ),
+                    ],
+                  ],
+                ))),
+      if (!canEdit) ...[
+        const SizedBox(height: 12),
+        const Text(
+            'Only the shop owner or an administrator can edit and verify banking details.'),
+      ],
+    ]);
+  }
+}
+
 /// Copy-friendly, read-only presentation of the merchant's saved account.
 class BankingDetailsSummary extends StatelessWidget {
   const BankingDetailsSummary({
@@ -752,8 +882,10 @@ class BankingDetailsSummary extends StatelessWidget {
     required this.accountType,
     required this.branchCode,
     required this.reference,
+    this.onEdit,
   });
 
+  final VoidCallback? onEdit;
   final String bankName;
   final String accountHolderName;
   final String accountNumber;
@@ -787,13 +919,24 @@ class BankingDetailsSummary extends StatelessWidget {
     // whole surface remains masked from replay and screenshot analytics.
     return PrivateRegion(
       child: Card(
-        elevation: 3,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         child: Padding(
-          padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1.5),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Text('Payout bank account',
+                  style: Theme.of(context).textTheme.titleMedium),
+              if (onEdit != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const ValueKey('edit-banking-details'),
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Edit banking details',
+                      textAlign: TextAlign.center),
+                ),
+              ],
+              const SizedBox(height: 8),
               for (final detail in _details)
                 _BankingInfoRow(
                   label: detail.key,
@@ -836,26 +979,23 @@ class _BankingInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 0.5,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            flex: 3,
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 4,
-            child: SelectableText(
-              value,
-              style: const TextStyle(color: Colors.black54),
-              textAlign: TextAlign.right,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: SpazaColors.muted,
+                    )),
+                const SizedBox(height: 4),
+                SelectableText(value, style: theme.textTheme.bodyMedium),
+              ],
             ),
           ),
           IconButton(

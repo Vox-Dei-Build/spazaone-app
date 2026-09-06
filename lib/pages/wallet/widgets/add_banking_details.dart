@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/services.dart';
 import 'package:pasella/constants/constants.dart';
-import 'package:pasella/pages/wallet/view_model/wallet_view_model.dart';
+import 'package:pasella/models/wallet/banking_detail_model.dart';
 import 'package:pasella/services/payment_setup_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
-import 'package:pasella/utils/show_toast.dart';
 import 'package:pasella/widgets/private_region.dart';
 
 @visibleForTesting
@@ -20,71 +19,61 @@ String? canonicalSettlementAccountType(String value) {
   }
 }
 
-@visibleForTesting
-abstract interface class BankingDetailsFormController {
-  TextEditingController get bankName;
-  TextEditingController get accountHolderName;
-  TextEditingController get accountNumber;
-  TextEditingController get accountType;
-  TextEditingController get branchCode;
-  TextEditingController get reference;
-  ValueListenable<bool> get isProcessing;
-
-  Future<void> saveBankingDetails();
-}
-
-class _WalletBankingDetailsFormController
-    implements BankingDetailsFormController {
-  const _WalletBankingDetailsFormController(this.walletViewModel);
-
-  final WalletViewModel walletViewModel;
-
-  @override
-  TextEditingController get bankName => walletViewModel.bankName;
-
-  @override
-  TextEditingController get accountHolderName =>
-      walletViewModel.accountHolderName;
-
-  @override
-  TextEditingController get accountNumber => walletViewModel.accountNumber;
-
-  @override
-  TextEditingController get accountType => walletViewModel.accountType;
-
-  @override
-  TextEditingController get branchCode => walletViewModel.branchCode;
-
-  @override
-  TextEditingController get reference => walletViewModel.reference;
-
-  @override
-  ValueListenable<bool> get isProcessing => walletViewModel.isProcessing;
-
-  @override
-  Future<void> saveBankingDetails() => walletViewModel.saveBankingDetails();
-}
-
+/// An isolated edit draft. Saved values change only after [onSave] succeeds.
 class AddBankingDetailsPage extends StatefulWidget {
-  final WalletViewModel? walletViewModel;
-  final BankingDetailsFormController? formController;
-  final Future<List<SupportedSettlementBank>> Function()? loadSupportedBanks;
-
   const AddBankingDetailsPage({
     super.key,
-    required this.walletViewModel,
+    required this.initialDetails,
+    required this.onSave,
+    this.isEditing = false,
+    this.canEdit,
     this.loadSupportedBanks,
-  }) : formController = null;
+  });
 
-  @visibleForTesting
-  const AddBankingDetailsPage.forTesting({
-    super.key,
-    required this.formController,
-    this.loadSupportedBanks,
-  }) : walletViewModel = null;
+  final BankingDetails initialDetails;
+  final Future<void> Function(BankingDetails details) onSave;
+  final bool isEditing;
+  final bool Function()? canEdit;
+  final Future<List<SupportedSettlementBank>> Function()? loadSupportedBanks;
 
   @override
   State<AddBankingDetailsPage> createState() => _AddBankingDetailsPageState();
+}
+
+class _BankingDetailsDraft {
+  _BankingDetailsDraft(BankingDetails details)
+      : bankName = TextEditingController(text: details.bankName),
+        accountHolderName =
+            TextEditingController(text: details.accountHolderName),
+        accountNumber = TextEditingController(text: details.accountNumber),
+        accountType = TextEditingController(text: details.accountType),
+        branchCode = TextEditingController(text: details.branchCode),
+        reference = TextEditingController(text: details.reference);
+
+  final TextEditingController bankName;
+  final TextEditingController accountHolderName;
+  final TextEditingController accountNumber;
+  final TextEditingController accountType;
+  final TextEditingController branchCode;
+  final TextEditingController reference;
+
+  BankingDetails get value => BankingDetails(
+        bankName: bankName.text.trim(),
+        accountHolderName: accountHolderName.text.trim(),
+        accountNumber: accountNumber.text.trim(),
+        accountType: accountType.text.trim(),
+        branchCode: branchCode.text.trim(),
+        reference: reference.text.trim(),
+      );
+
+  void dispose() {
+    bankName.dispose();
+    accountHolderName.dispose();
+    accountNumber.dispose();
+    accountType.dispose();
+    branchCode.dispose();
+    reference.dispose();
+  }
 }
 
 class _AddBankingDetailsPageState extends State<AddBankingDetailsPage> {
@@ -98,17 +87,24 @@ class _AddBankingDetailsPageState extends State<AddBankingDetailsPage> {
   String? _selectedAccountType;
   String? _bankLoadError;
   bool _loadingBanks = true;
-  late final BankingDetailsFormController _details;
+  late final _BankingDetailsDraft _details;
+  bool _saving = false;
+  String? _saveError;
 
   @override
   void initState() {
     super.initState();
-    _details = widget.formController ??
-        _WalletBankingDetailsFormController(widget.walletViewModel!);
+    _details = _BankingDetailsDraft(widget.initialDetails);
     _selectedAccountType = canonicalSettlementAccountType(
       _details.accountType.text,
     );
     _loadBanks();
+  }
+
+  @override
+  void dispose() {
+    _details.dispose();
+    super.dispose();
   }
 
   Future<void> _loadBanks() async {
@@ -178,9 +174,9 @@ class _AddBankingDetailsPageState extends State<AddBankingDetailsPage> {
     String? helper,
     Widget? suffixIcon,
   }) {
-    const borderColor = Color(0xFFDDE2E7);
+    const borderColor = SpazaColors.border;
     final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(SpazaRadius.control),
       borderSide: const BorderSide(color: borderColor),
     );
     return InputDecoration(
@@ -197,7 +193,7 @@ class _AddBankingDetailsPageState extends State<AddBankingDetailsPage> {
       border: border,
       enabledBorder: border,
       disabledBorder: border.copyWith(
-        borderSide: const BorderSide(color: Color(0xFFE8EBEE)),
+        borderSide: const BorderSide(color: SpazaColors.border),
       ),
       focusedBorder: border.copyWith(
         borderSide: const BorderSide(color: kPrimaryColor, width: 1.5),
@@ -206,216 +202,237 @@ class _AddBankingDetailsPageState extends State<AddBankingDetailsPage> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
+    if (widget.canEdit?.call() == false) {
+      setState(() => _saveError =
+          'Only the active shop owner or an administrator can edit these details.');
+      return;
+    }
     if (_formKey.currentState?.validate() != true) return;
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
     FocusManager.instance.primaryFocus?.unfocus();
     try {
-      await _details.saveBankingDetails();
+      await widget.onSave(_details.value);
       if (!mounted) return;
-      showSnackbar(context, 'Banking details saved', kPrimaryColor);
-      Navigator.pop(context);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Banking details saved')));
+      Navigator.pop(context, true);
     } catch (_) {
       if (!mounted) return;
-      showSnackbar(
-        context,
-        'Banking details could not be saved. Try again.',
-        Theme.of(context).colorScheme.error,
-      );
+      setState(() => _saveError =
+          'Banking details could not be saved. Your previous details are unchanged. Try again.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Banking Details'),
-      backgroundColor: const Color(0xFFF6F7F9),
-      body: SafeArea(
-        top: false,
-        child: Form(
-          key: _formKey,
-          child: PrivateRegion(
-            child: ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              children: [
-                const _BankingIntro(),
-                const SizedBox(height: 16),
-                _FormSection(
-                  title: 'Bank account',
-                  subtitle:
-                      'Choose the bank first. We will fill in its universal branch code.',
-                  icon: Icons.account_balance_outlined,
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
+        appBar: CustomAppBar(
+            title: widget.isEditing
+                ? 'Edit banking details'
+                : 'Add banking details'),
+        backgroundColor: SpazaColors.canvas,
+        body: SafeArea(
+          top: false,
+          child: Form(
+            key: _formKey,
+            child: PrivateRegion(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    DropdownButtonFormField<SupportedSettlementBank>(
-                      key: const ValueKey('supported-settlement-bank'),
-                      value: _selectedBank,
-                      isExpanded: true,
-                      decoration: _fieldDecoration(
-                        label: 'Bank',
-                        hint: _loadingBanks
-                            ? 'Loading supported banks…'
-                            : 'Choose a supported bank',
-                        icon: Icons.account_balance_outlined,
-                        suffixIcon: _loadingBanks
-                            ? const Padding(
-                                padding: EdgeInsets.all(14),
-                                child: SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                    _BankingIntro(isEditing: widget.isEditing),
+                    const SizedBox(height: 16),
+                    _FormSection(
+                      title: 'Bank account',
+                      subtitle:
+                          'Choose the bank first. We will fill in its universal branch code.',
+                      icon: Icons.account_balance_outlined,
+                      children: [
+                        DropdownButtonFormField<SupportedSettlementBank>(
+                          key: const ValueKey('supported-settlement-bank'),
+                          value: _selectedBank,
+                          isExpanded: true,
+                          decoration: _fieldDecoration(
+                            label: 'Bank',
+                            hint: _loadingBanks
+                                ? 'Loading supported banks…'
+                                : 'Choose a supported bank',
+                            icon: Icons.account_balance_outlined,
+                            suffixIcon: _loadingBanks
+                                ? const Padding(
+                                    padding: EdgeInsets.all(14),
+                                    child: SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          items: _banks
+                              .map(
+                                (bank) => DropdownMenuItem(
+                                  value: bank,
+                                  child: Text(
+                                    bank.name,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               )
-                            : null,
-                      ),
-                      items: _banks
-                          .map(
-                            (bank) => DropdownMenuItem(
-                              value: bank,
-                              child: Text(
-                                bank.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _loadingBanks || _bankLoadError != null
-                          ? null
-                          : _selectBank,
-                      validator: (value) =>
-                          value == null ? 'Choose a supported bank.' : null,
+                              .toList(),
+                          onChanged: _loadingBanks || _bankLoadError != null
+                              ? null
+                              : _selectBank,
+                          validator: (value) =>
+                              value == null ? 'Choose a supported bank.' : null,
+                        ),
+                        if (_bankLoadError case final message?) ...[
+                          const SizedBox(height: 12),
+                          _BankLoadError(message: message, onRetry: _loadBanks),
+                        ],
+                        if (_selectedBank case final bank?) ...[
+                          const SizedBox(height: 12),
+                          _BranchCodeSummary(branchCode: bank.branchCode),
+                        ],
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          key: const ValueKey('settlement-bank-account-type'),
+                          value: _selectedAccountType,
+                          isExpanded: true,
+                          decoration: _fieldDecoration(
+                            label: 'Account type',
+                            hint: _selectedBank == null
+                                ? 'Choose a bank first'
+                                : 'Choose account type',
+                            helper: 'Use the type registered with your bank.',
+                            icon: Icons.account_box_outlined,
+                          ),
+                          items:
+                              (_selectedBank?.supportedAccountTypes ?? const [])
+                                  .map(
+                                    (accountType) => DropdownMenuItem(
+                                      value: accountType,
+                                      child: Text(
+                                        _accountTypeLabels[accountType] ??
+                                            accountType,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged:
+                              _selectedBank == null ? null : _selectAccountType,
+                          validator: (value) =>
+                              value == null ? 'Choose the account type.' : null,
+                        ),
+                      ],
                     ),
-                    if (_bankLoadError case final message?) ...[
+                    const SizedBox(height: 16),
+                    _FormSection(
+                      title: 'Account details',
+                      subtitle:
+                          'Enter the details exactly as they appear on the bank account.',
+                      icon: Icons.badge_outlined,
+                      children: [
+                        TextFormField(
+                          key: const ValueKey('settlement-account-holder'),
+                          controller: _details.accountHolderName,
+                          textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.name],
+                          decoration: _fieldDecoration(
+                            label: 'Account holder',
+                            hint: 'Full registered name',
+                            icon: Icons.person_outline,
+                          ),
+                          validator: (value) => (value?.trim().length ?? 0) < 2
+                              ? 'Enter the account holder name.'
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          key: const ValueKey('settlement-account-number'),
+                          controller: _details.accountNumber,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.next,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          maxLength: 20,
+                          decoration: _fieldDecoration(
+                            label: 'Account number',
+                            hint: '5–20 digits',
+                            icon: Icons.account_balance_wallet_outlined,
+                          ).copyWith(counterText: ''),
+                          validator: (value) => !RegExp(
+                            r'^\d{5,20}$',
+                          ).hasMatch(value?.trim() ?? '')
+                              ? 'Enter a valid account number.'
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          key: const ValueKey('settlement-reference'),
+                          controller: _details.reference,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _save(),
+                          decoration: _fieldDecoration(
+                            label: 'Payment reference (optional)',
+                            hint: 'Name shown on payout records',
+                            icon: Icons.notes_outlined,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const _PrivacyNote(),
+                    const SizedBox(height: 20),
+                    if (_saveError case final message?) ...[
+                      Semantics(
+                          liveRegion: true,
+                          child: Text(message,
+                              key: const ValueKey('banking-save-error'),
+                              style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error))),
                       const SizedBox(height: 12),
-                      _BankLoadError(message: message, onRetry: _loadBanks),
                     ],
-                    if (_selectedBank case final bank?) ...[
-                      const SizedBox(height: 12),
-                      _BranchCodeSummary(branchCode: bank.branchCode),
-                    ],
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      key: const ValueKey('settlement-bank-account-type'),
-                      value: _selectedAccountType,
-                      isExpanded: true,
-                      decoration: _fieldDecoration(
-                        label: 'Account type',
-                        hint: _selectedBank == null
-                            ? 'Choose a bank first'
-                            : 'Choose account type',
-                        helper: 'Use the type registered with your bank.',
-                        icon: Icons.account_box_outlined,
-                      ),
-                      items: (_selectedBank?.supportedAccountTypes ?? const [])
-                          .map(
-                            (accountType) => DropdownMenuItem(
-                              value: accountType,
-                              child: Text(
-                                _accountTypeLabels[accountType] ?? accountType,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged:
-                          _selectedBank == null ? null : _selectAccountType,
-                      validator: (value) =>
-                          value == null ? 'Choose the account type.' : null,
+                    FilledButton.icon(
+                      key: const ValueKey('save-banking-details'),
+                      onPressed:
+                          _saving || _loadingBanks || _bankLoadError != null
+                              ? null
+                              : _save,
+                      icon: _saving
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2))
+                          : const Icon(Icons.check_rounded),
+                      label: Text(_saving ? 'Saving…' : 'Save banking details',
+                          textAlign: TextAlign.center),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      key: const ValueKey('cancel-banking-details'),
+                      onPressed:
+                          _saving ? null : () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                _FormSection(
-                  title: 'Account details',
-                  subtitle:
-                      'Enter the details exactly as they appear on the bank account.',
-                  icon: Icons.badge_outlined,
-                  children: [
-                    TextFormField(
-                      key: const ValueKey('settlement-account-holder'),
-                      controller: _details.accountHolderName,
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.name],
-                      decoration: _fieldDecoration(
-                        label: 'Account holder',
-                        hint: 'Full registered name',
-                        icon: Icons.person_outline,
-                      ),
-                      validator: (value) => (value?.trim().length ?? 0) < 2
-                          ? 'Enter the account holder name.'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      key: const ValueKey('settlement-account-number'),
-                      controller: _details.accountNumber,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.next,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      maxLength: 20,
-                      decoration: _fieldDecoration(
-                        label: 'Account number',
-                        hint: '5–20 digits',
-                        icon: Icons.account_balance_wallet_outlined,
-                      ).copyWith(counterText: ''),
-                      validator: (value) => !RegExp(
-                        r'^\d{5,20}$',
-                      ).hasMatch(value?.trim() ?? '')
-                          ? 'Enter a valid account number.'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      key: const ValueKey('settlement-reference'),
-                      controller: _details.reference,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _save(),
-                      decoration: _fieldDecoration(
-                        label: 'Payment reference (optional)',
-                        hint: 'Name shown on payout records',
-                        icon: Icons.notes_outlined,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const _PrivacyNote(),
-                const SizedBox(height: 20),
-                ValueListenableBuilder<bool>(
-                  valueListenable: _details.isProcessing,
-                  builder: (context, isProcessing, _) {
-                    return SizedBox(
-                      height: 54,
-                      child: FilledButton.icon(
-                        key: const ValueKey('save-banking-details'),
-                        onPressed: isProcessing ? null : _save,
-                        icon: isProcessing
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.check_rounded),
-                        label: Text(
-                          isProcessing ? 'Saving…' : 'Save banking details',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: kPrimaryColor,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -425,37 +442,45 @@ class _AddBankingDetailsPageState extends State<AddBankingDetailsPage> {
 }
 
 class _BankingIntro extends StatelessWidget {
-  const _BankingIntro();
+  const _BankingIntro({required this.isEditing});
+
+  final bool isEditing;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kTertiaryColor,
-        borderRadius: BorderRadius.circular(16),
+        color: SpazaColors.subtle,
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.payments_outlined, color: Colors.white, size: 28),
-          SizedBox(width: 12),
+          const Icon(Icons.payments_outlined,
+              color: SpazaColors.heading, size: 28),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Where should payouts go?',
-                  style: TextStyle(
-                    color: Colors.white,
+                  isEditing
+                      ? 'Update your payout account'
+                      : 'Where should payouts go?',
+                  style: const TextStyle(
+                    color: SpazaColors.heading,
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
-                  'Save the account that should receive money from your shop.',
-                  style: TextStyle(color: Color(0xFFDDE0EE), height: 1.35),
+                  isEditing
+                      ? 'Review the saved details below. Changes may need a new bank verification.'
+                      : 'Save the account that should receive money from your shop.',
+                  style:
+                      const TextStyle(color: SpazaColors.muted, height: 1.35),
                 ),
               ],
             ),
@@ -485,8 +510,8 @@ class _FormSection extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6E9ED)),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        border: Border.all(color: SpazaColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -499,7 +524,7 @@ class _FormSection extends StatelessWidget {
                 height: 38,
                 decoration: BoxDecoration(
                   color: kHighLightColor,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(SpazaRadius.small),
                 ),
                 child: Icon(icon, color: kPrimaryColor, size: 21),
               ),
@@ -513,7 +538,7 @@ class _FormSection extends StatelessWidget {
                       style: const TextStyle(
                         color: kTertiaryColor,
                         fontSize: 16,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -549,27 +574,34 @@ class _BranchCodeSummary extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: kHighLightColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.numbers_rounded, color: kPrimaryColor, size: 20),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Universal branch code',
-              style: TextStyle(
-                color: kSecondaryAccent,
-                fontWeight: FontWeight.w600,
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.numbers_rounded, color: kPrimaryColor, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Universal branch code',
+                  style: TextStyle(
+                    color: kSecondaryAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
+          const SizedBox(height: 8),
           SelectableText(
             branchCode,
             style: const TextStyle(
               color: kTertiaryColor,
               fontSize: 16,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
               letterSpacing: 0.6,
             ),
           ),
@@ -593,7 +625,7 @@ class _BankLoadError extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: error.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         border: Border.all(color: error.withValues(alpha: 0.22)),
       ),
       child: Column(

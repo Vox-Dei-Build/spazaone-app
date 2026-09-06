@@ -65,7 +65,7 @@ void main() {
     );
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byIcon(Icons.inventory_outlined));
+    await tester.tap(find.byTooltip('Products'));
     expect(selected, 1);
   });
 

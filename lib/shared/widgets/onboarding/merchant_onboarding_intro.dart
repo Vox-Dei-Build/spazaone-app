@@ -1,139 +1,107 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
-/// A concise first-run hand-off into the merchant's real workspace.
-///
-/// The previous paged walkthrough made the primary action move between
-/// screens and could look broken when a system dialog or small phone changed
-/// the available height. This single sheet keeps one clear starting action;
-/// the full checklist remains available from My Store → Shop setup.
+/// One optional first step into the real workspace, with no required order.
+/// The rest of the guide stays available in Settings → Shop setup.
 class MerchantOnboardingIntro extends StatelessWidget {
   const MerchantOnboardingIntro({
     super.key,
     required this.onOpenCustomers,
     required this.onOpenProducts,
+    this.onExplore,
   });
 
   final VoidCallback onOpenCustomers;
-
-  /// Retained for source compatibility with existing callers. Product setup
-  /// remains the second step in Shop Setup; first run deliberately starts
-  /// with a customer so the sheet has one unambiguous primary action.
   final VoidCallback onOpenProducts;
+  final VoidCallback? onExplore;
 
-  void _dismiss(
-    BuildContext context, [
-    MerchantOnboardingIntroAction? action,
-  ]) {
-    final navigator = Navigator.of(context);
-    if (navigator.canPop()) {
-      navigator.pop(action);
+  void _dismiss(BuildContext context, [MerchantOnboardingIntroAction? action]) {
+    // A sheet returns its choice so Dashboard can navigate after it closes.
+    // Inline previews and pages use callbacks instead of popping their route.
+    if (ModalRoute.of(context) is PopupRoute) {
+      Navigator.of(context).pop(action);
       return;
     }
-
-    // Widget tests and any future inline render can mount this outside a
-    // modal route. Preserve the existing callback contract in that case.
     switch (action) {
       case MerchantOnboardingIntroAction.openCustomers:
         onOpenCustomers();
       case MerchantOnboardingIntroAction.openProducts:
         onOpenProducts();
       case null:
-        break;
+        onExplore?.call();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-
     return SafeArea(
       top: false,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          LayoutConstants.spaceXl,
-          LayoutConstants.spaceMd,
-          LayoutConstants.spaceXl,
-          LayoutConstants.spaceLg,
-        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
+            if (ModalRoute.of(context) is PopupRoute) ...[
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: SpazaColors.outline,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+            Align(
+              alignment: Alignment.centerLeft,
               child: Container(
-                width: 36,
-                height: 4,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(4),
+                  color: SpazaColors.subtle,
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
+                child: const Icon(SpazaIcons.shop, color: SpazaColors.heading),
               ),
             ),
-            const SizedBox(height: LayoutConstants.spaceLg),
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Icon(Icons.storefront_outlined, color: primary, size: 28),
-            ),
-            const SizedBox(height: LayoutConstants.spaceLg),
+            const SizedBox(height: 20),
+            Text('Welcome to Spaza One', style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 8),
             Text(
-              'Welcome to Spaza One',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              'Start with what you need today. You can add the rest later.',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: SpazaColors.muted),
             ),
-            const SizedBox(height: LayoutConstants.spaceXs),
-            Text(
-              'Start with one customer. You can return to Shop setup from My Store.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: LayoutConstants.spaceLg),
-            const _SetupStep(
-              number: 1,
-              icon: Icons.person_add_alt_1_outlined,
+            const SizedBox(height: 24),
+            _FirstAction(
+              icon: SpazaIcons.customers,
               title: 'Add a customer',
+              description: 'Keep their details and balances together.',
+              onTap: () => _dismiss(
+                  context, MerchantOnboardingIntroAction.openCustomers),
             ),
-            const SizedBox(height: LayoutConstants.spaceSm),
-            const _SetupStep(
-              number: 2,
-              icon: Icons.inventory_2_outlined,
+            const SizedBox(height: 12),
+            _FirstAction(
+              icon: SpazaIcons.products,
               title: 'Add a product',
+              description: 'Set a price and keep track of stock.',
+              onTap: () =>
+                  _dismiss(context, MerchantOnboardingIntroAction.openProducts),
             ),
-            const SizedBox(height: LayoutConstants.spaceXl),
-            FilledButton.icon(
-              onPressed: () => _dismiss(
-                context,
-                MerchantOnboardingIntroAction.openCustomers,
-              ),
-              icon: const Icon(Icons.person_add_alt_1_outlined),
-              label: const Text('Add my first customer'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(
-                  LayoutConstants.minTouchTarget,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            const SizedBox(height: 20),
+            Text(
+              'Find the full guide in Settings → Shop setup whenever you need it.',
+              style:
+                  theme.textTheme.bodySmall?.copyWith(color: SpazaColors.muted),
             ),
-            const SizedBox(height: LayoutConstants.spaceXs),
-            Center(
-              child: TextButton(
-                onPressed: () => _dismiss(context),
-                child: const Text('I’ll do this later'),
-              ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => _dismiss(context),
+              child: const Text('Explore the app'),
             ),
           ],
         ),
@@ -144,59 +112,57 @@ class MerchantOnboardingIntro extends StatelessWidget {
 
 enum MerchantOnboardingIntroAction { openCustomers, openProducts }
 
-class _SetupStep extends StatelessWidget {
-  const _SetupStep({
-    required this.number,
+class _FirstAction extends StatelessWidget {
+  const _FirstAction({
     required this.icon,
     required this.title,
+    required this.description,
+    required this.onTap,
   });
 
-  final int number;
   final IconData icon;
   final String title;
+  final String description;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+    return Material(
+      color: SpazaColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        side: const BorderSide(color: SpazaColors.border),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: primary.withValues(alpha: 0.10),
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              '$number',
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: primary,
-                fontWeight: FontWeight.w800,
-              ),
+      clipBehavior: Clip.antiAlias,
+      child: Semantics(
+        button: true,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(icon, color: SpazaColors.muted),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: theme.textTheme.titleSmall),
+                      const SizedBox(height: 4),
+                      Text(description,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: SpazaColors.muted)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(SpazaIcons.next, size: 20, color: SpazaColors.muted),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-          Icon(icon, size: 21, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -1,8 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pasella/constants/constants.dart';
+import 'package:pasella/pages/settings/stores/store_management_page.dart';
 import 'package:pasella/pages/settings/stores/store_workspace_card.dart';
 
 void main() {
+  testWidgets('store entry shows a long active name at 320px with large text',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 568));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const name = 'Soweto Market and Community Grocery Store';
+    await tester.pumpWidget(MaterialApp(
+      theme: kCustomThemeData,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(2),
+        ),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              StoreWorkspaceCard(
+                activeStoreName: name,
+                storeCount: 2,
+                role: 'owner',
+                onTap: () {},
+              ),
+              const ActiveStoreSummary(storeName: name, role: 'Owner'),
+            ],
+          ),
+        ),
+      ),
+    ));
+    expect(find.text(name), findsNWidgets(2));
+    for (final nameText in tester.widgetList<Text>(find.text(name))) {
+      expect(nameText.maxLines, isNull);
+    }
+    expect(find.text('Active store · Owner'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('store workspace entry makes active store and team discoverable',
       (
     tester,
@@ -26,7 +65,7 @@ void main() {
       ),
     );
 
-    expect(find.text('STORES & TEAM'), findsOneWidget);
+    expect(find.text('Stores & team'), findsOneWidget);
     expect(find.text('Soweto Market'), findsOneWidget);
     expect(find.text('2 stores · Owner'), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/utils/currency_util.dart';
 
@@ -133,7 +134,7 @@ class _RepaymentPlanSheetState extends State<RepaymentPlanSheet> {
               Text(
                 '${widget.customerName} owes ${CurrencyUtil.format(widget.outstandingAmountMinor / 100)}. Choose a plan they can pay securely from WhatsApp.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF6B7280),
+                  color: SpazaColors.muted,
                 ),
               ),
               const SizedBox(height: 20),
@@ -146,7 +147,6 @@ class _RepaymentPlanSheetState extends State<RepaymentPlanSheet> {
                 decoration: const InputDecoration(
                   labelText: 'Amount covered by plan',
                   prefixText: 'R ',
-                  border: OutlineInputBorder(),
                 ),
                 validator: _totalError,
               ),
@@ -160,17 +160,17 @@ class _RepaymentPlanSheetState extends State<RepaymentPlanSheet> {
                 decoration: const InputDecoration(
                   labelText: 'Amount per installment',
                   prefixText: 'R ',
-                  border: OutlineInputBorder(),
                 ),
                 validator: _installmentError,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
+                isExpanded: true,
+                itemHeight: null,
                 key: const Key('repayment-plan-cadence'),
                 value: _cadence,
                 decoration: const InputDecoration(
                   labelText: 'Payment frequency',
-                  border: OutlineInputBorder(),
                 ),
                 items: const [
                   DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
@@ -201,7 +201,7 @@ class _RepaymentPlanSheetState extends State<RepaymentPlanSheet> {
                 key: const Key('repayment-plan-create'),
                 onPressed: _submit,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF168B3F),
+                  backgroundColor: SpazaColors.action,
                   minimumSize: const Size.fromHeight(52),
                 ),
                 child: const Text('Create plan'),

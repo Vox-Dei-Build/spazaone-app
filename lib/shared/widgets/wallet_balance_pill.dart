@@ -1,3 +1,4 @@
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
@@ -107,7 +108,7 @@ class WalletBalancePill extends StatelessWidget {
                     ),
                     child: Icon(
                       Icons.circle,
-                      color: Colors.green,
+                      color: SpazaColors.action,
                       size: SizeConfig.imageSizeMultiplier * 2.5,
                     ),
                   ),
@@ -137,11 +138,10 @@ class _PillBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isLow
-        ? Colors.orange.withValues(alpha: 0.12)
-        : Colors.black.withValues(alpha: 0.05);
-    final border = isLow ? Colors.orange : Colors.black26;
-    final fg = isLow ? Colors.orange.shade800 : Colors.black87;
+    final bg =
+        isLow ? Colors.orange.withValues(alpha: 0.12) : SpazaColors.subtle;
+    final border = isLow ? Colors.orange : SpazaColors.border;
+    final fg = isLow ? Colors.orange.shade800 : SpazaColors.heading;
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,

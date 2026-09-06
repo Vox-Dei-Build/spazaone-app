@@ -1,3 +1,4 @@
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/material.dart';
 
 class CustomerGrowthNudge extends StatelessWidget {
@@ -29,9 +30,9 @@ class CustomerGrowthNudge extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(4, 8, 4, 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: primary.withValues(alpha: 0.18)),
+        color: SpazaColors.subtle,
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
+        border: Border.all(color: SpazaColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -44,11 +45,11 @@ class CustomerGrowthNudge extends StatelessWidget {
                 height: 38,
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.groups_2_outlined,
-                  color: primary,
+                  color: SpazaColors.muted,
                 ),
               ),
               const SizedBox(width: 12),
@@ -59,7 +60,7 @@ class CustomerGrowthNudge extends StatelessWidget {
                     Text(
                       'Build toward 10 customers',
                       style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),

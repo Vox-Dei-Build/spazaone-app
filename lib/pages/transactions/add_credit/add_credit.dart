@@ -27,12 +27,11 @@ class AddCreditScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create:
-          (_) => AddCreditViewModel(
-            customerName: customerName,
-            customerId: customerId,
-            mobileNumber: mobileNumber,
-          ),
+      create: (_) => AddCreditViewModel(
+        customerName: customerName,
+        customerId: customerId,
+        mobileNumber: mobileNumber,
+      ),
       child: Consumer<AddCreditViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
@@ -46,7 +45,7 @@ class AddCreditScreen extends StatelessWidget {
             primaryActionColor: Colors.red,
             totalLabel: Text(
               'Total: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             onPrimaryAction: () => viewModel.addCreditTransaction(context),
             body: Column(
@@ -86,7 +85,7 @@ class AddCreditScreen extends StatelessWidget {
                 const SizedBox(height: LayoutConstants.spaceMd),
                 const Text(
                   'Products (optional)',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: LayoutConstants.spaceSm),
                 ProductSelectionWidget<AddCreditViewModel>(
@@ -98,7 +97,6 @@ class AddCreditScreen extends StatelessWidget {
                   maxLines: 3,
                   decoration: const InputDecoration(
                     labelText: 'Remarks/Notes',
-                    border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(
                       vertical: LayoutConstants.spaceMd,
                       horizontal: LayoutConstants.spaceMd,

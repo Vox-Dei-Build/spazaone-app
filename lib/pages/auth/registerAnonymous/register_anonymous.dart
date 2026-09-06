@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/pages/auth/widgets/auth_shell.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/auth/view_model/auth_view_model.dart';
-import 'package:pasella/pages/auth/widgets/logo_display.dart';
-import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/vimeo_video_player.dart';
 import 'package:pasella/utils/auth_util.dart';
 import 'package:pasella/utils/phone_util.dart';
-import 'package:pasella/shared/widgets/custom_text_button.dart';
-import 'package:pasella/shared/widgets/custom_text_field.dart';
-import 'package:pasella/widgets/private_region.dart';
 
 class RegisterAnonymousPage extends StatefulWidget {
   const RegisterAnonymousPage({Key? key}) : super(key: key);
   static const id = '/registerAnonymousPage';
 
   @override
-  _RegisterAnonymousPageState createState() => _RegisterAnonymousPageState();
+  State<RegisterAnonymousPage> createState() => _RegisterAnonymousPageState();
 }
 
 class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
@@ -36,155 +31,91 @@ class _RegisterAnonymousPageState extends State<RegisterAnonymousPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
-    return Scaffold(
-      appBar: const CustomAppBar(title: 'Create Account'),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.imageSizeMultiplier * 6,
-          ),
-          child: Form(
-            key: authViewModel.registrationFormKey,
-            child: Column(
-              children: <Widget>[
-                SizedBox(height: SizeConfig.heightMultiplier * 5),
-                const LogoDisplay(),
-                SizedBox(height: SizeConfig.heightMultiplier * 5),
-                PrivateRegion(
-                  child: CustomTextField(
-                    label: 'Full Name',
-                    hintText: 'Enter Full Name',
-                    prefixIcon: Icons.person,
-                    controller: authViewModel.nameController,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Full Name is required';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                PrivateRegion(
-                  child: CustomTextField(
-                    label: 'Shop Name',
-                    hintText: 'Enter Shop Name',
-                    prefixIcon: Icons.store,
-                    controller: authViewModel.shopNameController,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Shop Name is required';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                PrivateRegion(
-                  child: CustomTextField(
-                    label: 'Mobile Number',
-                    hintText: 'Enter Mobile Number',
-                    prefixIcon: Icons.phone,
-                    controller: authViewModel.registrationMobileNoController,
-                    textInputType: TextInputType.phone,
-                    autofillHints: const [AutofillHints.telephoneNumber],
-                    textInputAction: TextInputAction.done,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Mobile Number is required';
-                      }
-                      if (!isValidSAPhoneNumber(value)) {
-                        return kSAOnlyPhoneMessage;
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                ValueListenableBuilder<bool>(
-                  valueListenable: authViewModel.isLoading,
-                  builder: (context, isLoading, child) {
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CustomButton(
-                          title: 'Create Account',
-                          onTap:
-                              isLoading
-                                  ? () {}
-                                  : () {
-                                    if (authViewModel
-                                        .registrationFormKey
-                                        .currentState!
-                                        .validate()) {
-                                      authViewModel.registerAnonymousAccount(
-                                        context,
-                                        referrerUserId: referrerUserId,
-                                      );
-                                    }
-                                  },
-                          color: Colors.blue,
-                          icon: Icons.person_add,
-                        ),
-                        if (isLoading)
-                          const CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.white,
-                            ),
-                          ),
-                      ],
-                    );
+  Widget build(BuildContext context) => AuthShell(
+        title: 'Create your account',
+        subtitle: 'Add your details to keep your shop connected.',
+        child: Form(
+          key: authViewModel.registrationFormKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AuthField(
+                label: 'Full name',
+                hint: 'e.g. Thandi Mokoena',
+                controller: authViewModel.nameController,
+                validator: (value) => value == null || value.isEmpty
+                    ? 'Full Name is required'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              AuthField(
+                label: 'Business name',
+                hint: 'e.g. The Corner Shop',
+                controller: authViewModel.shopNameController,
+                validator: (value) => value == null || value.isEmpty
+                    ? 'Shop Name is required'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              AuthField(
+                label: 'Mobile number',
+                hint: '082 123 4567',
+                controller: authViewModel.registrationMobileNoController,
+                keyboardType: TextInputType.phone,
+                autofillHints: const [AutofillHints.telephoneNumber],
+                textInputAction: TextInputAction.done,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Mobile Number is required';
+                  }
+                  if (!isValidSAPhoneNumber(value)) return kSAOnlyPhoneMessage;
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              ValueListenableBuilder<bool>(
+                valueListenable: authViewModel.isLoading,
+                builder: (context, isLoading, _) => AuthPrimaryButton(
+                  label: 'Create account',
+                  isLoading: isLoading,
+                  onPressed: () {
+                    if (authViewModel.registrationFormKey.currentState!
+                        .validate()) {
+                      authViewModel.registerAnonymousAccount(
+                        context,
+                        referrerUserId: referrerUserId,
+                      );
+                    }
                   },
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                CustomButton(
-                  title: 'How To Video',
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder:
-                            (context) => const VimeoVideoPage(
-                              videoId: '935735574',
-                              title: '',
-                            ),
-                      ),
-                    );
-                  },
-                  color: Colors.lightBlue,
-                  icon: Icons.video_library,
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                OverflowBar(
-                  alignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Text(
-                      'Already have an account?',
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: SizeConfig.textMultiplier * 2,
-                      ),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const VimeoVideoPage(
+                      videoId: '935735574',
+                      title: '',
                     ),
-                    TextButton(
-                      child: Text(
-                        'LOGIN',
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 2,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      onPressed: () {
-                        logout(context);
-                      },
-                    ),
-                  ],
+                  ),
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-              ],
-            ),
+                icon: const Icon(Icons.play_circle_outline_rounded),
+                label: const Text('How-to video'),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('Already have an account?'),
+                  TextButton(
+                    onPressed: () => logout(context),
+                    child: const Text('Log in'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-      ),
-    );
-  }
+      );
 }

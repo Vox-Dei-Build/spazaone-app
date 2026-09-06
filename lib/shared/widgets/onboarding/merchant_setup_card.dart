@@ -1,3 +1,4 @@
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pasella/services/store_session.dart';
@@ -41,16 +42,17 @@ class MerchantSetupActions {
 
 /// The merchant setup card.
 ///
-/// Walks a fresh merchant through the six things that need to be true before
-/// their shop can trade, order, get paid, and market. It lives in Settings →
-/// Shop Setup so the daily Customers surface remains focused:
+/// A resumable guide to everyday tools and optional ordering, payout and
+/// marketing features. Merchants can use the app before completing every
+/// item. It lives in Settings → Shop setup:
 ///
 ///   1. Add first customer
 ///   2. Add first product
 ///   3. Choose WhatsApp-listed products
 ///   4. Ordering link ready
-///   5. Payout details added
-///   6. Promotion template approved
+///   5. Order options chosen
+///   6. Payout details added
+///   7. Promotion template approved
 ///
 /// Marketing (steps 3, 4, 6) is deliberately gated behind having at
 /// least one product — the disabled rows still communicate "these
@@ -285,7 +287,7 @@ class _SetupSkeleton extends StatelessWidget {
                     height: 40,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(SpazaRadius.control),
                     ),
                   ),
                   const SizedBox(width: LayoutConstants.spaceMd),
@@ -322,7 +324,7 @@ class _SetupSkeleton extends StatelessWidget {
                 height: 76,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
               ),
               const SizedBox(height: LayoutConstants.spaceMd),
@@ -383,6 +385,12 @@ class _SetupPanel extends StatelessWidget {
               completed: completed,
               total: state.totalSteps,
             ),
+            const SizedBox(height: 12),
+            Text(
+              'Use the tools you need. Online ordering, payouts and promotions can wait.',
+              style:
+                  theme.textTheme.bodySmall?.copyWith(color: SpazaColors.muted),
+            ),
             const SizedBox(height: LayoutConstants.spaceMd),
             ClipRRect(
               borderRadius: BorderRadius.circular(999),
@@ -397,12 +405,23 @@ class _SetupPanel extends StatelessWidget {
               const SizedBox(height: LayoutConstants.spaceLg),
               _NextActionPanel(step: nextStep),
             ],
-            const SizedBox(height: LayoutConstants.spaceLg),
-            // The current action is already presented prominently above.
-            // Keep the checklist useful without repeating the same title and
-            // CTA twice in one card.
-            for (final step in steps.where((step) => step != nextStep))
-              _StepRow(step: step),
+            if (steps.take(2).any((step) => step != nextStep)) ...[
+              const SizedBox(height: 24),
+              Text('Everyday tools', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              for (final step
+                  in steps.take(2).where((step) => step != nextStep))
+                _StepRow(step: step),
+            ],
+            if (steps.skip(2).any((step) => step != nextStep)) ...[
+              const SizedBox(height: 24),
+              Text('Add more when you’re ready',
+                  style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              for (final step
+                  in steps.skip(2).where((step) => step != nextStep))
+                _StepRow(step: step),
+            ],
           ],
         ),
       ),
@@ -419,7 +438,6 @@ class _SetupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
 
     return Row(
       children: [
@@ -427,12 +445,12 @@ class _SetupHeader extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: primary.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(10),
+            color: SpazaColors.subtle,
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
           ),
-          child: Icon(
+          child: const Icon(
             Icons.rocket_launch_outlined,
-            color: primary,
+            color: SpazaColors.muted,
             size: 22,
           ),
         ),
@@ -444,7 +462,7 @@ class _SetupHeader extends StatelessWidget {
               Text(
                 'Set up your shop',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 2),
@@ -478,8 +496,8 @@ class _NextActionPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(LayoutConstants.spaceMd),
       decoration: BoxDecoration(
-        color: primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        color: SpazaColors.subtle,
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -497,7 +515,7 @@ class _NextActionPanel extends StatelessWidget {
                       'Up next',
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: primary,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         letterSpacing: 0.4,
                       ),
                     ),
@@ -505,7 +523,7 @@ class _NextActionPanel extends StatelessWidget {
                     Text(
                       step.actionTitle,
                       style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -529,10 +547,10 @@ class _NextActionPanel extends StatelessWidget {
               minimumSize:
                   const Size.fromHeight(LayoutConstants.minTouchTarget),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(SpazaRadius.control),
               ),
               textStyle: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
             child: Text(step.actionLabel!),
@@ -581,7 +599,7 @@ class _StepRow extends StatelessWidget {
                 Text(
                   step.rowTitle,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                     color: titleColor,
                   ),
                 ),
@@ -695,7 +713,7 @@ class _ShopLinkPanel extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                     color: primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(SpazaRadius.control),
                   ),
                   child: Icon(
                     FontAwesomeIcons.whatsapp,
@@ -711,7 +729,7 @@ class _ShopLinkPanel extends StatelessWidget {
                       Text(
                         'Your shop link is ready',
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -753,10 +771,10 @@ class _ShopLinkPanel extends StatelessWidget {
                 minimumSize:
                     const Size.fromHeight(LayoutConstants.minTouchTarget),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
                 textStyle: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -791,7 +809,7 @@ class _LinkPreview extends StatelessWidget {
       decoration: BoxDecoration(
         color:
             theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         border: Border.all(color: borderColor),
       ),
       child: Row(
@@ -802,7 +820,7 @@ class _LinkPreview extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -821,7 +839,7 @@ class _LinkPreview extends StatelessWidget {
               child: Text(
                 code,
                 style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -894,10 +912,10 @@ List<_SetupStep> _buildSteps(
           s.hasCustomers ? 'First customer saved' : 'Save your first customer',
       rowBody: s.hasCustomers
           ? 'Customer capture is ready for transactions, orders and follow-up.'
-          : 'Save one real customer before setting up the rest.',
+          : 'Keep customer details and balances in one place.',
       actionTitle: 'Save your first customer',
       actionBody:
-          'Save one real customer before setting up products, ordering or marketing.',
+          'Start with someone who shops with you. Add their details and record what they owe or pay.',
       actionLabel: 'Add customer',
       action: a.onAddCustomer,
     ),
@@ -908,7 +926,7 @@ List<_SetupStep> _buildSteps(
           s.hasProducts ? 'First product added' : 'Add your first product',
       rowBody: s.hasProducts
           ? 'Products can now support item-level sales, stock and WhatsApp orders.'
-          : 'Add the item customers buy most often before ordering or marketing.',
+          : 'Start with an item you sell often, then add its price and stock.',
       actionTitle: 'Add your first product',
       actionBody:
           'Start with the item you sell most often. Products power sales detail and WhatsApp ordering.',
@@ -922,7 +940,7 @@ List<_SetupStep> _buildSteps(
           ? 'WhatsApp products chosen'
           : 'Choose WhatsApp products',
       rowBody: s.hasListedProduct
-          ? 'Customer-facing products are visible for WhatsApp orders.'
+          ? 'Products selected. Check catalogue status to confirm they are live.'
           : s.hasProducts
               ? 'Choose which products customers can order on WhatsApp.'
               : 'Available after a product exists.',
@@ -973,10 +991,11 @@ List<_SetupStep> _buildSteps(
       icon: Icons.account_balance_outlined,
       rowTitle: s.hasBank ? 'Payout details added' : 'Add payout details',
       rowBody: s.hasBank
-          ? 'Banking details are saved so we can pay you out.'
-          : 'Add banking details so we can pay you out.',
+          ? 'Details saved. Check verification status in Banking details.'
+          : 'Add and verify a bank account when you need online payouts.',
       actionTitle: 'Add payout details',
-      actionBody: 'Add banking details so we can pay you out.',
+      actionBody:
+          'Add your payout account, then follow the bank verification steps.',
       actionLabel: 'Add bank',
       action: a.onOpenBanking,
     ),

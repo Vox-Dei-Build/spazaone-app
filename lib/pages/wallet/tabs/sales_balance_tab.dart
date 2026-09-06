@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/services/payment_setup_service.dart';
@@ -49,7 +50,7 @@ class MoneyPayoutsSection extends StatelessWidget {
           DecoratedBox(
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.errorContainer,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(SpazaRadius.surface),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -70,7 +71,7 @@ class MoneyPayoutsSection extends StatelessWidget {
             'Online sales payouts',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: kTertiaryColor,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
           ),
           const SizedBox(height: 14),
@@ -85,7 +86,7 @@ class MoneyPayoutsSection extends StatelessWidget {
             DecoratedBox(
               decoration: const BoxDecoration(
                 border: Border(
-                  top: BorderSide(color: Color(0xFFE4E7E5)),
+                  top: BorderSide(color: SpazaColors.border),
                 ),
               ),
               child: Column(
@@ -120,7 +121,7 @@ class _MoneyPayoutsLoading extends StatelessWidget {
               height: 132,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(SpazaRadius.surface),
               ),
             ),
             const SizedBox(height: 24),
@@ -150,7 +151,7 @@ class _PayoutTotals extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: kHighLightColor,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -192,7 +193,7 @@ class _LineTotal extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         children: [
           Expanded(child: Text(label)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       );
 }
@@ -275,7 +276,7 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
             height: 54,
             decoration: BoxDecoration(
               color: kHighLightColor,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(SpazaRadius.surface),
             ),
             child: const Icon(
               Icons.account_balance_outlined,
@@ -289,7 +290,7 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
           title,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: kTertiaryColor,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w500,
               ),
         ),
         const SizedBox(height: 8),
@@ -305,7 +306,7 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
           DecoratedBox(
             decoration: BoxDecoration(
               color: kHighLightColor,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(SpazaRadius.surface),
             ),
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -332,7 +333,7 @@ class _OnlinePaymentSetupBlock extends StatelessWidget {
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(50),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(SpazaRadius.surface),
               ),
             ),
             child: Text(actionLabel),
@@ -417,7 +418,7 @@ class _PayoutRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text(amount, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(amount, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );

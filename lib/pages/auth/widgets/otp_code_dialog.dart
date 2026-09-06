@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pasella/pages/auth/widgets/auth_shell.dart';
 import 'package:pasella/widgets/private_region.dart';
 
 typedef OtpVerifyCallback = Future<bool> Function(String code);
@@ -18,6 +19,9 @@ Future<bool> showOtpCodeDialog(
   bool enableResend = false,
   Duration resendDelay = const Duration(seconds: 30),
 }) async {
+  // Phone verification may finish after the entry route has been removed.
+  // A detached context cannot resolve Navigator and must not open a prompt.
+  if (!context.mounted) return false;
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
@@ -160,68 +164,81 @@ class _OtpCodeDialogState extends State<OtpCodeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       title: const Text('Enter your 6-digit code'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.maskedNumber != null
-                  ? 'We just sent an SMS to ${widget.maskedNumber}. '
-                      'Enter the code to continue.'
-                  : 'We just sent you an SMS. Enter the code to continue.',
-              style: TextStyle(color: Colors.grey[800], height: 1.3),
-            ),
-            const SizedBox(height: 14),
-            PrivateRegion(
-              child: TextField(
-                controller: _controller,
-                enabled: !_verifying && !_resending,
-                onChanged: _onCodeChanged,
-                decoration: InputDecoration(
-                  hintText: '6-digit SMS code',
-                  errorText: _errorText,
-                  helperText: widget.enableResend
-                      ? _resendHelperText
-                      : "Code didn't arrive? Wait 30 seconds, then tap "
-                          'Cancel and try again.',
-                  helperMaxLines: 2,
-                ),
-                keyboardType: TextInputType.number,
-                autofocus: true,
-                autofillHints: const [AutofillHints.oneTimeCode],
-                textInputAction: TextInputAction.done,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                onSubmitted: (_) => _verify(automatic: false),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: (_verifying || _resending) ? null : _cancel,
-          child: const Text('Cancel'),
-        ),
-        if (widget.enableResend)
-          TextButton(
-            onPressed: (_secondsUntilResend == 0 && !_verifying && !_resending)
-                ? _resend
-                : null,
-            child: Text(_resending ? 'Sending...' : 'Resend'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.maskedNumber != null
+                ? 'Sent by SMS to ${widget.maskedNumber}.'
+                : 'Enter the code we sent by SMS.',
+            style: theme.textTheme.bodyMedium,
           ),
-        FilledButton(
-          onPressed: (_verifying || _resending)
-              ? null
-              : () => _verify(automatic: false),
-          child: Text(_verifying ? 'Verifying...' : 'Verify'),
-        ),
-      ],
+          const SizedBox(height: 24),
+          PrivateRegion(
+            child: TextField(
+              controller: _controller,
+              enabled: !_verifying && !_resending,
+              onChanged: _onCodeChanged,
+              style: theme.textTheme.titleLarge?.copyWith(letterSpacing: 3),
+              textAlign: TextAlign.center,
+              decoration: InputDecoration(
+                labelText: 'SMS code',
+                errorText: _errorText,
+                errorMaxLines: 5,
+              ),
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              textInputAction: TextInputAction.done,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              onSubmitted: (_) => _verify(automatic: false),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            widget.enableResend
+                ? _resendHelperText
+                : "Code didn't arrive? Wait 30 seconds, then tap "
+                    'Cancel and try again.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 24),
+          AuthPrimaryButton(
+            label: 'Verify',
+            loadingLabel: _resending ? 'Sending…' : 'Verifying…',
+            isLoading: _verifying || _resending,
+            onPressed: () => _verify(automatic: false),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            children: [
+              TextButton(
+                onPressed: (_verifying || _resending) ? null : _cancel,
+                child: const Text('Cancel'),
+              ),
+              if (widget.enableResend)
+                TextButton(
+                  onPressed:
+                      (_secondsUntilResend == 0 && !_verifying && !_resending)
+                          ? _resend
+                          : null,
+                  child: Text(_resending ? 'Sending...' : 'Resend'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

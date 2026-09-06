@@ -29,7 +29,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Shop link'), findsOneWidget);
+    expect(find.text('Shop'), findsOneWidget);
     expect(find.byType(FaIcon), findsOneWidget);
     expect(
       tester.widget<FaIcon>(find.byType(FaIcon)).icon,
@@ -53,7 +53,7 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(48));
     expect(size.width, greaterThan(48));
 
-    await tester.tap(find.text('Shop link'));
+    await tester.tap(find.text('Shop'));
     expect(taps, 1);
   });
 }

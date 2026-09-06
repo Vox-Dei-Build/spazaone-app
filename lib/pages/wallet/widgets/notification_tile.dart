@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/design/spaza_tokens.dart';
+import 'package:pasella/pages/wallet/widgets/wallet_activity_tile.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'package:pasella/config/size_config.dart';
-import 'package:pasella/constants/constants.dart';
 
 class NotificationTile extends StatelessWidget {
   final String message;
@@ -22,155 +22,81 @@ class NotificationTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        templateType == "whatsapp" ? FontAwesomeIcons.whatsapp : Icons.sms,
-        color: templateType == "whatsapp" ? Colors.green : Colors.blue,
-        size: SizeConfig.textMultiplier * 2,
-      ),
-      title: Text(
-        templateType == 'whatsapp' ? 'WhatsApp messages' : 'SMS messages',
-        style: TextStyle(
-          fontSize: SizeConfig.textMultiplier * 1.8,
-          fontWeight: FontWeight.bold,
+  Widget build(BuildContext context) => WalletActivityTile(
+        icon: Icon(
+          templateType == 'whatsapp'
+              ? FontAwesomeIcons.whatsapp
+              : Icons.sms_outlined,
+          color: templateType == 'whatsapp'
+              ? SpazaColors.action
+              : SpazaColors.heading,
+          size: 22,
         ),
-      ),
-      subtitle: Text(
-        '${DateFormat.yMMMd().format(date)} · $phone',
-        style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 1.5, color: Colors.grey),
-      ),
-      trailing: Text(
-        "-${CurrencyUtil.format(messageCost.toDouble())}",
-        style: TextStyle(
-            color: kTertiaryColor,
-            fontWeight: FontWeight.bold,
-            fontSize: SizeConfig.textMultiplier * 1.5),
-      ),
-      onTap: () => _showMessageDetails(context),
-    );
-  }
+        title:
+            templateType == 'whatsapp' ? 'WhatsApp messages' : 'SMS messages',
+        subtitle: '${DateFormat.yMMMd().format(date)} · $phone',
+        amount: '-${CurrencyUtil.format(messageCost.toDouble())}',
+        onTap: () => _showMessageDetails(context),
+      );
 
-  /// Opens a modal bottom sheet to show full message details
   void _showMessageDetails(BuildContext context) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
-      ),
-      isScrollControlled: true, // ✅ Allows full-screen height if needed
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.symmetric(
-            vertical: SizeConfig.heightMultiplier * 2,
-            horizontal: SizeConfig.imageSizeMultiplier * 4,
-          ),
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * .85),
           child: SingleChildScrollView(
-            // ✅ Prevents overflow
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Center(
-                  child: Container(
-                    width: SizeConfig.imageSizeMultiplier * 15,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[400],
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                Text(
-                  "Message Details",
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Divider(),
-                SizedBox(height: SizeConfig.heightMultiplier * 1.5),
-                _buildDetailRow("Recipient:", phone),
-                _buildDetailRow("Date Sent:", DateFormat.yMMMd().format(date)),
-                _buildDetailRow("Message Cost:",
-                    "-${CurrencyUtil.format(messageCost.toDouble())}"),
-                SizedBox(height: SizeConfig.heightMultiplier * 2),
-                Text(
-                  "Message Content:",
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.8,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.heightMultiplier * 1),
+                Text('Message details',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 20),
+                _detail(context, 'Recipient', phone),
+                _detail(context, 'Date sent', DateFormat.yMMMd().format(date)),
+                _detail(context, 'Message cost',
+                    '-${CurrencyUtil.format(messageCost.toDouble())}'),
+                const SizedBox(height: 8),
+                Text('Message content',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 12),
                 Container(
-                  padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1.5),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(10),
+                    color: SpazaColors.subtle,
+                    borderRadius: BorderRadius.circular(SpazaRadius.control),
                   ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight:
-                          SizeConfig.screenHeight * 0.3, // ✅ Limits text height
-                    ),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        message,
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.5,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                  ),
+                  child: Text(message,
+                      style: Theme.of(context).textTheme.bodyMedium),
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 3),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("Close"),
-                  ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
                 ),
               ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-  /// Helper function for creating key-value rows in the modal
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding:
-          EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 0.8),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 1.5,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.5,
-                color: Colors.grey[700],
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
+
+  Widget _detail(BuildContext context, String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text(value, style: Theme.of(context).textTheme.bodyMedium),
+          ],
+        ),
+      );
 }

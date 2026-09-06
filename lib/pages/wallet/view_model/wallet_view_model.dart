@@ -6,6 +6,7 @@ import 'package:pasella/services/store_session.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/models/wallet/banking_detail_model.dart';
+import 'package:pasella/pages/wallet/view_model/banking_details_persistence.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
@@ -350,21 +351,37 @@ class WalletViewModel extends ChangeNotifier {
     }
   }
 
+  BankingDetails get bankingDetails => BankingDetails(
+        bankName: bankName.text,
+        accountHolderName: accountHolderName.text,
+        accountNumber: accountNumber.text,
+        accountType: accountType.text,
+        branchCode: branchCode.text,
+        reference: reference.text,
+      );
+
+  void _applyBankingDetails(BankingDetails details) {
+    bankName.text = details.bankName;
+    accountHolderName.text = details.accountHolderName;
+    accountNumber.text = details.accountNumber;
+    accountType.text = details.accountType;
+    branchCode.text = details.branchCode;
+    reference.text = details.reference;
+  }
+
   Future<void> initializeBankingDetails() async {
-    editingDocumentId = await checkAndFetchBankingDetailsDocId(userId);
+    // Fetch the document and its ID together. A failed read must not look like
+    // a missing account or open an empty form over an existing saved account.
+    final snapshot = await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('bankingDetails')
+        .limit(1)
+        .get();
     if (_disposed) return;
-    if (editingDocumentId != null) {
-      final details = await fetchBankingDetails(editingDocumentId!, userId);
-      if (_disposed) return;
-      if (details != null) {
-        bankName.text = details.bankName;
-        accountHolderName.text = details.accountHolderName;
-        accountNumber.text = details.accountNumber;
-        accountType.text = details.accountType;
-        branchCode.text = details.branchCode;
-        reference.text = details.reference;
-      }
-    }
+    final document = snapshot.docs.firstOrNull;
+    editingDocumentId = document?.id;
+    _applyBankingDetails(BankingDetails.fromFirestore(document?.data() ?? {}));
   }
 
   Future<bool> hasPendingOrProcessingPayout() async {
@@ -377,30 +394,31 @@ class WalletViewModel extends ChangeNotifier {
     return snapshot.docs.isNotEmpty;
   }
 
-  Future<void> saveBankingDetails() async {
+  Future<void> saveBankingDetails(BankingDetails details) async {
+    if (_disposed ||
+        StoreSession.instance.storeId != userId ||
+        !StoreSession.instance.canManageOperators) {
+      throw StateError(
+          'Only an owner or administrator of this shop can edit banking details.');
+    }
+    if (isProcessing.value) {
+      throw StateError('Banking details are already saving.');
+    }
     isProcessing.value = true;
     try {
-      final bankingDetails = BankingDetails(
-        bankName: bankName.text.trim(),
-        accountHolderName: accountHolderName.text.trim(),
-        accountNumber: accountNumber.text.trim(),
-        accountType: accountType.text.trim(),
-        branchCode: branchCode.text.trim(),
-        reference: reference.text.trim(),
-      );
-
-      final collectionRef = FirebaseFirestore.instance
+      final collectionRef = firestore
           .collection('users')
           .doc(userId)
           .collection('bankingDetails');
-
-      if (editingDocumentId == null) {
-        await collectionRef.add(bankingDetails.toJson());
-      } else {
-        await collectionRef
-            .doc(editingDocumentId)
-            .update(bankingDetails.toJson());
-      }
+      final documentId = await persistBankingDetails(
+        details: details,
+        documentId: editingDocumentId,
+        create: (value) async => (await collectionRef.add(value.toJson())).id,
+        update: (id, value) => collectionRef.doc(id).update(value.toJson()),
+      );
+      if (_disposed) return;
+      editingDocumentId = documentId;
+      _applyBankingDetails(details);
     } catch (e, st) {
       await CrashService.instance.recordNonFatal(
         e,
@@ -409,7 +427,7 @@ class WalletViewModel extends ChangeNotifier {
       );
       rethrow;
     } finally {
-      isProcessing.value = false;
+      if (!_disposed) isProcessing.value = false;
     }
   }
 

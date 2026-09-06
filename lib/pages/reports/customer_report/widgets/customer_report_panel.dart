@@ -21,7 +21,7 @@
 // is cheap and correct.
 
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/transaction_util.dart';
@@ -88,8 +88,6 @@ class _CustomerReportSheetState extends State<CustomerReportSheet> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snapshot) {
@@ -103,7 +101,7 @@ class _CustomerReportSheetState extends State<CustomerReportSheet> {
         if (txs.isEmpty) {
           return _EmptyShell(customerName: widget.customerName);
         }
-        return _ReportBody(
+        return CustomerReportContent(
           customerName: widget.customerName,
           transactions: txs,
         );
@@ -112,11 +110,12 @@ class _CustomerReportSheetState extends State<CustomerReportSheet> {
   }
 }
 
-class _ReportBody extends StatelessWidget {
+class CustomerReportContent extends StatelessWidget {
   final String customerName;
   final List<Map<String, dynamic>> transactions;
 
-  const _ReportBody({required this.customerName, required this.transactions});
+  const CustomerReportContent(
+      {super.key, required this.customerName, required this.transactions});
 
   @override
   Widget build(BuildContext context) {
@@ -126,26 +125,26 @@ class _ReportBody extends StatelessWidget {
     return SafeArea(
       top: false,
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          SizeConfig.imageSizeMultiplier * 5,
-          SizeConfig.heightMultiplier * 1,
-          SizeConfig.imageSizeMultiplier * 5,
-          SizeConfig.heightMultiplier * 2,
+        padding: const EdgeInsets.fromLTRB(
+          20,
+          8,
+          20,
+          24,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _SheetChrome.grabber(),
-            SizedBox(height: SizeConfig.heightMultiplier * 1.6),
+            const SizedBox(height: 16),
 
             // ── HEADER ──
             _SheetHeader(customerName: customerName),
-            SizedBox(height: SizeConfig.heightMultiplier * 2.2),
+            const SizedBox(height: 24),
 
             // ── HERO BALANCE ──
             _BalanceHeroBlock(tone: balanceState, amount: stats.netBalance),
-            SizedBox(height: SizeConfig.heightMultiplier * 2.8),
+            const SizedBox(height: 24),
 
             // ── RELATIONSHIP ──
             const _SectionEyebrow(label: 'RELATIONSHIP'),
@@ -160,7 +159,7 @@ class _ReportBody extends StatelessWidget {
                   stats.lastActivityIsStale ? const Color(0xFFE65100) : null,
               valueBadge: stats.lastActivityIsStale ? 'stale' : null,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2.4),
+            const SizedBox(height: 24),
 
             // ── TOTALS ──
             const _SectionEyebrow(label: 'TOTALS'),
@@ -176,7 +175,7 @@ class _ReportBody extends StatelessWidget {
               value: CurrencyUtil.format(stats.paymentAmount),
               valueColor: const Color(0xFF1B5E20),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2.4),
+            const SizedBox(height: 24),
 
             // ── BEHAVIOUR ──
             const _SectionEyebrow(label: 'BEHAVIOUR'),
@@ -203,41 +202,41 @@ class _SheetHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: SizeConfig.imageSizeMultiplier * 11,
-          height: SizeConfig.imageSizeMultiplier * 11,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             color: kPrimaryColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
           ),
           alignment: Alignment.center,
-          child: Icon(
+          child: const Icon(
             Icons.insights_outlined,
             color: kPrimaryColor,
-            size: SizeConfig.imageSizeMultiplier * 6,
+            size: 24,
           ),
         ),
-        SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
+              const Text(
                 'INSIGHTS',
                 style: TextStyle(
                   color: kPrimaryColor,
-                  fontSize: SizeConfig.textMultiplier * 1.25,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
                   letterSpacing: 1.6,
                 ),
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.3),
+              const SizedBox(height: 4),
               Text(
                 customerName,
-                style: TextStyle(
-                  color: const Color(0xFF1A1F2B),
-                  fontSize: SizeConfig.textMultiplier * 2.4,
-                  fontWeight: FontWeight.w800,
+                style: const TextStyle(
+                  color: SpazaColors.heading,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w500,
                   height: 1.15,
                   letterSpacing: -0.3,
                 ),
@@ -249,8 +248,8 @@ class _SheetHeader extends StatelessWidget {
         ),
         IconButton(
           icon: const Icon(Icons.close_rounded),
-          color: Colors.black54,
-          onPressed: () => Navigator.of(context).pop(),
+          color: SpazaColors.muted,
+          onPressed: () => Navigator.of(context).maybePop(),
           tooltip: 'Close',
         ),
       ],
@@ -269,15 +268,15 @@ class _BalanceHeroBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        SizeConfig.imageSizeMultiplier * 4,
-        SizeConfig.heightMultiplier * 1.6,
-        SizeConfig.imageSizeMultiplier * 4,
-        SizeConfig.heightMultiplier * 1.8,
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        16,
       ),
       decoration: BoxDecoration(
         color: tone.tint,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -289,14 +288,14 @@ class _BalanceHeroBlock extends StatelessWidget {
                 tone.eyebrow,
                 style: TextStyle(
                   color: tone.accent,
-                  fontSize: SizeConfig.textMultiplier * 1.25,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
                   letterSpacing: 1.4,
                 ),
               ),
             ],
           ),
-          SizedBox(height: SizeConfig.heightMultiplier * 0.6),
+          const SizedBox(height: 8),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -304,8 +303,8 @@ class _BalanceHeroBlock extends StatelessWidget {
               CurrencyUtil.format(amount.abs()),
               style: TextStyle(
                 color: tone.accent,
-                fontSize: SizeConfig.textMultiplier * 4.2,
-                fontWeight: FontWeight.w800,
+                fontSize: 30,
+                fontWeight: FontWeight.w500,
                 height: 1.0,
                 letterSpacing: -0.8,
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -325,13 +324,13 @@ class _SectionEyebrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: SizeConfig.heightMultiplier * 0.6),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         label,
-        style: TextStyle(
-          color: const Color(0xFF6B7280),
-          fontSize: SizeConfig.textMultiplier * 1.2,
-          fontWeight: FontWeight.w700,
+        style: const TextStyle(
+          color: SpazaColors.muted,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
           letterSpacing: 1.4,
         ),
       ),
@@ -395,22 +394,22 @@ class _LoadingShell extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 5),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _SheetChrome.grabber(),
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
+            const SizedBox(height: 40),
             const CircularProgressIndicator(),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Text(
+            const SizedBox(height: 24),
+            const Text(
               'Loading insights…',
               style: TextStyle(
-                color: Colors.black54,
-                fontSize: SizeConfig.textMultiplier * 1.6,
+                color: SpazaColors.muted,
+                fontSize: 16,
               ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 3),
+            const SizedBox(height: 40),
           ],
         ),
       ),
@@ -427,41 +426,41 @@ class _ErrorShell extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 5),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _SheetChrome.grabber(),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Icon(
+            const SizedBox(height: 24),
+            const Icon(
               Icons.error_outline,
-              size: SizeConfig.imageSizeMultiplier * 12,
+              size: 44,
               color: Colors.redAccent,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
-            Text(
+            const SizedBox(height: 8),
+            const Text(
               'Could not load insights',
               style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: SizeConfig.textMultiplier * 2,
+                fontWeight: FontWeight.w500,
+                fontSize: 18,
               ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
-            Text(
+            const SizedBox(height: 4),
+            const Text(
               'Check your connection and try again.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.black54,
-                fontSize: SizeConfig.textMultiplier * 1.4,
+                color: SpazaColors.muted,
+                fontSize: 13,
               ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            const SizedBox(height: 24),
             OutlinedButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
               label: const Text('Try again'),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -475,40 +474,39 @@ class _EmptyShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
     return SafeArea(
       top: false,
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 5),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _SheetChrome.grabber(),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
-            Icon(
+            const SizedBox(height: 24),
+            const Icon(
               Icons.insights_outlined,
-              size: SizeConfig.imageSizeMultiplier * 12,
+              size: 44,
               color: Colors.black26,
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
-            Text(
+            const SizedBox(height: 8),
+            const Text(
               'No insights yet',
               style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: SizeConfig.textMultiplier * 2,
+                fontWeight: FontWeight.w500,
+                fontSize: 18,
               ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+            const SizedBox(height: 4),
             Text(
               'Record a transaction or payment for $customerName to start '
               'building their report.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.black54,
-                fontSize: SizeConfig.textMultiplier * 1.5,
+              style: const TextStyle(
+                color: SpazaColors.muted,
+                fontSize: 14,
               ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 2),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -546,81 +544,53 @@ class _MetricRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveValueColor = valueColor ?? const Color(0xFF111827);
-
+    final theme = Theme.of(context);
+    final color = valueColor ?? SpazaColors.heading;
+    final values = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (valueLeading != null)
+          Text(valueLeading!,
+              style: theme.textTheme.bodySmall?.copyWith(color: color)),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(value,
+              style: theme.textTheme.titleSmall?.copyWith(color: color)),
+        ),
+        if (valueBadge != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF3E0),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(valueBadge!.toUpperCase(),
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: const Color(0xFFE65100))),
+          ),
+      ],
+    );
     return Padding(
-      padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 0.7,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.6,
-                color: const Color(0xFF4B5563),
-                fontWeight: FontWeight.w500,
-                height: 1.2,
-              ),
-            ),
-          ),
-          if (valueLeading != null) ...[
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 1.6,
-                vertical: SizeConfig.heightMultiplier * 0.25,
-              ),
-              decoration: BoxDecoration(
-                color: effectiveValueColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                valueLeading!,
-                style: TextStyle(
-                  color: effectiveValueColor,
-                  fontSize: SizeConfig.textMultiplier * 1.2,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
-            SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-          ],
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: SizeConfig.textMultiplier * 1.8,
-              fontWeight: FontWeight.w700,
-              color: effectiveValueColor,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-          if (valueBadge != null) ...[
-            SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.imageSizeMultiplier * 1.4,
-                vertical: SizeConfig.heightMultiplier * 0.2,
-              ),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3E0),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                valueBadge!.toUpperCase(),
-                style: TextStyle(
-                  color: const Color(0xFFE65100),
-                  fontSize: SizeConfig.textMultiplier * 1.05,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final title = Text(label,
+            style:
+                theme.textTheme.bodyMedium?.copyWith(color: SpazaColors.muted));
+        if (constraints.maxWidth < 360 ||
+            MediaQuery.textScalerOf(context).scale(16) > 21) {
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [title, const SizedBox(height: 8), values]);
+        }
+        return Row(children: [
+          Expanded(child: title),
+          const SizedBox(width: 16),
+          Flexible(child: values)
+        ]);
+      }),
     );
   }
 }

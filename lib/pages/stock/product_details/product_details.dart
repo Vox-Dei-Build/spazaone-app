@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
-import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/utils/run_promotion_launcher.dart';
 import 'package:pasella/pages/promote/view_model/promotions_view_model.dart';
@@ -59,7 +58,7 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
     // the ordinary unsaved-changes guard must not trap an already-deleted
     // product on screen or show the discard prompt.
     setState(() => _exitAuthorized = true);
-    showSnackbar(context, 'Deleted Successfully!', Colors.green);
+    showSnackbar(context, 'Deleted Successfully!', SpazaColors.action);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) Navigator.of(context).pop();
     });
@@ -137,12 +136,13 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
               ),
             ),
             appBar: CustomAppBar(
-              title: "Edit Product",
+              title: "Edit product",
               trailing: IconButton(
-                icon: Icon(
-                  Icons.delete,
-                  color: Colors.black,
-                  size: SizeConfig.imageSizeMultiplier * 7,
+                tooltip: 'Delete product',
+                icon: const Icon(
+                  SpazaIcons.delete,
+                  color: SpazaColors.error,
+                  size: 24,
                 ),
                 onPressed: viewModel.isLoading
                     ? null
@@ -178,7 +178,7 @@ class _ProductDetailsPage extends State<ProductDetailsPage> {
                     children: [
                       Expanded(
                         child: Padding(
-                          padding: LayoutConstants.padding10Horizontal,
+                          padding: EdgeInsets.zero,
                           child: ProductForm(
                             formKey: _formKey,
                             product: widget.product,

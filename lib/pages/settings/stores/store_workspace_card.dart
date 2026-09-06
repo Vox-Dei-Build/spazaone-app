@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
-/// Premium, high-visibility entry into multi-store and team management.
+/// Compact entry into multi-store and team management.
 ///
 /// The feature remains protected by the existing Remote Config gate; this
 /// widget only improves discoverability once that gate is enabled.
@@ -43,60 +44,50 @@ class StoreWorkspaceCard extends StatelessWidget {
         storeCount == 0 ? countLabel : '$countLabel · $_roleLabel';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 14),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       child: Material(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(SpazaRadius.surface),
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(SpazaRadius.surface),
               border: Border.all(color: theme.colorScheme.outlineVariant),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.035),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
             ),
             child: Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
                     color: primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(SpazaRadius.surface),
                   ),
-                  child: Icon(Icons.storefront_outlined, color: primary),
+                  child: Icon(SpazaIcons.shop, color: primary, size: 22),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'STORES & TEAM',
-                        style: theme.textTheme.labelSmall?.copyWith(
+                        'Stores & team',
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: primary,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.7,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       Text(
                         activeStoreName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       Text(
                         detailLabel,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -120,7 +111,7 @@ class StoreWorkspaceCard extends StatelessWidget {
                   Icon(
                     connectionIssue
                         ? Icons.cloud_off_outlined
-                        : Icons.chevron_right_rounded,
+                        : SpazaIcons.next,
                     color: connectionIssue
                         ? theme.colorScheme.error
                         : theme.colorScheme.onSurfaceVariant,

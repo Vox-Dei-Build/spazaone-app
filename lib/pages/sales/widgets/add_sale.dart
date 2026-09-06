@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/sales/widgets/stock_amount_field.dart';
 import 'package:pasella/pages/sales/widgets/stock_invoice_attachments_field.dart';
@@ -19,9 +20,7 @@ import 'package:provider/provider.dart';
 /// so the time component is preserved and the screen no longer throws
 /// on locale mismatch.
 class AddSale extends StatelessWidget {
-  final SalesViewModel salesViewModel;
-
-  const AddSale({super.key, required this.salesViewModel});
+  const AddSale({super.key});
 
   static final DateFormat _saleDateFmt = DateFormat('dd-MM-yyyy HH:mm');
 
@@ -45,15 +44,13 @@ class AddSale extends StatelessWidget {
             isLoading: transactionViewModel.isLoading,
             isDirty: transactionViewModel.isDirty,
             primaryActionLabel: 'Save Sale',
-            primaryActionIcon: Icons.point_of_sale,
-            primaryActionColor: Colors.green,
+            primaryActionIcon: SpazaIcons.sales,
             totalLabel: Text(
               'Total: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleSmall,
             ),
             onPrimaryAction: () async {
               await transactionViewModel.addSalesTransaction(context);
-              salesViewModel.updateSelectedDate(DateTime.now());
             },
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -61,10 +58,10 @@ class AddSale extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(LayoutConstants.spaceMd),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
+                    color: SpazaColors.subtle,
+                    borderRadius: BorderRadius.circular(SpazaRadius.control),
                     border: Border.all(
-                      color: Colors.green.withValues(alpha: 0.18),
+                      color: SpazaColors.border,
                     ),
                   ),
                   child: const Text(

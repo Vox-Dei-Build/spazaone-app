@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 import 'package:pasella/pages/sales/widgets/stock_invoice_viewer_page.dart';
@@ -171,17 +172,11 @@ class _InvoiceDraftTile extends StatelessWidget {
   Future<void> _open(BuildContext context) {
     final local = draft.localFile;
     final attachment = draft.attachment;
-    final lowerName = draft.displayName.toLowerCase();
-    final contentType = draft.isPdf
-        ? 'application/pdf'
-        : lowerName.endsWith('.png')
-            ? 'image/png'
-            : 'image/jpeg';
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => StockInvoiceViewerPage(
           fileName: draft.displayName,
-          contentType: attachment?.contentType ?? contentType,
+          contentType: draft.contentType,
           loadBytes: () async {
             if (local != null) return local.readAsBytes();
             if (attachment == null || loadPreview == null) return null;
@@ -197,7 +192,7 @@ class _InvoiceDraftTile extends StatelessWidget {
     final local = draft.localFile;
     if (local != null) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         child: Image.file(local, fit: BoxFit.cover, errorBuilder: _imageError),
       );
     }
@@ -213,7 +208,7 @@ class _InvoiceDraftTile extends StatelessWidget {
           );
         }
         return ClipRRect(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
           child:
               Image.memory(bytes, fit: BoxFit.cover, errorBuilder: _imageError),
         );
@@ -226,8 +221,8 @@ class _InvoiceDraftTile extends StatelessWidget {
 
   Widget _placeholder({bool loading = false, bool pdf = false}) => DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(6),
+          color: SpazaColors.subtle,
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
         ),
         child: Center(
           child: loading

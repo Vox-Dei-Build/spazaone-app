@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   const CustomAppBar({
@@ -20,43 +19,33 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
-
+    final theme = Theme.of(context);
     return AppBar(
-      leadingWidth: 48,
-      leading:
-          onBack
-              ? IconButton(
-                onPressed: () {
-                  FocusScope.of(context).unfocus();
-                  SystemChannels.textInput.invokeMethod('TextInput.hide');
-                  if (onBackPressed != null) {
-                    onBackPressed!();
-                  } else {
-                    Navigator.pop(context);
-                  }
-                },
-                icon: Icon(
-                  Icons.arrow_back_ios,
-                  size:
-                      SizeConfig.imageSizeMultiplier *
-                      6, // Responsive icon size
-                ),
-                tooltip: 'Back',
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              )
-              : leading, // Provide an empty space or null if onBack is false or there is no leading icon
+      automaticallyImplyLeading: false,
+      leadingWidth: 56,
+      leading: onBack
+          ? IconButton(
+              onPressed: () {
+                FocusScope.of(context).unfocus();
+                if (onBackPressed != null) {
+                  onBackPressed!();
+                } else {
+                  Navigator.maybePop(context);
+                }
+              },
+              icon: const Icon(SpazaIcons.back, size: 22),
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            )
+          : leading,
       title: Text(
         title,
-        style: TextStyle(
-          fontSize: SizeConfig.textMultiplier * 2, // Responsive font size
-          fontWeight: FontWeight.w900,
-        ),
+        style: theme.appBarTheme.titleTextStyle,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      centerTitle: true,
-      actions: <Widget>[if (trailing != null) trailing! else Container()],
-      // Customize your AppBar further if needed
+      centerTitle: false,
+      actions: [if (trailing != null) trailing!, const SizedBox(width: 8)],
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/profile/business_name_page.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/pages/settings/order_options/order_options_page.dart';
@@ -7,6 +8,7 @@ import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/utils/feature_flags.dart';
+import 'package:pasella/pages/settings/widgets/setting_tile.dart';
 
 class YourShopPage extends StatelessWidget {
   const YourShopPage({super.key});
@@ -67,7 +69,7 @@ class YourShopOverview extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       key: const ValueKey('your-shop-overview'),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         _ShopDestination(
           icon: Icons.link_rounded,
@@ -75,15 +77,15 @@ class YourShopOverview extends StatelessWidget {
           subtitle: 'Share your WhatsApp ordering link',
           onTap: onShopLink,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 4),
         _ShopDestination(
-          icon: Icons.storefront_outlined,
+          icon: SpazaIcons.shop,
           title: 'Store details',
           subtitle: 'Update the name customers see',
           onTap: onStoreDetails,
         ),
         if (showStoresAndTeam) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 4),
           _ShopDestination(
             icon: Icons.groups_outlined,
             title: 'Stores & team',
@@ -91,14 +93,14 @@ class YourShopOverview extends StatelessWidget {
             onTap: onStoresAndTeam,
           ),
         ],
-        const SizedBox(height: 10),
+        const SizedBox(height: 4),
         _ShopDestination(
-          icon: Icons.tune_outlined,
+          icon: SpazaIcons.options,
           title: 'Order options',
           subtitle: 'Set delivery fees and Pay Later availability',
           onTap: onOrderOptions ?? () {},
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 4),
         _ShopDestination(
           icon: Icons.account_balance_outlined,
           title: 'Online payments',
@@ -125,21 +127,12 @@ class _ShopDestination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: .42),
-        borderRadius: BorderRadius.circular(16),
-        child: ListTile(
-          minVerticalPadding: 12,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          leading: Icon(icon),
-          title:
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right_rounded),
+        color: Theme.of(context).colorScheme.surface,
+        child: SettingTile(
+          icon: icon,
+          title: title,
+          subTitle: subtitle,
+          hideDivider: true,
           onTap: onTap,
         ),
       );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/stock/product_group_page/product_group_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
@@ -20,7 +21,7 @@ class ProductGroupCard extends StatelessWidget {
     SizeConfig().init(context); // Initialize SizeConfig
 
     return Padding(
-      padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 1.5),
+      padding: const EdgeInsets.all(8),
       child: GestureDetector(
         onTap: () {
           Navigator.of(context).push(
@@ -32,21 +33,14 @@ class ProductGroupCard extends StatelessWidget {
           );
         },
         child: Container(
-          margin:
-              EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 1),
+          margin: const EdgeInsets.symmetric(vertical: 8),
           height: SizeConfig.heightMultiplier * 18,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                offset: Offset(0, SizeConfig.heightMultiplier * 0.6),
-                blurRadius: 6,
-                color: Color(0xff000000).withOpacity(0.16),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
+            border: Border.all(color: SpazaColors.border),
           ),
-          padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2.5),
+          padding: const EdgeInsets.all(12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -54,8 +48,8 @@ class ProductGroupCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   name,
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
+                  style: const TextStyle(
+                    fontSize: 18,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -64,9 +58,9 @@ class ProductGroupCard extends StatelessWidget {
               if (productCount != null)
                 Text(
                   '$productCount',
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 2,
-                    color: Colors.grey,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: SpazaColors.muted,
                   ),
                 ),
             ],

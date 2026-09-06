@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/promote/utils/template_status.dart';
 
 /// Selectable card representing a single messaging template.
@@ -24,10 +24,8 @@ class TemplatePickerCard extends StatelessWidget {
     final theme = Theme.of(context);
     final status = templateStatusOf(template);
     final disabled = !status.isUsable;
-    final name = (template['displayName'] ??
-            template['name'] ??
-            'Untitled')
-        .toString();
+    final name =
+        (template['displayName'] ?? template['name'] ?? 'Untitled').toString();
     final whatsappContent =
         (template['channels']?['whatsapp']?['templateContent'] ?? '')
             .toString();
@@ -42,19 +40,17 @@ class TemplatePickerCard extends StatelessWidget {
     return Opacity(
       opacity: disabled ? 0.55 : 1.0,
       child: Card(
-        elevation: selected ? 3 : 1,
-        margin: EdgeInsets.symmetric(
-          vertical: SizeConfig.heightMultiplier * 0.6,
-        ),
+        elevation: 0,
+        margin: const EdgeInsets.symmetric(vertical: 6),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(SpazaRadius.surface),
           side: BorderSide(color: borderColor, width: selected ? 2 : 1),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(SpazaRadius.surface),
           onTap: disabled ? null : onTap,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -75,15 +71,15 @@ class TemplatePickerCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Expanded(
-                            child: Text(
-                              name,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                          Text(
+                            name,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                           _StatusPill(status: status),
@@ -103,7 +99,9 @@ class TemplatePickerCard extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 8),
-                      Row(
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           if (hasWhatsApp)
                             const _ChannelBadge(
@@ -111,7 +109,6 @@ class TemplatePickerCard extends StatelessWidget {
                               label: 'WhatsApp',
                               color: Color(0xFF25D366),
                             ),
-                          if (hasWhatsApp && hasSms) const SizedBox(width: 6),
                           if (hasSms)
                             const _ChannelBadge(
                               icon: Icons.sms,
@@ -119,7 +116,6 @@ class TemplatePickerCard extends StatelessWidget {
                               color: Colors.blueGrey,
                             ),
                           if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
-                            const SizedBox(width: 6),
                             const _ChannelBadge(
                               icon: Icons.image_outlined,
                               label: 'Image',

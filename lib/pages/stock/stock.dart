@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
+import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
@@ -11,11 +12,11 @@ import 'package:pasella/pages/stock/search/global_search.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/pages/stock/dropship/supplier_catalog_page.dart';
-import 'package:pasella/pages/stock/widgets/whatsapp_catalog_status_card.dart';
-import 'package:pasella/services/whatsapp_catalog_status_service.dart';
 import 'package:provider/provider.dart';
+import 'package:pasella/services/whatsapp_catalog_status_service.dart';
+import 'package:pasella/pages/stock/widgets/whatsapp_catalog_status_card.dart';
 
-class StockPage extends StatefulWidget {
+class StockPage extends StatelessWidget {
   const StockPage({super.key, this.initialTab = 0});
 
   static const id = '/stockPage';
@@ -23,10 +24,40 @@ class StockPage extends StatefulWidget {
   final int initialTab;
 
   @override
-  State<StockPage> createState() => _StockPageState();
+  Widget build(BuildContext context) => MultiProvider(
+        providers: [
+          ChangeNotifierProvider(
+            create: (_) => StockViewModel()..watchProducts(),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => WhatsAppCatalogStatusController()..start(),
+          ),
+        ],
+        child: StockPageContent(initialTab: initialTab),
+      );
 }
 
-class _StockPageState extends State<StockPage>
+/// The workspace lives below its owned providers. Presentation overrides let
+/// route and lifecycle tests exercise the real Add action without cloud IO.
+class StockPageContent extends StatefulWidget {
+  const StockPageContent({
+    super.key,
+    this.initialTab = 0,
+    this.header,
+    this.supplierCatalog,
+    this.newProductBuilder,
+  });
+
+  final int initialTab;
+  final Widget? header;
+  final Widget? supplierCatalog;
+  final WidgetBuilder? newProductBuilder;
+
+  @override
+  State<StockPageContent> createState() => _StockPageContentState();
+}
+
+class _StockPageContentState extends State<StockPageContent>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final ValueNotifier<int> _tabIndexNotifier = ValueNotifier<int>(0);
@@ -56,135 +87,124 @@ class _StockPageState extends State<StockPage>
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(
-            create: (_) => StockViewModel()..watchProducts()),
-        ChangeNotifierProvider(
-          create: (_) => WhatsAppCatalogStatusController()..start(),
-        ),
-      ],
-      child: Consumer2<StockViewModel, WhatsAppCatalogStatusController>(
-        builder: (context, viewModel, catalogStatus, child) {
-          return DefaultTabController(
-            length: 3,
-            child: Scaffold(
-              body: SafeArea(
-                child: Padding(
-                  padding: LayoutConstants.padding10Horizontal,
-                  child: Column(
-                    children: [
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      const PrimaryWorkspaceHeader(
-                        shareSource: 'products_header',
-                      ),
-                      SizedBox(height: SizeConfig.heightMultiplier * 2),
-                      WorkspaceSectionTabs(
+    return Consumer2<StockViewModel, WhatsAppCatalogStatusController>(
+      builder: (context, viewModel, catalogStatus, child) {
+        return DefaultTabController(
+          length: 3,
+          child: Scaffold(
+            body: SafeArea(
+              child: Padding(
+                padding: LayoutConstants.workspacePadding,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    widget.header ??
+                        const PrimaryWorkspaceHeader(
+                          shareSource: 'products_header',
+                        ),
+                    const SizedBox(height: 8),
+                    WorkspaceSectionTabs(
+                      controller: _tabController,
+                      tabs: const <WorkspaceSectionTab>[
+                        WorkspaceSectionTab(
+                          label: 'Products',
+                          semanticLabel: 'Your products',
+                        ),
+                        WorkspaceSectionTab(
+                          label: 'Suppliers',
+                          semanticLabel: 'Supplier catalogue',
+                        ),
+                        WorkspaceSectionTab(
+                          label: 'Stock',
+                          semanticLabel: 'Stock report',
+                        ),
+                      ],
+                    ),
+                    Expanded(
+                      child: TabBarView(
                         controller: _tabController,
-                        tabs: const <WorkspaceSectionTab>[
-                          WorkspaceSectionTab(
-                            label: 'Products',
-                            semanticLabel: 'Your products',
+                        children: [
+                          Column(
+                            children: [
+                              ProductWorkspaceToolbar(
+                                onAddProduct: () =>
+                                    _openNewProduct(catalogStatus),
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const GlobalSearchPage(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              Expanded(
+                                child: ProductList(
+                                  viewModel: viewModel,
+                                  catalogSnapshot: catalogStatus.snapshot,
+                                  onCatalogRefresh: catalogStatus.manualRefresh,
+                                  onProductChanged: () =>
+                                      catalogStatus.refresh(resetPolling: true),
+                                  header: WhatsAppCatalogStatusCard(
+                                      controller: catalogStatus),
+                                  groupName: null,
+                                  onAddProduct: () =>
+                                      _openNewProduct(catalogStatus),
+                                  showEmptyAction: false,
+                                ),
+                              ),
+                            ],
                           ),
-                          WorkspaceSectionTab(
-                            label: 'Suppliers',
-                            semanticLabel: 'Supplier catalogue',
-                          ),
-                          WorkspaceSectionTab(
-                            label: 'Stock',
-                            semanticLabel: 'Stock report',
+                          widget.supplierCatalog ??
+                              SupplierCatalogPage(
+                                onListingCreated: () {
+                                  _tabController.animateTo(0);
+                                },
+                              ),
+                          Column(
+                            children: [
+                              const WorkspaceContextHeader(
+                                title: 'Stock report',
+                                subtitle: 'What your current stock is worth',
+                              ),
+                              Expanded(
+                                child: ProductReportsTab(viewModel: viewModel),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      Expanded(
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            Column(
-                              children: [
-                                ProductWorkspaceToolbar(
-                                  onAddProduct: _openNewProduct,
-                                  onTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const GlobalSearchPage(),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                WhatsAppCatalogStatusCard(
-                                  controller: catalogStatus,
-                                ),
-                                Expanded(
-                                  child: ProductList(
-                                    viewModel: viewModel,
-                                    catalogSnapshot: catalogStatus.snapshot,
-                                    onCatalogRefresh:
-                                        catalogStatus.manualRefresh,
-                                    groupName: null,
-                                    onAddProduct: _openNewProduct,
-                                    onProductChanged: () =>
-                                        catalogStatus.refresh(
-                                      resetPolling: true,
-                                    ),
-                                    showEmptyAction: false,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SupplierCatalogPage(
-                              onListingCreated: () {
-                                _tabController.animateTo(0);
-                              },
-                            ),
-                            Column(
-                              children: [
-                                const WorkspaceContextHeader(
-                                  title: 'Stock report',
-                                  subtitle: 'What your current stock is worth',
-                                ),
-                                Expanded(
-                                  child:
-                                      ProductReportsTab(viewModel: viewModel),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
-  /// Shared launcher used by the FAB and product empty state.
-  void _openNewProduct() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (context) => const NewProductPage()))
-        .then((_) {
-      // snap back to "Product Page" tab when you pop
-      _tabController.animateTo(0);
-      if (mounted) {
-        context.read<WhatsAppCatalogStatusController>().refresh(
-              resetPolling: true,
-            );
-      }
-    });
+  /// Capture the controller from the provider's descendant before navigation.
+  /// A route return may happen after the whole workspace has been removed.
+  Future<void> _openNewProduct(
+    WhatsAppCatalogStatusController catalogStatus,
+  ) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: widget.newProductBuilder ?? (_) => const NewProductPage(),
+      ),
+    );
+    if (!mounted) return;
+    _tabController.animateTo(0);
+    await catalogStatus.refresh(resetPolling: true);
   }
 }
 
 /// Content-first controls for the merchant's own catalogue.
 ///
-/// The active Products destination already supplies the page context, so a
-/// second title/subtitle block only takes space away from the catalogue. Search
-/// and the primary Add action instead share one predictable toolbar.
+/// A calm page title introduces the catalogue. Search and the primary Add
+/// action share one toolbar; short landscape and large text omit the repeated
+/// title because the active Products destination already supplies context.
 class ProductWorkspaceToolbar extends StatelessWidget {
   const ProductWorkspaceToolbar({
     super.key,
@@ -197,34 +217,51 @@ class ProductWorkspaceToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showTitle = !usesCompactLandscapeLayout(context) &&
+        MediaQuery.textScalerOf(context).scale(14) < 20;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
-      child: Row(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: WorkspaceSearchField(
-              key: const ValueKey('search-products-launcher'),
-              hintText: 'Search products',
-              semanticLabel: 'Open product search',
-              readOnly: true,
-              onTap: onTap,
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            height: 48,
-            child: FilledButton.icon(
-              key: const ValueKey('add-product-action'),
-              onPressed: onAddProduct,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+          if (showTitle) ...[
+            Text('Products',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: SpazaColors.heading,
+                    )),
+            const SizedBox(height: 16),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: WorkspaceSearchField(
+                  key: const ValueKey('search-products-launcher'),
+                  hintText: 'Search products',
+                  semanticLabel: 'Open product search',
+                  readOnly: true,
+                  onTap: onTap,
                 ),
               ),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add'),
-            ),
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52),
+                child: FilledButton.icon(
+                  key: const ValueKey('add-product-action'),
+                  onPressed: onAddProduct,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 52),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SpazaRadius.control),
+                    ),
+                  ),
+                  icon: const Icon(SpazaIcons.add, size: 20),
+                  label: const Text('Add'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -271,20 +308,20 @@ class StockTabActions extends StatelessWidget {
           IconButton(
             key: const ValueKey('search-my-products'),
             tooltip: 'Search my products',
-            icon: Icon(
-              Icons.search,
-              color: Colors.black87,
-              size: SizeConfig.imageSizeMultiplier * 5,
+            icon: const Icon(
+              SpazaIcons.search,
+              color: SpazaColors.muted,
+              size: 22,
             ),
             onPressed: onSearch,
           ),
         IconButton(
           key: const ValueKey('stock-help'),
           tooltip: 'How to capture stock',
-          icon: Icon(
-            Icons.help_outline,
-            color: Colors.black87,
-            size: SizeConfig.imageSizeMultiplier * 5,
+          icon: const Icon(
+            SpazaIcons.help,
+            color: SpazaColors.muted,
+            size: 22,
           ),
           onPressed: onHelp,
         ),

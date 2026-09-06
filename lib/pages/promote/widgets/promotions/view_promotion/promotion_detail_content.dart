@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/constants/layout_constants.dart';
@@ -192,7 +193,7 @@ class _StatusHero extends StatelessWidget {
       padding: const EdgeInsets.all(LayoutConstants.spaceLg),
       decoration: BoxDecoration(
         color: style.background,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
         border: Border.all(color: style.foreground.withValues(alpha: 0.18)),
       ),
       child: Column(
@@ -217,7 +218,7 @@ class _StatusHero extends StatelessWidget {
                     Text(
                       style.title,
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                         color: style.foreground,
                       ),
                     ),
@@ -302,7 +303,7 @@ class _ProductSection extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (product.sellingPrice != null) ...[
@@ -465,7 +466,7 @@ class _DeliverySection extends StatelessWidget {
               Text(
                 CurrencyUtil.format(cost),
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -495,7 +496,7 @@ class _Metric extends StatelessWidget {
         Text(
           value,
           style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w500,
             color: valueColor,
           ),
         ),
@@ -604,7 +605,7 @@ class _MessageSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(LayoutConstants.spaceMd),
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F7F5),
+                color: SpazaColors.subtle,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -645,7 +646,7 @@ class _WhatsAppCardPreview extends StatelessWidget {
       padding: const EdgeInsets.all(LayoutConstants.spaceMd),
       decoration: BoxDecoration(
         color: WaBrandColour.chatBackground,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
       ),
       child: Align(
         alignment: Alignment.centerLeft,
@@ -708,7 +709,7 @@ class _WhatsAppCardPreview extends StatelessWidget {
                           'Order on WhatsApp',
                           style: theme.textTheme.labelLarge?.copyWith(
                             color: WaBrandColour.tealGreenLighter,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
@@ -748,7 +749,7 @@ class _RecipientsSection extends StatelessWidget {
       trailing: Text(
         '${selectedCustomerIds.length}',
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
             ),
       ),
       child: Column(
@@ -801,7 +802,7 @@ class _RecipientsSection extends StatelessWidget {
               child: Text(
                 '${visible.length} recipients',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w500,
                     ),
               ),
             ),
@@ -889,8 +890,8 @@ class _DetailCard extends StatelessWidget {
       padding: const EdgeInsets.all(LayoutConstants.spaceLg),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE0E5E1)),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        border: Border.all(color: SpazaColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -903,7 +904,7 @@ class _DetailCard extends StatelessWidget {
                 child: Text(
                   title,
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),

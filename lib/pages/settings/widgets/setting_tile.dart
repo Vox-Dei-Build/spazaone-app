@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/constants/constants.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/text_sanitizer.dart';
 
+/// Shared approachable row for settings and shop destinations. Text follows the
+/// app theme; its height can grow with accessibility text instead of clipping.
 class SettingTile extends StatelessWidget {
   const SettingTile({
     super.key,
@@ -13,6 +15,7 @@ class SettingTile extends StatelessWidget {
     this.trailing,
     this.hideDivider = false,
     this.removeLPadding,
+    this.isDestructive = false,
   });
 
   final IconData? icon;
@@ -22,61 +25,74 @@ class SettingTile extends StatelessWidget {
   final Widget? trailing;
   final bool? hideDivider;
   final bool? removeLPadding;
+  final bool isDestructive;
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig for responsiveness
-
+    final theme = Theme.of(context);
+    final foreground = isDestructive ? theme.colorScheme.error : kTertiaryColor;
     return Column(
       children: [
         ListTile(
-          minLeadingWidth: 0.0,
+          minTileHeight: 56,
+          minVerticalPadding: 12,
+          minLeadingWidth: 36,
+          horizontalTitleGap: 12,
           onTap: onTap,
-          contentPadding: EdgeInsets.symmetric(
-            vertical: SizeConfig.heightMultiplier * 1,
-            horizontal:
-                removeLPadding == true
-                    ? 0.0
-                    : SizeConfig.imageSizeMultiplier * 2.5,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
           ),
-          leading:
-              icon != null
-                  ? Icon(
-                    icon,
-                    color: kPrimaryColor,
-                    size: SizeConfig.imageSizeMultiplier * 7,
-                  )
-                  : const SizedBox.shrink(),
-          title:
-              title is String
-                  ? Text(
-                    (title as String).sanitized(),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      fontSize: SizeConfig.textMultiplier * 2,
-                    ),
-                  )
-                  : title,
-          subtitle:
-              subTitle is String
-                  ? Text(
-                    (subTitle as String).sanitized(),
-                    style: kSubTitleStyle.copyWith(
-                      fontSize: SizeConfig.textMultiplier * 1.8,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  )
-                  : subTitle,
-          trailing: trailing,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: removeLPadding == true ? 0 : 12,
+          ),
+          leading: icon == null
+              ? null
+              : Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isDestructive
+                        ? theme.colorScheme.errorContainer.withValues(alpha: .3)
+                        : SpazaColors.subtle,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: foreground, size: 22),
+                ),
+          title: title is String
+              ? Text(
+                  (title as String).sanitized(),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: foreground,
+                    fontWeight: FontWeight.w500,
+                  ),
+                )
+              : title,
+          subtitle: subTitle is String
+              ? Text(
+                  (subTitle as String).sanitized(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: kSecondaryAccent,
+                  ),
+                )
+              : subTitle,
+          trailing: trailing ??
+              (onTap == null
+                  ? null
+                  : const Icon(
+                      SpazaIcons.next,
+                      size: 20,
+                      color: kSecondaryAccent,
+                    )),
         ),
-        hideDivider == true
-            ? const SizedBox.shrink()
-            : Divider(
-              color: kHighLightColor,
-              height: SizeConfig.heightMultiplier * 1,
-              thickness: 1,
-            ),
+        if (hideDivider != true)
+          Divider(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: .6),
+            height: 1,
+            thickness: 1,
+            indent: icon == null ? 8 : 42,
+            endIndent: 8,
+          ),
       ],
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
@@ -39,17 +40,17 @@ class EditSale extends StatelessWidget {
           );
 
           return TransactionFormScaffold(
-            title: 'Edit Sale',
+            title: 'Edit sale',
             scaffoldKey: transactionViewModel.scaffoldKey,
             formKey: transactionViewModel.formKey,
             isLoading: transactionViewModel.isLoading,
             isDirty: transactionViewModel.isDirty,
-            primaryActionLabel: 'Update Sale',
+            primaryActionLabel: 'Update sale',
             primaryActionIcon: Icons.point_of_sale,
-            primaryActionColor: Colors.green,
+            primaryActionColor: SpazaColors.action,
             totalLabel: Text(
               'Total: ${CurrencyUtil.format(transactionViewModel.calculateTotalAmount())}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
             ),
             onPrimaryAction: () async {
               final confirmed = await ConfirmDialog.show(
@@ -77,7 +78,7 @@ class EditSale extends StatelessWidget {
               children: [
                 CustomTextField(
                   label: 'Amount',
-                  hintText: 'Enter Amount',
+                  hintText: 'Enter amount',
                   prefixIcon: Icons.money,
                   controller: transactionViewModel.amountController,
                   textInputType: const TextInputType.numberWithOptions(
@@ -105,7 +106,7 @@ class EditSale extends StatelessWidget {
                   loadPreview: transactionViewModel.loadStockInvoicePreview,
                 ),
                 DateRow(
-                  label: 'Date of Sale',
+                  label: 'Date of sale',
                   value: selectedDate,
                   firstDate: DateTime(2000),
                   lastDate: DateTime.now(),
@@ -119,7 +120,8 @@ class EditSale extends StatelessWidget {
                     ),
                     child: Center(
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(SpazaColors.action),
                       ),
                     ),
                   )
@@ -130,8 +132,7 @@ class EditSale extends StatelessWidget {
                   controller: transactionViewModel.remarksController,
                   maxLines: 3,
                   decoration: const InputDecoration(
-                    labelText: 'Remarks/Notes',
-                    border: OutlineInputBorder(),
+                    labelText: 'Notes',
                     contentPadding: EdgeInsets.symmetric(
                       vertical: LayoutConstants.spaceMd,
                       horizontal: LayoutConstants.spaceMd,

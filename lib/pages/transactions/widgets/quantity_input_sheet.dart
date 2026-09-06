@@ -88,60 +88,61 @@ class _QuantityInputSheetState extends State<QuantityInputSheet> {
         top: LayoutConstants.spaceMd,
         bottom: LayoutConstants.spaceMd + bottomInset,
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Quantity — ${widget.productName}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: LayoutConstants.spaceMd),
-            TextFormField(
-              controller: _controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                labelText: 'Quantity',
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Enter a quantity';
-                }
-                final parsed = int.tryParse(value.trim());
-                if (parsed == null) return 'Enter a whole number';
-                if (parsed < 0) return 'Quantity cannot be negative';
-                return null;
-              },
-            ),
-            const SizedBox(height: LayoutConstants.spaceMd),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Quantity — ${widget.productName}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
-                const SizedBox(width: LayoutConstants.spaceMd),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _submit,
-                    child: const Text('Save'),
-                  ),
+              ),
+              const SizedBox(height: LayoutConstants.spaceMd),
+              TextFormField(
+                controller: _controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _submit(),
+                decoration: const InputDecoration(
+                  labelText: 'Quantity',
                 ),
-              ],
-            ),
-          ],
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Enter a quantity';
+                  }
+                  final parsed = int.tryParse(value.trim());
+                  if (parsed == null) return 'Enter a whole number';
+                  if (parsed < 0) return 'Quantity cannot be negative';
+                  return null;
+                },
+              ),
+              const SizedBox(height: LayoutConstants.spaceMd),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: LayoutConstants.spaceMd),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _submit,
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

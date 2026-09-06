@@ -11,7 +11,6 @@
 // "send / attach" anchored bar pattern that merchants are already used to.
 
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
 import 'package:pasella/pages/transactions/add_payment/add_payment.dart';
 import 'package:pasella/utils/auth_util.dart';
@@ -29,62 +28,20 @@ class PayLaterActionBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
-    return Material(
-      color: Colors.white,
-      elevation: 8,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            SizeConfig.imageSizeMultiplier * 4,
-            SizeConfig.heightMultiplier * 1,
-            SizeConfig.imageSizeMultiplier * 4,
-            SizeConfig.heightMultiplier * 1,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: _ActionPill(
-                  label: 'Add to account',
-                  icon: Icons.arrow_downward_rounded,
-                  color: const Color(0xFFF3F4F6),
-                  foregroundColor: const Color(0xFF29295B),
-                  onTap: () => _open(
-                    context,
-                    (ctx) => AddCreditScreen(
-                      customerName: customerName,
-                      customerId: customerId,
-                      mobileNumber: mobileNumber,
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(width: SizeConfig.imageSizeMultiplier * 3),
-              Expanded(
-                child: _ActionPill(
-                  label: 'Record payment',
-                  icon: Icons.arrow_upward_rounded,
-                  color: const Color(0xFFF3F4F6),
-                  foregroundColor: const Color(0xFF29295B),
-                  onTap: () => _open(
-                    context,
-                    (ctx) => AddPaymentScreen(
-                      customerName: customerName,
-                      customerId: customerId,
-                      mobileNumber: mobileNumber,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => CustomerAccountActions(
+        onAddCredit: () => _open(
+            context,
+            (_) => AddCreditScreen(
+                customerName: customerName,
+                customerId: customerId,
+                mobileNumber: mobileNumber)),
+        onRecordPayment: () => _open(
+            context,
+            (_) => AddPaymentScreen(
+                customerName: customerName,
+                customerId: customerId,
+                mobileNumber: mobileNumber)),
+      );
 
   void _open(BuildContext context, WidgetBuilder builder) {
     // PAS-UX-14: gate at the screen edge so anonymous users see the
@@ -99,53 +56,46 @@ class PayLaterActionBar extends StatelessWidget {
   }
 }
 
-class _ActionPill extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final Color foregroundColor;
-  final VoidCallback onTap;
-
-  const _ActionPill({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.foregroundColor,
-    required this.onTap,
-  });
+/// The same account actions, with navigation supplied by the caller.
+class CustomerAccountActions extends StatelessWidget {
+  const CustomerAccountActions(
+      {super.key, required this.onAddCredit, required this.onRecordPayment});
+  final VoidCallback onAddCredit;
+  final VoidCallback onRecordPayment;
 
   @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(SizeConfig.imageSizeMultiplier * 4);
-    return Material(
-      color: color,
-      borderRadius: radius,
-      child: InkWell(
-        borderRadius: radius,
-        onTap: onTap,
-        child: Container(
-          height: SizeConfig.heightMultiplier * 6,
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon,
-                  color: foregroundColor,
-                  size: SizeConfig.imageSizeMultiplier * 5),
-              SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-              Text(
-                label,
-                style: TextStyle(
-                  color: foregroundColor,
-                  fontWeight: FontWeight.w700,
-                  fontSize: SizeConfig.textMultiplier * 2,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Material(
+        color: Theme.of(context).colorScheme.surface,
+        child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: LayoutBuilder(builder: (context, constraints) {
+                final add = OutlinedButton.icon(
+                  onPressed: onAddCredit,
+                  icon: const Icon(Icons.arrow_downward_rounded, size: 20),
+                  label:
+                      const Text('Add to account', textAlign: TextAlign.center),
+                );
+                final pay = FilledButton.icon(
+                  onPressed: onRecordPayment,
+                  icon: const Icon(Icons.arrow_upward_rounded, size: 20),
+                  label:
+                      const Text('Record payment', textAlign: TextAlign.center),
+                );
+                if (constraints.maxWidth < 340 ||
+                    MediaQuery.textScalerOf(context).scale(14) > 19) {
+                  return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [add, const SizedBox(height: 8), pay]);
+                }
+                return Row(children: [
+                  Expanded(child: add),
+                  const SizedBox(width: 12),
+                  Expanded(child: pay)
+                ]);
+              }),
+            )),
+      );
 }

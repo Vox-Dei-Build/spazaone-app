@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/settings/settings.dart';
 import 'package:pasella/shared/widgets/connectivity_widget.dart';
@@ -104,7 +105,7 @@ class PageHeader extends StatelessWidget {
                 compactAction(
                   IconButton(
                     icon:
-                        Icon(Icons.search, color: Colors.black, size: iconSize),
+                        Icon(SpazaIcons.search, color: SpazaColors.muted, size: iconSize),
                     onPressed: onSearchTap,
                     tooltip: 'Search',
                     padding: EdgeInsets.zero,
@@ -150,8 +151,8 @@ class PageHeader extends StatelessWidget {
                 width: 44,
                 height: 44,
                 child: IconButton(
-                  icon: Icon(Icons.settings_outlined,
-                      color: Colors.black, size: iconSize),
+                  icon: Icon(SpazaIcons.settings,
+                      color: SpazaColors.muted, size: iconSize),
                   onPressed: onSettingsTap ??
                       () {
                         Navigator.of(context).push(

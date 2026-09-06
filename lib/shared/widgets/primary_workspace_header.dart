@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/settings/setup/merchant_setup_page.dart';
@@ -176,7 +177,7 @@ class WorkspaceHeaderBar extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              Icons.storefront_outlined,
+              SpazaIcons.shop,
               color: colors.onSurfaceVariant,
               size: compactLandscape ? 18 : 20,
             ),
@@ -193,7 +194,7 @@ class WorkspaceHeaderBar extends StatelessWidget {
                     style: TextStyle(
                       color: colors.onSurface,
                       fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                   if (stackProgress)
@@ -245,12 +246,12 @@ class WorkspaceHeaderBar extends StatelessWidget {
       ),
     );
     final storeSurface = Material(
-      color: colors.onSurface.withValues(alpha: 0.045),
-      borderRadius: BorderRadius.circular(14),
+      color: SpazaColors.subtle,
+      borderRadius: BorderRadius.circular(SpazaRadius.control),
       child: canOpenStores
           ? InkWell(
               onTap: onStorePressed,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(SpazaRadius.control),
               child: storeContents,
             )
           : storeContents,

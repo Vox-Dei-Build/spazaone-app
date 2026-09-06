@@ -3,9 +3,8 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/config/size_config.dart';
-import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 import 'package:pasella/pages/sales/widgets/edit_sale.dart';
@@ -92,13 +91,12 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return Scaffold(
       appBar: CustomAppBar(
-        title: 'Sale Details',
+        title: 'Sale details',
         trailing: IconButton(
-          icon: const Icon(Icons.edit),
+          tooltip: 'Edit sale',
+          icon: const Icon(Icons.edit_outlined),
           onPressed: () async {
             // EditSale returns `true` when the sale was deleted — close
             // this details screen too since there is nothing left to view.
@@ -115,251 +113,190 @@ class _SaleDetailPageState extends State<SaleDetailPage> {
           },
         ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: LayoutConstants.padding10Horizontal,
-          child: ListView(
-            children: [
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2.5),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ListTile(
-                        title: Text(
-                          'Sales amount',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                        ),
-                        subtitle: Text(
-                          CurrencyUtil.format(sale.amount),
-                          style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.8),
-                        ),
-                      ),
-                      ListTile(
-                        title: Text(
-                          'Stock amount',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                        ),
-                        subtitle: Text(
-                          CurrencyUtil.format(sale.stockAmount),
-                          style: TextStyle(
-                            fontSize: SizeConfig.textMultiplier * 1.8,
-                          ),
-                        ),
-                      ),
-                      ListTile(
-                        title: Text(
-                          'Stock invoices',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                        ),
-                        subtitle: sale.stockInvoices.isEmpty
-                            ? Text(
-                                'No stock invoices attached.',
-                                style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 1.8,
-                                ),
-                              )
-                            : Column(
-                                children: sale.stockInvoices
-                                    .map(
-                                      (attachment) => _StockInvoiceTile(
-                                        attachment: attachment,
-                                        loadPreview: _loadStockInvoicePreview,
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                      ),
-                      ListTile(
-                        title: Text(
-                          'Date',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                        ),
-                        subtitle: Text(
-                          DateFormat("dd-MM-yyyy HH:mm").format(sale.dateAdded),
-                          style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.8),
-                        ),
-                      ),
-                      ListTile(
-                        title: Text(
-                          'Type',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                        ),
-                        subtitle: Text(
-                          sale.type,
-                          style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.8),
-                        ),
-                      ),
-                      ListTile(
-                        title: Text(
-                          'Remarks',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                        ),
-                        subtitle: Text(
-                          sale.remarks ?? 'No Remarks',
-                          style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 1.8),
-                        ),
-                      ),
-                      ListTile(
-                        title: Text(
-                          'Products',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                        ),
-                        subtitle: sale.products.isNotEmpty
-                            ? FutureBuilder<Map<String, Map<String, dynamic>>>(
-                                future: _productsFuture,
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState ==
-                                      ConnectionState.waiting) {
-                                    return const Padding(
-                                      padding: EdgeInsets.all(8),
-                                      child: Center(
-                                          child: CircularProgressIndicator()),
-                                    );
-                                  }
-                                  final products = snapshot.data ?? const {};
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children:
-                                        sale.products.entries.map((entry) {
-                                      final productId = entry.key;
-                                      final quantity = entry.value;
-                                      final productData = products[productId];
-                                      if (productData == null) {
-                                        return Text(
-                                            'Unknown product with ID: $productId');
-                                      }
-                                      final productName = productData['name'] ??
-                                          'Unnamed product';
-                                      final sellingPrice =
-                                          productData['sellingPrice'];
+      body: SaleDetailsContent(
+        sale: sale,
+        productsFuture: _productsFuture,
+        loadStockInvoicePreview: _loadStockInvoicePreview,
+      ),
+    );
+  }
+}
 
-                                      return Card(
-                                        elevation: 2,
-                                        margin: EdgeInsets.symmetric(
-                                          vertical:
-                                              SizeConfig.heightMultiplier * 1,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: Padding(
-                                          padding: EdgeInsets.all(
-                                              SizeConfig.imageSizeMultiplier *
-                                                  2),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Icon(
-                                                    Icons.inventory,
-                                                    size: SizeConfig
-                                                            .imageSizeMultiplier *
-                                                        4,
-                                                  ),
-                                                  SizedBox(
-                                                      width: SizeConfig
-                                                              .imageSizeMultiplier *
-                                                          2),
-                                                  Expanded(
-                                                    child: Text(
-                                                      formatStringToCamelCase(
-                                                          productName),
-                                                      style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: SizeConfig
-                                                                .textMultiplier *
-                                                            2,
-                                                      ),
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              SizedBox(
-                                                  height: SizeConfig
-                                                          .heightMultiplier *
-                                                      1),
-                                              Text(
-                                                'Quantity: $quantity',
-                                                style: TextStyle(
-                                                  fontSize: SizeConfig
-                                                          .textMultiplier *
-                                                      1.8,
-                                                ),
-                                              ),
-                                              SizedBox(
-                                                  height: SizeConfig
-                                                          .heightMultiplier *
-                                                      0.5),
-                                              Text(
-                                                'Selling Price: ${CurrencyUtil.format(sellingPrice)}',
-                                                style: TextStyle(
-                                                  fontStyle: FontStyle.italic,
-                                                  fontSize: SizeConfig
-                                                          .textMultiplier *
-                                                      1.8,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  );
-                                },
-                              )
-                            : Text(
-                                'No products associated with this sale.',
-                                style: TextStyle(
-                                    fontSize: SizeConfig.textMultiplier * 2),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
+/// Read-only sale presentation shared by the live detail page and previews.
+/// Product lookup and invoice storage remain owned by the calling page.
+class SaleDetailsContent extends StatelessWidget {
+  const SaleDetailsContent({
+    super.key,
+    required this.sale,
+    required this.productsFuture,
+    required this.loadStockInvoicePreview,
+  });
+
+  final Sale sale;
+  final Future<Map<String, Map<String, dynamic>>> productsFuture;
+  final Future<Uint8List?> Function(String storagePath) loadStockInvoicePreview;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Sales amount', style: theme.textTheme.bodyMedium),
+                  const SizedBox(height: 8),
+                  Text(CurrencyUtil.format(sale.amount),
+                      style: theme.textTheme.headlineSmall),
+                  const SizedBox(height: 20),
+                  _SaleDetailValue(
+                      'Stock amount', CurrencyUtil.format(sale.stockAmount)),
+                  const Divider(height: 24),
+                  _SaleDetailValue('Date',
+                      DateFormat('dd MMM yyyy · HH:mm').format(sale.dateAdded)),
+                  const SizedBox(height: 16),
+                  _SaleDetailValue('Type', sale.type),
+                ],
               ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SaleDetailSection(
+            title: 'Remarks',
+            child: Text(sale.remarks ?? 'No remarks',
+                style: theme.textTheme.bodyMedium),
+          ),
+          const SizedBox(height: 16),
+          _SaleDetailSection(
+            title: 'Products',
+            child: sale.products.isEmpty
+                ? Text('No products associated with this sale.',
+                    style: theme.textTheme.bodyMedium)
+                : FutureBuilder<Map<String, Map<String, dynamic>>>(
+                    future: productsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final products = snapshot.data ?? const {};
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: sale.products.entries.map((entry) {
+                          final product = products[entry.key];
+                          if (product == null) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child:
+                                  Text('Unknown product with ID: ${entry.key}'),
+                            );
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(SpazaIcons.products, size: 22),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                    child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                        formatStringToCamelCase(
+                                            product['name'] ??
+                                                'Unnamed product'),
+                                        style: theme.textTheme.titleSmall),
+                                    const SizedBox(height: 4),
+                                    Text('Quantity: ${entry.value}',
+                                        style: theme.textTheme.bodySmall),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                        product['sellingPrice'] is num
+                                            ? 'Selling price: ${CurrencyUtil.format((product['sellingPrice'] as num).toDouble())}'
+                                            : 'Selling price not set',
+                                        style: theme.textTheme.bodySmall),
+                                  ],
+                                )),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+          ),
+          const SizedBox(height: 16),
+          _SaleDetailSection(
+            title: 'Stock invoices',
+            child: sale.stockInvoices.isEmpty
+                ? Text('No stock invoices attached.',
+                    style: theme.textTheme.bodyMedium)
+                : Column(
+                    children: sale.stockInvoices
+                        .map((attachment) => _StockInvoiceTile(
+                              attachment: attachment,
+                              loadPreview: loadStockInvoicePreview,
+                            ))
+                        .toList()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SaleDetailSection extends StatelessWidget {
+  const _SaleDetailSection({required this.title, required this.child});
+  final String title;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 12),
+              child,
             ],
           ),
         ),
-      ),
-    );
+      );
+}
+
+class _SaleDetailValue extends StatelessWidget {
+  const _SaleDetailValue(this.label, this.value);
+  final String label;
+  final String value;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final labelWidget = Text(label, style: theme.textTheme.bodySmall);
+    final valueWidget = Text(value, style: theme.textTheme.bodyMedium);
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < 280 ||
+          MediaQuery.textScalerOf(context).scale(14) >= 20) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          labelWidget,
+          const SizedBox(height: 4),
+          valueWidget,
+        ]);
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: labelWidget),
+        const SizedBox(width: 16),
+        Flexible(child: valueWidget),
+      ]);
+    });
   }
 }
 
@@ -390,7 +327,8 @@ class _StockInvoiceTile extends StatelessWidget {
                       final bytes = snapshot.data;
                       if (bytes != null) {
                         return ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius:
+                              BorderRadius.circular(SpazaRadius.control),
                           child: Image.memory(
                             bytes,
                             fit: BoxFit.cover,

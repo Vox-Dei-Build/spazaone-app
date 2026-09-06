@@ -368,7 +368,7 @@ class CampaignTopupConfirmationSheet extends StatelessWidget {
             Text(
               'Check payment details',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
             ),
             const SizedBox(height: 20),
@@ -422,7 +422,7 @@ class _ReceiptRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = strong
         ? Theme.of(context).textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
             )
         : Theme.of(context).textTheme.bodyMedium;
     return Padding(

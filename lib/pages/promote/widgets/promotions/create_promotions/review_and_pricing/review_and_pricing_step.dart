@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/promote/widgets/message_preview_card.dart';
 import 'package:pasella/pages/promote/widgets/promotions/create_promotions/product_link/product_picker_sheet.dart';
 import 'package:pasella/pages/promote/widgets/promotions/recepients.dart';
@@ -168,12 +169,10 @@ class _ReviewAndPricingStepState extends State<ReviewAndPricingStep> {
 }
 
 class _ReviewSummaryCard extends StatelessWidget {
-  const _ReviewSummaryCard({
-    required this.recipientCount,
-    required this.channelLabel,
-    required this.totalCost,
-  });
-
+  const _ReviewSummaryCard(
+      {required this.recipientCount,
+      required this.channelLabel,
+      required this.totalCost});
   final int recipientCount;
   final String channelLabel;
   final double totalCost;
@@ -181,78 +180,37 @@ class _ReviewSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
     return Container(
       key: const Key('promotion-review-summary'),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        border: Border.all(color: SpazaColors.border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: primary.withValues(alpha: 0.09),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.send_rounded, color: primary, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Ready to send',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$recipientCount customer${recipientCount == 1 ? '' : 's'} · '
-                  '$channelLabel',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                CurrencyUtil.format(totalCost),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: primary,
-                  fontWeight: FontWeight.w800,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-              Text(
-                'estimated cost',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+          Row(children: [
+            const Icon(Icons.send_outlined,
+                color: SpazaColors.action, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+                child:
+                    Text('Ready to send', style: theme.textTheme.titleMedium)),
+          ]),
+          const SizedBox(height: 12),
+          Text(
+              '$recipientCount customer${recipientCount == 1 ? '' : 's'} · $channelLabel',
+              style: theme.textTheme.bodySmall),
+          const SizedBox(height: 20),
+          Text(CurrencyUtil.format(totalCost),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: SpazaColors.action,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              )),
+          const SizedBox(height: 4),
+          Text('estimated cost', style: theme.textTheme.bodySmall),
         ],
       ),
     );
@@ -290,7 +248,7 @@ class _DeliveryBreakdownCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
         border: Border.all(
           color: theme.dividerColor.withValues(alpha: 0.35),
         ),
@@ -504,9 +462,8 @@ class _MessagePreviewSection extends StatelessWidget {
 }
 
 class _AttachedProductReview extends StatelessWidget {
-  final LinkedProductRef product;
-
   const _AttachedProductReview({required this.product});
+  final LinkedProductRef product;
 
   @override
   Widget build(BuildContext context) {
@@ -521,90 +478,49 @@ class _AttachedProductReview extends StatelessWidget {
         : product.whatsappListed == false
             ? Colors.orange.shade800
             : theme.colorScheme.onSurfaceVariant;
-
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.35),
-        ),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        border: Border.all(color: SpazaColors.border),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SizedBox(
-              width: 52,
-              height: 52,
-              child: product.imageUrl?.trim().isNotEmpty == true
-                  ? Image.network(
-                      product.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _ProductPlaceholder(
-                        color: theme.colorScheme.primary,
-                      ),
-                    )
-                  : _ProductPlaceholder(color: theme.colorScheme.primary),
-            ),
+                width: 48,
+                height: 48,
+                child: product.imageUrl?.trim().isNotEmpty == true
+                    ? Image.network(product.imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _ProductPlaceholder(
+                            color: theme.colorScheme.primary))
+                    : _ProductPlaceholder(color: theme.colorScheme.primary)),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Product',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  product.name.trim(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Icon(
-                      product.whatsappListed == true
-                          ? Icons.check_circle_outline_rounded
-                          : product.whatsappListed == false
-                              ? Icons.info_outline_rounded
-                              : Icons.link_rounded,
-                      color: availabilityColor,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        availability,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: availabilityColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Product', style: theme.textTheme.labelMedium),
+              const SizedBox(height: 4),
+              Text(product.name.trim(), style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              Text(availability,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: availabilityColor)),
+              if (product.sellingPrice != null) ...[
+                const SizedBox(height: 10),
+                Text(CurrencyUtil.format(product.sellingPrice!),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    )),
               ],
-            ),
-          ),
-          if (product.sellingPrice != null) ...[
-            const SizedBox(width: 8),
-            Text(
-              CurrencyUtil.format(product.sellingPrice!),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
+            ],
+          )),
         ],
       ),
     );

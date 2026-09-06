@@ -1,3 +1,4 @@
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/services/store_session.dart';
@@ -5,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pasella/models/common/app_model.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/services/analytics_event.dart';
 import 'package:pasella/services/telemetry_service.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -197,10 +197,8 @@ class _SharePageState extends State<SharePage> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: SpazaColors.canvas,
       appBar: const CustomAppBar(title: 'Ordering link'),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -288,9 +286,8 @@ class OrderingLinkPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
     final theme = Theme.of(context);
-    final green = Colors.green.shade700;
+    const green = SpazaColors.action;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -298,16 +295,9 @@ class OrderingLinkPanel extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                green.withValues(alpha: 0.14),
-                green.withValues(alpha: 0.05),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: green.withValues(alpha: 0.18)),
+            color: SpazaColors.surface,
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
+            border: Border.all(color: SpazaColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -317,10 +307,10 @@ class OrderingLinkPanel extends StatelessWidget {
                 height: 58,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: SpazaColors.surface,
                   borderRadius: BorderRadius.circular(17),
                 ),
-                child: Icon(
+                child: const Icon(
                   FontAwesomeIcons.whatsapp,
                   color: green,
                   size: 30,
@@ -330,7 +320,7 @@ class OrderingLinkPanel extends StatelessWidget {
               Text(
                 'Take orders on WhatsApp',
                 style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w500,
                   letterSpacing: -0.5,
                 ),
               ),
@@ -338,7 +328,7 @@ class OrderingLinkPanel extends StatelessWidget {
               Text(
                 'Share one link and customers can start an order with $shopName.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey.shade700,
+                  color: SpazaColors.muted,
                   height: 1.4,
                 ),
               ),
@@ -357,14 +347,14 @@ class OrderingLinkPanel extends StatelessWidget {
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: green,
-                  foregroundColor: Colors.white,
+                  foregroundColor: SpazaColors.surface,
                   minimumSize: const Size.fromHeight(54),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(SpazaRadius.control),
                   ),
                   textStyle: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -389,14 +379,14 @@ class OrderingLinkPanel extends StatelessWidget {
         Text(
           'Your link',
           style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           'Copy these details when you need to paste them somewhere manually.',
           style: theme.textTheme.bodySmall?.copyWith(
-            color: Colors.grey.shade700,
+            color: SpazaColors.muted,
             height: 1.35,
           ),
         ),
@@ -418,9 +408,9 @@ class OrderingLinkPanel extends StatelessWidget {
         const SizedBox(height: 18),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: Colors.grey.shade200),
-            borderRadius: BorderRadius.circular(14),
+            color: SpazaColors.surface,
+            border: Border.all(color: SpazaColors.border),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
           ),
           child: ExpansionTile(
             leading: const Icon(Icons.tune_outlined),
@@ -428,7 +418,7 @@ class OrderingLinkPanel extends StatelessWidget {
             childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             title: const Text(
               'Link details and reset',
-              style: TextStyle(fontWeight: FontWeight.w700),
+              style: TextStyle(fontWeight: FontWeight.w500),
             ),
             children: [
               _DetailRow(
@@ -474,7 +464,7 @@ class EmptyOrderingCatalogNotice extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.tertiaryContainer.withValues(alpha: .55),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -483,7 +473,7 @@ class EmptyOrderingCatalogNotice extends StatelessWidget {
             'Add a product before sharing',
             style: TextStyle(
               color: colors.onTertiaryContainer,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 4),
@@ -526,19 +516,16 @@ class _CopyableField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-    final textSize = SizeConfig.textMultiplier;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        color: SpazaColors.subtle,
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
+        border: Border.all(color: SpazaColors.border),
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.grey.shade700, size: 20),
+          Icon(icon, color: SpazaColors.muted, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -546,10 +533,10 @@ class _CopyableField extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: textSize * 1.2,
-                    fontWeight: FontWeight.w700,
+                  style: const TextStyle(
+                    color: SpazaColors.muted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -557,9 +544,9 @@ class _CopyableField extends StatelessWidget {
                   value,
                   maxLines: emphasize ? 1 : 3,
                   style: TextStyle(
-                    color: Colors.black87,
-                    fontSize: emphasize ? textSize * 2.0 : textSize * 1.35,
-                    fontWeight: emphasize ? FontWeight.w900 : FontWeight.w700,
+                    color: SpazaColors.ink,
+                    fontSize: emphasize ? 16 : 14,
+                    fontWeight: emphasize ? FontWeight.w500 : FontWeight.w500,
                     height: 1.25,
                     letterSpacing: emphasize ? 1.0 : 0,
                   ),
@@ -593,9 +580,9 @@ class _DetailRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontWeight: FontWeight.w700,
+            style: const TextStyle(
+              color: SpazaColors.muted,
+              fontWeight: FontWeight.w500,
               fontSize: 12,
             ),
           ),

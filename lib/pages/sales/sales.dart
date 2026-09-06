@@ -1,6 +1,4 @@
-// All existing imports stay
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/pages/sales/widgets/add_sale.dart';
 import 'package:pasella/pages/sales/widgets/date_filter_bar.dart';
@@ -9,7 +7,6 @@ import 'package:pasella/pages/sales/widgets/sales_page_header.dart';
 import 'package:pasella/pages/sales/widgets/online_commerce_hub.dart';
 import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/sales/widgets/sales_stats_card.dart';
-import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 import 'package:pasella/services/sales_intent_bus.dart';
 import 'package:pasella/services/analytics_event.dart';
@@ -75,9 +72,9 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
       if (!mounted) return;
       if (_mainController.index == 2) {
         _loadMarketing();
-        return;
       }
-      // Ensure cash list has fresh data immediately on first show.
+      // Prepare the current sales period even when a promotion intent opens
+      // Marketing first, so switching to Recorded does not remain unloaded.
       _salesVM.updateSelectedDate(_selectedDay ?? DateTime.now());
     });
   }
@@ -139,6 +136,17 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     _salesVM.updateSelectedDateRange(DateTime(2000), DateTime.now());
   }
 
+  void _refreshRecordedSales() {
+    if (_selectedDay != null) {
+      _salesVM.updateSelectedDate(_selectedDay!);
+    } else {
+      _salesVM.updateSelectedDateRange(
+        _startDate ?? DateTime(2000),
+        _endDate ?? DateTime.now(),
+      );
+    }
+  }
+
   void _onOnlineDateSelected(DateTime selectedDay) {
     setState(() {
       _onlineSelectedDay = selectedDay;
@@ -179,12 +187,12 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
         return Scaffold(
           body: SafeArea(
             child: Padding(
-              padding: LayoutConstants.padding10Horizontal,
+              padding: LayoutConstants.workspacePadding,
               child: Column(
                 children: [
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  const SizedBox(height: 8),
                   const SalesPageHeader(),
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
+                  const SizedBox(height: 8),
                   WorkspaceSectionTabs(
                     controller: _mainController,
                     tabs: const [
@@ -214,19 +222,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                           bottom: true,
                           child: SalesList(
                             viewModel: salesVM,
+                            onSaleChanged: _refreshRecordedSales,
                             header: [
-                              WorkspaceContextHeader(
-                                title: 'Sales & stock',
-                                subtitle:
-                                    'Compare sales with money spent restocking',
-                                action: FilledButton.icon(
-                                  key: const ValueKey('record-sale-action'),
-                                  onPressed: () =>
-                                      _openAddSale(salesVM, 'workspace_header'),
-                                  icon: const Icon(Icons.add, size: 18),
-                                  label: const Text('Record'),
-                                ),
-                              ),
                               DateFilterBar(
                                 selectedDay: _selectedDay,
                                 startDate: _startDate,
@@ -246,9 +243,8 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
                                 selectedDay: _selectedDay,
                                 startDate: _startDate,
                                 endDate: _endDate,
-                              ),
-                              SizedBox(
-                                height: SizeConfig.heightMultiplier * 1.0,
+                                onRecordSale: () =>
+                                    _openAddSale('sales_summary'),
                               ),
                             ],
                           ),
@@ -289,13 +285,14 @@ class _SalesPageState extends State<SalesPage> with TickerProviderStateMixin {
     );
   }
 
-  void _openAddSale(SalesViewModel salesVM, String entryPoint) {
+  Future<void> _openAddSale(String entryPoint) async {
     TelemetryService.instance.capture(SaleStarted(entryPoint: entryPoint));
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AddSale(salesViewModel: salesVM),
+        builder: (_) => const AddSale(),
       ),
     );
+    if (mounted) _refreshRecordedSales();
   }
 }
 

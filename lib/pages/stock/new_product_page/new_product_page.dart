@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/stock/view_model/product_view_model.dart';
 import 'package:pasella/pages/stock/widgets/product_form.dart';
@@ -53,7 +52,7 @@ class _NewProductPageState extends State<NewProductPage> {
               enabled: viewModel.hasUnsavedChanges,
               onPressed: () => _save(context, viewModel),
             ),
-            appBar: const CustomAppBar(title: "New Product"),
+            appBar: const CustomAppBar(title: "Add product"),
             body: PopScope(
               // PAS-UX-05: unsaved-changes guard. Previously a swipe-
               // back on this page silently discarded everything the
@@ -75,14 +74,14 @@ class _NewProductPageState extends State<NewProductPage> {
               },
               child: SafeArea(
                 child: Container(
-                  color: Colors.white,
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   height: double.infinity,
                   width: double.infinity,
                   child: Column(
                     children: [
                       Expanded(
                         child: Padding(
-                          padding: LayoutConstants.padding10Horizontal,
+                          padding: EdgeInsets.zero,
                           child: ProductForm(
                             formKey: _formKey,
                             product: _newProduct,
@@ -113,7 +112,7 @@ class _NewProductPageState extends State<NewProductPage> {
       null,
       showSuccessSnackbar: false,
     );
-    if (addedProduct == null) return;
+    if (addedProduct == null || !mounted || !context.mounted) return;
     widget.onProductAdded?.call(addedProduct);
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) return;

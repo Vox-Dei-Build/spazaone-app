@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/utils/linked_product_promotion.dart';
 import 'package:pasella/pages/stock/product_details/product_details.dart';
@@ -13,6 +13,7 @@ class ProductCard extends StatelessWidget {
   final String docID;
   final LinkedProductPromotionLauncher promotionLauncher;
   final bool compactHorizontal;
+  final VoidCallback? onOpen;
 
   const ProductCard({
     Key? key,
@@ -20,6 +21,7 @@ class ProductCard extends StatelessWidget {
     required this.docID,
     this.promotionLauncher = launchLinkedProductPromotion,
     this.compactHorizontal = false,
+    this.onOpen,
   }) : super(key: key);
 
   Future<void> _promote(BuildContext context) {
@@ -30,6 +32,10 @@ class ProductCard extends StatelessWidget {
   }
 
   void _openDetails(BuildContext context) {
+    if (onOpen != null) {
+      onOpen!();
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => product.isDropshipListing
@@ -45,41 +51,38 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
-
     if (compactHorizontal) {
       return GestureDetector(
         onTap: () => _openDetails(context),
         child: Card(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
           ),
-          elevation: 1,
-          shadowColor: Colors.black.withValues(alpha: .12),
+          elevation: 0,
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Row(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                   child: SizedBox.square(
-                    dimension: 82,
+                    dimension: 64,
                     child: product.image == null
-                        ? ColoredBox(
-                            color: Colors.grey.withValues(alpha: .10),
-                            child: const Icon(
+                        ? const ColoredBox(
+                            color: SpazaColors.subtle,
+                            child: Icon(
                               Icons.image_outlined,
-                              color: Colors.grey,
+                              color: SpazaColors.muted,
                             ),
                           )
                         : CachedNetworkImage(
                             fit: BoxFit.cover,
                             imageUrl: product.image!,
                             errorWidget: (_, __, ___) => const ColoredBox(
-                              color: Color(0xFFF2F2F2),
+                              color: SpazaColors.subtle,
                               child: Icon(
                                 Icons.broken_image_outlined,
-                                color: Colors.grey,
+                                color: SpazaColors.muted,
                               ),
                             ),
                           ),
@@ -96,7 +99,7 @@ class ProductCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w500,
                             ),
                       ),
                       const SizedBox(height: 3),
@@ -115,7 +118,7 @@ class ProductCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style:
                             Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  color: const Color(0xFF2B325F),
+                                  color: SpazaColors.heading,
                                   fontWeight: FontWeight.w700,
                                 ),
                       ),
@@ -133,16 +136,17 @@ class ProductCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => _openDetails(context),
       child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 4,
-        shadowColor: Colors.black.withValues(alpha: 0.2),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
+            side: const BorderSide(color: SpazaColors.border)),
+        elevation: 0,
         child: Padding(
-          padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 2),
+          padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(SpazaRadius.control),
                 child: GestureDetector(
                   onTap: () {
                     if (product.image != null) {
@@ -154,7 +158,7 @@ class ProductCard extends StatelessWidget {
                               imageUrl: product.image!,
                               errorWidget: (context, url, error) => const Icon(
                                 Icons.broken_image,
-                                color: Colors.grey,
+                                color: SpazaColors.muted,
                               ),
                             ),
                           ),
@@ -163,39 +167,39 @@ class ProductCard extends StatelessWidget {
                     }
                   },
                   child: SizedBox(
-                    height: SizeConfig.heightMultiplier * 12,
+                    height: 96,
                     width: double.infinity,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
                         (product.image == null)
-                            ? Center(
+                            ? const Center(
                                 child: Icon(
                                   Icons.image,
-                                  size: SizeConfig.imageSizeMultiplier * 15,
-                                  color: Colors.grey.withValues(alpha: 0.5),
+                                  size: 48,
+                                  color: SpazaColors.muted,
                                 ),
                               )
                             : CachedNetworkImage(
                                 fit: BoxFit.cover,
                                 imageUrl: product.image!,
-                                errorWidget: (context, url, error) => Icon(
+                                errorWidget: (context, url, error) => const Icon(
                                   Icons.image,
-                                  size: SizeConfig.imageSizeMultiplier * 15,
-                                  color: Colors.grey.withValues(alpha: 0.5),
+                                  size: 48,
+                                  color: SpazaColors.muted,
                                 ),
                               ),
                         Positioned(
-                          right: SizeConfig.imageSizeMultiplier * 1,
-                          top: SizeConfig.heightMultiplier * 0.6,
+                          right: 4,
+                          top: 6,
                           child: _StoreListingChip(
                             listed: product.whatsappListed,
                           ),
                         ),
                         if (product.whatsappListed)
                           Positioned(
-                            left: SizeConfig.imageSizeMultiplier * 1,
-                            bottom: SizeConfig.heightMultiplier * 0.6,
+                            left: 4,
+                            bottom: 6,
                             child: ElevatedButton.icon(
                               onPressed: () => _promote(context),
                               icon: const Icon(
@@ -218,48 +222,48 @@ class ProductCard extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 1),
+              const SizedBox(height: 8),
               Flexible(
                 child: Text(
                   formatStringToCamelCase(product.name ?? ''),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.8,
-                    fontWeight: FontWeight.bold,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+              const SizedBox(height: 4),
               Flexible(
                 child: Text(
                   '${product.isDropshipListing ? 'Est. landed cost' : 'Cost'}: ${CurrencyUtil.format(product.cost ?? 0)}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.5,
-                    color: Colors.black,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: SpazaColors.ink,
                   ),
                 ),
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+              const SizedBox(height: 4),
               Flexible(
                 child: Text(
                   '${product.isDropshipListing ? 'From' : 'Price'}: ${CurrencyUtil.format(product.sellingPrice ?? 0)}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.5,
-                    color: Colors.black,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: SpazaColors.ink,
                   ),
                 ),
               ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.5),
+              const SizedBox(height: 4),
               Flexible(
                 child: Text(
                   product.isDropshipListing
                       ? 'Supplier fulfilled'
                       : '${product.quantity ?? ''} in Stock',
-                  style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.5,
-                    color: Colors.blue,
-                    fontWeight: FontWeight.bold,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: SpazaColors.muted,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -278,8 +282,8 @@ class _StoreListingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = listed ? Colors.green.shade700 : Colors.grey.shade800;
-    final background = listed ? Colors.green.shade50 : Colors.white;
+    final color = listed ? SpazaColors.action : SpazaColors.muted;
+    final background = listed ? SpazaColors.successSurface : Colors.white;
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 96),

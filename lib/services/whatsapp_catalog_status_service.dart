@@ -204,6 +204,7 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
   Duration _pollElapsed = Duration.zero;
   int _pollIndex = 0;
   bool _started = false;
+  bool _disposed = false;
   bool _isForeground = true;
 
   bool get enabled => _enabled();
@@ -216,7 +217,7 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
       productId == null ? null : snapshot?.productsById[productId];
 
   void start() {
-    if (_started) return;
+    if (_started || _disposed) return;
     _started = true;
     WidgetsBinding.instance.addObserver(this);
     _storeSession.addListener(_handleStoreChanged);
@@ -252,7 +253,7 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
   }
 
   Future<void> refresh({bool resetPolling = false}) async {
-    if (_storeId.isEmpty || !enabled) return;
+    if (_disposed || _storeId.isEmpty || !enabled) return;
     if (resetPolling) {
       _pollElapsed = Duration.zero;
       _pollIndex = 0;
@@ -320,7 +321,7 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
   }
 
   bool _isCurrent(int requestEpoch, String storeId) =>
-      requestEpoch == _epoch && storeId == _storeId;
+      !_disposed && requestEpoch == _epoch && storeId == _storeId;
 
   void _schedulePolling() {
     _pollTimer?.cancel();
@@ -408,6 +409,8 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
 
   @override
   void dispose() {
+    _disposed = true;
+    _epoch += 1;
     _pollTimer?.cancel();
     if (_started) {
       WidgetsBinding.instance.removeObserver(this);

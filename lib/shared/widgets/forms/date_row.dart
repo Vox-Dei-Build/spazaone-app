@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/constants/constants.dart';
-import 'package:pasella/constants/layout_constants.dart';
 
 /// Single row for picking a date inside transaction/sale forms.
 ///
@@ -13,7 +12,7 @@ import 'package:pasella/constants/layout_constants.dart';
 /// - takes a real `DateTime` value so callers don't have to format/parse
 ///   strings between picks;
 /// - renders a calendar icon to make the affordance obvious;
-/// - meets the 44pt minimum touch target;
+/// - meets the 48px minimum touch target;
 /// - uses `intl` so the user sees a locale-appropriate date.
 class DateRow extends StatelessWidget {
   const DateRow({
@@ -45,60 +44,85 @@ class DateRow extends StatelessWidget {
   /// Optional help text shown above the date picker dialog.
   final String? helpText;
 
+  Future<void> _pickDate(BuildContext context) async {
+    final first = DateUtils.dateOnly(firstDate ?? DateTime(2000));
+    final last = DateUtils.dateOnly(lastDate ?? DateTime.now());
+    final selected = DateUtils.dateOnly(value);
+    final initial = selected.isBefore(first)
+        ? first
+        : selected.isAfter(last)
+            ? last
+            : selected;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
+      helpText: helpText,
+    );
+    if (picked == null) return;
+    // Selecting a calendar day must not modify the stored time or precision.
+    final createDate = value.isUtc ? DateTime.utc : DateTime.new;
+    onPick(createDate(
+      picked.year,
+      picked.month,
+      picked.day,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+      value.microsecond,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final formatted = DateFormat.yMMMd().format(value);
-
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: LayoutConstants.spaceSm),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: LayoutConstants.minTouchTarget,
-            ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final labelText = Text(label, style: theme.textTheme.labelMedium);
+          final picker = Semantics(
+            label: label,
             child: OutlinedButton.icon(
-              icon: const Icon(Icons.calendar_today, size: 18),
-              label: Text(formatted),
+              icon: const Icon(Icons.calendar_today_outlined, size: 18),
+              label: Text(formatted, textAlign: TextAlign.center),
               style: OutlinedButton.styleFrom(
-                foregroundColor: kTertiaryColor,
-                side: const BorderSide(color: kSecondaryAccent),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: LayoutConstants.spaceLg,
-                  vertical: LayoutConstants.spaceSm,
+                minimumSize: const Size(48, 48),
+                foregroundColor: colors.onSurface,
+                side: BorderSide(color: colors.outlineVariant),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                textStyle: theme.textTheme.bodyMedium,
               ),
-              onPressed: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: value,
-                  firstDate: firstDate ?? DateTime(2000),
-                  lastDate: lastDate ?? DateTime.now(),
-                  helpText: helpText,
-                );
-                if (picked != null) {
-                  // Preserve the original time-of-day so callers that
-                  // store a full timestamp (e.g. Sales `dateAdded`) don't
-                  // silently snap everything to midnight.
-                  final merged = DateTime(
-                    picked.year,
-                    picked.month,
-                    picked.day,
-                    value.hour,
-                    value.minute,
-                  );
-                  onPick(merged);
-                }
-              },
+              onPressed: () => _pickDate(context),
             ),
-          ),
-        ],
+          );
+          if (constraints.maxWidth < 300 ||
+              MediaQuery.textScalerOf(context).scale(14) > 20) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ExcludeSemantics(child: labelText),
+                const SizedBox(height: 4),
+                picker,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: ExcludeSemantics(child: labelText)),
+              const SizedBox(width: 12),
+              Flexible(child: picker),
+            ],
+          );
+        },
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 
 @immutable
@@ -7,18 +8,19 @@ class WorkspaceSectionTab {
   const WorkspaceSectionTab({
     required this.label,
     required this.semanticLabel,
+    this.badgeCount = 0,
   });
 
   final String label;
   final String semanticLabel;
+  final int badgeCount;
 }
 
 /// Visible navigation for the small number of jobs within a workspace.
 ///
 /// These destinations change the purpose of the whole page, so they remain
-/// visible instead of being hidden in a filter or popup menu. The rounded
-/// surface deliberately avoids outlining each destination. A single faint
-/// boundary below the group separates navigation from the page content.
+/// visible instead of being hidden in a filter or popup menu. A white selected
+/// surface sits within one soft group, matching the approachable app theme.
 class WorkspaceSectionTabs extends StatefulWidget {
   const WorkspaceSectionTabs({
     super.key,
@@ -83,15 +85,16 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
     final compactLandscape = usesCompactLandscapeLayout(context) && !largeText;
 
     final selectedIndex = resolvedController.index;
+    final hasBadges = widget.tabs.any((tab) => tab.badgeCount > 0);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           key: const ValueKey('workspace-section-tabs'),
-          padding: EdgeInsets.all(compactLandscape ? 3 : 4),
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: colors.surfaceContainerHighest.withValues(alpha: .7),
-            borderRadius: BorderRadius.circular(16),
+            color: colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -101,7 +104,13 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
                   child: _WorkspaceSectionDestination(
                     tab: widget.tabs[index],
                     selected: selectedIndex == index,
-                    height: largeText ? 62 : (compactLandscape ? 38 : 44),
+                    height: largeText
+                        ? MediaQuery.textScalerOf(context).scale(14) * 2.2 +
+                            16 +
+                            (hasBadges
+                                ? MediaQuery.textScalerOf(context).scale(11) + 8
+                                : 0)
+                        : (compactLandscape ? 38 : 44),
                     onTap: () {
                       if (selectedIndex == index) return;
                       resolvedController.animateTo(index);
@@ -111,11 +120,9 @@ class _WorkspaceSectionTabsState extends State<WorkspaceSectionTabs> {
             ],
           ),
         ),
-        Divider(
+        SizedBox(
           key: const ValueKey('workspace-section-boundary'),
-          height: compactLandscape ? 4 : 7,
-          thickness: .5,
-          color: colors.outlineVariant.withValues(alpha: .24),
+          height: compactLandscape ? 4 : 12,
         ),
       ],
     );
@@ -141,7 +148,10 @@ class _WorkspaceSectionDestination extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: tab.semanticLabel,
+      label: tab.badgeCount > 0
+          ? '${tab.semanticLabel}, ${tab.badgeCount} unread'
+          : tab.semanticLabel,
+      onTap: onTap,
       excludeSemantics: true,
       child: Material(
         color: Colors.transparent,
@@ -154,28 +164,55 @@ class _WorkspaceSectionDestination extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              // Section tabs are navigation, not calls to action. Keep the
-              // brand green available for actions such as Add, Record sale,
-              // and Add money; navy gives selected destinations a clear but
-              // quieter hierarchy.
-              color: selected ? kTertiaryColor : Colors.transparent,
+              color: selected ? colors.surface : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              tab.label,
-              maxLines:
-                  MediaQuery.textScalerOf(context).scale(14) >= 20 ? 2 : 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: selected ? Colors.white : colors.onSurfaceVariant,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    height: 1.1,
-                  ),
-            ),
+            child: _label(context, colors),
           ),
         ),
       ),
     );
+  }
+
+  Widget _label(BuildContext context, ColorScheme colors) {
+    final largeText = MediaQuery.textScalerOf(context).scale(14) >= 20;
+    final label = Text(
+      tab.label,
+      maxLines: largeText ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: selected ? kTertiaryColor : colors.onSurfaceVariant,
+            fontWeight: FontWeight.w500,
+            height: 1.1,
+          ),
+    );
+    if (tab.badgeCount <= 0) return label;
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: colors.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        tab.badgeCount > 99 ? '99+' : '${tab.badgeCount}',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colors.onSecondaryContainer,
+              height: 1,
+            ),
+      ),
+    );
+    if (largeText) {
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        label,
+        const SizedBox(height: 4),
+        badge,
+      ]);
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Flexible(child: label),
+      const SizedBox(width: 4),
+      badge,
+    ]);
   }
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/constants/constants.dart';
-import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
 import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 
@@ -10,10 +9,9 @@ import 'package:pasella/shared/widgets/forms/confirm_dialog.dart';
 /// Replaces the per-file reinventions audited against
 /// `delivery-pod.md` / `design-quality-gate.md`. Provides:
 ///
-/// - sticky bottom CTA bar (primary always reachable when keyboard is up);
+/// - bottom action bar that clears the keyboard and joins the form scroll on short screens;
 /// - real disabled state when [isLoading] (no `() {}` no-op fakery);
 /// - inline progress indicator that doesn't sit on top of the label;
-/// - optional secondary `Cancel` action;
 /// - optional destructive `Delete` action (AppBar trailing icon);
 /// - unsaved-changes guard via `PopScope` when [isDirty] is true;
 /// - keyboard-dismiss on outside tap;
@@ -53,7 +51,6 @@ class TransactionFormScaffold extends StatelessWidget {
   /// check inside an async callback.
   final GlobalKey<ScaffoldState>? scaffoldKey;
 
-
   /// AppBar title.
   final String title;
 
@@ -77,7 +74,7 @@ class TransactionFormScaffold extends StatelessWidget {
   /// Optional icon for the primary CTA.
   final IconData? primaryActionIcon;
 
-  /// Primary CTA background colour. Defaults to [kPrimaryColor].
+  /// Primary CTA background colour. Defaults to the theme primary colour.
   final Color? primaryActionColor;
 
   /// Optional summary line shown above the CTA (e.g. "Total: R 123.45").
@@ -114,19 +111,57 @@ class TransactionFormScaffold extends StatelessWidget {
     );
   }
 
+  void _submit() {
+    if (isLoading) return;
+    final errors = formKey.currentState?.validateGranularly();
+    if (errors == null) return;
+    if (errors.isEmpty) {
+      onPrimaryAction();
+      return;
+    }
+    // Bring the first invalid field into view after its error has been laid out.
+    final firstError = errors.first;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!firstError.mounted) return;
+      Scrollable.ensureVisible(
+        firstError.context,
+        alignment: .15,
+        duration: const Duration(milliseconds: 200),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final availableHeight = media.size.height -
+        media.viewInsets.bottom -
+        media.padding.vertical -
+        kToolbarHeight;
+    // In landscape or with a tall keyboard, keep the form and action in one
+    // scroll surface so a fixed footer cannot consume the entire viewport.
+    final inlineAction = availableHeight < 240 ||
+        (media.textScaler.scale(14) > 20 && availableHeight < 320);
+    final actionBar = _StickyActionBar(
+      totalLabel: totalLabel,
+      primaryActionLabel: primaryActionLabel,
+      primaryActionIcon: primaryActionIcon,
+      primaryActionColor:
+          primaryActionColor ?? Theme.of(context).colorScheme.primary,
+      isLoading: isLoading,
+      onPrimaryAction: _submit,
+      embedded: inlineAction,
+    );
     return PopScope(
       canPop: !isDirty,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         final shouldPop = await _confirmDiscard(context);
-        if (shouldPop && context.mounted) {
-          Navigator.of(context).pop();
-        }
+        if (shouldPop && context.mounted) Navigator.of(context).pop();
       },
       child: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
+        excludeFromSemantics: true,
         child: Scaffold(
           key: scaffoldKey,
           appBar: CustomAppBar(
@@ -135,7 +170,7 @@ class TransactionFormScaffold extends StatelessWidget {
                 ? null
                 : IconButton(
                     tooltip: 'Delete',
-                    icon: const Icon(Icons.delete_outline),
+                    icon: const Icon(SpazaIcons.delete, size: 22),
                     onPressed: isLoading
                         ? null
                         : () async {
@@ -147,49 +182,38 @@ class TransactionFormScaffold extends StatelessWidget {
                                   'This action cannot be undone.',
                               confirmLabel: 'Delete',
                             );
-                            if (confirmed) {
-                              await onDelete!();
-                            }
+                            if (confirmed && context.mounted) await onDelete!();
                           },
                   ),
           ),
-          // PAS-UX-17: sticky CTA lives in the bottomNavigationBar slot
-          // (same pattern as PayLaterActionBar) so it is laid out as a
-          // single rigid surface measured independently of the body. The
-          // previous Column(Expanded, _StickyActionBar) body-anchored
-          // layout caused the button to visibly float/jump as the
-          // keyboard opened and closed (and on every outside-tap
-          // unfocus), because the body shrank/grew on each resize and
-          // dragged the CTA with it. The bottomNavigationBar slot still
-          // rises above the keyboard but moves as one anchored bar.
           body: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: LayoutConstants.padding10Horizontal,
-              child: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(
-                    bottom: LayoutConstants.spaceLg,
-                  ),
-                  child: body,
+            bottom: inlineAction,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                key: const ValueKey('transaction-form-scroll'),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    body,
+                    if (inlineAction) ...[
+                      const SizedBox(height: 16),
+                      actionBar,
+                    ],
+                  ],
                 ),
               ),
             ),
           ),
-          bottomNavigationBar: _StickyActionBar(
-            totalLabel: totalLabel,
-            primaryActionLabel: primaryActionLabel,
-            primaryActionIcon: primaryActionIcon,
-            primaryActionColor: primaryActionColor ?? kPrimaryColor,
-            isLoading: isLoading,
-            onPrimaryAction: () {
-              if (isLoading) return;
-              if (formKey.currentState?.validate() ?? false) {
-                onPrimaryAction();
-              }
-            },
-          ),
+          bottomNavigationBar: inlineAction
+              ? null
+              : Padding(
+                  padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+                  child: actionBar,
+                ),
         ),
       ),
     );
@@ -204,6 +228,7 @@ class _StickyActionBar extends StatelessWidget {
     required this.primaryActionColor,
     required this.isLoading,
     required this.onPrimaryAction,
+    required this.embedded,
   });
 
   final Widget? totalLabel;
@@ -212,74 +237,72 @@ class _StickyActionBar extends StatelessWidget {
   final Color primaryActionColor;
   final bool isLoading;
   final VoidCallback onPrimaryAction;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
-    final disabled = isLoading;
-    final color = disabled ? Colors.grey.shade400 : primaryActionColor;
-
-    // Rendered into Scaffold.bottomNavigationBar — own the Material
-    // surface + safe-area inset so it visually anchors like
-    // PayLaterActionBar and respects the device gesture bar.
-    return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      elevation: 8,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            LayoutConstants.spaceMd,
-            LayoutConstants.spaceSm,
-            LayoutConstants.spaceMd,
-            LayoutConstants.spaceSm,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (totalLabel != null) ...[
-                Center(child: totalLabel!),
-                const SizedBox(height: LayoutConstants.spaceSm),
-              ],
-              Semantics(
-                button: true,
-                enabled: !disabled,
-                label: primaryActionLabel,
-                child: SizedBox(
-                  height: LayoutConstants.minTouchTarget + 4,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: color,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: disabled ? null : onPrimaryAction,
-                    icon: isLoading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : Icon(primaryActionIcon ?? Icons.check),
-                    label: Text(
-                      primaryActionLabel,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final content = Padding(
+      padding:
+          EdgeInsets.fromLTRB(embedded ? 0 : 16, 12, embedded ? 0 : 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (totalLabel != null) ...[
+            DefaultTextStyle.merge(
+              style: theme.textTheme.titleSmall,
+              textAlign: TextAlign.center,
+              child: totalLabel!,
+            ),
+            const SizedBox(height: 8),
+          ],
+          Semantics(
+            liveRegion: true,
+            value: isLoading ? 'In progress' : null,
+            child: FilledButton.icon(
+              key: const ValueKey('transaction-primary-action'),
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryActionColor,
+                foregroundColor: colors.onPrimary,
+                minimumSize: const Size(48, 48),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
+                ),
+                textStyle: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            ],
+              onPressed: isLoading ? null : onPrimaryAction,
+              icon: isLoading
+                  ? ExcludeSemantics(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : Icon(primaryActionIcon ?? Icons.check_rounded, size: 20),
+              label: Text(primaryActionLabel, textAlign: TextAlign.center),
+            ),
           ),
+        ],
+      ),
+    );
+    if (embedded) return content;
+    return Material(
+      color: colors.surface,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: colors.outlineVariant)),
         ),
+        child: SafeArea(top: false, child: content),
       ),
     );
   }

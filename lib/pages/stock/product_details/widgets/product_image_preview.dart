@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
 class ProductImagePreview extends StatelessWidget {
   final String? imageUrl;
@@ -16,24 +17,24 @@ class ProductImagePreview extends StatelessWidget {
           height: 100,
           width: 100,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(11),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
             child: Container(
               color: Colors.white,
               child: Container(
-                color: Colors.green.withOpacity(0.1),
+                color: SpazaColors.subtle,
                 child: (imageUrl == null)
-                    ? Center(
+                    ? const Center(
                         child: Icon(
                           Icons.image,
-                          color: Colors.green.withOpacity(0.5),
+                          color: SpazaColors.muted,
                         ),
                       )
                     : CachedNetworkImage(
                         fit: BoxFit.cover,
                         imageUrl: imageUrl!,
-                        errorWidget: (context, url, error) => Icon(
+                        errorWidget: (context, url, error) => const Icon(
                           Icons.image,
-                          color: Colors.green.withOpacity(0.5),
+                          color: SpazaColors.muted,
                         ),
                       ),
               ),

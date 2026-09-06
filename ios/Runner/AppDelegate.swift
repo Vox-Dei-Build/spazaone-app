@@ -17,7 +17,9 @@ import FirebaseMessaging
     // FirebaseApp.configure() here would configure the default app twice.
     GeneratedPluginRegistrant.register(with: self)
     UNUserNotificationCenter.current().delegate = self
-    application.registerForRemoteNotifications()
+    // Do not register for remote notifications during unauthenticated startup.
+    // Firebase Auth requests its APNs token when phone verification begins,
+    // while FCM permission remains behind the in-app explanation after login.
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

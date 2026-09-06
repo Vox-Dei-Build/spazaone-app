@@ -40,15 +40,14 @@ class EditTransactionScreen extends StatelessWidget {
     final transactionLabel = isCredit ? 'Transaction' : transactionType;
 
     return ChangeNotifierProvider(
-      create:
-          (_) => EditTransactionViewModel(
-            customerName: customerName,
-            customerId: customerId,
-            transaction: transaction,
-            transactionId: transactionId,
-            transactionType: transactionType,
-            mobileNumber: mobileNumber,
-          ),
+      create: (_) => EditTransactionViewModel(
+        customerName: customerName,
+        customerId: customerId,
+        transaction: transaction,
+        transactionId: transactionId,
+        transactionType: transactionType,
+        mobileNumber: mobileNumber,
+      ),
       child: Consumer<EditTransactionViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
@@ -61,16 +60,15 @@ class EditTransactionScreen extends StatelessWidget {
             primaryActionIcon:
                 isCredit ? Icons.arrow_downward : Icons.arrow_upward,
             primaryActionColor: isCredit ? Colors.red : Colors.green,
-            totalLabel:
-                isCredit
-                    ? Text(
-                      'Total: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                    : null,
+            totalLabel: isCredit
+                ? Text(
+                    'Total: ${CurrencyUtil.format(viewModel.calculateTotalAmount())}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  )
+                : null,
             onPrimaryAction: () async {
               final confirmed = await ConfirmDialog.show(
                 context,
@@ -157,7 +155,6 @@ class EditTransactionScreen extends StatelessWidget {
                   maxLines: 3,
                   decoration: const InputDecoration(
                     labelText: 'Remarks/Notes',
-                    border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(
                       vertical: LayoutConstants.spaceMd,
                       horizontal: LayoutConstants.spaceMd,

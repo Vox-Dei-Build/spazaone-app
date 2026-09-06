@@ -12,7 +12,7 @@ class MetaChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.6),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
@@ -21,10 +21,8 @@ class MetaChip extends StatelessWidget {
             Icon(icon, size: 16),
             const SizedBox(width: 6),
             Flexible(
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w500))),
+                child:
+                    Text(label, style: Theme.of(context).textTheme.bodySmall)),
           ],
         ),
       ),

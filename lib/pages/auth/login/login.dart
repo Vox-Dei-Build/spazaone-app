@@ -89,7 +89,9 @@ class _LoginPageState extends State<LoginPage> {
             return const Dashboard();
           }
         }
-        return const CircularProgressIndicator();
+        return const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        );
       },
     );
   }

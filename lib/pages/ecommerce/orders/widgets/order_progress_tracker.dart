@@ -49,9 +49,7 @@ class OrderProgressTracker extends StatelessWidget {
                 Icon(
                   isTerminal ? Icons.error_outline : Icons.timeline,
                   size: 16,
-                  color: isTerminal
-                      ? scheme.error
-                      : scheme.onSurfaceVariant,
+                  color: isTerminal ? scheme.error : scheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -59,9 +57,7 @@ class OrderProgressTracker extends StatelessWidget {
                       ? (terminalLabel ?? 'Order closed')
                       : 'Order progress',
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: isTerminal
-                        ? scheme.error
-                        : scheme.onSurfaceVariant,
+                    color: isTerminal ? scheme.error : scheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -95,8 +91,8 @@ class OrderProgressTracker extends StatelessWidget {
       return const [
         _Step(OrderStage.newOrder, 'New', Icons.fiber_new_outlined),
         _Step(OrderStage.accepted, 'Accepted', Icons.check_circle_outline),
-        _Step(OrderStage.driverAssigned, 'Driver',
-            Icons.local_shipping_outlined),
+        _Step(
+            OrderStage.driverAssigned, 'Driver', Icons.local_shipping_outlined),
         _Step(OrderStage.outForDelivery, 'On the way',
             Icons.directions_car_outlined),
         _Step(OrderStage.completed, 'Delivered', Icons.flag_outlined),
@@ -105,8 +101,7 @@ class OrderProgressTracker extends StatelessWidget {
     return const [
       _Step(OrderStage.newOrder, 'New', Icons.fiber_new_outlined),
       _Step(OrderStage.accepted, 'Accepted', Icons.check_circle_outline),
-      _Step(OrderStage.readyForCollection, 'Ready',
-          Icons.inventory_2_outlined),
+      _Step(OrderStage.readyForCollection, 'Ready', Icons.inventory_2_outlined),
       _Step(OrderStage.completed, 'Collected', Icons.flag_outlined),
     ];
   }
@@ -196,8 +191,7 @@ class _StepperRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: labelColor,
-                      fontWeight:
-                          isCurrent ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
                     ),
               ),
             ],
@@ -214,9 +208,7 @@ class _StepperRow extends StatelessWidget {
               width: 18,
               child: Container(
                 height: 2,
-                color: connectorDone
-                    ? scheme.primary
-                    : scheme.outlineVariant,
+                color: connectorDone ? scheme.primary : scheme.outlineVariant,
               ),
             ),
           ),

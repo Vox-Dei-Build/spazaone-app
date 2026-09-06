@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/contact/contact_management.dart';
@@ -49,7 +50,7 @@ class CustomersWithBadLoansTile extends StatelessWidget {
               final number = customer['number']?.toString();
               final id = customer['id'].toString();
               final profileImageUrl = customer['profileImageUrl']?.toString();
-              final avatarSize = SizeConfig.heightMultiplier * 5.2;
+              const avatarSize = 40.0;
               final wasReminded = reminderSentRecently(customer);
 
               return Padding(
@@ -61,9 +62,9 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                         .colorScheme
                         .surfaceContainerHighest
                         .withValues(alpha: .42),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(SpazaRadius.control),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(SpazaRadius.control),
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -77,7 +78,8 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                       child: Ink(
                         padding: const EdgeInsets.fromLTRB(13, 12, 10, 12),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(SpazaRadius.control),
                         ),
                         child: Row(
                           children: [
@@ -102,14 +104,11 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                                 children: [
                                   Text(
                                     name,
-                                    style: TextStyle(
-                                      color: const Color(0xFF1A1F1B),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize:
-                                          SizeConfig.textMultiplier * 1.75,
+                                    style: const TextStyle(
+                                      color: SpazaColors.heading,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 16,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
                                   ),
                                   SizedBox(
                                     height: SizeConfig.heightMultiplier * 0.4,
@@ -118,32 +117,30 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                                     number,
                                     wasReminded: wasReminded,
                                   ),
+                                  const SizedBox(height: 8),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      CurrencyUtil.format(balance),
+                                      style: TextStyle(
+                                        color: balance >= 0
+                                            ? kPrimaryColor
+                                            : Colors.red,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 16,
+                                      ),
+                                      maxLines: 1,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
                             const SizedBox(width: 8),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 92),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerRight,
-                                child: Text(
-                                  CurrencyUtil.format(balance),
-                                  style: TextStyle(
-                                    color: balance >= 0
-                                        ? kPrimaryColor
-                                        : Colors.red,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: SizeConfig.textMultiplier * 1.65,
-                                  ),
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ),
                             const SizedBox(width: 3),
-                            Icon(
+                            const Icon(
                               Icons.chevron_right_rounded,
-                              color: Colors.grey.shade500,
+                              color: SpazaColors.muted,
                               size: 18,
                               applyTextScaling: false,
                             ),
@@ -167,22 +164,20 @@ class CustomersWithBadLoansTile extends StatelessWidget {
   }) {
     final raw = (number ?? '').trim();
     if (raw.isEmpty) {
-      return Row(
+      return const Row(
         children: [
           Icon(
             Icons.phone_disabled_outlined,
-            color: Colors.grey.shade500,
-            size: SizeConfig.textMultiplier * 1.55,
+            color: SpazaColors.muted,
+            size: 14,
             applyTextScaling: false,
           ),
-          const SizedBox(width: 5),
-          Text(
+          SizedBox(width: 5),
+          Expanded(
+              child: Text(
             'No phone number',
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: SizeConfig.textMultiplier * 1.35,
-            ),
-          ),
+            style: TextStyle(color: SpazaColors.muted, fontSize: 13),
+          )),
         ],
       );
     }
@@ -198,8 +193,8 @@ class CustomersWithBadLoansTile extends StatelessWidget {
       children: [
         Icon(
           isValid ? Icons.phone_outlined : Icons.warning_amber_rounded,
-          color: isValid ? Colors.grey.shade600 : Colors.orange.shade700,
-          size: SizeConfig.textMultiplier * 1.55,
+          color: isValid ? SpazaColors.muted : Colors.orange.shade700,
+          size: 14,
           applyTextScaling: false,
         ),
         const SizedBox(width: 5),
@@ -207,12 +202,10 @@ class CustomersWithBadLoansTile extends StatelessWidget {
           child: Text(
             phoneLabel,
             style: TextStyle(
-              color: isValid ? Colors.grey.shade700 : Colors.orange.shade800,
-              fontSize: SizeConfig.textMultiplier * 1.35,
+              color: isValid ? SpazaColors.muted : Colors.orange.shade800,
+              fontSize: 13,
               letterSpacing: 0.1,
             ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
           ),
         ),
         const SizedBox(width: 7),
@@ -223,8 +216,8 @@ class CustomersWithBadLoansTile extends StatelessWidget {
             wasReminded
                 ? Icons.notifications_active_outlined
                 : Icons.notifications_none_outlined,
-            color: wasReminded ? kPrimaryColor : Colors.grey.shade500,
-            size: SizeConfig.textMultiplier * 1.65,
+            color: wasReminded ? kPrimaryColor : SpazaColors.muted,
+            size: 16,
             applyTextScaling: false,
           ),
         ),

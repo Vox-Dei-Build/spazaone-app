@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:hive_local_storage/hive_local_storage.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
@@ -19,17 +22,8 @@ import 'package:pasella/shared/widgets/onboarding/merchant_onboarding_intro.dart
 import 'package:pasella/widgets/consent_modal.dart';
 import 'package:provider/provider.dart';
 import 'package:pasella/services/store_session.dart';
+import 'package:pasella/services/startup_session_progress.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
-
-@visibleForTesting
-bool shouldShowSpazaOneRebrandNotice({
-  required DateTime? accountCreatedAt,
-  DateTime? now,
-}) {
-  if (accountCreatedAt == null) return true;
-  return (now ?? DateTime.now()).difference(accountCreatedAt) >=
-      const Duration(hours: 1);
-}
 
 @visibleForTesting
 bool shouldHoldDashboardForConsent({
@@ -43,8 +37,29 @@ bool shouldShowMerchantOnboardingIntroForStore({
   required bool introSeen,
   required bool hasCustomers,
   required bool hasProducts,
+  required bool isOwner,
+  bool hasRecordedSales = false,
 }) =>
-    !introSeen && !hasCustomers && !hasProducts;
+    isOwner && !introSeen && !hasCustomers && !hasProducts && !hasRecordedSales;
+
+/// Waits for the originating workspace and the closing overlay's transition.
+/// The identity predicate cancels pending work after logout or a store switch.
+@visibleForTesting
+Future<bool> waitUntilStartupRouteReady(
+  BuildContext context, {
+  required bool Function() isCurrent,
+}) async {
+  while (isCurrent()) {
+    if (!context.mounted) return false;
+    final route = ModalRoute.of(context);
+    if (route == null ||
+        (route.isCurrent && (route.secondaryAnimation?.isDismissed ?? true))) {
+      return true;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  return false;
+}
 
 /// Keeps the primary destinations available without sacrificing a quarter of
 /// a phone's landscape height to the bottom navigation bar.
@@ -86,9 +101,9 @@ class ResponsiveDashboardShell extends StatelessWidget {
                         minWidth: railWidth,
                         groupAlignment: 0,
                         useIndicator: true,
-                        indicatorColor: kTertiaryColor,
+                        indicatorColor: SpazaColors.navy,
                         selectedIconTheme:
-                            const IconThemeData(color: Colors.white),
+                            const IconThemeData(color: SpazaColors.accent),
                         selectedLabelTextStyle: const TextStyle(
                           color: kTertiaryColor,
                           fontWeight: FontWeight.w800,
@@ -99,25 +114,25 @@ class ResponsiveDashboardShell extends StatelessWidget {
                           NavigationRailDestination(
                             icon: Tooltip(
                               message: 'Customers',
-                              child: Icon(Icons.contacts_outlined),
+                              child: Icon(SpazaIcons.customers),
                             ),
-                            selectedIcon: Icon(Icons.contacts_outlined),
+                            selectedIcon: Icon(SpazaIcons.customers),
                             label: Text('Customers'),
                           ),
                           NavigationRailDestination(
                             icon: Tooltip(
                               message: 'Products',
-                              child: Icon(Icons.inventory_outlined),
+                              child: Icon(SpazaIcons.products),
                             ),
-                            selectedIcon: Icon(Icons.inventory_outlined),
+                            selectedIcon: Icon(SpazaIcons.products),
                             label: Text('Products'),
                           ),
                           NavigationRailDestination(
                             icon: Tooltip(
                               message: 'Sales',
-                              child: Icon(Icons.point_of_sale),
+                              child: Icon(SpazaIcons.sales),
                             ),
-                            selectedIcon: Icon(Icons.point_of_sale),
+                            selectedIcon: Icon(SpazaIcons.sales),
                             label: Text('Sales'),
                           ),
                         ],
@@ -132,44 +147,44 @@ class ResponsiveDashboardShell extends StatelessWidget {
 
     return Scaffold(
       body: body,
-      bottomNavigationBar: ClipRRect(
-        borderRadius: BorderRadius.circular(
-          SizeConfig.imageSizeMultiplier * 5,
+      bottomNavigationBar: DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: SpazaColors.border, width: .5)),
         ),
         child: NavigationBar(
           selectedIndex: selectedIndex,
           onDestinationSelected: onDestinationSelected,
-          destinations: [
+          destinations: const [
             NavigationDestination(
               icon: Icon(
-                Icons.contacts_outlined,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                SpazaIcons.customers,
+                size: 22,
               ),
               selectedIcon: Icon(
-                Icons.contacts_outlined,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                SpazaIcons.customers,
+                size: 22,
               ),
               label: 'Customers',
             ),
             NavigationDestination(
               icon: Icon(
-                Icons.inventory_outlined,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                SpazaIcons.products,
+                size: 22,
               ),
               selectedIcon: Icon(
-                Icons.inventory_outlined,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                SpazaIcons.products,
+                size: 22,
               ),
               label: 'Products',
             ),
             NavigationDestination(
               icon: Icon(
-                Icons.point_of_sale,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                SpazaIcons.sales,
+                size: 22,
               ),
               selectedIcon: Icon(
-                Icons.point_of_sale,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                SpazaIcons.sales,
+                size: 22,
               ),
               label: 'Sales',
             ),
@@ -190,9 +205,9 @@ class _AccessibleLandscapeNavigation extends StatelessWidget {
   final ValueChanged<int> onDestinationSelected;
 
   static const _items = <(IconData, String)>[
-    (Icons.contacts_outlined, 'Customers'),
-    (Icons.inventory_outlined, 'Products'),
-    (Icons.point_of_sale, 'Sales'),
+    (SpazaIcons.customers, 'Customers'),
+    (SpazaIcons.products, 'Products'),
+    (SpazaIcons.sales, 'Sales'),
   ];
 
   @override
@@ -253,7 +268,9 @@ class _AccessibleLandscapeDestination extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: foreground, size: 20),
+                Icon(icon,
+                    color: selected ? SpazaColors.accent : foreground,
+                    size: 20),
                 const SizedBox(height: 3),
                 Text(
                   label,
@@ -286,194 +303,236 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> {
-  bool _introScheduled = false;
-  bool _startupScheduled = false;
-  bool _rebrandNoticeScheduled = false;
+  final _startup = StartupSessionProgress.instance;
+  StartupSessionToken? _startupToken;
   bool _activationIntentProcessing = false;
   late bool _consentSurfaceCompleted;
 
   @override
   void initState() {
     super.initState();
-    // Returning merchants with a saved choice have no first-run privacy
-    // surface to close. New merchants remain behind the neutral gate until
-    // showPostAuthIfNeeded has fully returned, not merely until its notifier
-    // flips while the sheet is still visible.
     _consentSurfaceCompleted = ConsentService.instance.state.hasDecided;
+    _startup.addListener(_scheduleStartup);
   }
 
-  /// Runs every first-run surface through one queue. Waiting for this
-  /// Dashboard route to be current prevents a transient Dashboard mounted
-  /// behind profile completion (or another modal) from stacking sheets.
-  Future<void> _runStartupSequence(String userId) async {
-    if (_startupScheduled || userId.isEmpty) return;
-    _startupScheduled = true;
+  @override
+  void dispose() {
+    _startup.removeListener(_scheduleStartup);
+    final token = _startupToken;
+    if (token != null) _startup.abandon(token);
+    _startupToken = null;
+    super.dispose();
+  }
 
-    if (!await _waitUntilCurrentRoute()) return;
-    if (!mounted) return;
-    await ConsentModal.showPostAuthIfNeeded(context);
-    if (!mounted) return;
-    setState(() => _consentSurfaceCompleted = true);
-    if (!mounted || !await _waitUntilCurrentRoute()) return;
-    // A phone signup may have completed before the deferred consent sheet.
-    // Resolve its local marker on every first Dashboard mount so an app
-    // restart between consent and emission cannot lose the conversion.
-    await CompletedSignupTracker.instance.resolveAfterConsent(
-      merchantId: userId,
+  void _scheduleStartup() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _runStartupSequence(StoreSession.instance.storeId);
+    });
+  }
+
+  bool _isCurrentStartup(StartupSessionToken token) =>
+      mounted &&
+      _startup.isCurrent(token) &&
+      FirebaseAuth.instance.currentUser?.uid == token.userId &&
+      StoreSession.instance.storeId == token.storeId;
+
+  /// One route owns the sequence for this login and store. Optional guide
+  /// failures complete only this session; the persistent intro remains unseen.
+  Future<void> _runStartupSequence(String storeId) async {
+    if (!mounted || storeId != StoreSession.instance.storeId) return;
+    final token = _startup.bind(
+      userId: FirebaseAuth.instance.currentUser?.uid,
+      storeId: storeId,
     );
-    if (!mounted || !await _waitUntilCurrentRoute()) return;
-    await _showRebrandNoticeIfNeeded(userId);
-    if (!mounted || !await _waitUntilCurrentRoute()) return;
-    await _showOnboardingIntroIfNeeded(userId);
-    if (!mounted || !await _waitUntilCurrentRoute()) return;
-    await _processActivationIntentIfNeeded(userId);
+    if (token == null) return;
+    if (!_startup.tryBegin(token)) {
+      // A notification can open another Dashboard later in the same login.
+      // Its pending action still belongs to this route, even though the
+      // optional guide has already completed for the session.
+      if (_startup.ready &&
+          _isCurrentStartup(token) &&
+          (ModalRoute.of(context)?.isCurrent ?? true)) {
+        try {
+          await _processActivationIntentIfNeeded(token);
+        } catch (error) {
+          debugPrint('Activation navigation failed: $error');
+        }
+      }
+      return;
+    }
+    _startupToken = token;
+    var outcome = StartupOutcome.skipped;
+    try {
+      if (!await _waitUntilCurrentRoute(token) || !mounted) return;
+      await ConsentModal.showPostAuthIfNeeded(context);
+      if (!await _waitUntilCurrentRoute(token)) return;
+      final consentDecided = ConsentService.instance.state.hasDecided;
+      if (!consentDecided) return;
+      setState(() => _consentSurfaceCompleted = true);
+      _startup.consentSurfaceClosed(token, consentDecided: consentDecided);
+      if (!await _waitUntilCurrentRoute(token)) return;
+
+      // Attribution belongs to the signed-in person, even when an operator
+      // opens a store whose ID differs from the auth UID.
+      unawaited(CompletedSignupTracker.instance
+          .resolveAfterConsent(merchantId: token.userId)
+          .catchError((Object error) {
+        debugPrint('Deferred signup measurement failed: $error');
+      }));
+
+      outcome = await _showOnboardingIntroIfNeeded(token);
+      if (!await _waitUntilCurrentRoute(token)) return;
+      await _processActivationIntentIfNeeded(token);
+      if (!await _waitUntilCurrentRoute(token)) return;
+      _startup.complete(token, outcome);
+    } catch (error) {
+      debugPrint('Dashboard startup sequence failed: $error');
+      if (_isCurrentStartup(token) && _consentSurfaceCompleted) {
+        _startup.complete(token, StartupOutcome.skipped);
+      }
+    } finally {
+      if (identical(_startupToken, token)) _startup.abandon(token);
+    }
   }
 
-  Future<bool> _waitUntilCurrentRoute() async {
-    while (true) {
-      if (!mounted) return false;
-      final route = ModalRoute.of(context);
-      if (route == null || route.isCurrent) return true;
+  Future<bool> _waitUntilCurrentRoute(StartupSessionToken token) =>
+      waitUntilStartupRouteReady(context,
+          isCurrent: () => _isCurrentStartup(token));
+
+  bool _hasOwnerScope(StartupSessionToken token) =>
+      _isCurrentStartup(token) &&
+      !StoreSession.instance.loading &&
+      StoreSession.instance.storeAccessResolved &&
+      StoreSession.instance.activeStore?.role == StoreRole.owner;
+
+  Future<StartupOutcome> _showOnboardingIntroIfNeeded(
+    StartupSessionToken token,
+  ) async {
+    if (!FeatureFlags.enableMerchantOnboardingIntro) {
+      return StartupOutcome.skipped;
+    }
+
+    // Bootstrap already has its own bounded network timeout. Do not infer
+    // ownership from a temporary auth-UID fallback while it is unresolved.
+    final deadline = DateTime.now().add(const Duration(seconds: 15));
+    while (_isCurrentStartup(token) &&
+        StoreSession.instance.loading &&
+        DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-  }
+    if (!_hasOwnerScope(token)) return StartupOutcome.skipped;
 
-  Future<void> _showRebrandNoticeIfNeeded(String userId) async {
-    if (_rebrandNoticeScheduled || userId.isEmpty) return;
-    _rebrandNoticeScheduled = true;
-
-    final box = Hive.box('appBox');
-    final seenKey = 'spazaone_rebrand_notice_seen:$userId';
-    final seen = box.get(seenKey, defaultValue: false) as bool;
-    if (seen) return;
-
-    final accountCreatedAt =
-        FirebaseAuth.instance.currentUser?.metadata.creationTime;
-    if (!shouldShowSpazaOneRebrandNotice(
-      accountCreatedAt: accountCreatedAt,
-    )) {
-      await box.put(seenKey, true);
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => const _SpazaOneRebrandNotice(),
-    );
-
-    await box.put(seenKey, true);
-  }
-
-  Future<void> _showOnboardingIntroIfNeeded(String userId) async {
-    if (_introScheduled || userId.isEmpty) return;
-    _introScheduled = true;
-
-    // Shop Setup in Settings is the persistent guide; the intro is a
-    // first-run supplement. When the flag is off we skip the sheet entirely.
-    if (!FeatureFlags.enableMerchantOnboardingIntro) return;
-
-    final box = Hive.box('appBox');
-    final seenKey = 'merchant_onboarding_intro_seen:$userId';
-    final seen = box.get(seenKey, defaultValue: false) as bool;
-    if (seen) return;
-
-    // The local "seen" key is absent after reinstalling the app and for
-    // operators opening an established store on a new device. Check the
-    // store itself before showing first-customer onboarding so durable
-    // merchant data, rather than one device's storage, decides whether this
-    // is genuinely a new store.
+    final seenKey = 'merchant_onboarding_intro_seen:${token.storeId}';
+    Box<dynamic>? box;
     try {
-      final activeStoreId = StoreSession.instance.storeId.trim();
-      final storeRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(activeStoreId.isEmpty ? userId : activeStoreId);
+      box = Hive.isBoxOpen('appBox') ? Hive.box('appBox') : null;
+      final seen = box?.get(seenKey, defaultValue: false) == true;
+      if (seen) return StartupOutcome.skipped;
+      final storeRef =
+          FirebaseFirestore.instance.collection('users').doc(token.storeId);
+      const server = GetOptions(source: Source.server);
       final activity = await Future.wait([
-        storeRef.collection('customers').limit(1).get(),
-        storeRef.collection('products').limit(1).get(),
-      ]);
-      final shouldShow = shouldShowMerchantOnboardingIntroForStore(
+        storeRef.collection('customers').limit(1).get(server),
+        storeRef.collection('products').limit(1).get(server),
+        storeRef.collection('sales').limit(1).get(server),
+      ]).timeout(const Duration(seconds: 8));
+      if (!_hasOwnerScope(token)) return StartupOutcome.skipped;
+      if (!shouldShowMerchantOnboardingIntroForStore(
         introSeen: seen,
+        isOwner: true,
         hasCustomers: activity[0].docs.isNotEmpty,
         hasProducts: activity[1].docs.isNotEmpty,
-      );
-      if (!shouldShow) {
-        // This terminal marker also releases the notification-permission
-        // sequence, which waits for every enabled first-run surface to end.
-        await box.put(seenKey, true);
-        return;
+        hasRecordedSales: activity[2].docs.isNotEmpty,
+      )) {
+        return StartupOutcome.skipped;
       }
     } catch (error) {
-      // Never guess that an established merchant is new when Firestore is
-      // temporarily unavailable. Leave the key unset so a later app launch
-      // can evaluate the store again.
+      // Offline/cached emptiness cannot identify a first-time owner. Skip this
+      // login without consuming a future eligible store's welcome.
       debugPrint('Merchant onboarding eligibility check failed: $error');
-      return;
+      return StartupOutcome.skipped;
     }
 
-    if (!mounted) return;
-    final modalContext = context;
-    if (!await _waitUntilCurrentRoute()) return;
-    if (!modalContext.mounted) return;
+    if (!await _waitUntilCurrentRoute(token) || !_hasOwnerScope(token)) {
+      return StartupOutcome.skipped;
+    }
+    BuildContext? sheetContext;
+    var dismissalScheduled = false;
+    var abortedForScope = false;
+    void dismissStaleSheet() {
+      if (_hasOwnerScope(token) || dismissalScheduled) return;
+      dismissalScheduled = true;
+      abortedForScope = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final currentContext = sheetContext;
+        if (_hasOwnerScope(token) ||
+            currentContext == null ||
+            !currentContext.mounted) {
+          return;
+        }
+        final route = ModalRoute.of(currentContext);
+        if (route != null && route.isCurrent) route.navigator?.pop();
+      });
+    }
 
-    final action = await showModalBottomSheet<MerchantOnboardingIntroAction>(
-      context: modalContext,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (_) => MerchantOnboardingIntro(
-        onOpenCustomers: () {
-          if (!mounted) return;
-          context.read<AppModel>().updateCurrentIndex(0);
-          Navigator.of(context).pushNamed(AddContactPage.id);
+    _startup.addListener(dismissStaleSheet);
+    StoreSession.instance.addListener(dismissStaleSheet);
+    MerchantOnboardingIntroAction? action;
+    if (!mounted) return StartupOutcome.skipped;
+    try {
+      action = await showModalBottomSheet<MerchantOnboardingIntroAction>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(SpazaRadius.sheet)),
+        ),
+        builder: (context) {
+          sheetContext = context;
+          return MerchantOnboardingIntro(
+            // Modal actions are returned, then dispatched once below after
+            // the sheet closes. Inline fallback callbacks stay compatible.
+            onOpenCustomers: () {},
+            onOpenProducts: () {},
+          );
         },
-        onOpenProducts: () {
-          if (!mounted) return;
-          // PAS-UX-19: pre-select the Products tab so popping
-          // NewProductPage lands the merchant on their catalogue,
-          // then push the add-product form directly. The previous
-          // behaviour only switched tabs, which dropped a fresh
-          // merchant on the empty-state screen and required an
-          // extra tap to reach the form the CTA had just promised.
-          context.read<AppModel>().updateCurrentIndex(1);
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
-        },
-      ),
-    );
-
-    // Persist only after the sheet was actually presented and dismissed.
-    // Writing this before showModalBottomSheet allowed a short-lived
-    // Dashboard during registration to consume onboarding invisibly behind
-    // FinishProfilePage.
-    await box.put(seenKey, true);
-
-    if (!mounted) return;
+      );
+    } finally {
+      _startup.removeListener(dismissStaleSheet);
+      StoreSession.instance.removeListener(dismissStaleSheet);
+    }
+    if (abortedForScope ||
+        !await _waitUntilCurrentRoute(token) ||
+        !_hasOwnerScope(token)) {
+      return StartupOutcome.skipped;
+    }
+    try {
+      await box?.put(seenKey, true);
+    } catch (error) {
+      debugPrint('Could not remember onboarding dismissal: $error');
+    }
+    if (!_hasOwnerScope(token) || !mounted) return StartupOutcome.skipped;
     switch (action) {
       case MerchantOnboardingIntroAction.openCustomers:
         context.read<AppModel>().updateCurrentIndex(0);
-        Navigator.of(context).pushNamed(AddContactPage.id);
+        Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const AddContactPage(returnToCallerAfterSave: true),
+        ));
       case MerchantOnboardingIntroAction.openProducts:
         context.read<AppModel>().updateCurrentIndex(1);
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const NewProductPage()));
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const NewProductPage(),
+        ));
       case null:
         break;
     }
+    return StartupOutcome.completed;
   }
 
-  Future<void> _processActivationIntentIfNeeded(String userId) async {
-    if (_activationIntentProcessing || userId.isEmpty) return;
+  Future<void> _processActivationIntentIfNeeded(
+      StartupSessionToken token) async {
+    if (_activationIntentProcessing || !_isCurrentStartup(token)) return;
 
     final intent = ActivationNudgeIntentBus.instance.take();
     if (intent == null) return;
@@ -485,7 +544,9 @@ class _DashboardState extends State<Dashboard> {
         case ActivationNudgeAction.addTenCustomers:
           if (!mounted) return;
           context.read<AppModel>().updateCurrentIndex(0);
-          Navigator.of(context).pushNamed(AddContactPage.id);
+          Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const AddContactPage(returnToCallerAfterSave: true),
+          ));
         case ActivationNudgeAction.addProduct:
           if (!mounted) return;
           context.read<AppModel>().updateCurrentIndex(1);
@@ -501,7 +562,7 @@ class _DashboardState extends State<Dashboard> {
           );
         case ActivationNudgeAction.linkProductTransaction:
         case ActivationNudgeAction.recordFirstTransaction:
-          await _openCreditFromActivationIntent(userId, intent);
+          await _openCreditFromActivationIntent(token, intent);
       }
     } finally {
       _activationIntentProcessing = false;
@@ -509,24 +570,25 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Future<void> _openCreditFromActivationIntent(
-    String userId,
+    StartupSessionToken token,
     ActivationNudgeIntent intent,
   ) async {
     final customerId = intent.customerId;
     if (customerId == null || customerId.isEmpty) {
-      if (!mounted) return;
+      if (!_isCurrentStartup(token) || !mounted) return;
       context.read<AppModel>().updateCurrentIndex(0);
       return;
     }
 
     final doc = await FirebaseFirestore.instance
         .collection('users')
-        .doc(userId)
+        .doc(token.storeId)
         .collection('customers')
         .doc(customerId)
-        .get();
+        .get()
+        .timeout(const Duration(seconds: 8));
 
-    if (!mounted) return;
+    if (!_isCurrentStartup(token) || !mounted) return;
 
     if (!doc.exists) {
       context.read<AppModel>().updateCurrentIndex(0);
@@ -558,7 +620,7 @@ class _DashboardState extends State<Dashboard> {
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
-    final userId = StoreSession.instance.storeId;
+    final userId = context.watch<StoreSession>().storeId;
 
     if (userId.isEmpty) {
       return Scaffold(
@@ -714,84 +776,6 @@ class _AccountSetupProgress extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SpazaOneRebrandNotice extends StatelessWidget {
-  const _SpazaOneRebrandNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          28,
-          24,
-          24 + MediaQuery.paddingOf(context).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 76,
-              height: 76,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF3C4),
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: const Icon(
-                Icons.shopping_cart_outlined,
-                color: Color(0xFFFFB300),
-                size: 42,
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'Pasella is now Spaza One',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Same app. Same account. All your customers, balances, products '
-              'and sales are right where you left them.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: Colors.grey.shade700,
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Only the name has changed.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.green.shade800,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.green.shade700,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: const Text('Continue to Spaza One'),
-              ),
-            ),
-          ],
         ),
       ),
     );

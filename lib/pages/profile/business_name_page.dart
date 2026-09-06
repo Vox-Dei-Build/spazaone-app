@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -111,7 +111,7 @@ class _BusinessNamePageState extends State<BusinessNamePage> {
         SetOptions(merge: true),
       );
       if (!mounted) return;
-      showSnackbar(context, 'Business name saved', Colors.green);
+      showSnackbar(context, 'Business name saved', SpazaColors.action);
       if (widget.onSaved != null) {
         widget.onSaved!();
       } else {
@@ -143,68 +143,18 @@ class _BusinessNamePageState extends State<BusinessNamePage> {
           // Soft-gate: no back arrow, no chance to escape without saving.
           ? AppBar(
               automaticallyImplyLeading: false,
-              title: const Text('Add your Business Name'),
+              title: const Text('Add your business name'),
             )
-          : const CustomAppBar(title: 'Business Name'),
+          : const CustomAppBar(title: 'Business name'),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                child: Padding(
-                  padding: LayoutConstants.padding10Horizontal,
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 12),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            widget.requireValue
-                                ? 'Before you continue, please add your '
-                                    'business name. Customers see this on '
-                                    'every receipt, SMS and WhatsApp message '
-                                    'we send on your behalf.'
-                                : 'Your business name appears on receipts '
-                                    'and on SMS / WhatsApp messages we send '
-                                    'to your customers on your behalf. Keep '
-                                    'it short and recognisable.',
-                            style: const TextStyle(fontSize: 13, height: 1.4),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        CustomTextField(
-                          label: 'Business Name',
-                          hintText: 'e.g. The Corner Shop',
-                          prefixIcon: Icons.store,
-                          controller: _controller,
-                          maxLength: 40,
-                          textCapitalization: TextCapitalization.words,
-                          validator: (value) {
-                            final v = (value ?? '').trim();
-                            if (v.isEmpty) {
-                              return 'Enter a business name';
-                            }
-                            if (v.length < 2) {
-                              return 'Business name is too short';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        CustomButton(
-                          onTap: _saving ? () {} : _save,
-                          isDisabled: _saving,
-                          margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                          title: _saving
-                              ? 'Saving…'
-                              : (widget.requireValue ? 'Continue' : 'Save'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            : BusinessNameForm(
+                controller: _controller,
+                formKey: _formKey,
+                requireValue: widget.requireValue,
+                saving: _saving,
+                onSave: _save,
               ),
       ),
     );
@@ -215,4 +165,64 @@ class _BusinessNamePageState extends State<BusinessNamePage> {
     }
     return scaffold;
   }
+}
+
+/// Form presentation shared by the authenticated route and local design review.
+class BusinessNameForm extends StatelessWidget {
+  const BusinessNameForm({
+    super.key,
+    required this.controller,
+    required this.formKey,
+    required this.onSave,
+    this.requireValue = false,
+    this.saving = false,
+  });
+  final TextEditingController controller;
+  final GlobalKey<FormState> formKey;
+  final VoidCallback onSave;
+  final bool requireValue;
+  final bool saving;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.all(SpazaSpace.lg),
+        child: Form(
+          key: formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                requireValue
+                    ? 'Before you continue, please add your business name. Customers see this on every receipt, SMS and WhatsApp message we send on your behalf.'
+                    : 'Your business name appears on receipts and on SMS / WhatsApp messages we send to your customers on your behalf. Keep it short and recognisable.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: SpazaSpace.xl),
+              CustomTextField(
+                label: 'Business name',
+                hintText: 'e.g. The Corner Shop',
+                prefixIcon: SpazaIcons.shop,
+                controller: controller,
+                maxLength: 40,
+                textCapitalization: TextCapitalization.words,
+                validator: (value) {
+                  final name = (value ?? '').trim();
+                  if (name.isEmpty) return 'Enter a business name';
+                  if (name.length < 2) return 'Business name is too short';
+                  return null;
+                },
+              ),
+              const SizedBox(height: SpazaSpace.sm),
+              CustomButton(
+                onTap: onSave,
+                isDisabled: saving,
+                margin: EdgeInsets.zero,
+                title:
+                    saving ? 'Saving…' : (requireValue ? 'Continue' : 'Save'),
+              ),
+            ],
+          ),
+        ),
+      );
 }

@@ -5,6 +5,7 @@ import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 
 Widget _subject({required double textScale, Size? mediaSize}) {
   return MaterialApp(
+    theme: kCustomThemeData,
     home: MediaQuery(
       data: MediaQueryData(
         size: mediaSize ?? const Size(360, 640),
@@ -71,11 +72,10 @@ void main() {
           expect(decoration.borderRadius, isNotNull);
           expect(decoration.color, isNotNull);
 
-          final boundary = tester.widget<Divider>(
+          final boundary = tester.widget<SizedBox>(
             find.byKey(const ValueKey('workspace-section-boundary')),
           );
-          expect(boundary.thickness, .5);
-          expect(boundary.color?.a, lessThan(.3));
+          expect(boundary.height, 12);
 
           final selected = tester.widget<Container>(
             find
@@ -86,7 +86,8 @@ void main() {
                 .first,
           );
           final selectedDecoration = selected.decoration! as BoxDecoration;
-          expect(selectedDecoration.color, kTertiaryColor);
+          expect(selectedDecoration.color, Colors.white);
+          expect(selectedDecoration.borderRadius, isNotNull);
 
           await tester.tap(find.text('Online orders'));
           await tester.pumpAndSettle();
@@ -95,6 +96,42 @@ void main() {
       );
     }
   }
+
+  testWidgets('customer tabs retain unread counts and actions at large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(MaterialApp(
+      theme: kCustomThemeData,
+      home: const MediaQuery(
+        data: MediaQueryData(
+            size: Size(320, 640), textScaler: TextScaler.linear(2)),
+        child: DefaultTabController(
+          length: 3,
+          child: Scaffold(
+              body: WorkspaceSectionTabs(tabs: [
+            WorkspaceSectionTab(label: 'Pay later', semanticLabel: 'Pay later'),
+            WorkspaceSectionTab(
+                label: 'Orders', semanticLabel: 'Orders', badgeCount: 7),
+            WorkspaceSectionTab(
+                label: 'Messages', semanticLabel: 'Messages', badgeCount: 123),
+          ])),
+        ),
+      ),
+    ));
+    expect(find.text('7'), findsOneWidget);
+    expect(find.text('99+'), findsOneWidget);
+    expect(find.bySemanticsLabel('Messages, 123 unread'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('workspace-section-Messages')));
+    await tester.pumpAndSettle();
+    final context = tester.element(find.byType(WorkspaceSectionTabs));
+    expect(DefaultTabController.of(context).index, 2);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
 
   testWidgets('workspace navigation stays compact in phone landscape', (
     tester,
@@ -108,7 +145,7 @@ void main() {
     final tabs = tester.getSize(
       find.byKey(const ValueKey('workspace-section-tabs')),
     );
-    expect(tabs.height, lessThan(46));
+    expect(tabs.height, lessThanOrEqualTo(48));
     expect(
       find.byKey(const ValueKey('workspace-section-boundary')),
       findsOneWidget,

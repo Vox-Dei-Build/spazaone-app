@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/constants/constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/models/conversation/conversation_presentation.dart';
 import 'message_card.dart';
 
@@ -193,17 +193,17 @@ class _MessagesListViewState extends State<MessagesListView> {
     return Container(
       width: double.infinity,
       alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       color: Colors.transparent,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
         decoration: BoxDecoration(
-          color: WaBrandColour.white,
+          color: SpazaColors.surface,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
           date,
-          style: const TextStyle(fontSize: 12, color: WaBrandColour.time),
+          style: const TextStyle(fontSize: 13, color: SpazaColors.muted),
         ),
       ),
     );

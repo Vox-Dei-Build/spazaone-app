@@ -6,7 +6,7 @@ class SizeConfig {
   static double blockSizeHorizontal = 0;
   static double blockSizeVertical = 0;
 
-  static double textMultiplier = 0;
+  static double textMultiplier = 8;
   static double imageSizeMultiplier = 0;
   static double heightMultiplier = 0;
 
@@ -20,11 +20,10 @@ class SizeConfig {
     blockSizeHorizontal = screenWidth / 100;
     blockSizeVertical = screenHeight / 100;
 
-    // Typography must not collapse when the device rotates. The previous
-    // height-based multiplier made all copy roughly half-sized in landscape.
-    // A bounded width-based token keeps phone typography stable while the
-    // framework's TextScaler still honours the user's accessibility setting.
-    textMultiplier = (screenWidth / 50).clamp(7.5, 9.0).toDouble();
+    // Legacy callers retain their scale without changing text size between
+    // phones, tablets or rotations. New UI uses the shared TextTheme directly.
+    // Flutter's TextScaler remains responsible for accessibility text sizing.
+    textMultiplier = 8;
     // Image and spacing tokens should also survive rotation. Scaling from
     // the long edge made icons and horizontal padding roughly double in
     // landscape. The bounded shortest edge stays stable on phones and avoids

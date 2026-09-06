@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 class LayoutConstants {
+  static const EdgeInsets workspacePadding =
+      EdgeInsets.symmetric(horizontal: 16);
   static const EdgeInsets padding20Horizontal =
       EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 20.0);
   static const EdgeInsets padding16Horizontal =

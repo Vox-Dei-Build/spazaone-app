@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 /// The shared entry point to the active store's WhatsApp storefront.
@@ -32,8 +33,8 @@ class ShopLinkAction extends StatelessWidget {
       size: 18,
       color: primary,
     );
-    final label = Text(
-      compact ? 'Shop' : 'Shop link',
+    const label = Text(
+      'Shop',
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.visible,
@@ -50,18 +51,19 @@ class ShopLinkAction extends StatelessWidget {
         child: TextButton(
           onPressed: onPressed,
           style: TextButton.styleFrom(
-            foregroundColor: primary,
-            backgroundColor: primary.withValues(alpha: 0.09),
+            foregroundColor: SpazaColors.heading,
+            backgroundColor: SpazaColors.surface,
             minimumSize: Size(compact ? 96 : 104, 48),
-            fixedSize: compact && !fillWidth ? const Size(104, 48) : null,
+            fixedSize: !fillWidth ? const Size(104, 48) : null,
             padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
             tapTargetSize: MaterialTapTargetSize.padded,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(SpazaRadius.control),
             ),
             textStyle: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontFamily: 'SpazaSans',
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
             ),
           ),
           child: Row(
@@ -70,7 +72,7 @@ class ShopLinkAction extends StatelessWidget {
             children: [
               icon,
               SizedBox(width: compact ? 6 : 8),
-              Flexible(child: label),
+              const Flexible(child: label),
             ],
           ),
         ),

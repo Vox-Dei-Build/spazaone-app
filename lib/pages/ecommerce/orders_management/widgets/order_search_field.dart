@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 
 class OrderSearchField extends StatelessWidget {
   const OrderSearchField({
@@ -18,16 +17,10 @@ class OrderSearchField extends StatelessWidget {
       controller: controller,
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
-      style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.7),
+      style: Theme.of(context).textTheme.bodyMedium,
       decoration: InputDecoration(
         hintText: hint ?? 'Search…',
-        prefixIcon: const Icon(Icons.search),
-        isDense: true,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.imageSizeMultiplier * 3,
-          vertical: SizeConfig.heightMultiplier * 1.6,
-        ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        prefixIcon: const Icon(Icons.search_rounded),
       ),
     );
   }

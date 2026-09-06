@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
 class CustomBackButton extends StatelessWidget {
   const CustomBackButton({
@@ -16,60 +15,36 @@ class CustomBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
-
-    return Column(
-      children: [
-        Padding(
-          padding: EdgeInsets.only(
-            left: SizeConfig.imageSizeMultiplier * 4,
-            right: SizeConfig.imageSizeMultiplier * 4,
-            top: SizeConfig.heightMultiplier * 2,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (onBack == true)
-                IconButton(
-                  onPressed: () {
-                    FocusScope.of(context).unfocus();
-                    SystemChannels.textInput.invokeMethod('TextInput.hide');
-                    Navigator.pop(context);
-                  },
-                  icon: Icon(
-                    Icons.arrow_back_ios,
-                    size: SizeConfig.imageSizeMultiplier *
-                        7, // Responsive icon size
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      child: Row(
+        children: [
+          if (onBack == true)
+            IconButton(
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              onPressed: () {
+                FocusScope.of(context).unfocus();
+                Navigator.maybePop(context);
+              },
+              icon: const Icon(SpazaIcons.back, size: 22),
+            )
+          else
+            const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
                   ),
-                )
-              else
-                SizedBox(
-                    width: SizeConfig.imageSizeMultiplier *
-                        7), // Adjust width for alignment
-              Expanded(
-                child: Center(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize:
-                          SizeConfig.textMultiplier * 3, // Responsive font size
-                      fontWeight: FontWeight.w900,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-              if (trailing != null)
-                trailing!
-              else
-                SizedBox(
-                    width: SizeConfig.imageSizeMultiplier *
-                        7), // Adjust width for alignment
-            ],
+            ),
           ),
-        ),
-        SizedBox(height: SizeConfig.heightMultiplier * 3), // Responsive spacing
-      ],
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing!,
+          ],
+        ],
+      ),
     );
   }
 }

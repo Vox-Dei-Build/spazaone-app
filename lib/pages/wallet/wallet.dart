@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
 import 'package:pasella/pages/wallet/tabs/sales_balance_tab.dart';
 import 'package:pasella/pages/wallet/tabs/unified_history_tab.dart';
@@ -95,16 +95,10 @@ class BillingBalancePanel extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   CurrencyUtil.format(campaignBalance),
-                  style: const TextStyle(
-                    color: kTertiaryColor,
-                    fontSize: 40,
-                    height: 1,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -1.4,
-                  ),
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: SpazaSpace.sm),
               Text(
                 'Use this for WhatsApp messages and promotions.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -113,7 +107,7 @@ class BillingBalancePanel extends StatelessWidget {
                     ),
               ),
               if (sharedCampaignCredits) ...[
-                const SizedBox(height: 3),
+                const SizedBox(height: SpazaSpace.xs),
                 Text(
                   'Shared across your shops',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -122,14 +116,14 @@ class BillingBalancePanel extends StatelessWidget {
                 ),
               ],
               if (onCampaignTap != null) ...[
-                const SizedBox(height: 20),
+                const SizedBox(height: SpazaSpace.lg),
                 FilledButton(
                   key: const ValueKey('billing-add-money'),
                   onPressed: onCampaignTap,
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(50),
+                    minimumSize: const Size.fromHeight(48),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(SpazaRadius.control),
                     ),
                   ),
                   child: const Text('Add money'),
@@ -139,20 +133,20 @@ class BillingBalancePanel extends StatelessWidget {
           ),
         ),
         if (salesBalance > 0) ...[
-          const SizedBox(height: 24),
+          const SizedBox(height: SpazaSpace.lg),
           Padding(
             key: const ValueKey('billing-balance-legacy'),
-            padding: const EdgeInsets.only(top: 20),
+            padding: const EdgeInsets.only(top: SpazaSpace.sm),
             child: _SecondaryBalanceRow(
               label: 'Legacy Balance',
               detail: storeName,
               amount: salesBalance,
-              icon: Icons.history_rounded,
+              icon: SpazaIcons.activity,
             ),
           ),
         ],
         if (cashAdvanceBalance case final amount?) ...[
-          const SizedBox(height: 20),
+          const SizedBox(height: SpazaSpace.lg),
           _SecondaryBalanceRow(
             label: 'Cash advance',
             amount: amount,
@@ -179,46 +173,58 @@ class _SecondaryBalanceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final theme = Theme.of(context);
+    final description = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: kHighLightColor,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: kPrimaryColor, size: 21),
-        ),
-        const SizedBox(width: 12),
+        Icon(icon, color: SpazaColors.muted, size: 22),
+        const SizedBox(width: SpazaSpace.md),
         Expanded(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-              if (detail != null)
-                Text(
-                  detail!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: kSecondaryAccent,
-                      ),
-                ),
+              Text(label, style: theme.textTheme.titleSmall),
+              if (detail != null) ...[
+                const SizedBox(height: SpazaSpace.xs),
+                Text(detail!, style: theme.textTheme.bodySmall),
+              ],
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        Text(
-          CurrencyUtil.format(amount),
-          style: const TextStyle(
-            color: kTertiaryColor,
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-          ),
-        ),
       ],
+    );
+    final value = FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text(
+        CurrencyUtil.format(amount),
+        style: theme.textTheme.titleMedium,
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 300 ||
+            MediaQuery.textScalerOf(context).scale(14) > 19) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              description,
+              const SizedBox(height: SpazaSpace.sm),
+              Padding(
+                padding: const EdgeInsets.only(left: 34),
+                child: value,
+              ),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: description),
+            const SizedBox(width: SpazaSpace.lg),
+            Flexible(child: value),
+          ],
+        );
+      },
     );
   }
 }
@@ -285,7 +291,7 @@ class WalletHubMenu extends StatelessWidget {
       if (showBalance)
         _WalletHubDestination(
           key: const ValueKey('wallet-hub-balance'),
-          icon: Icons.receipt_long_outlined,
+          icon: SpazaIcons.sales,
           title: 'Balance activity',
           subtitle: 'Money added and message costs',
           onTap: onBalance,
@@ -320,11 +326,12 @@ class WalletHubMenu extends StatelessWidget {
             hasPendingPayment: hasPendingPayment,
             onAddMoney: onAddMoney,
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: SpazaSpace.lg),
         ],
         for (var index = 0; index < destinations.length; index++) ...[
           _WalletHubTile(destination: destinations[index]),
-          if (index < destinations.length - 1) const SizedBox(height: 10),
+          if (index < destinations.length - 1)
+            const SizedBox(height: SpazaSpace.xs),
         ],
       ],
     );
@@ -342,7 +349,9 @@ class _WalletHubLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget block({required double height, double radius = 16}) => Container(
+    Widget block(
+            {required double height, double radius = SpazaRadius.control}) =>
+        Container(
           height: height,
           decoration: BoxDecoration(
             color: Colors.white,
@@ -358,12 +367,13 @@ class _WalletHubLoading extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (showBalance) ...[
-            block(height: 210, radius: 22),
-            const SizedBox(height: 28),
+            block(height: 190, radius: SpazaRadius.surface),
+            const SizedBox(height: SpazaSpace.lg),
           ],
           for (var index = 0; index < destinationCount; index++) ...[
-            block(height: 74),
-            if (index < destinationCount - 1) const SizedBox(height: 10),
+            block(height: 68),
+            if (index < destinationCount - 1)
+              const SizedBox(height: SpazaSpace.xs),
           ],
         ],
       ),
@@ -404,99 +414,65 @@ class _WalletBalanceHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    final theme = Theme.of(context);
+    return Container(
       key: const ValueKey('wallet-balance-hero'),
       decoration: BoxDecoration(
-        color: kHighLightColor,
-        borderRadius: BorderRadius.circular(22),
+        color: theme.colorScheme.surface,
+        border: Border.all(color: SpazaColors.border),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Row(
+      padding: const EdgeInsets.all(SpazaSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('SpazaOne balance', style: theme.textTheme.bodyMedium),
+          const SizedBox(height: SpazaSpace.sm),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              CurrencyUtil.format(balance),
+              style: theme.textTheme.headlineSmall,
+            ),
+          ),
+          const SizedBox(height: SpazaSpace.sm),
+          Text(
+            'For WhatsApp messages and promotions.',
+            style: theme.textTheme.bodySmall,
+          ),
+          if (sharedAcrossShops) ...[
+            const SizedBox(height: SpazaSpace.xs),
+            Text(
+              'Shared across your shops',
+              style:
+                  theme.textTheme.bodySmall?.copyWith(color: SpazaColors.muted),
+            ),
+          ],
+          if (hasPendingPayment) ...[
+            const SizedBox(height: SpazaSpace.md),
+            Row(
               children: [
-                Icon(
-                  Icons.account_balance_wallet_outlined,
-                  color: kPrimaryColor,
-                  size: 20,
+                const SizedBox.square(
+                  dimension: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: SpazaSpace.sm),
                 Expanded(
                   child: Text(
-                    'SpazaOne balance',
-                    style: TextStyle(
-                      color: kPrimaryColor,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    'Payment confirmation in progress',
+                    style: theme.textTheme.bodySmall,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                CurrencyUtil.format(balance),
-                style: const TextStyle(
-                  color: kTertiaryColor,
-                  fontSize: 38,
-                  height: 1,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -1.2,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'For WhatsApp messages and promotions.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: kTertiaryColor,
-                    height: 1.35,
-                  ),
-            ),
-            if (sharedAcrossShops) ...[
-              const SizedBox(height: 2),
-              Text(
-                'Shared across your shops',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: kSecondaryAccent,
-                    ),
-              ),
-            ],
-            if (hasPendingPayment) ...[
-              const SizedBox(height: 10),
-              const Row(
-                children: [
-                  SizedBox.square(
-                    dimension: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Payment confirmation in progress',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: onAddMoney,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text('Add money'),
-            ),
           ],
-        ),
+          const SizedBox(height: SpazaSpace.lg),
+          FilledButton(
+            onPressed: onAddMoney,
+            child: const Text('Add money'),
+          ),
+        ],
       ),
     );
   }
@@ -527,68 +503,55 @@ class _WalletHubTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Material(
       key: destination.key,
-      color: kHighLightColor.withValues(alpha: .62),
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
       child: InkWell(
         onTap: destination.onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SpazaSpace.xs,
+            vertical: SpazaSpace.lg,
+          ),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: SpazaColors.border)),
+          ),
           child: Row(
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: kHighLightColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(destination.icon, color: kPrimaryColor, size: 22),
-              ),
-              const SizedBox(width: 14),
+              Icon(destination.icon, color: SpazaColors.muted, size: 22),
+              const SizedBox(width: SpazaSpace.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      destination.title,
-                      style: const TextStyle(
-                        color: kTertiaryColor,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
+                    Text(destination.title, style: theme.textTheme.titleSmall),
+                    const SizedBox(height: SpazaSpace.xs),
                     Text(
                       destination.subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                            height: 1.3,
-                          ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: SpazaColors.muted,
+                      ),
                     ),
+                    if (destination.status case final status?) ...[
+                      const SizedBox(height: SpazaSpace.xs),
+                      Text(
+                        status,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: switch (status) {
+                            'Ready' => SpazaColors.action,
+                            'Action needed' => SpazaColors.error,
+                            _ => SpazaColors.muted,
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (destination.status case final status?) ...[
-                const SizedBox(width: 8),
-                Text(
-                  status,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: status == 'Ready'
-                            ? kPrimaryColor
-                            : Colors.orange.shade800,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-              ],
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: kTertiaryColor,
-              ),
+              const SizedBox(width: SpazaSpace.sm),
+              const Icon(SpazaIcons.next, color: SpazaColors.muted, size: 20),
             ],
           ),
         ),
@@ -805,7 +768,8 @@ class _WalletPageState extends State<WalletPage> {
       appBar: const CustomAppBar(title: 'Wallet & payments'),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
+          padding: const EdgeInsets.fromLTRB(
+              SpazaSpace.lg, SpazaSpace.lg, SpazaSpace.lg, SpazaSpace.xl),
           child: FutureBuilder<MerchantPaymentOverview>(
             future: _overviewFuture,
             builder: (context, snapshot) => WalletHubMenu(
@@ -832,29 +796,12 @@ class _WalletPageState extends State<WalletPage> {
   }
 
   Widget _repaymentCard(WalletState walletState) {
-    // PAS-UX-12: single FutureBuilder for the only computed value
-    // on this card. Previously this title had its own per-row
-    // builder while the bottom sheet had three more, all hitting
-    // RemoteConfig in parallel.
-    return Card(
-      margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 1),
-      color: Colors.red.shade50,
-      child: ListTile(
-        leading: const Icon(Icons.warning, color: Colors.red),
-        title: FutureBuilder<WalletBreakdown>(
-          future: WalletUtils.computeBreakdown(walletState),
-          builder: (context, snapshot) {
-            final due = snapshot.data?.totalOwed ?? '...';
-            return Text(
-              "💸 Repayment Due: $due",
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
-            );
-          },
-        ),
-        trailing: TextButton(
-          onPressed: () => _showRepaymentBottomSheet(context, walletState),
-          child: const Text("View", style: TextStyle(color: Colors.red)),
-        ),
+    // Compute the same repayment breakdown once for this notice.
+    return FutureBuilder<WalletBreakdown>(
+      future: WalletUtils.computeBreakdown(walletState),
+      builder: (context, snapshot) => WalletRepaymentNotice(
+        totalOwed: snapshot.data?.totalOwed ?? '...',
+        onView: () => _showRepaymentBottomSheet(context, walletState),
       ),
     );
   }
@@ -863,105 +810,32 @@ class _WalletPageState extends State<WalletPage> {
     BuildContext context,
     WalletState walletState,
   ) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
       builder: (context) {
-        // PAS-UX-12: one breakdown for the whole sheet. The future
-        // is created inside the builder which is fine: the sheet
-        // doesn't rebuild itself once it has resolved, and closing
-        // the sheet drops the subscription.
+        // One breakdown for the whole sheet, as before.
         final breakdown = WalletUtils.computeBreakdown(walletState);
-        return Padding(
-          padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
-          child: FutureBuilder<WalletBreakdown>(
-            future: breakdown,
-            builder: (context, snapshot) {
-              final b = snapshot.data ?? WalletBreakdown.loading;
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 50,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
+        return FutureBuilder<WalletBreakdown>(
+          future: breakdown,
+          builder: (context, snapshot) => WalletRepaymentDetailsSheet(
+            breakdown: snapshot.data ?? WalletBreakdown.loading,
+            onClose: () => Navigator.of(context).pop(),
+            onViewReport: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FullRepaymentReportPage(
+                    walletState: walletState,
                   ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  Text(
-                    'Repayment Details',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: SizeConfig.textMultiplier * 2,
-                    ),
-                  ),
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  _infoRow('Fee Charged', b.advanceFee),
-                  _infoRow('Bank Fee', b.bankFee),
-                  _infoRow('Penalty Applied', b.penaltyFee),
-                  _infoRow('Amount Due', b.totalOwed),
-                  _infoRow('Due Date', b.dueDate),
-                  _infoRow('Suspended', b.suspended),
-                  SizedBox(height: SizeConfig.heightMultiplier * 2),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => FullRepaymentReportPage(
-                            walletState: walletState,
-                          ),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'View Full Report',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ],
+                ),
               );
             },
           ),
         );
       },
-    );
-  }
-
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 0.5,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 1.6),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: SizeConfig.textMultiplier * 1.6,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1061,7 +935,7 @@ class _WalletBalanceDestinationPageState
             ),
             const SizedBox(height: 30),
             if (_hasPendingIntent) ...[
-              _PendingPaymentActivity(
+              WalletPendingPaymentActivity(
                 onCheckAgain: () => unawaited(_checkPending()),
               ),
               const SizedBox(height: 18),
@@ -1155,7 +1029,8 @@ class _WalletOnlinePaymentsPageState extends State<WalletOnlinePaymentsPage>
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
+            padding: const EdgeInsets.fromLTRB(
+                SpazaSpace.lg, SpazaSpace.lg, SpazaSpace.lg, SpazaSpace.xl),
             child: FutureBuilder<MerchantPaymentOverview>(
               future: _overview,
               builder: (context, snapshot) => MoneyPayoutsSection(
@@ -1172,31 +1047,241 @@ class _WalletOnlinePaymentsPageState extends State<WalletOnlinePaymentsPage>
   }
 }
 
-class _PendingPaymentActivity extends StatelessWidget {
-  const _PendingPaymentActivity({required this.onCheckAgain});
+/// Pending-payment presentation; checking still runs through the page callback.
+class WalletPendingPaymentActivity extends StatelessWidget {
+  const WalletPendingPaymentActivity({super.key, required this.onCheckAgain});
 
   final VoidCallback onCheckAgain;
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Colors.orange.withValues(alpha: .08),
-      child: ListTile(
-        leading: const SizedBox.square(
-          dimension: 22,
-          child: CircularProgressIndicator(strokeWidth: 2.4),
-        ),
-        title: const Text(
-          'We are still checking your payment',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: const Text(
+  Widget build(BuildContext context) => _WalletStatusNotice(
+        title: 'We are still checking your payment',
+        detail: Text(
           'Your SpazaOne balance will update only after confirmation.',
+          style: Theme.of(context).textTheme.bodySmall,
         ),
-        trailing: TextButton(
-          onPressed: onCheckAgain,
-          child: const Text('Check'),
+        leading: const SizedBox.square(
+          dimension: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
         ),
+        actionLabel: 'Check',
+        onAction: onCheckAgain,
+      );
+}
+
+class WalletRepaymentNotice extends StatelessWidget {
+  const WalletRepaymentNotice({
+    super.key,
+    required this.totalOwed,
+    required this.onView,
+  });
+
+  final String totalOwed;
+  final VoidCallback onView;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: SpazaSpace.sm),
+        child: _WalletStatusNotice(
+          title: 'Repayment Due',
+          detail: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child:
+                Text(totalOwed, style: Theme.of(context).textTheme.titleMedium),
+          ),
+          leading: const Icon(
+            Icons.warning_amber_rounded,
+            size: 20,
+            color: SpazaColors.error,
+          ),
+          actionLabel: 'View',
+          onAction: onView,
+        ),
+      );
+}
+
+class _WalletStatusNotice extends StatelessWidget {
+  const _WalletStatusNotice({
+    required this.title,
+    required this.detail,
+    required this.leading,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final String title;
+  final Widget detail;
+  final Widget leading;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(padding: const EdgeInsets.only(top: 2), child: leading),
+        const SizedBox(width: SpazaSpace.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: SpazaSpace.xs),
+              detail,
+            ],
+          ),
+        ),
+      ],
+    );
+    final action = TextButton(onPressed: onAction, child: Text(actionLabel));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(SpazaSpace.lg),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 280 ||
+                MediaQuery.textScalerOf(context).scale(14) > 19) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  description,
+                  const SizedBox(height: SpazaSpace.xs),
+                  Align(alignment: Alignment.centerRight, child: action),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: description),
+                const SizedBox(width: SpazaSpace.sm),
+                action,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Data-only repayment details used by the live bottom sheet.
+class WalletRepaymentDetailsSheet extends StatelessWidget {
+  const WalletRepaymentDetailsSheet({
+    super.key,
+    required this.breakdown,
+    required this.onViewReport,
+    required this.onClose,
+  });
+
+  final WalletBreakdown breakdown;
+  final VoidCallback onViewReport;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .85,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  SpazaSpace.lg, 0, SpazaSpace.sm, SpazaSpace.sm),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Repayment Details',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close repayment details',
+                    onPressed: onClose,
+                    icon: const Icon(SpazaIcons.close),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                key: const ValueKey('wallet-repayment-details-scroll'),
+                padding: const EdgeInsets.fromLTRB(
+                    SpazaSpace.lg, 0, SpazaSpace.lg, SpazaSpace.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _RepaymentDetailRow('Fee Charged', breakdown.advanceFee),
+                    _RepaymentDetailRow('Bank Fee', breakdown.bankFee),
+                    _RepaymentDetailRow(
+                        'Penalty Applied', breakdown.penaltyFee),
+                    _RepaymentDetailRow('Amount Due', breakdown.totalOwed),
+                    _RepaymentDetailRow('Due Date', breakdown.dueDate),
+                    _RepaymentDetailRow('Suspended', breakdown.suspended),
+                    const SizedBox(height: SpazaSpace.lg),
+                    FilledButton(
+                      onPressed: onViewReport,
+                      child: const Text('View Full Report'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _RepaymentDetailRow extends StatelessWidget {
+  const _RepaymentDetailRow(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final labelWidget = Text(label, style: theme.textTheme.bodyMedium);
+    final valueWidget = FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text(value, style: theme.textTheme.titleSmall),
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: SpazaSpace.md),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: SpazaColors.border)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 300 ||
+              MediaQuery.textScalerOf(context).scale(14) > 19) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                labelWidget,
+                const SizedBox(height: SpazaSpace.xs),
+                valueWidget,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: labelWidget),
+              const SizedBox(width: SpazaSpace.lg),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: valueWidget,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

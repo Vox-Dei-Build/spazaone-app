@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
@@ -124,20 +125,20 @@ class _Metric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: highlight ? Colors.green.shade50 : Colors.white,
+        color: highlight ? SpazaColors.successSurface : Colors.white,
         border: Border.all(
-          color: highlight ? Colors.green.shade200 : Colors.grey.shade300,
+          color: highlight ? SpazaColors.outline : SpazaColors.border,
         ),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: Colors.grey.shade700)),
+          Text(label, style: const TextStyle(color: SpazaColors.muted)),
           const SizedBox(height: 5),
           Text(
             value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -155,20 +156,20 @@ class _OrderCard extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         onTap: () => showCommerceOrderDetails(context, order),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(SpazaRadius.control),
                 child: SizedBox(
                   width: 62,
                   height: 62,
                   child: order.image.isEmpty
                       ? const ColoredBox(
-                          color: Color(0xFFF0F3F2),
+                          color: SpazaColors.subtle,
                           child: Icon(Icons.inventory_2_outlined),
                         )
                       : CachedNetworkImage(
@@ -193,7 +194,7 @@ class _OrderCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '${order.buyerName} · ${_reference(order.id)}',
-                      style: TextStyle(color: Colors.grey.shade700),
+                      style: const TextStyle(color: SpazaColors.muted),
                     ),
                     const SizedBox(height: 6),
                     _StatusChip(status: order.canonicalStatus.label),
@@ -205,14 +206,14 @@ class _OrderCard extends StatelessWidget {
                 children: [
                   Text(
                     CurrencyUtil.format(order.amountDueMinor / 100),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 5),
                   if (_earningStatuses.contains(order.status))
                     Text(
                       '+${CurrencyUtil.format(order.marginMinor / 100)} margin',
-                      style: TextStyle(
-                        color: Colors.green.shade700,
+                      style: const TextStyle(
+                        color: SpazaColors.action,
                         fontSize: 12,
                       ),
                     )
@@ -226,10 +227,10 @@ class _OrderCard extends StatelessWidget {
                       ),
                     )
                   else if (order.paymentStatus == 'refunded')
-                    Text(
+                    const Text(
                       'Refunded',
                       style: TextStyle(
-                        color: Colors.grey.shade700,
+                        color: SpazaColors.muted,
                         fontSize: 12,
                       ),
                     ),
@@ -509,7 +510,7 @@ class _OrderDetailsState extends State<_OrderDetails> {
               Section(
                 title: 'Customer & delivery',
                 child: Card(
-                  elevation: 1,
+                  elevation: 0,
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -748,7 +749,7 @@ class _SupplierOperationsPanel extends StatelessWidget {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: ExpansionTile(
@@ -851,8 +852,8 @@ class _DetailRow extends StatelessWidget {
           Expanded(child: Text(label)),
           Text(value,
               style: TextStyle(
-                  fontWeight: highlight ? FontWeight.w800 : FontWeight.w500,
-                  color: highlight ? Colors.green.shade700 : null)),
+                  fontWeight: highlight ? FontWeight.w500 : FontWeight.w500,
+                  color: highlight ? SpazaColors.action : null)),
         ]),
       );
 }
@@ -890,7 +891,7 @@ class _OrdersEmpty extends StatelessWidget {
             Text(title,
                 textAlign: TextAlign.center,
                 style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
           ]),

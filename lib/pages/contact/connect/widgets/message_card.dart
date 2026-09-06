@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/conversation/conversation_presentation.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -24,6 +24,7 @@ class ImageViewerPage extends StatelessWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
+          tooltip: 'Close image',
           icon: const Icon(Icons.close, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
@@ -74,12 +75,16 @@ class MessageCard extends StatelessWidget {
         ),
         margin: const EdgeInsets.symmetric(vertical: 4),
         decoration: BoxDecoration(
-          color: isMerchant ? WaBrandColour.outgoingChatBubble : Colors.white,
+          color: isMerchant ? SpazaColors.successSurface : SpazaColors.surface,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: isMerchant ? const Radius.circular(14) : Radius.zero,
-            bottomRight: isMerchant ? Radius.zero : const Radius.circular(14),
+            topLeft: const Radius.circular(SpazaRadius.control),
+            topRight: const Radius.circular(SpazaRadius.control),
+            bottomLeft: isMerchant
+                ? const Radius.circular(SpazaRadius.control)
+                : Radius.zero,
+            bottomRight: isMerchant
+                ? Radius.zero
+                : const Radius.circular(SpazaRadius.control),
           ),
           boxShadow: const [
             BoxShadow(
@@ -87,7 +92,7 @@ class MessageCard extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 9, 10, 7),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -120,8 +125,8 @@ class MessageCard extends StatelessWidget {
                     ),
                   Text(
                     _messageTimeFormat.format(dateSent.toLocal()),
-                    style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.35,
+                    style: const TextStyle(
+                      fontSize: 13,
                       color: WaBrandColour.time,
                     ),
                   ),
@@ -207,7 +212,7 @@ class _PresentationBody extends StatelessWidget {
       ConversationPresentationType.unsupported => Text(
           presentation.text ?? 'This message cannot be previewed.',
           style: const TextStyle(
-              color: Colors.black54, fontStyle: FontStyle.italic),
+              color: SpazaColors.muted, fontStyle: FontStyle.italic),
         ),
     };
   }
@@ -221,7 +226,7 @@ class WhatsAppFormattedText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = Theme.of(context).textTheme.bodyLarge?.copyWith(
-          color: Colors.black87,
+          color: SpazaColors.ink,
           height: 1.3,
         );
     return Text.rich(
@@ -302,7 +307,7 @@ class _ImagePresentation extends StatelessWidget {
               MaterialPageRoute(builder: (_) => ImageViewerPage(imageUrl: url)),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(SpazaRadius.control),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 320),
                 child: Image.network(
@@ -342,7 +347,7 @@ class _OptionsPresentation extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (presentation.title case final title?) ...[
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
           const SizedBox(height: 5),
         ],
         if (presentation.text case final text?) WhatsAppFormattedText(text),
@@ -422,7 +427,7 @@ class _TranscriptCard extends StatelessWidget {
       width: 210,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: .72),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         border: Border.all(color: Colors.black12),
       ),
       clipBehavior: Clip.antiAlias,
@@ -449,7 +454,7 @@ class _TranscriptCard extends StatelessWidget {
                     card.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   if (card.subtitle case final subtitle?) ...[
                     const SizedBox(height: 4),
@@ -545,7 +550,7 @@ class _ExpiredMedia extends StatelessWidget {
       child: Text(
         label,
         textAlign: TextAlign.center,
-        style: TextStyle(color: dark ? Colors.white70 : Colors.black54),
+        style: TextStyle(color: dark ? Colors.white70 : SpazaColors.muted),
       ),
     );
   }

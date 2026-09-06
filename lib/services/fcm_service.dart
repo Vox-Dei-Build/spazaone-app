@@ -21,11 +21,14 @@ class FCMService {
   /// Requests notification permission only when the operating system has not
   /// received a decision yet. This keeps the prompt contextual without
   /// repeatedly interrupting merchants who already declined it.
-  Future<void> requestPermissionIfNeeded(BuildContext context) async {
-    if (!messagingEnabled()) return;
+  Future<void> requestPermissionIfNeeded(
+    BuildContext context, {
+    bool Function()? shouldContinue,
+  }) async {
+    if (!messagingEnabled() || shouldContinue?.call() == false) return;
     try {
-      final settings =
-          await FirebaseMessaging.instance.getNotificationSettings();
+      final settings = await getNotificationSettings();
+      if (!context.mounted || shouldContinue?.call() == false) return;
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
@@ -38,7 +41,8 @@ class FCMService {
         return;
       }
 
-      await showPermissionExplanationDialog(context);
+      await showPermissionExplanationDialog(context,
+          shouldContinue: shouldContinue);
     } catch (error, stack) {
       await CrashService.instance.recordNonFatal(
         error,
@@ -179,7 +183,10 @@ class FCMService {
     }
   }
 
-  Future<void> showPermissionExplanationDialog(BuildContext context) async {
+  Future<void> showPermissionExplanationDialog(
+    BuildContext context, {
+    bool Function()? shouldContinue,
+  }) async {
     return showDialog<void>(
       context: context,
       barrierDismissible: false, // User must tap a button to dismiss.
@@ -210,6 +217,7 @@ class FCMService {
               child: const Text('Allow notifications'),
               onPressed: () async {
                 Navigator.of(context).pop();
+                if (shouldContinue?.call() == false) return;
                 await requestPermission(context);
               },
             ),

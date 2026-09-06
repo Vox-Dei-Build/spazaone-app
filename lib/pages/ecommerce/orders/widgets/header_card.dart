@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/meta_chip.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/status_pill.dart';
 import 'package:pasella/pages/ecommerce/orders/widgets/whatsapp_delivery_pill.dart';
@@ -39,80 +39,70 @@ class HeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     final resolvedPayText = (paymentStatusText ?? paymentStatus).trim();
     final hasPaymentPill = resolvedPayText.isNotEmpty;
     final hasCollectionPill = collectionPill != null; // NEW
 
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    totalText,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: SizeConfig.textMultiplier * 2.6,
-                    ),
-                  ),
+                Text(
+                  totalText,
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                FittedBox(
-                  child: Row(
-                    children: [
-                      // NEW: collection pill
-                      if (hasCollectionPill) ...[
-                        SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
-                        StatusPill(
-                          text: collectionPill!.text,
-                          color: collectionPill!.color,
-                        ),
-                      ],
-
-                      // payment pill (BNPL-aware)
-                      if (hasPaymentPill) ...[
-                        SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
-                        StatusPill(
-                          text: resolvedPayText,
-                          color: paymentStatusColor ??
-                              Theme.of(context).colorScheme.outline,
-                        ),
-                      ],
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    // NEW: collection pill
+                    if (hasCollectionPill) ...[
+                      StatusPill(
+                        text: collectionPill!.text,
+                        color: collectionPill!.color,
+                      ),
                     ],
-                  ),
+
+                    // payment pill (BNPL-aware)
+                    if (hasPaymentPill) ...[
+                      StatusPill(
+                        text: resolvedPayText,
+                        color: paymentStatusColor ??
+                            Theme.of(context).colorScheme.outline,
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
 
-            SizedBox(height: SizeConfig.heightMultiplier * 0.6),
+            const SizedBox(height: 12),
 
             // --- Order meta: id + date ---
             Text(
               'Order #$orderId • $dateText',
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 1.5,
-                color: Colors.grey.shade700,
-              ),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: SpazaColors.muted,
+                  ),
             ),
 
-            SizedBox(height: SizeConfig.heightMultiplier * 1.2),
+            const SizedBox(height: 16),
 
             // --- Meta chips: customer, method, payment status ---
             Wrap(
-              spacing: SizeConfig.imageSizeMultiplier * 2,
-              runSpacing: SizeConfig.heightMultiplier * 0.8,
+              spacing: 8,
+              runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 MetaChip(
-                  icon: Icons.person,
+                  icon: SpazaIcons.customers,
                   label: formatStringToCamelCase(customerName),
                 ),
                 MetaChip(

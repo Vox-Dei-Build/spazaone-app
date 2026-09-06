@@ -24,7 +24,6 @@ class PrivacyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
       appBar: const CustomAppBar(title: 'Privacy'),
       body: SafeArea(
         child: ValueListenableBuilder<ConsentState>(
@@ -89,69 +88,105 @@ class _PrivacyBodyState extends State<_PrivacyBody> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final dirty =
-        _analytics != widget.state.analytics || _crash != widget.state.crash;
+  Widget build(BuildContext context) => PrivacySettingsForm(
+        analytics: _analytics,
+        crash: _crash,
+        saving: _saving,
+        dirty: _analytics != widget.state.analytics ||
+            _crash != widget.state.crash,
+        decidedAt: widget.state.decidedAt,
+        onAnalyticsChanged: (value) => setState(() => _analytics = value),
+        onCrashChanged: (value) => setState(() => _crash = value),
+        onSave: _save,
+        onOpenPolicy: () async {
+          final opened = await launchUrl(
+            Uri.parse(AppUrls.privacyPolicy),
+            mode: LaunchMode.externalApplication,
+          );
+          if (!opened && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not open privacy policy')),
+            );
+          }
+        },
+      );
+}
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+/// Controlled presentation; consent persistence stays in the authenticated page.
+class PrivacySettingsForm extends StatelessWidget {
+  const PrivacySettingsForm({
+    super.key,
+    required this.analytics,
+    required this.crash,
+    required this.saving,
+    required this.dirty,
+    required this.onAnalyticsChanged,
+    required this.onCrashChanged,
+    required this.onSave,
+    required this.onOpenPolicy,
+    this.decidedAt,
+  });
+  final bool analytics;
+  final bool crash;
+  final bool saving;
+  final bool dirty;
+  final DateTime? decidedAt;
+  final ValueChanged<bool> onAnalyticsChanged;
+  final ValueChanged<bool> onCrashChanged;
+  final VoidCallback onSave;
+  final VoidCallback onOpenPolicy;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.all(16),
         children: [
           const Text(
             'Choose what data Spaza One may collect to keep the app stable and '
             'understand how merchants use it. Save to apply your changes.',
           ),
-          const SizedBox(height: 12),
-          SwitchListTile(
-            title: const Text('Crash reports'),
-            subtitle: const Text(
-              'Send technical details when the app crashes so we can fix it.',
+          const SizedBox(height: 24),
+          Card(
+            child: SwitchListTile(
+              contentPadding: const EdgeInsets.all(16),
+              title: const Text('Crash reports'),
+              subtitle: const Text(
+                'Send technical details when the app crashes so we can fix it.',
+              ),
+              value: crash,
+              onChanged: saving ? null : onCrashChanged,
             ),
-            value: _crash,
-            onChanged: _saving ? null : (v) => setState(() => _crash = v),
           ),
-          SwitchListTile(
-            title: const Text('Product analytics'),
-            subtitle: const Text(
-              'Usage events linked to your Spaza One account. No message '
-              'contents or contact details.',
+          const SizedBox(height: 12),
+          Card(
+            child: SwitchListTile(
+              contentPadding: const EdgeInsets.all(16),
+              title: const Text('Product analytics'),
+              subtitle: const Text(
+                'Usage events linked to your Spaza One account. No message '
+                'contents or contact details.',
+              ),
+              value: analytics,
+              onChanged: saving ? null : onAnalyticsChanged,
             ),
-            value: _analytics,
-            onChanged: _saving ? null : (v) => setState(() => _analytics = v),
           ),
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: (_saving || !dirty) ? null : _save,
-            child: Text(_saving ? 'Saving...' : 'Save'),
+            onPressed: (saving || !dirty) ? null : onSave,
+            child: Text(saving ? 'Saving...' : 'Save'),
           ),
           const SizedBox(height: 8),
           TextButton(
-            onPressed: () async {
-              final uri = Uri.parse(AppUrls.privacyPolicy);
-              final opened = await launchUrl(
-                uri,
-                mode: LaunchMode.externalApplication,
-              );
-              if (!opened && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Could not open privacy policy')),
-                );
-              }
-            },
+            onPressed: onOpenPolicy,
             child: const Text('Read the Spaza One Privacy Policy'),
           ),
-          if (widget.state.decidedAt != null) ...[
+          if (decidedAt != null) ...[
             const SizedBox(height: 12),
             Text(
-              'Last updated ${DateFormat.yMMMd().add_jm().format(widget.state.decidedAt!.toLocal())}',
+              'Last updated ${DateFormat.yMMMd().add_jm().format(decidedAt!.toLocal())}',
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
           ],
         ],
-      ),
-    );
-  }
+      );
 }

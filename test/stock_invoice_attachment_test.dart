@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 import 'package:pasella/pages/sales/widgets/sale_detail_page.dart';
 import 'package:pasella/pages/sales/widgets/stock_invoice_attachments_field.dart';
+import 'package:pasella/pages/sales/widgets/stock_invoice_viewer_page.dart';
 import 'package:pasella/services/stock_invoice_attachment_service.dart';
 
 StockInvoiceAttachment attachment(String name) => StockInvoiceAttachment(
@@ -89,6 +91,83 @@ void main() {
     );
   });
 
+  for (final replacement in [
+    (
+      previous: pdfAttachment('previous'),
+      fileName: 'replacement.png',
+      contentType: 'image/png',
+      signature: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    ),
+    (
+      previous: pdfAttachment('previous'),
+      fileName: 'replacement.jpg',
+      contentType: 'image/jpeg',
+      signature: [0xff, 0xd8, 0xff, 0x00],
+    ),
+    (
+      previous: attachment('previous'),
+      fileName: 'replacement.pdf',
+      contentType: 'application/pdf',
+      signature: '%PDF-1.7'.codeUnits,
+    ),
+  ]) {
+    testWidgets(
+        'replacement ${replacement.previous.contentType} to ${replacement.contentType} uses the new file type',
+        (tester) async {
+      final directory = Directory.systemTemp.createTempSync('spaza-invoice-');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      // Leave the file absent so this route test exercises the viewer's load
+      // error without requiring the native PDF engine. Validate its signature
+      // separately below using the same effective content type as the viewer.
+      final draft = StockInvoiceDraft.local(
+        File('${directory.path}/${replacement.fileName}'),
+      )..attachment = replacement.previous;
+      var remoteLoads = 0;
+
+      expect(draft.contentType, replacement.contentType);
+      expect(draft.isPdf, replacement.contentType == 'application/pdf');
+      final validated = StockInvoiceAttachmentService.validateBytes(
+        Uint8List.fromList(replacement.signature),
+        fileName: draft.displayName,
+        declaredContentType: draft.contentType,
+      );
+      expect(validated.contentType, replacement.contentType);
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: StockInvoiceAttachmentsField(
+            attachments: [draft],
+            onAdd: () async {},
+            onRemove: (_) async {},
+            onReplace: (_) async {},
+            onRetry: (_) async {},
+            loadPreview: (_) async {
+              remoteLoads++;
+              return null;
+            },
+          ),
+        ),
+      ));
+      expect(
+        find.byIcon(Icons.picture_as_pdf_outlined),
+        draft.isPdf ? findsOneWidget : findsNothing,
+      );
+      await tester.tap(find.byKey(
+        ValueKey('open-stock-invoice-${replacement.fileName}'),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final viewer = tester.widget<StockInvoiceViewerPage>(
+        find.byType(StockInvoiceViewerPage),
+      );
+      expect(viewer.fileName, replacement.fileName);
+      expect(viewer.contentType, replacement.contentType);
+      expect(remoteLoads, 0);
+      expect(draft.attachment, same(replacement.previous));
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   test('invoice paths must bind both store and sale', () {
     expect(
       StockInvoiceAttachmentService.isStoreScopedPath(
@@ -168,6 +247,8 @@ void main() {
     expect(find.text('page-1.jpg'), findsOneWidget);
     expect(find.text('Private invoice image'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('page-1.jpg'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('page-1.jpg'));
     await tester.pump();
     await tester.pump();

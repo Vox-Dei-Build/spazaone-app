@@ -214,7 +214,7 @@ class _EntityTabState extends State<EntityTab> {
             // the connection problem before examining data so a transient
             // error can never masquerade as first-run onboarding.
             if (snapshot.hasError) {
-              return Center(
+              return ScrollableCenteredContent(
                 child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: SizeConfig.imageSizeMultiplier * 8,
@@ -226,7 +226,7 @@ class _EntityTabState extends State<EntityTab> {
                       SizedBox(height: SizeConfig.heightMultiplier),
                       const Text(
                         'Could not load customers.',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                        style: TextStyle(fontWeight: FontWeight.w500),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 4),
@@ -268,9 +268,9 @@ class _EntityTabState extends State<EntityTab> {
                     SizedBox(height: SizeConfig.heightMultiplier * 2),
                     Text(
                       widget.emptyText,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontWeight: FontWeight.w500,
-                        fontSize: SizeConfig.textMultiplier * 2,
+                        fontSize: 18,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -344,11 +344,11 @@ class _EntityTabState extends State<EntityTab> {
                       width: SizeConfig.imageSizeMultiplier * 70,
                     ),
                     SizedBox(height: SizeConfig.heightMultiplier * 2),
-                    Text(
+                    const Text(
                       'No results found.',
                       style: TextStyle(
                         fontWeight: FontWeight.w500,
-                        fontSize: SizeConfig.textMultiplier * 2,
+                        fontSize: 18,
                       ),
                       textAlign: TextAlign.center,
                     ),

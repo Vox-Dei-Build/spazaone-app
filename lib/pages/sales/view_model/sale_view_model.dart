@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/models/sales/sales_model.dart';
+import 'package:pasella/pages/sales/view_model/recorded_sales_reader.dart';
 import 'package:pasella/models/sales/stock_invoice_attachment.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/providers/transactional_view_model.dart';
@@ -21,6 +22,7 @@ import 'package:pasella/utils/show_toast.dart';
 
 class SalesViewModel extends TransactionViewModel {
   late final StreamController<List<Sale>> _salesController;
+  late final RecordedSalesReader recordedSalesReader;
   List<Sale> _lastEmittedSales = const [];
   // Tracks whether at least one [_emitSales] has occurred so that
   // [onListen] only replays after we actually have data. Without this,
@@ -73,6 +75,21 @@ class SalesViewModel extends TransactionViewModel {
         }
       },
     );
+
+    recordedSalesReader = RecordedSalesReader(
+      query: _queryRecordedSales,
+      onLoaded: (sales) {
+        _emitSales(sales);
+        _calculateSalesStats(sales);
+      },
+      onError: (error, stack) {
+        CrashService.instance.recordNonFatal(
+          error,
+          stack,
+          reason: 'sales: fetchRecordedSales',
+        );
+      },
+    )..addListener(notifyListeners);
 
     // Products feed the per-line cost/profit math used by
     // `_calculateSalesStats`; load them once on construction so
@@ -288,153 +305,67 @@ class SalesViewModel extends TransactionViewModel {
 
   Future<void> updateSelectedDate(DateTime date) async {
     selectedPeriod = DateFormat('yyyy-MM-dd').format(date);
-    await _getSalesByDate(date);
-    notifyListeners();
+    final start = DateTime(date.year, date.month, date.day);
+    await recordedSalesReader.load(start, start.add(const Duration(days: 1)));
   }
 
   Future<void> updateSelectedDateRange(DateTime start, DateTime end) async {
-    selectedPeriod = "Custom";
-    await _getSalesByDateRange(start, end);
-    notifyListeners();
+    selectedPeriod = 'Custom';
+    // Preserve the existing range query's exclusive end-date convention.
+    await recordedSalesReader.load(start, end.add(const Duration(days: 1)));
   }
 
-  Future<void> _getSalesByDate(DateTime date) async {
-    try {
-      DateTime startOfDay = DateTime(date.year, date.month, date.day);
-      DateTime endOfDay = startOfDay.add(const Duration(days: 1));
+  Future<List<Sale>> _queryRecordedSales(
+    DateTime start,
+    DateTime endExclusive,
+  ) async {
+    final snapshot = await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('sales')
+        .where('type', isEqualTo: 'Cash')
+        .where('dateAdded', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('dateAdded', isLessThan: Timestamp.fromDate(endExclusive))
+        .orderBy('dateAdded', descending: true)
+        .get();
 
-      QuerySnapshot snapshot = await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('sales')
-          .where('type', isEqualTo: 'Cash')
-          .where(
-            'dateAdded',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-          )
-          .where('dateAdded', isLessThan: Timestamp.fromDate(endOfDay))
-          .orderBy('dateAdded', descending: true)
-          .get();
+    return snapshot.docs
+        .where((doc) {
+          final data = doc.data();
+          final status = (data['status'] ?? '').toString().toLowerCase();
+          final paymentStatus =
+              (data['paymentStatus'] ?? '').toString().toLowerCase();
+          final paymentMethod =
+              (data['paymentMethod'] ?? '').toString().toLowerCase();
 
-      final sales = snapshot.docs
-          .where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final status = (data['status'] ?? '').toString().toLowerCase();
-            final paymentStatus =
-                (data['paymentStatus'] ?? '').toString().toLowerCase();
-            final paymentMethod =
-                (data['paymentMethod'] ?? '').toString().toLowerCase();
-
-            if (['cancelled', 'rejected'].contains(status)) {
-              return false;
-            }
-            if ([
-                  'awaiting_collection',
-                  'pending_merchant_review',
-                  'accepted',
-                ].contains(status) &&
-                paymentStatus != 'paid') {
-              return false;
-            }
-            if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
-              return false;
-            }
-            if (paymentMethod == 'cash' &&
-                paymentStatus != '' &&
-                paymentStatus != 'paid') {
-              return false;
-            }
-            if (paymentStatus != '' && paymentStatus != 'paid') {
-              return false;
-            }
-            return true;
-          })
-          .map(
-            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-          )
-          .toList();
-
-      // _salesController.add(sales);
-      _emitSales(sales);
-      _calculateSalesStats(sales);
-    } catch (e, stack) {
-      // Surface to Crashlytics but always emit so the
-      // `StreamBuilder` leaves `ConnectionState.waiting` — otherwise
-      // a transient Firestore failure on first load pins the
-      // shimmer up forever.
-      CrashService.instance
-          .recordNonFatal(e, stack, reason: 'sales: fetchByDate');
-      _emitSales(const []);
-      _calculateSalesStats(const []);
-    }
-  }
-
-  Future<void> _getSalesByDateRange(DateTime start, DateTime end) async {
-    try {
-      QuerySnapshot snapshot = await firestore
-          .collection('users')
-          .doc(userId)
-          .collection('sales')
-          .where('type', isEqualTo: 'Cash')
-          .where(
-            'dateAdded',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(start),
-          )
-          .where(
-            'dateAdded',
-            isLessThan: Timestamp.fromDate(
-              end.add(const Duration(days: 1)),
-            ),
-          )
-          .orderBy('dateAdded', descending: true)
-          .get();
-
-      final sales = snapshot.docs
-          .where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final status = (data['status'] ?? '').toString().toLowerCase();
-            final paymentStatus =
-                (data['paymentStatus'] ?? '').toString().toLowerCase();
-            final paymentMethod =
-                (data['paymentMethod'] ?? '').toString().toLowerCase();
-
-            if (['cancelled', 'rejected'].contains(status)) {
-              return false;
-            }
-            if ([
-                  'awaiting_collection',
-                  'pending_merchant_review',
-                  'accepted',
-                ].contains(status) &&
-                paymentStatus != 'paid') {
-              return false;
-            }
-            if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
-              return false;
-            }
-            if (paymentMethod == 'cash' &&
-                paymentStatus != '' &&
-                paymentStatus != 'paid') {
-              return false;
-            }
-            if (paymentStatus != '' && paymentStatus != 'paid') {
-              return false;
-            }
-            return true;
-          })
-          .map(
-            (doc) => Sale.fromMap(doc.data() as Map<String, dynamic>, doc.id),
-          )
-          .toList();
-
-      _emitSales(sales);
-      _calculateSalesStats(sales);
-    } catch (e, stack) {
-      CrashService.instance
-          .recordNonFatal(e, stack, reason: 'sales: fetchByDateRange');
-      _emitSales(const []);
-      _calculateSalesStats(const []);
-    }
+          if (['cancelled', 'rejected'].contains(status)) {
+            return false;
+          }
+          if ([
+                'awaiting_collection',
+                'pending_merchant_review',
+                'accepted',
+              ].contains(status) &&
+              paymentStatus != 'paid') {
+            return false;
+          }
+          if (paymentMethod == 'bnpl' && paymentStatus != 'paid') {
+            return false;
+          }
+          if (paymentMethod == 'cash' &&
+              paymentStatus != '' &&
+              paymentStatus != 'paid') {
+            return false;
+          }
+          if (paymentStatus != '' && paymentStatus != 'paid') {
+            return false;
+          }
+          return true;
+        })
+        .map(
+          (doc) => Sale.fromMap(doc.data(), doc.id),
+        )
+        .toList();
   }
 
   void refreshSales() {
@@ -987,6 +918,7 @@ class SalesViewModel extends TransactionViewModel {
 
   @override
   void dispose() {
+    recordedSalesReader.dispose();
     _salesController.close();
     super.dispose();
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/models/commerce/commerce_order.dart';
 import 'package:pasella/models/orders/canonical_order_status.dart';
 import 'package:pasella/pages/sales/widgets/online_sale_detail_page.dart';
@@ -50,6 +51,8 @@ class CombinedOnlineOrders extends StatefulWidget {
     this.onRetryReadiness,
     this.ownedLoader = fetchOnlineLedgerSales,
     this.supplierStream = watchSupplierOnlineOrders,
+    this.onOwnedOrderTap,
+    this.onSupplierOrderTap,
   });
 
   final DateTime? selectedDay;
@@ -67,6 +70,8 @@ class CombinedOnlineOrders extends StatefulWidget {
   final VoidCallback? onRetryReadiness;
   final OwnedOnlineOrdersLoader ownedLoader;
   final SupplierOnlineOrdersStream supplierStream;
+  final ValueChanged<LedgerSale>? onOwnedOrderTap;
+  final ValueChanged<CommerceOrder>? onSupplierOrderTap;
 
   @override
   State<CombinedOnlineOrders> createState() => _CombinedOnlineOrdersState();
@@ -197,101 +202,109 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'More order filters',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 20),
-                const Text('Order source',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: OnlineOrderSourceFilter.values
-                      .map(
-                        (value) => ChoiceChip(
-                          label: Text(_sourceLabel(value)),
-                          selected: source == value,
-                          onSelected: (_) =>
-                              setSheetState(() => source = value),
-                        ),
-                      )
-                      .toList(growable: false),
-                ),
-                const SizedBox(height: 20),
-                const Text('Date',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('All time'),
-                      selected: dateMode == _DateMode.all,
-                      onSelected: (_) =>
-                          setSheetState(() => dateMode = _DateMode.all),
-                    ),
-                    ChoiceChip(
-                      label: const Text('Today'),
-                      selected: dateMode == _DateMode.today,
-                      onSelected: (_) =>
-                          setSheetState(() => dateMode = _DateMode.today),
-                    ),
-                    ChoiceChip(
-                      label: Text(range == null
-                          ? 'Choose dates'
-                          : '${DateFormat('dd MMM').format(range!.start)}–${DateFormat('dd MMM').format(range!.end)}'),
-                      selected: dateMode == _DateMode.range,
-                      onSelected: (_) async {
-                        final picked = await showDateRangePicker(
-                          context: sheetContext,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime.now(),
-                          initialDateRange: range,
-                        );
-                        if (picked != null) {
-                          setSheetState(() {
-                            range = picked;
-                            dateMode = _DateMode.range;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: () {
-                    setState(() {
-                      _source = source;
-                    });
-                    switch (dateMode) {
-                      case _DateMode.all:
-                        widget.onClearDates();
-                      case _DateMode.today:
-                        widget.onDaySelect(DateTime.now());
-                      case _DateMode.range:
-                        final selectedRange = range;
-                        if (selectedRange != null) {
-                          widget.onRangeSelect(
-                            selectedRange.start,
-                            selectedRange.end,
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              key: const ValueKey('online-order-filters-scroll'),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'More order filters',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text('Order source',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: OnlineOrderSourceFilter.values
+                        .map(
+                          (value) => ChoiceChip(
+                            label: Text(_sourceLabel(value)),
+                            selected: source == value,
+                            onSelected: (_) =>
+                                setSheetState(() => source = value),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text('Date',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('All time'),
+                        selected: dateMode == _DateMode.all,
+                        onSelected: (_) =>
+                            setSheetState(() => dateMode = _DateMode.all),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Today'),
+                        selected: dateMode == _DateMode.today,
+                        onSelected: (_) =>
+                            setSheetState(() => dateMode = _DateMode.today),
+                      ),
+                      ChoiceChip(
+                        label: Text(range == null
+                            ? 'Choose dates'
+                            : '${DateFormat('dd MMM').format(range!.start)}–${DateFormat('dd MMM').format(range!.end)}'),
+                        selected: dateMode == _DateMode.range,
+                        onSelected: (_) async {
+                          final picked = await showDateRangePicker(
+                            context: sheetContext,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                            initialDateRange: range,
                           );
-                        }
-                    }
-                    Navigator.pop(sheetContext);
-                  },
-                  child: const Text('Show orders'),
-                ),
-              ],
+                          if (picked != null) {
+                            setSheetState(() {
+                              range = picked;
+                              dateMode = _DateMode.range;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _source = source;
+                      });
+                      switch (dateMode) {
+                        case _DateMode.all:
+                          widget.onClearDates();
+                        case _DateMode.today:
+                          widget.onDaySelect(DateTime.now());
+                        case _DateMode.range:
+                          final selectedRange = range;
+                          if (selectedRange != null) {
+                            widget.onRangeSelect(
+                              selectedRange.start,
+                              selectedRange.end,
+                            );
+                          }
+                      }
+                      Navigator.pop(sheetContext);
+                    },
+                    child: const Text('Show orders'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -373,6 +386,10 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                         order: order,
                         onTap: () {
                           if (order.owned != null) {
+                            if (widget.onOwnedOrderTap != null) {
+                              widget.onOwnedOrderTap!(order.owned!);
+                              return;
+                            }
                             Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => OnlineSaleDetailPage(
@@ -381,6 +398,10 @@ class _CombinedOnlineOrdersState extends State<CombinedOnlineOrders> {
                               ),
                             );
                           } else if (order.supplierOrder != null) {
+                            if (widget.onSupplierOrderTap != null) {
+                              widget.onSupplierOrderTap!(order.supplierOrder!);
+                              return;
+                            }
                             showCommerceOrderDetails(
                               context,
                               order.supplierOrder!,
@@ -683,86 +704,69 @@ class _OrderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final date = order.createdAt == null
         ? ''
         : DateFormat('dd MMM yyyy · HH:mm').format(order.createdAt!);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primaryContainer
-                      .withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  order.isOwned
-                      ? Icons.inventory_2_outlined
-                      : Icons.local_shipping_outlined,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      order.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      order.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    if (date.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      Text(date, style: Theme.of(context).textTheme.bodySmall),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Card(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(SpazaRadius.surface),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: LayoutBuilder(builder: (context, constraints) {
+              final stack = constraints.maxWidth < 340 ||
+                  MediaQuery.textScalerOf(context).scale(16) > 22;
+              final amount = Text(
+                CurrencyUtil.format(order.amountMinor / 100),
+                style: theme.textTheme.titleMedium,
+              );
+              final details = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    CurrencyUtil.format(order.amountMinor / 100),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    order.statusLabel,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                  Text(order.title, style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Text(order.subtitle, style: theme.textTheme.bodySmall),
+                  if (date.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(date, style: theme.textTheme.bodySmall),
+                  ],
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 12, runSpacing: 8, children: [
+                    if (stack) amount,
+                    Text(order.statusLabel,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.primary,
+                        )),
+                  ]),
+                ],
+              );
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: SpazaColors.subtle,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      order.isOwned
+                          ? SpazaIcons.products
+                          : Icons.local_shipping_outlined,
+                      color: SpazaColors.heading,
+                      size: 22,
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  Expanded(child: details),
+                  if (!stack) ...[const SizedBox(width: 12), amount],
                 ],
-              ),
-            ],
+              );
+            }),
           ),
         ),
       ),

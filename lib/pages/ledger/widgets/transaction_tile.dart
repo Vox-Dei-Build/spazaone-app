@@ -25,6 +25,7 @@ class TransactionTile extends StatelessWidget {
     required this.unreadCount,
     this.hasWhatsApp,
     this.showChannelCapability = false,
+    this.onTap,
   });
 
   final int color;
@@ -43,198 +44,168 @@ class TransactionTile extends StatelessWidget {
   final bool? hasWhatsApp;
   final bool showChannelCapability;
 
+  /// Optional navigation callback, also used by local presentation previews.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
+    final theme = Theme.of(context);
+    final unread = unreadCount ?? 0;
+    void openCustomer() => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => CustomerManagementPage(
+            builder: (_) => CustomerManagementPage(
               customerName: name,
               customerId: selectedCustomerId,
               mobileNumber: number,
             ),
           ),
         );
-      },
-      // Most privacy-sensitive list in the app: customer name + outstanding
-      // balance on every row. Mask the rendered Column so replays show
-      // shapes but no PII; GestureDetector stays outside so taps record.
-      child: PrivateRegion(
-        child: Column(
-          children: [
-            ListTile(
-              contentPadding: const EdgeInsets.all(0.0),
-              visualDensity: const VisualDensity(horizontal: -2),
-              minLeadingWidth: SizeConfig.imageSizeMultiplier * 12,
-              horizontalTitleGap: SizeConfig.imageSizeMultiplier * 2,
-              leading: SizedBox(
-                width: SizeConfig.imageSizeMultiplier * 12,
-                height: SizeConfig.imageSizeMultiplier * 12,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Stack(
-                    clipBehavior: Clip.none,
+    SizeConfig().init(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap ?? openCustomer,
+        // Keep customer names and balances masked in replay recordings.
+        child: PrivateRegion(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: LayoutBuilder(builder: (context, constraints) {
+                  // Keep production's simple list at ordinary sizes. Larger
+                  // text gets its own balance line instead of shrinking money.
+                  final stack = constraints.maxWidth < 280 ||
+                      MediaQuery.textScalerOf(context).scale(14.5) > 21;
+                  final balanceDetails = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: stack
+                        ? CrossAxisAlignment.start
+                        : CrossAxisAlignment.end,
                     children: [
-                      profilePicture(
-                        context,
-                        name,
-                        profileImageUrl,
-                        number,
-                        isNPA,
-                        displayIcons: !showChannelCapability,
-                        balance: balance,
-                        showNPAIndicator: false,
-                        radius: SizeConfig.heightMultiplier * 2.6,
+                      Text(
+                        CurrencyUtil.format(balance.abs()),
+                        key: const ValueKey('customer-row-balance'),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontSize: 14.5,
+                          color: balance < 0
+                              ? Colors.orange.shade800
+                              : kPrimaryColor,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      if (showChannelCapability)
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: ChannelCapabilityBadge(
-                            hasNumber: number != null && number!.isNotEmpty,
-                            hasWhatsApp: hasWhatsApp,
-                            compact: true,
-                            iconSize: SizeConfig.imageSizeMultiplier * 3,
+                      Text(balance < 0 ? 'Owes you' : 'Paid up',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 12, color: kSecondaryAccent)),
+                    ],
+                  );
+                  final identity = Row(
+                    children: [
+                      Flexible(
+                        child: Text(name,
+                            maxLines: stack ? null : 1,
+                            overflow: stack ? null : TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(fontSize: 14.5)),
+                      ),
+                      if (unread > 0) ...[
+                        const SizedBox(width: 6),
+                        Semantics(
+                          label: '$unread unread messages and orders',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: kPrimaryColor,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text('$unread',
+                                style: theme.textTheme.labelSmall
+                                    ?.copyWith(color: Colors.white)),
                           ),
                         ),
+                      ],
                     ],
-                  ),
-                ),
+                  );
+                  return Row(
+                    crossAxisAlignment: stack
+                        ? CrossAxisAlignment.start
+                        : CrossAxisAlignment.center,
+                    children: [
+                      SizedBox.square(
+                        dimension: 44,
+                        child: Stack(clipBehavior: Clip.none, children: [
+                          profilePicture(
+                              context, name, profileImageUrl, number, isNPA,
+                              displayIcons: !showChannelCapability,
+                              balance: balance,
+                              showNPAIndicator: false,
+                              radius: 22),
+                          if (showChannelCapability)
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: ChannelCapabilityBadge(
+                                hasNumber: number != null && number!.isNotEmpty,
+                                hasWhatsApp: hasWhatsApp,
+                                compact: true,
+                                iconSize: 12,
+                              ),
+                            ),
+                        ]),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            identity,
+                            const SizedBox(height: 2),
+                            Text(_subtitle,
+                                maxLines: stack ? null : 1,
+                                overflow: stack ? null : TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: kSecondaryAccent)),
+                            if (stack) ...[
+                              const SizedBox(height: 8),
+                              balanceDetails,
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (!stack) ...[
+                        const SizedBox(width: 12),
+                        // Bound unusually large balances so the identity keeps
+                        // usable space; money wraps rather than disappearing.
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                              maxWidth: constraints.maxWidth * .42),
+                          child: balanceDetails,
+                        ),
+                      ],
+                    ],
+                  );
+                }),
               ),
-              title: _buildTitle(),
-              subtitle: _buildSubtitle(),
-            ),
-            const Divider(
-              color: kHighLightColor,
-              height: 5,
-            ),
-          ],
+              const Divider(height: 1),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTitle() {
-    var unreadMessageCount = unreadCount ?? 0;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 1.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      fontSize: SizeConfig.textMultiplier * 1.8,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-                if (unreadMessageCount > 0)
-                  Padding(
-                    padding: EdgeInsets.only(
-                        left: SizeConfig.imageSizeMultiplier * 1),
-                    child: CircleAvatar(
-                      radius: SizeConfig.imageSizeMultiplier * 2,
-                      backgroundColor: Colors.green,
-                      child: Text(
-                        unreadMessageCount.toString(),
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: SizeConfig.textMultiplier * 1.2,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                CurrencyUtil.format(balance.abs()),
-                style: TextStyle(
-                  color: balance < 0 ? Colors.orange.shade800 : kPrimaryColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: SizeConfig.textMultiplier * 1.8,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                balance < 0 ? 'Owes you' : 'Paid up',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: SizeConfig.textMultiplier * 1.2,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSubtitle() {
+  String get _subtitle {
     if (showChannelCapability && number != null && number!.isNotEmpty) {
       final channel = hasWhatsApp == true
           ? 'WhatsApp'
           : hasWhatsApp == false
               ? 'SMS'
               : 'Phone';
-      return Text(
-        '$channel · $number',
-        style: TextStyle(
-          color: Colors.grey.shade600,
-          fontSize: SizeConfig.textMultiplier * 1.45,
-          fontWeight: FontWeight.w400,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      );
+      return '$channel · $number';
     }
-    // Detect the "no real transactions yet" state. New contacts are
-    // initialised with a synthetic placeholder transaction
-    // (`getDefaultTransaction` in add_contact_view_model.dart) whose
-    // `remarks` field is the literal string "No transactions yet" —
-    // and `entity_tab` falls back to the same string when there is no
-    // last transaction at all. Either way, that exact remarks value is
-    // our signal not to render the fake "R0,00 Payment added on ..."
-    // line.
-    final hasTransaction = remarks != 'No transactions yet';
+    if (remarks == 'No transactions yet') return 'No activity yet';
     final displayType = type == 'Credit' ? 'Transaction' : type;
-    if (!hasTransaction) {
-      return Text(
-        'No activity yet',
-        style: TextStyle(
-          color: Colors.grey.shade600,
-          fontSize: SizeConfig.textMultiplier * 1.5,
-          fontWeight: FontWeight.w400,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      );
-    }
-    return Text(
-      '${CurrencyUtil.format(amount)} · $displayType · $date',
-      style: TextStyle(
-        color: Colors.grey.shade600,
-        fontSize: SizeConfig.textMultiplier * 1.45,
-        fontWeight: FontWeight.w400,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
+    return '${CurrencyUtil.format(amount)} · $displayType · $date';
   }
 }

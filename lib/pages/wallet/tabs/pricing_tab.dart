@@ -1,92 +1,147 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/config/remote_config.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/services/dynamic_pricing_service.dart';
 import 'package:pasella/utils/currency_util.dart';
 
+/// Published payment-fee information, kept separate from message pricing.
+class OnlinePaymentFees {
+  const OnlinePaymentFees({
+    required this.localPercent,
+    required this.localFlat,
+    required this.eftPercent,
+    required this.internationalPercent,
+    required this.internationalFlat,
+    required this.vat,
+  });
+  final double localPercent;
+  final double localFlat;
+  final double eftPercent;
+  final double internationalPercent;
+  final double internationalFlat;
+  final double vat;
+
+  static Future<OnlinePaymentFees> load() async {
+    final config = await RemoteConfigService.getInstance();
+    return OnlinePaymentFees(
+      localPercent: config.getDouble('PAYSTACK_LOCAL_PERCENT'),
+      localFlat: config.getDouble('PAYSTACK_LOCAL_FLAT'),
+      eftPercent: config.getDouble('PAYSTACK_EFT_PERCENT'),
+      internationalPercent: config.getDouble('PAYSTACK_INT_PERCENT'),
+      internationalFlat: config.getDouble('PAYSTACK_INT_FLAT'),
+      vat: config.getDouble('PAYSTACK_VAT_PERCENT'),
+    );
+  }
+}
+
 /// Plain-language, server-backed messaging and online-payment pricing.
 class PricingInfoTab extends StatefulWidget {
-  const PricingInfoTab({super.key});
+  const PricingInfoTab(
+      {super.key, this.loadMessagingPricing, this.loadPaymentFees});
+
+  final Future<MessagingPricingSnapshotV1> Function()? loadMessagingPricing;
+  final Future<OnlinePaymentFees> Function()? loadPaymentFees;
 
   @override
   State<PricingInfoTab> createState() => _PricingInfoTabState();
 }
 
 class _PricingInfoTabState extends State<PricingInfoTab> {
-  DynamicPricingService? _pricingService;
-  RemoteConfigService? _remoteConfig;
-  Object? _pricingError;
-  bool _loading = true;
+  MessagingPricingSnapshotV1? _pricing;
+  OnlinePaymentFees? _paymentFees;
+  MessagingPricingUnavailable? _pricingError;
+  Object? _paymentError;
+  bool _messagesLoading = true;
+  bool _paymentsLoading = true;
   int _selectedSection = 0;
+  int _messageRequest = 0;
+  int _paymentRequest = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadPricing();
+    unawaited(_loadMessages());
+    unawaited(_loadPayments());
   }
 
-  Future<void> _loadPricing() async {
+  Future<void> _loadMessages() async {
+    final request = ++_messageRequest;
+    setState(() {
+      _messagesLoading = true;
+      _pricingError = null;
+    });
     try {
-      final remoteConfig = await RemoteConfigService.getInstance();
-      final pricing = await DynamicPricingService.initialize();
-      if (!mounted) return;
+      final pricing = await (widget.loadMessagingPricing ??
+          DynamicPricingService.loadSnapshot)();
+      if (!mounted || request != _messageRequest) return;
       setState(() {
-        _remoteConfig = remoteConfig;
-        _pricingService = pricing;
-        _pricingError = null;
-        _loading = false;
+        _pricing = pricing;
+        _messagesLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || request != _messageRequest) return;
       setState(() {
-        _pricingError = error;
-        _loading = false;
+        _pricing = null;
+        _pricingError = MessagingPricingUnavailable.fromError(error);
+        _messagesLoading = false;
       });
     }
   }
 
-  void _retry() {
+  Future<void> _loadPayments() async {
+    final request = ++_paymentRequest;
     setState(() {
-      _loading = true;
-      _pricingError = null;
+      _paymentsLoading = true;
+      _paymentError = null;
     });
-    _loadPricing();
+    try {
+      final fees = await (widget.loadPaymentFees ?? OnlinePaymentFees.load)();
+      if (!mounted || request != _paymentRequest) return;
+      setState(() {
+        _paymentFees = fees;
+        _paymentsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted || request != _paymentRequest) return;
+      setState(() {
+        _paymentFees = null;
+        _paymentError = error;
+        _paymentsLoading = false;
+      });
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return Column(
-      children: [
-        _PricingSectionTabs(
-          selectedIndex: _selectedSection,
-          onSelected: (index) => setState(() => _selectedSection = index),
-        ),
-        Expanded(
-          child: IndexedStack(
-            index: _selectedSection,
-            children: [
-              _messageCosts(),
-              _paymentCosts(),
-            ],
+  Widget build(BuildContext context) => Column(
+        children: [
+          _PricingSectionTabs(
+            selectedIndex: _selectedSection,
+            onSelected: (index) => setState(() => _selectedSection = index),
           ),
-        ),
-      ],
-    );
-  }
+          Expanded(
+              child: IndexedStack(index: _selectedSection, children: [
+            _messagesLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _messageCosts(),
+            _paymentsLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _paymentCosts(),
+          ])),
+        ],
+      );
 
   Widget _messageCosts() {
-    final pricing = _pricingService;
+    final pricing = _pricing;
     final rates = pricing == null
         ? const <double>[]
         : <double>[
-            pricing.smsReminderTemplatePrice,
-            pricing.smsPaymentTemplatePrice,
-            pricing.whatsappUtilityPrice,
-            pricing.whatsappPromotionPrice,
+            pricing.smsCustomerMinor / 100,
+            pricing.smsPaymentMinor / 100,
+            pricing.whatsappUtilityMinor / 100,
+            pricing.whatsappPromotionMinor / 100,
           ];
     final ratesAvailable = _pricingError == null &&
         rates.length == 4 &&
@@ -100,7 +155,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
           'Customer messages',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: kTertiaryColor,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w500,
               ),
         ),
         const SizedBox(height: 7),
@@ -113,7 +168,8 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
         ),
         const SizedBox(height: 18),
         if (!ratesAvailable)
-          _PricingUnavailable(onRetry: _retry)
+          _PricingUnavailable(
+              onRetry: _loadMessages, message: _pricingError?.message)
         else
           MessagingPricingSummary(
             smsCustomerRate: rates[0],
@@ -126,36 +182,33 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
   }
 
   Widget _paymentCosts() {
-    final config = _remoteConfig;
-    if (_pricingError != null || config == null) {
+    final fees = _paymentFees;
+    if (_paymentError != null || fees == null) {
       return ListView(
         padding: const EdgeInsets.fromLTRB(18, 20, 18, 32),
-        children: [_PricingUnavailable(onRetry: _retry)],
+        children: [
+          _PricingUnavailable(
+              onRetry: _loadPayments,
+              message:
+                  'Online payment fees could not load. Check your connection and try again.')
+        ],
       );
     }
-
-    final localPercent = config.getDouble(
-      'PAYSTACK_LOCAL_PERCENT',
-      defaultValue: 2.9,
-    );
-    final localFlat = config.getDouble(
-      'PAYSTACK_LOCAL_FLAT',
-      defaultValue: 1,
-    );
-    final eftPercent = config.getDouble(
-      'PAYSTACK_EFT_PERCENT',
-      defaultValue: 2,
-    );
-    final internationalPercent = config.getDouble(
-      'PAYSTACK_INT_PERCENT',
-      defaultValue: 3.1,
-    );
-    final internationalFlat = config.getDouble(
-      'PAYSTACK_INT_FLAT',
-      defaultValue: 1,
-    );
-    final vat = config.getDouble('PAYSTACK_VAT_PERCENT', defaultValue: 15);
-    final valid = localPercent > 0 &&
+    final localPercent = fees.localPercent;
+    final localFlat = fees.localFlat;
+    final eftPercent = fees.eftPercent;
+    final internationalPercent = fees.internationalPercent;
+    final internationalFlat = fees.internationalFlat;
+    final vat = fees.vat;
+    final valid = [
+          localPercent,
+          localFlat,
+          eftPercent,
+          internationalPercent,
+          internationalFlat,
+          vat
+        ].every((value) => value.isFinite) &&
+        localPercent > 0 &&
         localFlat >= 0 &&
         eftPercent > 0 &&
         internationalPercent > 0 &&
@@ -170,7 +223,7 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
           'Online payments',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: kTertiaryColor,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w500,
               ),
         ),
         const SizedBox(height: 7),
@@ -183,11 +236,14 @@ class _PricingInfoTabState extends State<PricingInfoTab> {
         ),
         const SizedBox(height: 18),
         if (!valid)
-          _PricingUnavailable(onRetry: _retry)
+          _PricingUnavailable(
+              onRetry: _loadPayments,
+              message:
+                  'Current online payment fees are unavailable. Try again later.')
         else
           DecoratedBox(
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0xFFE4E7E5))),
+              border: Border(top: BorderSide(color: SpazaColors.border)),
             ),
             child: Column(
               children: [
@@ -237,9 +293,11 @@ class _PricingSectionTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFE4E7E5))),
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: SpazaColors.subtle,
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Row(
         children: [
@@ -281,25 +339,22 @@ class _PricingTabButton extends StatelessWidget {
       selected: selected,
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
         child: Container(
           constraints: const BoxConstraints(minHeight: 50),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: selected ? kTertiaryColor : Colors.transparent,
-                width: 3,
-              ),
-            ),
+            color: selected ? SpazaColors.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected ? kTertiaryColor : kSecondaryAccent,
-              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            ),
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: selected ? kTertiaryColor : kSecondaryAccent,
+                  fontWeight: FontWeight.w500,
+                ),
           ),
         ),
       ),
@@ -308,9 +363,10 @@ class _PricingTabButton extends StatelessWidget {
 }
 
 class _PricingUnavailable extends StatelessWidget {
-  const _PricingUnavailable({required this.onRetry});
+  const _PricingUnavailable({required this.onRetry, this.message});
 
   final VoidCallback onRetry;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -319,7 +375,7 @@ class _PricingUnavailable extends StatelessWidget {
       key: const ValueKey('messaging-pricing-unavailable'),
       decoration: BoxDecoration(
         color: colors.errorContainer,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -330,12 +386,12 @@ class _PricingUnavailable extends StatelessWidget {
               'Current prices could not load',
               style: TextStyle(
                 color: colors.onErrorContainer,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 5),
             Text(
-              'Try again before sending a paid message or taking an online payment.',
+              message ?? 'Try again to load the current prices.',
               style: TextStyle(color: colors.onErrorContainer, height: 1.4),
             ),
             const SizedBox(height: 12),
@@ -373,7 +429,7 @@ class MessagingPricingSummary extends StatelessWidget {
     return DecoratedBox(
       key: const ValueKey('messaging-pricing-available'),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFFE4E7E5))),
+        border: Border(top: BorderSide(color: SpazaColors.border)),
       ),
       child: Column(
         children: [
@@ -426,7 +482,7 @@ class _PricingRow extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 78),
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFE4E7E5))),
+        border: Border(bottom: BorderSide(color: SpazaColors.border)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -458,7 +514,7 @@ class _PricingRow extends StatelessWidget {
                   textAlign: TextAlign.right,
                   style: const TextStyle(
                     color: kTertiaryColor,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 if (unit != null) ...[

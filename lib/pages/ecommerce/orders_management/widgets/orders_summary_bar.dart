@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 
 class OrdersSummaryBar extends StatelessWidget {
   const OrdersSummaryBar(
@@ -14,39 +13,27 @@ class OrdersSummaryBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        SizeConfig.imageSizeMultiplier * 3,
-        SizeConfig.heightMultiplier * 1.2,
-        SizeConfig.imageSizeMultiplier * 3,
-        SizeConfig.heightMultiplier * 1.2,
-      ),
-      child: Row(
+      padding: const EdgeInsets.all(16),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 12,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Expanded(
-            child: Text(
-              '$count order(s)',
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: SizeConfig.textMultiplier * 1.8,
-              ),
-            ),
+          Text(
+            '$count order(s)',
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
                 totalText,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: SizeConfig.textMultiplier * 2,
-                ),
+                style: Theme.of(context).textTheme.titleMedium,
               ),
               Text(
                 rangeText,
-                style: TextStyle(
-                  fontSize: SizeConfig.textMultiplier * 1.4,
-                  color: Colors.grey.shade700,
-                ),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),

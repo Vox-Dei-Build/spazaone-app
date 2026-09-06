@@ -89,17 +89,35 @@ WhatsAppCatalogSnapshot summarySnapshot({
   );
 }
 
-WhatsAppCatalogStatusController summaryController(
+_SummaryController _summaryController(
   WhatsAppCatalogSnapshot snapshot,
 ) =>
-    WhatsAppCatalogStatusController(
-      enabled: () => true,
-      storeSession: StoreSession.testing(
-        userIdProvider: () => 'owner-a',
-        bootstrapLoader: () async => const <String, dynamic>{},
-        storage: _MemoryStoreStorage(),
-      ),
-    )..snapshot = snapshot;
+    _SummaryController(snapshot);
+
+class _SummaryController extends WhatsAppCatalogStatusController {
+  _SummaryController(WhatsAppCatalogSnapshot initialSnapshot)
+      : super(
+          enabled: () => true,
+          now: () => DateTime(2026, 9, 3, 12, 10),
+          storeSession: StoreSession.testing(
+            userIdProvider: () => 'owner-a',
+            bootstrapLoader: () async => const <String, dynamic>{},
+            storage: _MemoryStoreStorage(),
+          ),
+        ) {
+    snapshot = initialSnapshot;
+  }
+
+  int refreshes = 0;
+  WhatsAppCatalogSnapshot? refreshedSnapshot;
+
+  @override
+  Future<void> manualRefresh() async {
+    refreshes++;
+    snapshot = refreshedSnapshot ?? snapshot;
+    notifyListeners();
+  }
+}
 
 void main() {
   test('unknown server status fails closed to support review', () {
@@ -247,7 +265,7 @@ void main() {
   ]) {
     testWidgets('summary guidance is truthful at ${expectation.$1} live',
         (tester) async {
-      final controller = summaryController(
+      final controller = _summaryController(
         summarySnapshot(live: expectation.$1),
       );
       addTearDown(controller.dispose);
@@ -265,6 +283,10 @@ void main() {
         ),
       );
 
+      expect(find.text(expectation.$2), findsNothing);
+      await tester
+          .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
+      await tester.pumpAndSettle();
       expect(find.text(expectation.$2), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -272,7 +294,7 @@ void main() {
 
   testWidgets('shops outside rollout see the explicit neutral state',
       (tester) async {
-    final controller = summaryController(
+    final controller = _summaryController(
       summarySnapshot(
         live: 0,
         rollout: WhatsAppCatalogRollout.notEnabled,
@@ -288,9 +310,125 @@ void main() {
       ),
     );
 
+    expect(find.text('Listing not enabled yet'), findsOneWidget);
+    expect(find.text('0 live'), findsNothing);
+    await tester
+        .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
+    await tester.pumpAndSettle();
     expect(
       find.text('Catalogue rollout is not yet enabled for this shop.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('catalogue entry stays compact and opens live details',
+      (tester) async {
+    final controller = _summaryController(summarySnapshot(live: 5));
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WhatsAppCatalogStatusCard(controller: controller),
+      ),
+    ));
+
+    final entry = find.byKey(const ValueKey('whatsapp-catalog-status-entry'));
+    expect(tester.getSize(entry).height, lessThanOrEqualTo(60));
+    expect(find.text('Last checked: 5 live'), findsOneWidget);
+    expect(find.text('Needs attention'), findsNothing);
+    expect(find.byTooltip('Refresh catalogue status'), findsNothing);
+
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    expect(find.text('Needs attention'), findsOneWidget);
+    expect(find.byTooltip('Refresh catalogue status'), findsOneWidget);
+
+    controller.refreshedSnapshot = summarySnapshot(live: 10);
+    await tester.tap(find.byTooltip('Refresh catalogue status'));
+    await tester.pump();
+    expect(controller.refreshes, 1);
+    expect(
+      find.text(
+          'Customers can browse 10 products at a time and continue to see more.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unavailable status keeps error and retry inside details',
+      (tester) async {
+    final controller = _summaryController(summarySnapshot(live: 0))
+      ..snapshot = null
+      ..errorMessage = 'Could not load the latest catalogue status.';
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WhatsAppCatalogStatusCard(controller: controller),
+      ),
+    ));
+    expect(find.text('Status unavailable'), findsOneWidget);
+    expect(find.text(controller.errorMessage!), findsNothing);
+    await tester
+        .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
+    await tester.pumpAndSettle();
+    expect(find.text(controller.errorMessage!), findsOneWidget);
+    expect(find.byTooltip('Refresh catalogue status'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('catalogue details remain readable on narrow large-text screens',
+      (tester) async {
+    final controller = _summaryController(summarySnapshot(live: 4));
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(320, 568));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(2),
+        ),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: WhatsAppCatalogStatusCard(controller: controller),
+      ),
+    ));
+    expect(tester.takeException(), isNull);
+    await tester
+        .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(
+        find.text('Add 1 more valid product to reach a five-product view.'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('opening catalogue details dismisses a retained search focus',
+      (tester) async {
+    final controller = _summaryController(summarySnapshot(live: 4));
+    final focus = FocusNode();
+    addTearDown(controller.dispose);
+    addTearDown(focus.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            TextField(focusNode: focus),
+            WhatsAppCatalogStatusCard(controller: controller),
+          ],
+        ),
+      ),
+    ));
+    focus.requestFocus();
+    await tester.pump();
+    expect(focus.hasFocus, isTrue);
+    await tester
+        .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
+    await tester.pumpAndSettle();
+    expect(focus.hasFocus, isFalse);
+    expect(find.byTooltip('Refresh catalogue status'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

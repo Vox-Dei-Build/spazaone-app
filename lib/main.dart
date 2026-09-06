@@ -36,6 +36,7 @@ import 'package:pasella/services/review_prompt_service.dart';
 import 'package:pasella/services/fcm_service.dart';
 import 'package:pasella/services/environment_contract_service.dart';
 import 'package:pasella/services/telemetry_service.dart';
+import 'package:pasella/services/startup_session_progress.dart';
 import 'package:pasella/services/whatsapp_catalog_status_service.dart';
 import 'package:pasella/templates/sms_message.dart';
 import 'package:pasella/utils/feature_flags.dart';
@@ -61,18 +62,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
-@visibleForTesting
-bool firstRunSurfacesCompleteForNotifications({
-  required bool consentDecided,
-  required bool rebrandNoticeSeen,
-  required bool onboardingIntroEnabled,
-  required bool onboardingIntroSeen,
-}) {
-  return consentDecided &&
-      rebrandNoticeSeen &&
-      (!onboardingIntroEnabled || onboardingIntroSeen);
-}
-
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final total = int.tryParse(message.data['unreadTotalCount'] ?? '');
@@ -85,7 +74,14 @@ Future<void> setupFlutterNotifications() async {
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@drawable/ic_launcher');
   const DarwinInitializationSettings initializationSettingsIOS =
-      DarwinInitializationSettings();
+      DarwinInitializationSettings(
+    // Initializing the local-notifications plugin must not display the iOS
+    // permission sheet over Login. FCMService owns the contextual permission
+    // flow once a merchant has signed in and completed startup.
+    requestAlertPermission: false,
+    requestSoundPermission: false,
+    requestBadgePermission: false,
+  );
 
   const InitializationSettings initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
@@ -915,12 +911,14 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   StreamSubscription<User?>? _authSubscription;
-  bool _permissionCheckScheduled = false;
+  StartupSessionToken? _permissionToken;
+  final _startup = StartupSessionProgress.instance;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    StoreSession.instance.addListener(_syncStartupSession);
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
       _handleAuthChange,
       onError: (Object error, StackTrace stack) {
@@ -956,58 +954,74 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   void _handleAuthChange(User? user) {
     if (user == null) {
+      _startup.reset();
+      _permissionToken = null;
       StoreSession.instance.clear();
-      _permissionCheckScheduled = false;
       return;
     }
-    final storeBootstrap = StoreSession.instance.bootstrap();
-    unawaited(storeBootstrap);
-    if (FirebaseEnvironment.useEmulators) return;
-    if (_permissionCheckScheduled) return;
-    _permissionCheckScheduled = true;
-
-    // Let post-login navigation settle before showing the explanation. The
-    // OS prompt itself is only requested for `notDetermined` users.
-    Future<void>.delayed(const Duration(milliseconds: 900), () async {
-      if (!mounted || FirebaseAuth.instance.currentUser == null) return;
-      await storeBootstrap;
-      if (!await _waitForFirstRunSurfaces(user.uid)) return;
-      final appContext = navigatorKey.currentContext;
-      if (appContext == null) {
-        _permissionCheckScheduled = false;
-        return;
-      }
-      if (!appContext.mounted) return;
-      await FCMService().requestPermissionIfNeeded(appContext);
-    });
+    _syncStartupSession();
+    unawaited(StoreSession.instance.bootstrap());
   }
 
-  Future<bool> _waitForFirstRunSurfaces(String userId) async {
-    while (mounted && FirebaseAuth.instance.currentUser?.uid == userId) {
-      final box = Hive.box('appBox');
-      final ready = firstRunSurfacesCompleteForNotifications(
-        consentDecided: ConsentService.instance.state.hasDecided,
-        rebrandNoticeSeen: box.get(
-              'spazaone_rebrand_notice_seen:$userId',
-              defaultValue: false,
-            ) ==
-            true,
-        onboardingIntroEnabled: FeatureFlags.enableMerchantOnboardingIntro,
-        onboardingIntroSeen: box.get(
-              'merchant_onboarding_intro_seen:$userId',
-              defaultValue: false,
-            ) ==
-            true,
-      );
-      if (ready) return true;
-      await Future<void>.delayed(const Duration(milliseconds: 150));
+  void _syncStartupSession() {
+    final user = FirebaseAuth.instance.currentUser;
+    final token = _startup.bind(
+      userId: user?.uid,
+      storeId: user == null ? null : StoreSession.instance.storeId,
+    );
+    if (token == null ||
+        FirebaseEnvironment.useEmulators ||
+        StoreSession.instance.loading ||
+        identical(token, _permissionToken)) {
+      return;
     }
-    return false;
+    _permissionToken = token;
+    unawaited(_requestNotificationPermissionAfterStartup(token));
+  }
+
+  Future<void> _requestNotificationPermissionAfterStartup(
+    StartupSessionToken token,
+  ) async {
+    // The in-memory outcome includes actual privacy/intro dismissal, and
+    // explicitly allows an offline or operator guide skip. No retired Hive
+    // marker can leave this queue waiting forever.
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted || !_startup.isCurrent(token)) return;
+    if (!await _startup.waitUntilReady(token)) return;
+    if (!mounted ||
+        !_startup.isCurrent(token) ||
+        FirebaseAuth.instance.currentUser?.uid != token.userId ||
+        !ConsentService.instance.state.hasDecided) {
+      return;
+    }
+    final appContext = navigatorKey.currentContext;
+    if (appContext == null || !appContext.mounted) {
+      if (identical(_permissionToken, token)) _permissionToken = null;
+      return;
+    }
+    try {
+      await FCMService().requestPermissionIfNeeded(
+        appContext,
+        shouldContinue: () =>
+            mounted &&
+            _startup.isCurrent(token) &&
+            _startup.ready &&
+            ConsentService.instance.state.hasDecided,
+      );
+    } catch (error, stack) {
+      unawaited(CrashService.instance.recordNonFatal(
+        error,
+        stack,
+        reason: 'notification permission request failed',
+      ));
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    StoreSession.instance.removeListener(_syncStartupSession);
+    _startup.reset();
     _authSubscription?.cancel();
     super.dispose();
   }

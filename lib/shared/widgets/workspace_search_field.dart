@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
 /// One quiet, predictable search treatment for Customers, Products and the
 /// supplier catalogue. Search is a workspace tool, not a primary action, so
@@ -84,12 +85,13 @@ class _WorkspaceSearchFieldState extends State<WorkspaceSearchField> {
         readOnly: widget.readOnly,
         autofocus: widget.autofocus,
         textInputAction: TextInputAction.search,
+        style: Theme.of(context).textTheme.bodyMedium,
         onTap: widget.onTap,
         onChanged: widget.onChanged,
         onSubmitted: widget.onSubmitted,
         decoration: InputDecoration(
           hintText: widget.hintText,
-          prefixIcon: const Icon(Icons.search_rounded, size: 21),
+          prefixIcon: const Icon(SpazaIcons.search, size: 20),
           suffixIcon: hasText && !widget.readOnly
               ? IconButton(
                   tooltip: 'Clear search',
@@ -111,20 +113,21 @@ class _WorkspaceSearchFieldState extends State<WorkspaceSearchField> {
                       ? const Icon(Icons.chevron_right_rounded)
                       : null,
           filled: true,
-          fillColor: colors.surfaceContainerHighest.withValues(alpha: .58),
+          fillColor: colors.surface,
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
+            borderSide: BorderSide(color: colors.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
+            borderSide: BorderSide(color: colors.outlineVariant),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFF30345F), width: 1.5),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
+            borderSide:
+                const BorderSide(color: SpazaColors.heading, width: 1.5),
           ),
         ),
       ),

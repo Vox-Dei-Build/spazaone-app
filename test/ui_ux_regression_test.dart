@@ -54,7 +54,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('custom button exposes semantics and a 48px touch target',
+  testWidgets(
+      'custom button exposes semantics and at least a 48px touch target',
       (tester) async {
     var tapped = false;
     await tester.pumpWidget(
@@ -72,7 +73,8 @@ void main() {
     final semantics = tester.getSemantics(find.byType(CustomButton));
     expect(semantics.label, 'Save product');
     expect(semantics.hasFlag(SemanticsFlag.isButton), isTrue);
-    expect(tester.getSize(find.byType(CustomButton)).height, 48);
+    expect(tester.getSize(find.byType(CustomButton)).height,
+        greaterThanOrEqualTo(48));
 
     await tester.tap(find.byType(CustomButton));
     expect(tapped, isTrue);
@@ -140,7 +142,7 @@ void main() {
       find.byKey(const ValueKey('workspace-date-filter')),
     );
     expect(filterInk.borderRadius, isNotNull);
-    await tester.tap(find.text('Change date'));
+    await tester.tap(find.byKey(const ValueKey('workspace-date-filter')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Show all time'));
     await tester.pumpAndSettle();

@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:flutter/services.dart';
 import 'package:pasella/shared/widgets/workspace_search_field.dart';
 import 'package:pasella/shared/widgets/responsive_app_layout.dart';
@@ -372,7 +373,7 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                       .colorScheme
                       .surfaceContainerHighest
                       .withValues(alpha: .35),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(SpazaRadius.surface),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(8),
@@ -644,12 +645,16 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
             ),
             sliver: SliverGrid(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: compactLandscape
-                    ? 2.12
-                    : MediaQuery.sizeOf(context).width < 340
-                        ? .62
-                        : .67,
+                crossAxisCount:
+                    MediaQuery.textScalerOf(context).scale(14) >= 20 ? 1 : 2,
+                childAspectRatio:
+                    MediaQuery.textScalerOf(context).scale(14) >= 20
+                        ? .78
+                        : compactLandscape
+                            ? 2.12
+                            : MediaQuery.sizeOf(context).width < 340
+                                ? .62
+                                : .67,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
@@ -665,7 +670,8 @@ class _SupplierCatalogPageState extends State<SupplierCatalogPage> {
                   saved: _savedIds.contains(products[index].id),
                   saving: _savingIds.contains(products[index].id),
                   onSavedChanged: () => _toggleSaved(products[index]),
-                  compactHorizontal: compactLandscape,
+                  compactHorizontal: compactLandscape &&
+                      MediaQuery.textScalerOf(context).scale(14) < 20,
                 ),
                 childCount: products.length,
               ),
@@ -746,11 +752,11 @@ class _SupplierProductCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle, color: Color(0xFF258541), size: 56),
+            const Icon(Icons.check_circle, color: SpazaColors.action, size: 56),
             const SizedBox(height: 12),
             const Text(
               'Added to your products',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -780,9 +786,10 @@ class _SupplierProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: EdgeInsets.zero,
-      elevation: 1,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        side: const BorderSide(color: SpazaColors.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -798,7 +805,12 @@ class _SupplierProductCard extends StatelessWidget {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AspectRatio(aspectRatio: 1.15, child: _image(context)),
+                  AspectRatio(
+                      aspectRatio:
+                          MediaQuery.textScalerOf(context).scale(14) >= 20
+                              ? 2.2
+                              : 1.15,
+                      child: _image(context)),
                   Expanded(child: _details(context)),
                 ],
               ),
@@ -858,7 +870,7 @@ class _SupplierProductCard extends StatelessWidget {
                 maxLines: tightPortrait ? 1 : 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: compact ? 12 : 14,
+                  fontSize: compact ? 14 : 16,
                   fontWeight: FontWeight.w700,
                   height: 1.15,
                 ),
@@ -886,8 +898,8 @@ class _SupplierProductCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: compact ? 12 : null,
-                  fontWeight: FontWeight.w800,
+                  fontSize: compact ? 14 : 16,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               SizedBox(height: compact || tightPortrait ? 3 : 5),
@@ -896,7 +908,7 @@ class _SupplierProductCard extends StatelessWidget {
                   const Icon(
                     Icons.local_shipping_outlined,
                     size: 15,
-                    color: Color(0xFF258541),
+                    color: SpazaColors.action,
                   ),
                   const SizedBox(width: 5),
                   Expanded(
@@ -905,7 +917,7 @@ class _SupplierProductCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF258541),
+                        color: SpazaColors.action,
                         fontSize: 11,
                       ),
                     ),
@@ -929,16 +941,16 @@ class _CatalogProductImage extends StatelessWidget {
   Widget build(BuildContext context) {
     if (url.isEmpty) {
       return const ColoredBox(
-        color: Color(0xFFF0F3F2),
+        color: SpazaColors.subtle,
         child: Icon(Icons.inventory_2_outlined),
       );
     }
     return CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.cover,
-      placeholder: (_, __) => const ColoredBox(color: Color(0xFFF0F3F2)),
+      placeholder: (_, __) => const ColoredBox(color: SpazaColors.subtle),
       errorWidget: (_, __, ___) => const ColoredBox(
-        color: Color(0xFFF0F3F2),
+        color: SpazaColors.subtle,
         child: Icon(Icons.broken_image_outlined),
       ),
     );
@@ -1112,7 +1124,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
           width: 42,
           height: 4,
           decoration: BoxDecoration(
-            color: Colors.grey.shade400,
+            color: SpazaColors.outline,
             borderRadius: BorderRadius.circular(4),
           ),
         ),
@@ -1130,9 +1142,9 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                     const Text(
                       'ADD TO MY PRODUCTS',
                       style: TextStyle(
-                        color: Color(0xFF258541),
+                        color: SpazaColors.action,
                         fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w500,
                         letterSpacing: .5,
                       ),
                     ),
@@ -1144,7 +1156,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                       style: const TextStyle(
                         fontSize: 18,
                         height: 1.2,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -1199,7 +1211,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
             const SizedBox(width: 6),
             const Icon(
               Icons.verified_rounded,
-              color: Color(0xFF258541),
+              color: SpazaColors.action,
               size: 19,
             ),
           ],
@@ -1210,7 +1222,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF4E5),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(SpazaRadius.control),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1236,7 +1248,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                 .colorScheme
                 .surfaceContainerHighest
                 .withValues(alpha: .48),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
           ),
           child: Column(
             children: [
@@ -1258,7 +1270,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
               Row(
                 children: [
                   const Icon(Icons.local_shipping_outlined,
-                      size: 16, color: Color(0xFF258541)),
+                      size: 16, color: SpazaColors.action),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -1275,7 +1287,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
         Text(
           'Set your profit',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w500,
               ),
         ),
         const SizedBox(height: 4),
@@ -1349,7 +1361,7 @@ class _CjListingSheetState extends State<_CjListingSheet> {
                   CurrencyUtil.format(_sellPriceMinor / 100),
                   style: const TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -1466,23 +1478,23 @@ class _ProductImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(SpazaRadius.control),
       child: SizedBox(
         width: size,
         height: size,
         child: url.isEmpty
             ? const ColoredBox(
-                color: Color(0xFFF0F3F2),
+                color: SpazaColors.subtle,
                 child: Icon(Icons.inventory_2_outlined),
               )
             : CachedNetworkImage(
                 imageUrl: url,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => const ColoredBox(
-                  color: Color(0xFFF0F3F2),
+                  color: SpazaColors.subtle,
                 ),
                 errorWidget: (_, __, ___) => const ColoredBox(
-                  color: Color(0xFFF0F3F2),
+                  color: SpazaColors.subtle,
                   child: Icon(Icons.broken_image_outlined),
                 ),
               ),
@@ -1576,18 +1588,18 @@ class _DropshipMarkupFieldState extends State<DropshipMarkupField> {
               )
             : const Icon(Icons.edit_outlined, size: 20),
         filled: true,
-        fillColor: const Color(0xFFF7F9F8),
+        fillColor: SpazaColors.canvas,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF9AA19C)),
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
+          borderSide: const BorderSide(color: SpazaColors.outline),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
           borderSide: const BorderSide(
-            color: Color(0xFF258541),
+            color: SpazaColors.action,
             width: 2,
           ),
         ),
@@ -1619,7 +1631,7 @@ class _PriceRow extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontWeight: emphasized ? FontWeight.w800 : FontWeight.w500,
+              fontWeight: emphasized ? FontWeight.w500 : FontWeight.w500,
             ),
           ),
         ],
@@ -1651,12 +1663,12 @@ class _CatalogMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 52, color: Colors.grey),
+            Icon(icon, size: 52, color: SpazaColors.muted),
             const SizedBox(height: 12),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 6),
             Text(message, textAlign: TextAlign.center),

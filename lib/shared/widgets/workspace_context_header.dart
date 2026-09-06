@@ -26,8 +26,7 @@ class WorkspaceContextHeader extends StatelessWidget {
           title,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 color: kTertiaryColor,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -.2,
+                fontWeight: FontWeight.w500,
               ),
         ),
         const SizedBox(height: 3),
@@ -44,7 +43,7 @@ class WorkspaceContextHeader extends StatelessWidget {
     return Padding(
       padding: compactLandscape
           ? const EdgeInsets.fromLTRB(6, 8, 6, 6)
-          : const EdgeInsets.fromLTRB(6, 16, 6, 10),
+          : const EdgeInsets.fromLTRB(4, 16, 4, 12),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final stack = action != null &&

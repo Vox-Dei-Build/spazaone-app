@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/constants.dart';
 
 class SummaryCard extends StatelessWidget {
@@ -12,26 +12,24 @@ class SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
-
     return Card(
-      margin: EdgeInsets.symmetric(vertical: SizeConfig.heightMultiplier * 1),
+      margin: const EdgeInsets.symmetric(vertical: 8),
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.heightMultiplier * 2),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               title,
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2,
-                fontWeight: FontWeight.bold,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            SizedBox(height: SizeConfig.heightMultiplier * 1),
+            const SizedBox(height: 8),
             Text(
               CurrencyUtil.format(amount),
-              style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
+              style: const TextStyle(fontSize: 18),
             ),
           ],
         ),
@@ -57,10 +55,11 @@ class ProductValueSummary extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: kHighLightColor,
-              borderRadius: BorderRadius.circular(18),
+              color: SpazaColors.surface,
+              border: Border.all(color: SpazaColors.border),
+              borderRadius: BorderRadius.circular(SpazaRadius.surface),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,11 +73,9 @@ class ProductValueSummary extends StatelessWidget {
                 const SizedBox(height: 5),
                 Text(
                   CurrencyUtil.format(potentialProfit),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                         color: kPrimaryColor,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w500,
                       ),
                 ),
                 const SizedBox(height: 4),
@@ -92,23 +89,27 @@ class ProductValueSummary extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _ValueMetric(
-                  label: 'Stock cost',
-                  amount: costValue,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _ValueMetric(
-                  label: 'Selling value',
-                  amount: salesValue,
-                ),
-              ),
-            ],
-          ),
+          LayoutBuilder(builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 300 ||
+                MediaQuery.textScalerOf(context).scale(14) >= 20;
+            final metrics = [
+              _ValueMetric(label: 'Stock cost', amount: costValue),
+              _ValueMetric(label: 'Selling value', amount: salesValue),
+            ];
+            return stacked
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                        metrics[0],
+                        const SizedBox(height: 10),
+                        metrics[1]
+                      ])
+                : Row(children: [
+                    Expanded(child: metrics[0]),
+                    const SizedBox(width: 10),
+                    Expanded(child: metrics[1])
+                  ]);
+          }),
         ],
       );
 }
@@ -127,7 +128,7 @@ class _ValueMetric extends StatelessWidget {
               .colorScheme
               .surfaceContainerHighest
               .withValues(alpha: .48),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,11 +142,9 @@ class _ValueMetric extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               CurrencyUtil.format(amount),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: kTertiaryColor,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
             ),
           ],

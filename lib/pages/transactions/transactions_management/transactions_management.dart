@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/config/tutorial_config.dart';
 import 'package:pasella/pages/contact/view_model/customer_management_view_model.dart';
 import 'package:pasella/pages/contact/edit_contact/edit_contact.dart';
@@ -38,7 +37,8 @@ class TransactionsManagementPage extends StatefulWidget {
   });
 
   @override
-  _CustomerManagementPageState createState() => _CustomerManagementPageState();
+  State<TransactionsManagementPage> createState() =>
+      _CustomerManagementPageState();
 }
 
 class _CustomerManagementPageState extends State<TransactionsManagementPage> {
@@ -79,111 +79,127 @@ class _CustomerManagementPageState extends State<TransactionsManagementPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
-    final horizontalPadding = SizeConfig.imageSizeMultiplier * 4;
-
-    return Scaffold(
-      // Sticky CTAs — always reachable, safe-area aware.
-      bottomNavigationBar: PayLaterActionBar(
-        customerName: widget.customerName,
-        customerId: widget.customerId,
-        mobileNumber: widget.mobileNumber,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-          child: Column(
-            children: [
-              Expanded(
-                child: StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: customerManagementViewModel.streamTransactions(
-                    customerManagementViewModel.userId,
-                    widget.customerId,
-                  ),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else if (snapshot.hasError) {
-                      return Center(
-                        child: Text(
-                          'Could not load transactions. Please try again.',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: SizeConfig.textMultiplier * 2,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      );
-                    } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      // PAS-AUTH-03: Stock-style empty state. The
-                      // recovery actions (Transaction / Payment) live in
-                      // the sticky bottom action bar, so no third CTA
-                      // here — just an explanatory line and the
-                      // walkthrough link.
-                      return EmptyStateOnboarding(
-                        icon: Icons.receipt_long_outlined,
-                        headline:
-                            'No transactions yet for ${widget.customerName}',
-                        subtitle:
-                            'Use Add to account for a purchase on credit, or '
-                            'Record payment when this customer pays you.',
-                        tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
-                        tutorialTitle: 'How to record a transaction',
-                      );
-                    } else {
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(height: SizeConfig.heightMultiplier * 0.5),
-                          // The Customer Report panel previously rendered
-                          // here is now reachable from the AppBar's
-                          // insights icon button (see ProfileAppBar). The
-                          // Pay Later tab is now: ledger -> hero -> CTAs.
-                          Expanded(
-                            child: TransactionsListView(
-                              customerManagementViewModel:
-                                  customerManagementViewModel,
-                              transactions: snapshot.data!,
-                              customerId: widget.customerId,
-                              customerName: widget.customerName,
-                              mobileNumber: widget.mobileNumber,
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                  },
-                ),
-              ),
-              SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-              const CustomerBalanceHero(),
-              Consumer<CustomerBalanceSummaryProvider>(
-                builder: (context, provider, _) => CustomerPaymentRequestPanel(
-                  customerId: widget.customerId,
-                  customerName: widget.customerName,
-                  mobileNumber: widget.mobileNumber,
-                  isOwing: provider.customerBalanceSummary.netBalance < 0,
-                  onAddPhone: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => EditCustomerPage(
-                        viewModel: customerManagementViewModel,
-                      ),
-                    ),
-                  ),
-                  onSetUpOnlinePayments: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const WalletOnlinePaymentsPage(),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: SizeConfig.heightMultiplier * 0.8),
-            ],
-          ),
+  Widget build(BuildContext context) => Scaffold(
+        bottomNavigationBar: PayLaterActionBar(
+          customerName: widget.customerName,
+          customerId: widget.customerId,
+          mobileNumber: widget.mobileNumber,
         ),
-      ),
-    );
-  }
+        body: SafeArea(
+            child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: CustomerAccountLayout(
+            transactions: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: customerManagementViewModel.streamTransactions(
+                customerManagementViewModel.userId,
+                widget.customerId,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (snapshot.hasError) {
+                  return const Center(
+                    child: Text(
+                      'Could not load transactions. Please try again.',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 18,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  // PAS-AUTH-03: Stock-style empty state. The
+                  // recovery actions (Transaction / Payment) live in
+                  // the sticky bottom action bar, so no third CTA
+                  // here — just an explanatory line and the
+                  // walkthrough link.
+                  return EmptyStateOnboarding(
+                    icon: Icons.receipt_long_outlined,
+                    headline: 'No transactions yet for ${widget.customerName}',
+                    subtitle: 'Use Add to account for a purchase on credit, or '
+                        'Record payment when this customer pays you.',
+                    tutorialKey: TutorialConfig.TUTORIAL_CAPTURE_BNPL,
+                    tutorialTitle: 'How to record a transaction',
+                  );
+                } else {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 4),
+                      // The Customer Report panel previously rendered
+                      // here is now reachable from the AppBar's
+                      // insights icon button (see ProfileAppBar). The
+                      // Pay Later tab is now: ledger -> hero -> CTAs.
+                      Expanded(
+                        child: TransactionsListView(
+                          customerManagementViewModel:
+                              customerManagementViewModel,
+                          transactions: snapshot.data!,
+                          customerId: widget.customerId,
+                          customerName: widget.customerName,
+                          mobileNumber: widget.mobileNumber,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              },
+            ),
+            balance: const CustomerBalanceHero(),
+            requestPanel: Consumer<CustomerBalanceSummaryProvider>(
+              builder: (context, provider, _) => CustomerPaymentRequestPanel(
+                customerId: widget.customerId,
+                customerName: widget.customerName,
+                mobileNumber: widget.mobileNumber,
+                isOwing: provider.customerBalanceSummary.netBalance < 0,
+                onAddPhone: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => EditCustomerPage(
+                      viewModel: customerManagementViewModel,
+                    ),
+                  ),
+                ),
+                onSetUpOnlinePayments: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const WalletOnlinePaymentsPage(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        )),
+      );
+}
+
+/// Keeps the live ledger and account information usable on short screens.
+class CustomerAccountLayout extends StatelessWidget {
+  const CustomerAccountLayout(
+      {super.key,
+      required this.transactions,
+      required this.balance,
+      required this.requestPanel});
+  final Widget transactions;
+  final Widget balance;
+  final Widget requestPanel;
+
+  @override
+  Widget build(BuildContext context) =>
+      LayoutBuilder(builder: (context, constraints) {
+        final scrollSections = constraints.maxHeight < 480 ||
+            MediaQuery.textScalerOf(context).scale(16) > 21;
+        final children = <Widget>[
+          if (scrollSections)
+            SizedBox(height: 240, child: transactions)
+          else
+            Expanded(child: transactions),
+          const SizedBox(height: 12),
+          balance,
+          requestPanel,
+          const SizedBox(height: 8),
+        ];
+        final content = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+        return scrollSections ? SingleChildScrollView(child: content) : content;
+      });
 }

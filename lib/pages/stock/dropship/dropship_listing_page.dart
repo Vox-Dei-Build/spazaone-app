@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/models/stock/product_model.dart';
 import 'package:pasella/pages/promote/utils/linked_product_promotion.dart';
 import 'package:pasella/services/commerce_service.dart';
@@ -123,7 +124,6 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
                   decoration: const InputDecoration(
                     labelText: 'Markup',
                     prefixText: 'R ',
-                    border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -132,7 +132,6 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
                   value: selectedState,
                   decoration: const InputDecoration(
                     labelText: 'Availability',
-                    border: OutlineInputBorder(),
                   ),
                   items: const [
                     DropdownMenuItem(
@@ -292,7 +291,7 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
         padding: const EdgeInsets.all(18),
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
             child: AspectRatio(
               aspectRatio: 4 / 3,
               child: product.image?.isNotEmpty == true
@@ -303,7 +302,7 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
                           const Icon(Icons.broken_image_outlined, size: 60),
                     )
                   : const ColoredBox(
-                      color: Color(0xFFF0F3F2),
+                      color: SpazaColors.subtle,
                       child: Icon(Icons.inventory_2_outlined, size: 60),
                     ),
             ),
@@ -312,9 +311,9 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
           const Text(
             'SUPPLIER FULFILLED',
             style: TextStyle(
-              color: Colors.green,
+              color: SpazaColors.action,
               fontSize: 12,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w500,
               letterSpacing: 1,
             ),
           ),
@@ -330,7 +329,7 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
           const SizedBox(height: 6),
           Text(
             product.name ?? 'Product',
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
           ),
           if (product.description?.isNotEmpty == true) ...[
             const SizedBox(height: 10),
@@ -354,7 +353,7 @@ class _DropshipListingPageState extends State<DropshipListingPage> {
             const Divider(height: 32),
             const Text(
               'Shipping notes',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 6),
             Text(product.shippingNotes!),
@@ -386,7 +385,7 @@ class _Line extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                fontWeight: emphasized ? FontWeight.w800 : FontWeight.w500,
+                fontWeight: emphasized ? FontWeight.w500 : FontWeight.w500,
               ),
             ),
           ],

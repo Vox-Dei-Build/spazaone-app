@@ -38,8 +38,14 @@ String phoneVerificationErrorMessage(FirebaseAuthException error) {
 }
 
 class AuthViewModel with ChangeNotifier {
-  final FirebaseAuth auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  AuthViewModel({FirebaseAuth? auth, FirebaseFirestore? firestore})
+      : auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseAuth auth;
+  final FirebaseFirestore _firestore;
+  bool _disposed = false;
+  final _disposedSignal = Completer<void>();
   final mobileNoController = TextEditingController();
   final nameController = TextEditingController();
   final shopNameController = TextEditingController();
@@ -49,11 +55,13 @@ class AuthViewModel with ChangeNotifier {
   final ValueNotifier<bool> isLoading = ValueNotifier<bool>(false);
 
   void startLoading() {
+    if (_disposed) return;
     isLoading.value = true;
     notifyListeners();
   }
 
   void stopLoading() {
+    if (_disposed) return;
     isLoading.value = false;
     notifyListeners();
   }
@@ -386,12 +394,13 @@ class AuthViewModel with ChangeNotifier {
     BuildContext context,
     String verificationId,
     Future<bool> Function(String smsCode, String verificationId)
-    onVerifyPressed, {
+        onVerifyPressed, {
     String? phoneNumber,
     VerificationPurpose? purpose,
     DateTime? codeSentAt,
     Future<String?> Function()? onResend,
   }) async {
+    if (_disposed || !context.mounted) return false;
     String activeVerificationId = verificationId;
     DateTime activeCodeSentAt = codeSentAt ?? DateTime.now();
     final String? maskedNumber = _maskPhoneNumber(phoneNumber);
@@ -412,24 +421,23 @@ class AuthViewModel with ChangeNotifier {
           ),
         );
       },
-      onResend:
-          onResend == null
-              ? null
-              : () async {
-                if (purposeName != null) {
-                  await TelemetryService.instance.capture(
-                    OtpResendRequested(
-                      purpose: purposeName,
-                      elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
-                    ),
-                  );
-                }
-                final nextVerificationId = await onResend();
-                if (nextVerificationId != null) {
-                  activeVerificationId = nextVerificationId;
-                  activeCodeSentAt = DateTime.now();
-                }
-              },
+      onResend: onResend == null
+          ? null
+          : () async {
+              if (purposeName != null) {
+                await TelemetryService.instance.capture(
+                  OtpResendRequested(
+                    purpose: purposeName,
+                    elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
+                  ),
+                );
+              }
+              final nextVerificationId = await onResend();
+              if (nextVerificationId != null) {
+                activeVerificationId = nextVerificationId;
+                activeCodeSentAt = DateTime.now();
+              }
+            },
       onVerify: (smsCode) async {
         return onVerifyPressed(smsCode, activeVerificationId);
       },
@@ -493,7 +501,7 @@ class AuthViewModel with ChangeNotifier {
       if (normalizedMobileNumber.isEmpty) return false;
 
       final String e164 = formatPhoneNumber(normalizedMobileNumber);
-      final users = FirebaseFirestore.instance.collection('users');
+      final users = _firestore.collection('users');
       // Force a server fetch. Without this, Firestore will happily return
       // empty results from cache when offline, which would tell the user
       // they aren't registered when in fact the lookup never reached the
@@ -764,25 +772,25 @@ class AuthViewModel with ChangeNotifier {
         .collection('wallet')
         .doc('current')
         .set({
-          'virtualBalance': 15.0,
-          'cashAdvanceBalance': 0.0,
-          'salesVirtualBalance': 0.0,
-          'cashAdvanceWithdrawn': 0.0,
-          'cashAdvanceDueDate': null,
-          'penaltyFee': 0.0,
-          'accountSuspended': false,
-          'totalCashAdvanceGiven': 0.0,
-          'totalCashAdvanceRepaid': 0.0,
-          'repaymentHistory': [
-            {
-              'date': DateTime.now().toIso8601String(),
-              'amount': 0.0,
-              'method': "N/A",
-              'status': "N/A",
-              'reference': "N/A",
-            },
-          ],
-        });
+      'virtualBalance': 15.0,
+      'cashAdvanceBalance': 0.0,
+      'salesVirtualBalance': 0.0,
+      'cashAdvanceWithdrawn': 0.0,
+      'cashAdvanceDueDate': null,
+      'penaltyFee': 0.0,
+      'accountSuspended': false,
+      'totalCashAdvanceGiven': 0.0,
+      'totalCashAdvanceRepaid': 0.0,
+      'repaymentHistory': [
+        {
+          'date': DateTime.now().toIso8601String(),
+          'amount': 0.0,
+          'method': "N/A",
+          'status': "N/A",
+          'reference': "N/A",
+        },
+      ],
+    });
   }
 
   Future<void> clearDeepLinkData() async {
@@ -791,6 +799,7 @@ class AuthViewModel with ChangeNotifier {
   }
 
   void handleSuccessfulLogin(BuildContext context) {
+    if (_disposed) return;
     if (context.mounted) {
       Navigator.of(context).pushReplacementNamed('/dashboard');
       return;
@@ -830,10 +839,12 @@ class AuthViewModel with ChangeNotifier {
     String rawPhone, {
     String? referrerUserId,
   }) async {
-    if (isLoading.value) return;
+    if (_disposed || !context.mounted || isLoading.value) return;
     startLoading();
     try {
-      if (!await _hasNetwork()) {
+      final hasNetwork = await _hasNetwork();
+      if (_disposed || !context.mounted) return;
+      if (!hasNetwork) {
         showErrorSnackBar(
           context,
           "You're offline. Please connect to the internet and try again.",
@@ -875,9 +886,11 @@ class AuthViewModel with ChangeNotifier {
         return;
       }
 
+      if (_disposed || !context.mounted) return;
       await TelemetryService.instance.capture(
         PhoneLookupSucceeded(isRegistered: isRegistered),
       );
+      if (_disposed || !context.mounted) return;
 
       if (isRegistered) {
         await _initiateOtpAndRoute(
@@ -907,31 +920,54 @@ class AuthViewModel with ChangeNotifier {
   ///                   navigate to `/finishProfilePage`, then emit the
   ///                   completed signup after name + shopName are saved.
   ///
-  /// Reuses [initiatePhoneNumberVerification] but bypasses its baked-in
-  /// `_storeUserDetails(...)` call on auto-verification — the auto path
-  /// relies on the registration form controllers being populated, which
-  /// they are not on the number-first surface. To work around that without
-  /// touching the legacy code path, we look at `auth.currentUser` after the
-  /// fact and write the minimum doc ourselves if needed.
+  /// Owns the number-first callbacks independently of the legacy registration
+  /// form controllers. Accepted registrations finish using the returned UID;
+  /// removed routes cannot open another prompt or navigate on a late response.
   Future<void> _initiateOtpAndRoute(
     BuildContext context,
     String formattedPhone,
     VerificationPurpose purpose, {
     String? referrerUserId,
   }) async {
+    if (_disposed || !context.mounted) return;
     final purposeName = _analyticsPurposeForOtp(purpose);
     DateTime activeCodeSentAt = DateTime.now();
     bool routed = false;
     bool promptVisible = false;
+    bool flowClosed = false;
+    User? verifiedUser;
+    Future<void>? registrationFinalization;
+
+    bool isActive() => !flowClosed && !_disposed && context.mounted;
+
+    Future<void> finishAcceptedSignIn(UserCredential result) async {
+      final user = result.user;
+      verifiedUser = user;
+      // Once Firebase accepts a registration, its account setup must finish
+      // even if the route is removed. Capture the accepted UID rather than
+      // reading a possibly changed currentUser after another async step.
+      if (user != null && purpose == VerificationPurpose.registration) {
+        registrationFinalization ??= _writeAuthKeyedUserDoc(
+          user,
+          formattedPhone: formattedPhone,
+          referrerUserId: referrerUserId,
+        );
+        await registrationFinalization;
+      }
+    }
 
     Future<String?> requestOtpCode() async {
+      if (!isActive() || routed) return null;
       final requestStartedAt = DateTime.now();
       final completer = Completer<String?>();
 
       await auth.verifyPhoneNumber(
         phoneNumber: formattedPhone,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          if (routed) return;
+          if (!isActive() || routed) {
+            if (!completer.isCompleted) completer.complete(null);
+            return;
+          }
           routed = true;
           if (promptVisible && context.mounted) {
             unawaited(
@@ -939,18 +975,22 @@ class AuthViewModel with ChangeNotifier {
             );
           }
           try {
-            await auth.signInWithCredential(credential);
+            final result = await auth.signInWithCredential(credential);
+            await finishAcceptedSignIn(result);
+            // Auto-verification closes its own prompt. Its accepted sign-in
+            // may finish after that dialog future, but never after disposal.
+            if (_disposed || !context.mounted) return;
             await TelemetryService.instance.capture(
               OtpAutoVerified(
                 purpose: purposeName,
                 elapsedBucket: _elapsedBucketSince(requestStartedAt),
               ),
             );
+            if (_disposed || !context.mounted) return;
             await _onNumberFirstAuthSuccess(
               context,
               purpose,
-              formattedPhone: formattedPhone,
-              referrerUserId: referrerUserId,
+              user: verifiedUser,
             );
           } catch (e, st) {
             await CrashService.instance.recordNonFatal(
@@ -972,6 +1012,7 @@ class AuthViewModel with ChangeNotifier {
         },
         verificationFailed: (FirebaseAuthException e) {
           if (!completer.isCompleted) completer.complete(null);
+          if (!isActive() || routed) return;
           unawaited(
             CrashService.instance.recordNonFatal(
               e,
@@ -992,6 +1033,10 @@ class AuthViewModel with ChangeNotifier {
           showErrorSnackBar(context, phoneVerificationErrorMessage(e));
         },
         codeSent: (String verificationId, int? resendToken) {
+          if (!isActive() || routed) {
+            if (!completer.isCompleted) completer.complete(null);
+            return;
+          }
           activeCodeSentAt = DateTime.now();
           unawaited(
             TelemetryService.instance.capture(
@@ -1003,62 +1048,79 @@ class AuthViewModel with ChangeNotifier {
         codeAutoRetrievalTimeout: (String _) {},
       );
 
-      return completer.future;
+      return Future.any<String?>([
+        completer.future,
+        _disposedSignal.future.then((_) => null),
+      ]);
     }
 
-    final verificationId = await requestOtpCode();
-    if (routed || verificationId == null) return;
+    try {
+      final verificationId = await requestOtpCode();
+      if (!isActive() || routed || verificationId == null) return;
+      if (!context.mounted) return;
 
-    promptVisible = true;
-    final verified = await _promptForVerificationCode(
-      context,
-      verificationId,
-      (smsCode, activeVerificationId) async {
-        try {
-          final credential = PhoneAuthProvider.credential(
-            verificationId: activeVerificationId,
-            smsCode: smsCode,
-          );
-          await auth.signInWithCredential(credential);
-          await TelemetryService.instance.capture(
-            OtpManualVerified(
-              purpose: purposeName,
-              elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
-            ),
-          );
-          return true;
-        } catch (e, st) {
-          await CrashService.instance.recordNonFatal(
-            e,
-            st,
-            reason: 'number-first manual sign-in failed',
-          );
-          await TelemetryService.instance.capture(
-            OtpVerificationFailed(
-              purpose: purposeName,
-              failureCode: _otpFailureCode(e),
-              elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
-            ),
-          );
-          showErrorSnackBar(context, "Failed to sign in: $e");
-          return false;
-        }
-      },
-      phoneNumber: formattedPhone,
-      purpose: purpose,
-      codeSentAt: activeCodeSentAt,
-      onResend: requestOtpCode,
-    );
-    promptVisible = false;
+      promptVisible = true;
+      // Removing routes does not always complete their popped futures on the
+      // pinned Flutter version. Disposal must also release this pending flow.
+      final verified = await Future.any<bool>([
+        _promptForVerificationCode(
+          context,
+          verificationId,
+          (smsCode, activeVerificationId) async {
+            if (!isActive() || routed) return false;
+            try {
+              final credential = PhoneAuthProvider.credential(
+                verificationId: activeVerificationId,
+                smsCode: smsCode,
+              );
+              final result = await auth.signInWithCredential(credential);
+              await finishAcceptedSignIn(result);
+              if (!isActive() || routed) return false;
+              await TelemetryService.instance.capture(
+                OtpManualVerified(
+                  purpose: purposeName,
+                  elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
+                ),
+              );
+              return isActive() && !routed;
+            } catch (e, st) {
+              await CrashService.instance.recordNonFatal(
+                e,
+                st,
+                reason: 'number-first manual sign-in failed',
+              );
+              await TelemetryService.instance.capture(
+                OtpVerificationFailed(
+                  purpose: purposeName,
+                  failureCode: _otpFailureCode(e),
+                  elapsedBucket: _elapsedBucketSince(activeCodeSentAt),
+                ),
+              );
+              showErrorSnackBar(context, "Failed to sign in: $e");
+              return false;
+            }
+          },
+          phoneNumber: formattedPhone,
+          purpose: purpose,
+          codeSentAt: activeCodeSentAt,
+          onResend: requestOtpCode,
+        ),
+        _disposedSignal.future.then((_) => false),
+      ]);
+      promptVisible = false;
 
-    if (verified && !routed) {
-      routed = true;
-      await _onNumberFirstAuthSuccess(
-        context,
-        purpose,
-        formattedPhone: formattedPhone,
-        referrerUserId: referrerUserId,
-      );
+      if (isActive() && verified && !routed) {
+        if (!context.mounted) return;
+        routed = true;
+        await _onNumberFirstAuthSuccess(
+          context,
+          purpose,
+          user: verifiedUser,
+        );
+      }
+    } finally {
+      promptVisible = false;
+      flowClosed = true;
     }
   }
 
@@ -1067,19 +1129,15 @@ class AuthViewModel with ChangeNotifier {
   /// Login branch: identify + SigninCompleted + go to dashboard. Identical
   /// behaviour to the legacy login path, including identify-on-first-session.
   ///
-  /// Registration branch: writes the auth-keyed minimum (mobileNumber,
-  /// mobileNumberNormalized, referralCount, optional referrerUserId) and
-  /// creates the initial wallet so any downstream code that assumes a wallet
-  /// exists for an authenticated user keeps working. It then navigates to
-  /// `/finishProfilePage`; the completed-signup event is intentionally emitted
-  /// only after that required profile step succeeds.
+  /// Registration persistence has already finished for the accepted UID,
+  /// independently of this route's lifetime. The active route now moves to
+  /// `/finishProfilePage`; completed signup is emitted after that step saves.
   Future<void> _onNumberFirstAuthSuccess(
     BuildContext context,
     VerificationPurpose purpose, {
-    required String formattedPhone,
-    String? referrerUserId,
+    required User? user,
   }) async {
-    final user = auth.currentUser;
+    if (_disposed || !context.mounted) return;
     if (user == null) {
       showErrorSnackBar(
         context,
@@ -1089,17 +1147,13 @@ class AuthViewModel with ChangeNotifier {
     }
 
     if (purpose == VerificationPurpose.registration) {
-      await _writeAuthKeyedUserDoc(
-        user,
-        formattedPhone: formattedPhone,
-        referrerUserId: referrerUserId,
-      );
       _routeToFinishProfile(context);
     } else {
       await TelemetryService.instance.identify(merchantId: user.uid);
       await TelemetryService.instance.capture(
         const SigninCompleted(method: 'phone'),
       );
+      if (_disposed || !context.mounted) return;
       handleSuccessfulLogin(context);
     }
   }
@@ -1157,6 +1211,7 @@ class AuthViewModel with ChangeNotifier {
   }
 
   void _routeToFinishProfile(BuildContext context) {
+    if (_disposed) return;
     if (context.mounted) {
       Navigator.of(context).pushReplacementNamed('/finishProfilePage');
       return;
@@ -1239,6 +1294,9 @@ class AuthViewModel with ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _disposedSignal.complete();
+    isLoading.dispose();
     mobileNoController.dispose();
     nameController.dispose();
     shopNameController.dispose();

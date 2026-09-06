@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/app_imports.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/contact/connect/widgets/message_list_view.dart';
 import 'package:pasella/pages/contact/view_model/connect_management_view_model.dart';
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
@@ -20,7 +19,7 @@ class ConnectManagementPage extends StatefulWidget {
   });
 
   @override
-  _ConnectManagementPageState createState() => _ConnectManagementPageState();
+  State<ConnectManagementPage> createState() => _ConnectManagementPageState();
 }
 
 class _ConnectManagementPageState extends State<ConnectManagementPage> {
@@ -48,8 +47,6 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return ValueListenableBuilder<bool>(
       valueListenable: connectManagementViewModel.loadingNotifier,
       builder: (context, isLoading, child) {
@@ -67,11 +64,11 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
         );
       },
       child: Scaffold(
-        backgroundColor: WaBrandColour.chatBackground,
+        backgroundColor: SpazaColors.canvas,
         body: SafeArea(
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 2.5,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
               vertical: 0,
             ),
             child: Column(
@@ -118,22 +115,22 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
                       } else if (snapshot.hasError) {
-                        return Center(
+                        return const Center(
                           child: Text(
                             'Could not load messages. Please try again.',
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
-                              fontSize: SizeConfig.textMultiplier * 2,
+                              fontSize: 18,
                             ),
                             textAlign: TextAlign.center,
                           ),
                         );
                       } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return Center(
+                        return const Center(
                           child: Text(
                             'No messages available.',
                             style: TextStyle(
-                              fontSize: SizeConfig.textMultiplier * 2,
+                              fontSize: 18,
                             ),
                           ),
                         );

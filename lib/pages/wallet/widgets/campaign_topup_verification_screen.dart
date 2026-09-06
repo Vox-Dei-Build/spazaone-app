@@ -176,7 +176,7 @@ class _CampaignTopupVerificationScreenState
                       textAlign: TextAlign.center,
                       style:
                           Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                               ),
                     ),
                     const SizedBox(height: 12),

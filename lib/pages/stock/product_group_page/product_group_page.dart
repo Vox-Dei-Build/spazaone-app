@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/edit_product_group_dialog.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
@@ -19,15 +19,16 @@ class ProductGroupPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: Padding(
-        padding: EdgeInsets.only(
-          bottom: SizeConfig.heightMultiplier * 3,
-          right: SizeConfig.imageSizeMultiplier * 1,
+        padding: const EdgeInsets.only(
+          bottom: 24,
+          right: 4,
         ),
         child: SizedBox(
-          height: SizeConfig.heightMultiplier *
-              7, // Adjust height as needed FloatingActionButton.extended
+          height: 52,
           child: FloatingActionButton.extended(
-            elevation: 3.0,
+            elevation: 0,
+            backgroundColor: SpazaColors.action,
+            foregroundColor: Colors.white,
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -39,16 +40,16 @@ class ProductGroupPage extends StatelessWidget {
                 ),
               );
             },
-            icon: Icon(
+            icon: const Icon(
               Icons.add_outlined,
               color: Colors.white,
-              size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
+              size: 20, // Smaller icon
             ),
-            label: Text(
-              'Add Product',
+            label: const Text(
+              'Add product',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
+                fontSize: 14,
               ),
             ),
           ),
@@ -67,10 +68,10 @@ class ProductGroupPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: Icon(
+              icon: const Icon(
                 Icons.search,
-                color: Colors.black,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                color: SpazaColors.ink,
+                size: 22,
               ),
               onPressed: () {
                 Navigator.of(context).push(
@@ -82,10 +83,10 @@ class ProductGroupPage extends StatelessWidget {
               },
             ),
             IconButton(
-              icon: Icon(
+              icon: const Icon(
                 Icons.edit,
-                color: Colors.black,
-                size: SizeConfig.imageSizeMultiplier * 5,
+                color: SpazaColors.ink,
+                size: 22,
               ),
               onPressed: () {
                 showDialog(

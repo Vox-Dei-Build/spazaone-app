@@ -1,8 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
+import 'package:pasella/utils/currency_util.dart';
 
 void main() {
+  testWidgets(
+      'large legacy and advance balances stay distinct on narrow screens',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: kCustomThemeData,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: child!,
+        ),
+        home: const Scaffold(
+          body: SingleChildScrollView(
+            padding: EdgeInsets.all(16),
+            child: BillingBalancePanel(
+              campaignBalance: 100,
+              salesBalance: 123456789.99,
+              cashAdvanceBalance: 58.75,
+              storeName: 'A shop with a longer business name',
+              sharedCampaignCredits: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Legacy Balance'), findsOneWidget);
+    expect(find.text('Cash advance'), findsOneWidget);
+    expect(find.text(CurrencyUtil.format(58.75)), findsOneWidget);
+    final largeValue = find.text(CurrencyUtil.format(123456789.99));
+    expect(largeValue, findsOneWidget);
+    expect(tester.getRect(largeValue).right, lessThanOrEqualTo(320));
+    await tester.ensureVisible(find.text('Cash advance'));
+    expect(find.text('Cash advance').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('balance page separates SpazaOne balance from legacy money', (
     tester,
   ) async {

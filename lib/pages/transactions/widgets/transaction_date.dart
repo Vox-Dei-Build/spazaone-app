@@ -7,8 +7,8 @@
 // "Yesterday", or a localised short date).
 
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
-import 'package:pasella/config/size_config.dart';
 
 class TransactionDate extends StatelessWidget {
   final String date;
@@ -17,28 +17,26 @@ class TransactionDate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
     return Padding(
-      padding: EdgeInsets.symmetric(
-        vertical: SizeConfig.heightMultiplier * 1.2,
+      padding: const EdgeInsets.symmetric(
+        vertical: 12,
       ),
       child: Center(
         child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.imageSizeMultiplier * 3,
-            vertical: SizeConfig.heightMultiplier * 0.45,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 4,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFFE6EBEE),
+            color: SpazaColors.subtle,
             borderRadius: BorderRadius.circular(999),
           ),
           child: Text(
             _humanize(date),
-            style: TextStyle(
+            style: const TextStyle(
               fontWeight: FontWeight.w600,
-              color: Colors.black54,
-              fontSize: SizeConfig.textMultiplier * 1.3,
+              color: SpazaColors.muted,
+              fontSize: 13,
               letterSpacing: 0.2,
             ),
           ),

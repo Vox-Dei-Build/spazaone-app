@@ -1,5 +1,7 @@
 import 'package:pasella/services/store_session.dart';
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
+import 'package:pasella/utils/date_util.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/constants/constants.dart';
@@ -36,6 +38,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
   DateTime? _startDate;
   DateTime? _endDate;
   DateTime? _selectedDay;
+  late DateTime _allTimeEndDate;
   bool _isDateViewRowsLoading = true;
 
   @override
@@ -48,8 +51,9 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     balanceSummaryViewModel = BalanceSummaryViewModel(balanceSummaryProvider);
 
     final now = DateTime.now();
+    _allTimeEndDate = now;
     _startDate = DateTime(now.year, now.month, now.day);
-    _endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    _endDate = endOfCalendarDay(now);
     _selectedDay = _endDate;
 
     businessReportViewModel = BusinessReportViewModel(currentUser);
@@ -74,14 +78,7 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
       selectedDay.month,
       selectedDay.day,
     );
-    final endOfDay = DateTime(
-      selectedDay.year,
-      selectedDay.month,
-      selectedDay.day,
-      23,
-      59,
-      59,
-    );
+    final endOfDay = endOfCalendarDay(selectedDay);
 
     setState(() {
       _selectedDay = selectedDay;
@@ -98,13 +95,14 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
 
   void _onDateRangeSelected(DateTime start, DateTime end) {
     setState(() {
-      _startDate = start;
-      _endDate = end;
+      _startDate = DateUtils.dateOnly(start);
+      _endDate = endOfCalendarDay(end);
       _selectedDay = null;
       _isDateViewRowsLoading = true;
     });
 
-    balanceSummaryViewModel.fetchBalanceSummaryWithRange(start, end);
+    balanceSummaryViewModel.fetchBalanceSummaryWithRange(
+        _startDate!, _endDate!);
   }
 
   void _clearDateFilter() {
@@ -113,7 +111,8 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
       _startDate = null;
       _endDate = null;
       _selectedDay = null;
-      _isDateViewRowsLoading = false;
+      _allTimeEndDate = now;
+      _isDateViewRowsLoading = true;
     });
     balanceSummaryViewModel.fetchBalanceSummaryWithRange(DateTime(2000), now);
   }
@@ -143,9 +142,8 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
     SizeConfig().init(context);
     return Consumer<BalanceSummaryProvider>(
       builder: (context, balanceSummary, child) {
-        final hasDateRange = _startDate != null && _endDate != null;
-        final isDateViewLoading = balanceSummary.isLedgerLoading ||
-            (hasDateRange && _isDateViewRowsLoading);
+        final isDateViewLoading =
+            balanceSummary.isLedgerLoading || _isDateViewRowsLoading;
 
         return Scaffold(
           body: SafeArea(
@@ -156,14 +154,11 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    WorkspaceContextHeader(
-                      title: widget.view == ReportView.activity
-                          ? 'Customer activity'
-                          : 'Customer summary',
-                      subtitle: widget.view == ReportView.activity
-                          ? 'Sales and payments in one timeline'
-                          : 'A simple view of what customers owe',
-                    ),
+                    if (widget.view == ReportView.summary)
+                      const WorkspaceContextHeader(
+                        title: 'Customer summary',
+                        subtitle: 'A simple view of what customers owe',
+                      ),
                     if (widget.view == ReportView.activity) ...[
                       ReportDateFilterBar(
                         selectedDay: _selectedDay,
@@ -188,29 +183,19 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                         ),
                       Offstage(
                         offstage: isDateViewLoading,
-                        child: Column(
-                          children: [
-                            SizedBox(height: SizeConfig.heightMultiplier * 2),
-                            const DateRangeMovementSummaryCard(),
-                            SizedBox(height: SizeConfig.heightMultiplier * 1),
-                            // PAS-UX-06A: drill-down. The Net Movement card
-                            // above is a single aggregate number; before this
-                            // widget, merchants could not see which
-                            // transactions or customers produced it. The list
-                            // below is the verification surface — same query
-                            // shape as the backend, with an explicit
-                            // reconciliation line.
-                            // Scoped to Date View only (Summary tab is
-                            // deliberately untouched per PAS-UX-06A scope).
-                            if (hasDateRange)
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(6, 12, 6, 16),
+                          child: Column(
+                            children: [
+                              const DateRangeMovementSummaryCard(),
                               DateRangeLedgerDrilldown(
-                                startDate: _startDate!,
-                                endDate: _endDate!,
+                                startDate: _startDate ?? DateTime(2000),
+                                endDate: _endDate ?? _allTimeEndDate,
                                 showLoadingIndicator: false,
                                 onLoadingChanged: _setDateViewRowsLoading,
                               ),
-                            SizedBox(height: SizeConfig.heightMultiplier * 2),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ] else ...[
@@ -238,12 +223,11 @@ class _BusinessReportPageState extends State<BusinessReportPage> {
                                         size: 40,
                                       ),
                                       const SizedBox(height: 12),
-                                      Text(
+                                      const Text(
                                         'Could not load the summary. Check your connection and try again.',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
-                                          fontSize:
-                                              SizeConfig.textMultiplier * 1.8,
+                                          fontSize: 16,
                                         ),
                                       ),
                                       const SizedBox(height: 12),
@@ -311,8 +295,9 @@ class CustomerBalanceSummary extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: kHighLightColor,
-              borderRadius: BorderRadius.circular(20),
+              color: theme.colorScheme.surface,
+              border: Border.all(color: SpazaColors.border),
+              borderRadius: BorderRadius.circular(SpazaRadius.surface),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,7 +306,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                   'Customers owe you',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: kPrimaryColor,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -332,8 +317,9 @@ class CustomerBalanceSummary extends StatelessWidget {
                     CurrencyUtil.format(report.cashflowImpact.abs()),
                     style: theme.textTheme.headlineMedium?.copyWith(
                       color: kTertiaryColor,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.8,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 30,
+                      letterSpacing: -0.5,
                     ),
                   ),
                 ),
@@ -376,7 +362,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                 child: Text(
                   'Customers to follow up',
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -389,13 +375,13 @@ class CustomerBalanceSummary extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: primary.withValues(alpha: 0.09),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(SpazaRadius.surface),
                   ),
                   child: Text(
                     '$owingCount',
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: primary,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -407,7 +393,7 @@ class CustomerBalanceSummary extends StatelessWidget {
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 color: Colors.green.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(SpazaRadius.control),
               ),
               child: const Column(
                 children: [
@@ -416,7 +402,7 @@ class CustomerBalanceSummary extends StatelessWidget {
                   Text(
                     'No outstanding customer balances',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    style: TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -451,7 +437,7 @@ class _InlineSummaryMetric extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .48),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -459,17 +445,16 @@ class _InlineSummaryMetric extends StatelessWidget {
           Text(
             value,
             style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w500,
               color: color,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.grey.shade700,
+              color: SpazaColors.muted,
             ),
           ),
         ],

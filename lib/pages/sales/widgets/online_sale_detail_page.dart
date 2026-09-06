@@ -8,7 +8,7 @@ import 'package:pasella/config/function_endpoints.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/status_pill.dart';
 import 'package:pasella/pages/ecommerce/orders_management/widgets/order_avatar.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
@@ -152,6 +152,43 @@ class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
     return const [];
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppBar(title: 'Order #${widget.orderId}'),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<Map<String, dynamic>?>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const _Loading();
+            }
+            if (snap.hasError) {
+              return _Error(message: '${snap.error}');
+            }
+
+            final raw = snap.data;
+            if (raw == null || raw.isEmpty) {
+              return const _Empty();
+            }
+
+            return OnlineSaleDetailContent(raw: raw, orderId: widget.orderId);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// The online-sale receipt, rendered from already loaded ledger data.
+class OnlineSaleDetailContent extends StatelessWidget {
+  const OnlineSaleDetailContent(
+      {super.key, required this.raw, required this.orderId});
+
+  final Map<String, dynamic> raw;
+  final String orderId;
+
   DateTime? _parseDate(dynamic v) {
     if (v == null) return null;
     if (v is DateTime) return v;
@@ -179,188 +216,146 @@ class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
     final money =
         NumberFormat.currency(locale: 'en_ZA', symbol: 'R', decimalDigits: 2);
+    // --- Map ledger fields (exactly like list) ---
+    final id = (raw['id'] ?? orderId).toString();
+    final reference = (raw['reference'] ?? '').toString();
 
-    return Scaffold(
-      appBar: CustomAppBar(title: 'Order #${widget.orderId}'),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: FutureBuilder<Map<String, dynamic>?>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const _Loading();
-            }
-            if (snap.hasError) {
-              return _Error(message: '${snap.error}');
-            }
+    final statusRaw = (raw['status'] ?? 'paid').toString().toLowerCase();
+    final (pillColor, statusText) = _statusColorAndText(statusRaw);
 
-            final raw = snap.data;
-            if (raw == null || raw.isEmpty) {
-              return const _Empty();
-            }
+    final created = _parseDate(raw['createdAt']);
+    final ledgerCreated = _parseDate(raw['ledgerCreatedAt']);
+    final shownDate = created ?? ledgerCreated;
 
-            // --- Map ledger fields (exactly like list) ---
-            final id = (raw['id'] ?? widget.orderId).toString();
-            final reference = (raw['reference'] ?? '').toString();
+    final orderTotal = (_asNum(raw['orderTotal'])).toDouble();
+    final paid = (_asNum(raw['amountPaid'])).toDouble();
+    final feesIncl = (_asNum(raw['feeInclVat'])).toDouble();
+    final net = (_asNum(raw['netAmount'])).toDouble();
 
-            final statusRaw =
-                (raw['status'] ?? 'paid').toString().toLowerCase();
-            final (pillColor, statusText) = _statusColorAndText(statusRaw);
+    final method =
+        ((raw['method'] ?? raw['channel']) ?? '').toString().toUpperCase();
+    final itemsCount = (_asNum(raw['itemsCount'])).toInt();
 
-            final created = _parseDate(raw['createdAt']);
-            final ledgerCreated = _parseDate(raw['ledgerCreatedAt']);
-            final shownDate = created ?? ledgerCreated;
+    const padH = 16.0;
+    const padV = 16.0;
 
-            final orderTotal = (_asNum(raw['orderTotal'])).toDouble();
-            final paid = (_asNum(raw['amountPaid'])).toDouble();
-            final feesIncl = (_asNum(raw['feeInclVat'])).toDouble();
-            final net = (_asNum(raw['netAmount'])).toDouble();
-
-            final method = ((raw['method'] ?? raw['channel']) ?? '')
-                .toString()
-                .toUpperCase();
-            final itemsCount = (_asNum(raw['itemsCount'])).toInt();
-
-            final padH = SizeConfig.imageSizeMultiplier * 3;
-            final padV = SizeConfig.heightMultiplier * 1.2;
-
-            return ListView(
-              padding: EdgeInsets.fromLTRB(padH, padV, padH, padV * 2),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(padH, padV, padH, padV * 2),
+      children: [
+        // HERO
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // HERO
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            OrderAvatar(color: pillColor),
-                            SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-                            Expanded(
-                              child: Text(
-                                money.format(orderTotal),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: SizeConfig.textMultiplier * 3.0,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            StatusPill(text: statusText, color: pillColor),
-                          ],
-                        ),
-                        SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _pill(context, method.isEmpty ? 'ONLINE' : method),
-                            if (itemsCount > 0)
-                              _pill(context, '$itemsCount items'),
-                            if (reference.isNotEmpty)
-                              _pill(context, 'Ref: $reference'),
-                            _pill(context, 'ID: $id'),
-                          ],
-                        ),
-                        SizedBox(height: SizeConfig.heightMultiplier * 1.2),
-                        Row(
-                          children: [
-                            const Icon(Icons.schedule, size: 16),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                _fmtDate(shownDate) ?? '—',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-
-                // BREAKDOWN
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Expanded(
-                        child: _kvCard(
-                            context, 'Order', money.format(orderTotal))),
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-                    Expanded(
-                        child: _kvCard(context, 'Paid', money.format(paid))),
+                    OrderAvatar(color: pillColor),
+                    StatusPill(text: statusText, color: pillColor),
                   ],
                 ),
-                SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-                Row(
+                const SizedBox(height: 16),
+                Text(money.format(orderTotal),
+                    style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Expanded(
-                        child: _kvCard(context, 'Fees (incl VAT)',
-                            money.format(feesIncl))),
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 2),
-                    Expanded(child: _kvCard(context, 'Net', money.format(net))),
+                    _pill(context, method.isEmpty ? 'ONLINE' : method),
+                    if (itemsCount > 0) _pill(context, '$itemsCount items'),
+                    if (reference.isNotEmpty) _pill(context, 'Ref: $reference'),
+                    _pill(context, 'ID: $id'),
                   ],
                 ),
-
-                SizedBox(height: SizeConfig.heightMultiplier * 1.2),
-
-                // TIMELINE
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Timeline',
-                            style: TextStyle(fontWeight: FontWeight.w800)),
-                        SizedBox(height: SizeConfig.heightMultiplier * 1.0),
-                        _timelineRow(
-                          context,
-                          Icons.bolt,
-                          'Created',
-                          _fmtDate(created) ?? '—',
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Icon(Icons.schedule, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _fmtDate(shownDate) ?? '—',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                        SizedBox(height: SizeConfig.heightMultiplier * 0.8),
-                        _timelineRow(
-                          context,
-                          Icons.receipt_long,
-                          'Ledger Created',
-                          _fmtDate(ledgerCreated) ?? '—',
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-
-                SizedBox(height: SizeConfig.heightMultiplier * 1.2),
               ],
-            );
-          },
+            ),
+          ),
         ),
-      ),
+
+        const SizedBox(height: 12),
+
+        // BREAKDOWN
+        Row(
+          children: [
+            Expanded(
+                child: _kvCard(context, 'Order', money.format(orderTotal))),
+            const SizedBox(width: 12),
+            Expanded(child: _kvCard(context, 'Paid', money.format(paid))),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+                child: _kvCard(
+                    context, 'Fees (incl VAT)', money.format(feesIncl))),
+            const SizedBox(width: 12),
+            Expanded(child: _kvCard(context, 'Net', money.format(net))),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // TIMELINE
+        Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SpazaRadius.surface),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Timeline',
+                    style: TextStyle(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 12),
+                _timelineRow(
+                  context,
+                  Icons.bolt,
+                  'Created',
+                  _fmtDate(created) ?? '—',
+                ),
+                const SizedBox(height: 12),
+                _timelineRow(
+                  context,
+                  Icons.receipt_long,
+                  'Ledger Created',
+                  _fmtDate(ledgerCreated) ?? '—',
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+      ],
     );
   }
 
@@ -398,25 +393,24 @@ class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
 
   Widget _kvCard(BuildContext context, String k, String v) {
     final labelStyle = TextStyle(
-      fontSize: SizeConfig.textMultiplier * 1.4,
+      fontSize: 13,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w500,
     );
-    final valueStyle = TextStyle(
-      fontSize: SizeConfig.textMultiplier * 2.0,
-      fontWeight: FontWeight.w800,
+    const valueStyle = TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w500,
     );
     return Card(
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SpazaRadius.surface)),
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.imageSizeMultiplier * 3),
+        padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(k,
-              style: labelStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(k, style: labelStyle),
           const SizedBox(height: 2),
-          Text(v,
-              style: valueStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(v, style: valueStyle),
         ]),
       ),
     );
@@ -432,9 +426,11 @@ class _OnlineSaleDetailPageState extends State<OnlineSaleDetailPage> {
               child: Text(label,
                   style: const TextStyle(fontWeight: FontWeight.w700))),
           const SizedBox(width: 8),
-          Text(value,
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Flexible(
+              child: Text(value,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant))),
         ],
       );
 }
@@ -459,7 +455,7 @@ class _Empty extends StatelessWidget {
                 size: 64, color: Theme.of(context).colorScheme.outline),
             const SizedBox(height: 8),
             const Text('Order not found',
-                style: TextStyle(fontWeight: FontWeight.w800)),
+                style: TextStyle(fontWeight: FontWeight.w500)),
           ]),
         ),
       );
@@ -477,7 +473,7 @@ class _Error extends StatelessWidget {
                 size: 64, color: Theme.of(context).colorScheme.error),
             const SizedBox(height: 8),
             const Text('Couldn’t load order',
-                style: TextStyle(fontWeight: FontWeight.w800)),
+                style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),

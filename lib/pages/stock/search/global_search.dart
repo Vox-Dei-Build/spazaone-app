@@ -20,7 +20,7 @@ class GlobalSearchPage extends StatelessWidget {
         return Scaffold(
           resizeToAvoidBottomInset: true,
           appBar: CustomAppBar(
-            title: isGroupSearch ? 'Search in $groupName' : 'Product Search',
+            title: isGroupSearch ? 'Search in $groupName' : 'Product search',
           ),
           body: SafeArea(
             child: Column(

@@ -42,71 +42,103 @@ class AddPaymentScreen extends StatelessWidget {
             primaryActionIcon: Icons.arrow_upward,
             primaryActionColor: Colors.green,
             onPrimaryAction: () => viewModel.addPaymentTransaction(context),
-            body: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                CustomTextField(
-                  label: 'Amount',
-                  hintText: 'Enter Amount',
-                  prefixIcon: Icons.money,
-                  controller: viewModel.amountController,
-                  textInputType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  validator: (value) {
-                    if (value == null ||
-                        value.isEmpty ||
-                        double.tryParse(value) == null) {
-                      return 'Please enter a valid amount';
-                    }
-                    return null;
-                  },
-                ),
-                DateRow(
-                  label: 'Date of payment',
-                  value: viewModel.selectedDate,
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime.now(),
-                  onPick: viewModel.setSelectedDate,
-                ),
-                const SizedBox(height: LayoutConstants.spaceLg),
-                DropdownButtonFormField<String>(
-                  value: viewModel.paymentMethod,
-                  decoration: const InputDecoration(
-                    labelText: 'Payment method',
-                    prefixIcon: Icon(Icons.payments_outlined),
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'cash', child: Text('Cash')),
-                    DropdownMenuItem(
-                      value: 'bank_transfer',
-                      child: Text('Bank transfer'),
-                    ),
-                    DropdownMenuItem(value: 'other', child: Text('Other')),
-                  ],
-                  onChanged: viewModel.isLoading
-                      ? null
-                      : (value) => viewModel.setPaymentMethod(value ?? 'cash'),
-                ),
-                const SizedBox(height: LayoutConstants.spaceLg),
-                TextFormField(
-                  controller: viewModel.remarksController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes (optional)',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      vertical: LayoutConstants.spaceMd,
-                      horizontal: LayoutConstants.spaceMd,
-                    ),
-                  ),
-                ),
-              ],
+            body: CustomerPaymentFields(
+              amountController: viewModel.amountController,
+              remarksController: viewModel.remarksController,
+              selectedDate: viewModel.selectedDate,
+              paymentMethod: viewModel.paymentMethod,
+              isLoading: viewModel.isLoading,
+              onDateChanged: viewModel.setSelectedDate,
+              onPaymentMethodChanged: viewModel.setPaymentMethod,
             ),
           );
         },
       ),
     );
   }
+}
+
+/// Payment inputs shared by the live form and local synthetic-data previews.
+class CustomerPaymentFields extends StatelessWidget {
+  const CustomerPaymentFields({
+    super.key,
+    required this.amountController,
+    required this.remarksController,
+    required this.selectedDate,
+    required this.paymentMethod,
+    required this.onDateChanged,
+    required this.onPaymentMethodChanged,
+    this.isLoading = false,
+  });
+  final TextEditingController amountController;
+  final TextEditingController remarksController;
+  final DateTime selectedDate;
+  final String paymentMethod;
+  final ValueChanged<DateTime> onDateChanged;
+  final ValueChanged<String> onPaymentMethodChanged;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CustomTextField(
+            label: 'Amount',
+            hintText: 'Enter Amount',
+            prefixIcon: Icons.money,
+            controller: amountController,
+            textInputType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            validator: (value) {
+              if (value == null ||
+                  value.isEmpty ||
+                  double.tryParse(value) == null) {
+                return 'Please enter a valid amount';
+              }
+              return null;
+            },
+          ),
+          DateRow(
+            label: 'Date of payment',
+            value: selectedDate,
+            firstDate: DateTime(2000),
+            lastDate: DateTime.now(),
+            onPick: onDateChanged,
+          ),
+          const SizedBox(height: LayoutConstants.spaceLg),
+          DropdownButtonFormField<String>(
+            isExpanded: true,
+            itemHeight: null,
+            value: paymentMethod,
+            decoration: const InputDecoration(
+              labelText: 'Payment method',
+              prefixIcon: Icon(Icons.payments_outlined),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'cash', child: Text('Cash')),
+              DropdownMenuItem(
+                value: 'bank_transfer',
+                child: Text('Bank transfer'),
+              ),
+              DropdownMenuItem(value: 'other', child: Text('Other')),
+            ],
+            onChanged: isLoading
+                ? null
+                : (value) => onPaymentMethodChanged(value ?? 'cash'),
+          ),
+          const SizedBox(height: LayoutConstants.spaceLg),
+          TextFormField(
+            controller: remarksController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Notes (optional)',
+              contentPadding: EdgeInsets.symmetric(
+                vertical: LayoutConstants.spaceMd,
+                horizontal: LayoutConstants.spaceMd,
+              ),
+            ),
+          ),
+        ],
+      );
 }

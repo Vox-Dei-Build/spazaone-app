@@ -20,6 +20,7 @@
 // per-bubble Firestore reads (kills the previous N+1 pattern).
 
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/config/size_config.dart';
 import 'package:pasella/pages/transactions/widgets/product_name_cache.dart';
@@ -45,12 +46,12 @@ class TransactionCard extends StatelessWidget {
     final accent = isCredit ? const Color(0xFFC62828) : const Color(0xFF1B5E20);
 
     // Bubble corner radii: sharp on the tail side, rounded everywhere else.
-    final radius = SizeConfig.heightMultiplier * 1.4;
+    const radius = SpazaRadius.control;
     final bubbleShape = BorderRadius.only(
       topLeft: Radius.circular(isCredit ? 4 : radius),
       topRight: Radius.circular(isCredit ? radius : 4),
-      bottomLeft: Radius.circular(radius),
-      bottomRight: Radius.circular(radius),
+      bottomLeft: const Radius.circular(radius),
+      bottomRight: const Radius.circular(radius),
     );
 
     final bubbleWidth =
@@ -63,8 +64,8 @@ class TransactionCard extends StatelessWidget {
     return Align(
       alignment: isCredit ? Alignment.centerLeft : Alignment.centerRight,
       child: Padding(
-        padding: EdgeInsets.symmetric(
-          vertical: SizeConfig.heightMultiplier * 0.6,
+        padding: const EdgeInsets.symmetric(
+          vertical: 4,
         ),
         child: SizedBox(
           width: bubbleWidth,
@@ -72,17 +73,11 @@ class TransactionCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: bubbleShape,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+              border: Border.all(color: SpazaColors.border),
             ),
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.imageSizeMultiplier * 3.5,
-              vertical: SizeConfig.heightMultiplier * 1.1,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -95,26 +90,30 @@ class TransactionCard extends StatelessWidget {
                           ? Icons.arrow_downward_rounded
                           : Icons.arrow_upward_rounded,
                       color: accent,
-                      size: SizeConfig.imageSizeMultiplier * 4.5,
+                      size: 20,
                     ),
-                    SizedBox(width: SizeConfig.imageSizeMultiplier * 1.5),
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        CurrencyUtil.format(amount),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: accent,
-                          fontSize: SizeConfig.textMultiplier * 2.0,
-                          fontFeatures: const [FontFeature.tabularFigures()],
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          CurrencyUtil.format(amount),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: accent,
+                            fontSize: 18,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
                       ),
                     ),
                     if (time != null)
                       Text(
                         time,
-                        style: TextStyle(
-                          color: const Color(0xFF6B7280),
-                          fontSize: SizeConfig.textMultiplier * 1.3,
+                        style: const TextStyle(
+                          color: SpazaColors.muted,
+                          fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -166,12 +165,12 @@ class _ProductLine extends StatelessWidget {
     final text = count > 1 ? '$name + ${count - 1} more' : name;
 
     return Padding(
-      padding: EdgeInsets.only(top: SizeConfig.heightMultiplier * 0.4),
+      padding: const EdgeInsets.only(top: 8),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: SizeConfig.textMultiplier * 1.5,
-          color: Colors.black87,
+        style: const TextStyle(
+          fontSize: 14,
+          color: SpazaColors.ink,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,

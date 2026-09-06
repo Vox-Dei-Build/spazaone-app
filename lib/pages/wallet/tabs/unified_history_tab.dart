@@ -5,7 +5,8 @@ import 'package:pasella/pages/wallet/widgets/notification_tile.dart';
 import 'package:pasella/pages/wallet/widgets/top_up_tile.dart';
 import 'package:pasella/pages/wallet/widgets/icon_helper.dart';
 import 'package:pasella/utils/currency_util.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
+import 'package:pasella/pages/wallet/widgets/wallet_activity_tile.dart';
 import 'package:shimmer/shimmer.dart';
 
 class UnifiedHistoryTab extends StatefulWidget {
@@ -35,7 +36,7 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.all(SizeConfig.heightMultiplier * 1),
+      padding: const EdgeInsets.all(8),
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: _transactionsFuture,
         builder: (context, snapshot) {
@@ -57,81 +58,65 @@ class _UnifiedHistoryTabState extends State<UnifiedHistoryTab> {
             );
           }
 
-          return ListView.separated(
-            shrinkWrap: widget.embedded,
-            physics:
-                widget.embedded ? const NeverScrollableScrollPhysics() : null,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemCount: merged.length,
-            itemBuilder: (context, index) {
-              final item = merged[index];
-              final type = item['type'];
-              final timestamp = item['timestamp'] as DateTime?;
-
-              if (timestamp == null) return const SizedBox.shrink();
-
-              switch (type) {
-                case 'top-up':
-                  return TopUpTile(
-                    amount: item['amount'] ?? 0,
-                    date: timestamp,
-                  );
-
-                case 'message':
-                  return NotificationTile(
-                    message: item['message'] ?? 'Message',
-                    messageCost: item['messageCost'] ?? 0,
-                    phone: item['phone'] ?? 'Unknown',
-                    date: timestamp,
-                    templateType: item['templateType'] ?? 'sms',
-                  );
-
-                case 'payout':
-                  return ListTile(
-                    leading: getIconForStatus(item['status']),
-                    title: Text(
-                      CurrencyUtil.format(item['amount'] ?? 0),
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.8,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    subtitle: Text(
-                      DateFormat('dd MMM yyyy, HH:mm').format(timestamp),
-                      style: TextStyle(
-                        fontSize: SizeConfig.textMultiplier * 1.5,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    trailing: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: SizeConfig.blockSizeHorizontal * 2,
-                        vertical: SizeConfig.heightMultiplier * 0.5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(
-                          SizeConfig.blockSizeHorizontal * 2,
-                        ),
-                      ),
-                      child: Text(
-                        (item['status'] ?? 'Unknown').toString().toUpperCase(),
-                        style: TextStyle(
-                          fontSize: SizeConfig.textMultiplier * 1.5,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                  );
-
-                default:
-                  return const SizedBox.shrink();
-              }
-            },
-          );
+          return WalletHistoryList(entries: merged, embedded: widget.embedded);
         },
       ),
+    );
+  }
+}
+
+/// Already-loaded wallet history; amounts and statuses are provided by the ledger.
+class WalletHistoryList extends StatelessWidget {
+  const WalletHistoryList(
+      {super.key, required this.entries, this.embedded = false});
+
+  final List<Map<String, dynamic>> entries;
+  final bool embedded;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      shrinkWrap: embedded,
+      physics: embedded ? const NeverScrollableScrollPhysics() : null,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final item = entries[index];
+        final type = item['type'];
+        final timestamp = item['timestamp'] as DateTime?;
+
+        if (timestamp == null) return const SizedBox.shrink();
+
+        switch (type) {
+          case 'top-up':
+            return TopUpTile(
+              amount: item['amount'] ?? 0,
+              date: timestamp,
+            );
+
+          case 'message':
+            return NotificationTile(
+              message: item['message'] ?? 'Message',
+              messageCost: item['messageCost'] ?? 0,
+              phone: item['phone'] ?? 'Unknown',
+              date: timestamp,
+              templateType: item['templateType'] ?? 'sms',
+            );
+
+          case 'payout':
+            return WalletActivityTile(
+              icon: getIconForStatus(item['status']),
+              title: 'Payout',
+              amount: CurrencyUtil.format(
+                  (item['amount'] as num?)?.toDouble() ?? 0),
+              subtitle: DateFormat('dd MMM yyyy, HH:mm').format(timestamp),
+              status: (item['status'] ?? 'Unknown').toString().toUpperCase(),
+            );
+
+          default:
+            return const SizedBox.shrink();
+        }
+      },
     );
   }
 }
@@ -153,7 +138,7 @@ class _WalletHistoryLoading extends StatelessWidget {
                   height: 68,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(SpazaRadius.surface),
                   ),
                 ),
               ),
@@ -171,12 +156,12 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(SizeConfig.heightMultiplier * 3),
+        padding: const EdgeInsets.all(24),
         child: Text(
           message,
-          style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 1.8,
-            color: Colors.grey,
+          style: const TextStyle(
+            fontSize: 16,
+            color: SpazaColors.muted,
           ),
         ),
       ),

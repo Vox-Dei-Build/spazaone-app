@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/stock/view_model/stock_view_model.dart';
 import 'package:pasella/pages/stock/widgets/add_product_group_dialog.dart';
 
@@ -12,9 +12,11 @@ class AddProductGroupButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: SizeConfig.heightMultiplier * 7,
+      height: 52,
       child: FloatingActionButton.extended(
-        elevation: 3.0,
+        elevation: 0,
+        backgroundColor: SpazaColors.action,
+        foregroundColor: Colors.white,
         onPressed: () {
           showDialog(
             context: context,
@@ -25,16 +27,16 @@ class AddProductGroupButton extends StatelessWidget {
             },
           );
         },
-        icon: Icon(
+        icon: const Icon(
           Icons.add_outlined,
           color: Colors.white,
-          size: SizeConfig.heightMultiplier * 2.5, // Smaller icon
+          size: 20, // Smaller icon
         ),
-        label: Text(
-          'Create Group',
+        label: const Text(
+          'Create group',
           style: TextStyle(
             color: Colors.white,
-            fontSize: SizeConfig.textMultiplier * 2, // Adjust font size
+            fontSize: 14,
           ),
         ),
       ),

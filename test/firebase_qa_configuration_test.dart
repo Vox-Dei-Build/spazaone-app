@@ -99,6 +99,19 @@ void main() {
     expect(productionManifest, isNot(contains('FirebaseInitProvider')));
   });
 
+  test('iOS notification permission stays out of unauthenticated startup', () {
+    final mainDart = File('lib/main.dart').readAsStringSync();
+    final appDelegate = File('ios/Runner/AppDelegate.swift').readAsStringSync();
+
+    expect(mainDart, contains('requestAlertPermission: false'));
+    expect(mainDart, contains('requestSoundPermission: false'));
+    expect(mainDart, contains('requestBadgePermission: false'));
+    expect(
+      appDelegate,
+      isNot(contains('application.registerForRemoteNotifications()')),
+    );
+  });
+
   test('development and production Firebase app identities stay isolated', () {
     final environment = <String, String>{};
     for (final rawLine in File('.env').readAsLinesSync()) {

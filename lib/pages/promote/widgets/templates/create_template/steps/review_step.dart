@@ -55,8 +55,8 @@ class ReviewStep extends StatelessWidget {
           children: [
             Text(
               'Name: $templateName',
-              style: TextStyle(
-                fontSize: SizeConfig.textMultiplier * 2,
+              style: const TextStyle(
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -83,7 +83,7 @@ class ReviewStep extends StatelessWidget {
                   child: Text(
                     'Once a template is created, it cannot be edited. Please create a new one if changes are needed.',
                     style: TextStyle(
-                      fontSize: SizeConfig.textMultiplier * 1.6,
+                      fontSize: 13,
                       color: Colors.orange.shade900,
                       height: 1.4,
                     ),
@@ -171,7 +171,7 @@ class ReviewStep extends StatelessWidget {
                   'your SMS bill on this template roughly in half.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: SizeConfig.textMultiplier * 1.4,
+                    fontSize: 13,
                     color: Colors.orange[800],
                     fontStyle: FontStyle.italic,
                   ),

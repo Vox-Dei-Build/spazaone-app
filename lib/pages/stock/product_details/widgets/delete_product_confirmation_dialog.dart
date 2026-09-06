@@ -1,44 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:pasella/config/size_config.dart';
 
 class DeleteConfirmationDialog extends StatelessWidget {
-  const DeleteConfirmationDialog({Key? key}) : super(key: key);
+  const DeleteConfirmationDialog({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    SizeConfig().init(context); // Initialize SizeConfig
-
-    return AlertDialog(
-      title: Text(
-        'Delete Product',
-        style: TextStyle(
-            fontSize: SizeConfig.textMultiplier * 2,
-            fontWeight: FontWeight.w600),
-      ),
-      content: Text(
-        'Are you sure you want to delete this product?',
-        style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-      ),
-      actions: <Widget>[
-        TextButton(
-          child: Text(
-            'Cancel',
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Delete product'),
+        content: const Text('Are you sure you want to delete this product?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel')),
+          TextButton(
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
           ),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-        ),
-        TextButton(
-          child: Text(
-            'Delete',
-            style: TextStyle(fontSize: SizeConfig.textMultiplier * 2),
-          ),
-          onPressed: () {
-            Navigator.of(context).pop(true);
-          },
-        ),
-      ],
-    );
-  }
+        ],
+      );
 }

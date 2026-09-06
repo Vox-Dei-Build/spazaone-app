@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 
 /// A visible date control shared by customer activity and recorded sales.
 class WorkspaceDateFilter extends StatelessWidget {
@@ -29,81 +30,44 @@ class WorkspaceDateFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final largeText = MediaQuery.textScalerOf(context).scale(14) >= 20;
-    final summary = Row(
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: kHighLightColor,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(
-            Icons.calendar_today_outlined,
-            size: 19,
-            color: kTertiaryColor,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Showing',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: kSecondaryAccent,
+    return Semantics(
+      button: true,
+      label: 'Change date, ${_label()}',
+      onTap: () => _showDateChoices(context),
+      excludeSemantics: true,
+      child: Tooltip(
+        message: 'Change date',
+        child: Material(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
+          child: InkWell(
+            key: const ValueKey('workspace-date-filter'),
+            onTap: () => _showDateChoices(context),
+            borderRadius: BorderRadius.circular(SpazaRadius.control),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 48),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today_outlined,
+                      size: 18, color: kTertiaryColor),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _label(),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: kTertiaryColor,
+                            fontWeight: FontWeight.w500,
+                          ),
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(Icons.keyboard_arrow_down_rounded,
+                      size: 20, color: colors.onSurfaceVariant),
+                ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                _label(),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: kTertiaryColor,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ],
+            ),
           ),
-        ),
-      ],
-    );
-    final changeAction = TextButton(
-      onPressed: () => _showDateChoices(context),
-      child: const Text('Change date'),
-    );
-    return Material(
-      color: colors.surfaceContainerHighest.withValues(alpha: .58),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        key: const ValueKey('workspace-date-filter'),
-        onTap: () => _showDateChoices(context),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 58),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: largeText
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    summary,
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: changeAction,
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(child: summary),
-                    const SizedBox(width: 8),
-                    changeAction,
-                  ],
-                ),
         ),
       ),
     );
@@ -113,47 +77,60 @@ class WorkspaceDateFilter extends StatelessWidget {
     final selected = await showModalBottomSheet<_DateChoice>(
       context: context,
       useSafeArea: true,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Choose dates',
-              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
-                    color: kTertiaryColor,
-                    fontWeight: FontWeight.w800,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            key: const ValueKey('workspace-date-choices-scroll'),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Choose dates',
+                  style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                        color: kTertiaryColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                _DateChoiceRow(
+                  icon: Icons.today_outlined,
+                  label: 'Today',
+                  onTap: () => Navigator.pop(sheetContext, _DateChoice.today),
+                ),
+                _DateChoiceRow(
+                  icon: Icons.date_range_outlined,
+                  label: 'This week',
+                  onTap: () =>
+                      Navigator.pop(sheetContext, _DateChoice.thisWeek),
+                ),
+                _DateChoiceRow(
+                  icon: Icons.calendar_month_outlined,
+                  label: 'This month',
+                  onTap: () =>
+                      Navigator.pop(sheetContext, _DateChoice.thisMonth),
+                ),
+                _DateChoiceRow(
+                  icon: Icons.edit_calendar_outlined,
+                  label: 'Choose a date range',
+                  onTap: () => Navigator.pop(sheetContext, _DateChoice.custom),
+                ),
+                if (_hasFilter)
+                  _DateChoiceRow(
+                    icon: Icons.all_inclusive_rounded,
+                    label: 'Show all time',
+                    onTap: () =>
+                        Navigator.pop(sheetContext, _DateChoice.allTime),
                   ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _DateChoiceRow(
-              icon: Icons.today_outlined,
-              label: 'Today',
-              onTap: () => Navigator.pop(sheetContext, _DateChoice.today),
-            ),
-            _DateChoiceRow(
-              icon: Icons.date_range_outlined,
-              label: 'This week',
-              onTap: () => Navigator.pop(sheetContext, _DateChoice.thisWeek),
-            ),
-            _DateChoiceRow(
-              icon: Icons.calendar_month_outlined,
-              label: 'This month',
-              onTap: () => Navigator.pop(sheetContext, _DateChoice.thisMonth),
-            ),
-            _DateChoiceRow(
-              icon: Icons.edit_calendar_outlined,
-              label: 'Choose a date range',
-              onTap: () => Navigator.pop(sheetContext, _DateChoice.custom),
-            ),
-            if (_hasFilter)
-              _DateChoiceRow(
-                icon: Icons.all_inclusive_rounded,
-                label: 'Show all time',
-                onTap: () => Navigator.pop(sheetContext, _DateChoice.allTime),
-              ),
-          ],
+          ),
         ),
       ),
     );
@@ -177,12 +154,21 @@ class WorkspaceDateFilter extends StatelessWidget {
             allowFutureEndDate && endDate != null && endDate!.isAfter(now)
                 ? endDate!
                 : now;
+        // A week/month preset can include future days. Keep the picker
+        // selection inside its bounds when the merchant refines that range.
+        final firstSelectableDate = DateTime(2020);
+        DateTime clampDate(DateTime date) => date.isBefore(firstSelectableDate)
+            ? firstSelectableDate
+            : date.isAfter(lastSelectableDate)
+                ? lastSelectableDate
+                : date;
         final picked = await showDateRangePicker(
           context: context,
-          firstDate: DateTime(2020),
+          firstDate: firstSelectableDate,
           lastDate: lastSelectableDate,
           initialDateRange: startDate != null && endDate != null
-              ? DateTimeRange(start: startDate!, end: endDate!)
+              ? DateTimeRange(
+                  start: clampDate(startDate!), end: clampDate(endDate!))
               : null,
         );
         if (picked != null) {
@@ -204,9 +190,22 @@ class WorkspaceDateFilter extends StatelessWidget {
           startDate!.day == endDate!.day) {
         return format(startDate!);
       }
+      if (startDate!.year == endDate!.year) {
+        final startFormat =
+            startDate!.month == endDate!.month ? 'dd' : 'dd MMM';
+        return '${DateFormat(startFormat).format(startDate!)} – ${format(endDate!)}';
+      }
       return '${format(startDate!)} – ${format(endDate!)}';
     }
-    if (selectedDay != null) return format(selectedDay!);
+    if (selectedDay != null) {
+      final now = DateTime.now();
+      if (DateUtils.isSameDay(selectedDay, now)) return 'Today';
+      if (DateUtils.isSameDay(
+          selectedDay, now.subtract(const Duration(days: 1)))) {
+        return 'Yesterday';
+      }
+      return format(selectedDay!);
+    }
     return 'All time';
   }
 }

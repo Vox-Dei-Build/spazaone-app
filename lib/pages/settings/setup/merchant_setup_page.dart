@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/models/common/app_model.dart';
 import 'package:pasella/pages/contact/add_contact/add_contact.dart';
+import 'package:pasella/pages/stock/new_product_page/new_product_page.dart';
 import 'package:pasella/pages/settings/share/share.dart';
 import 'package:pasella/pages/settings/order_options/order_options_page.dart';
 import 'package:pasella/pages/wallet/tabs/info_center_tab.dart';
@@ -27,16 +28,21 @@ class MerchantSetupPage extends StatelessWidget {
     return Scaffold(
       appBar: const CustomAppBar(title: 'Shop setup'),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           MerchantSetupCard(
             userId: userId,
             allowCompletedLinkDismissal: false,
             actions: MerchantSetupActions(
-              onAddCustomer: () => Navigator.of(context).pushNamed(
-                AddContactPage.id,
+              onAddCustomer: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const AddContactPage(returnToCallerAfterSave: true),
+                ),
               ),
-              onAddProduct: () => _openMainTab(context, 1),
+              onAddProduct: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NewProductPage()),
+              ),
               onChooseWhatsAppProducts: () => _openMainTab(context, 1),
               onOpenOrderingLink: () => Navigator.of(context).push(
                 MaterialPageRoute(

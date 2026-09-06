@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/providers/common/balance_summary_provider.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:provider/provider.dart';
@@ -14,82 +15,117 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
         if (provider.isLedgerLoading) {
           return const Center(child: CircularProgressIndicator());
         }
-
         final summary = provider.balanceSummary;
-        final movementColor = summary.netBalance < 0
-            ? Theme.of(context).colorScheme.error
-            : kPrimaryColor;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: kHighLightColor,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Net movement',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: kSecondaryAccent,
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        CurrencyUtil.format(summary.netBalance),
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  color: movementColor,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: -.5,
-                                ),
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Payments received minus sales added for these dates.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: kSecondaryAccent,
-                            height: 1.35,
-                          ),
-                    ),
-                  ],
+        return CustomerActivitySummary(
+          netMovement: summary.netBalance,
+          salesAmount: summary.creditAmount,
+          salesCount: summary.creditCount,
+          paymentsAmount: summary.paymentAmount,
+          paymentsCount: summary.paymentCount,
+        );
+      },
+    );
+  }
+}
+
+/// The selected period's movement, rather than the current customer balance.
+/// Kept independent of providers so the same presentation can be previewed.
+class CustomerActivitySummary extends StatelessWidget {
+  const CustomerActivitySummary({
+    super.key,
+    required this.netMovement,
+    required this.salesAmount,
+    required this.salesCount,
+    required this.paymentsAmount,
+    required this.paymentsCount,
+  });
+
+  final double netMovement;
+  final double salesAmount;
+  final int salesCount;
+  final double paymentsAmount;
+  final int paymentsCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border.all(color: SpazaColors.border),
+        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Net movement',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+              color: kSecondaryAccent,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Semantics(
+            label: 'Net movement ${CurrencyUtil.format(netMovement)}',
+            excludeSemantics: true,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                CurrencyUtil.format(netMovement),
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: kTertiaryColor,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -.5,
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _MovementMetric(
-                      label: '${summary.creditCount} sales',
-                      amount: summary.creditAmount,
-                      color: kTertiaryColor,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _MovementMetric(
-                      label: '${summary.paymentCount} payments',
-                      amount: summary.paymentAmount,
-                      color: kPrimaryColor,
-                    ),
-                  ),
-                ],
-              ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Payments received − sales added',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: kSecondaryAccent,
             ),
-          ],
-        );
-      },
+          ),
+          const SizedBox(height: 20),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stack = constraints.maxWidth < 280 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 20;
+              final sales = _MovementMetric(
+                label: 'Sales added',
+                count: salesCount,
+                amount: salesAmount,
+                color: kTertiaryColor,
+              );
+              final payments = _MovementMetric(
+                label: 'Payments received',
+                count: paymentsCount,
+                amount: paymentsAmount,
+                color: kPrimaryColor,
+              );
+              if (stack) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [sales, const SizedBox(height: 20), payments],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: sales),
+                  const SizedBox(width: 20),
+                  Expanded(child: payments),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
@@ -97,47 +133,40 @@ class DateRangeMovementSummaryCard extends StatelessWidget {
 class _MovementMetric extends StatelessWidget {
   const _MovementMetric({
     required this.label,
+    required this.count,
     required this.amount,
     required this.color,
   });
 
   final String label;
+  final int count;
   final double amount;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: .48),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$label · $count',
+          style: theme.textTheme.bodySmall?.copyWith(color: kSecondaryAccent),
+        ),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
             CurrencyUtil.format(amount),
-            maxLines: 1,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w900,
-                ),
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: color,
+              fontSize: 19,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: kSecondaryAccent,
-                ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
