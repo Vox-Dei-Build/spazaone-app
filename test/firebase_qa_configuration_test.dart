@@ -129,6 +129,15 @@ void main() {
 
     const productionIosAppId = '1:716158514645:ios:17eba128d70a92a7e5795c';
     final runtimeProject = environment['FIREBASE_ANDROID_PROJECT_ID'];
+    if (runtimeProject == null) {
+      expect(
+        environment,
+        isEmpty,
+        reason: 'Only a pristine source checkout may omit the secure .env. '
+            'A partially materialised environment must fail closed.',
+      );
+      return;
+    }
     expect(
       environment['FIREBASE_IOS_PROJECT_ID'],
       runtimeProject,
