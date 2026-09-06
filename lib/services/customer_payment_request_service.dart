@@ -213,19 +213,29 @@ class CustomerPaymentRequestService implements CustomerPaymentRequestGateway {
     String functionName,
     Map<String, dynamic> payload,
   ) async {
-    final response = await _client.post(
-      FunctionEndpoints.https(functionName),
-      payload,
-    );
-    final body = response.body.isEmpty
-        ? <String, dynamic>{}
-        : Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw CustomerPaymentRequestException(
-        body['error']?.toString() ??
-            'Payment requests are temporarily unavailable.',
+    try {
+      final response = await _client.post(
+        FunctionEndpoints.https(functionName),
+        payload,
+      );
+      final body = response.body.isEmpty
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw CustomerPaymentRequestException(
+          body['error']?.toString() ??
+              'Payment requests are temporarily unavailable.',
+        );
+      }
+      return body;
+    } on CustomerPaymentRequestException {
+      rethrow;
+    } catch (_) {
+      // App Check, auth refresh, transport and malformed-response failures are
+      // implementation details. Keep the account surface calm and retryable.
+      throw const CustomerPaymentRequestException(
+        'Payment requests are temporarily unavailable.',
       );
     }
-    return body;
   }
 }
