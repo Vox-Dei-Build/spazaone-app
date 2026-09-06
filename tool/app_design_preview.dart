@@ -5,12 +5,12 @@ import 'package:pasella/constants/constants.dart';
 import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/auth/widgets/login_ui.dart';
 import 'package:pasella/pages/auth/widgets/otp_code_dialog.dart';
+import 'package:pasella/pages/sales/widgets/add_sale.dart';
 import 'package:pasella/pages/settings/settings.dart';
 import 'package:pasella/pages/wallet/wallet.dart';
 import 'package:pasella/pages/sales/widgets/marketing_overview.dart';
 import 'package:pasella/pages/promote/widgets/promotions/promotions_tab.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
-import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/forms/transaction_form_scaffold.dart';
 import 'workspace_design_preview.dart';
 import 'settings_design_previews.dart';
@@ -309,11 +309,14 @@ class _FormPreviewState extends State<_FormPreview> {
   final _key = GlobalKey<FormState>();
   final _amount = TextEditingController();
   final _stock = TextEditingController();
+  final _notes = TextEditingController();
+  DateTime _date = DateTime.now();
 
   @override
   void dispose() {
     _amount.dispose();
     _stock.dispose();
+    _notes.dispose();
     super.dispose();
   }
 
@@ -321,34 +324,27 @@ class _FormPreviewState extends State<_FormPreview> {
   Widget build(BuildContext context) => TransactionFormScaffold(
         title: 'Record sale',
         formKey: _key,
-        primaryActionLabel: 'Record sale',
-        onPrimaryAction: widget.onSaved,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Example form · entries stay in this preview.',
-                style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 16),
-            CustomTextField(
-              label: 'Sales amount',
-              hintText: '0.00',
-              prefixIcon: SpazaIcons.sales,
-              textInputType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              controller: _amount,
-              validator: (value) => (double.tryParse(value ?? '') ?? 0) <= 0
-                  ? 'Enter a sales amount greater than zero'
-                  : null,
-            ),
-            CustomTextField(
-              label: 'Stock purchased (optional)',
-              hintText: '0.00',
-              prefixIcon: SpazaIcons.products,
-              controller: _stock,
-              textInputType:
-                  const TextInputType.numberWithOptions(decimal: true),
-            ),
-          ],
+        primaryActionLabel: 'Save sale',
+        primaryActionIcon: SpazaIcons.sales,
+        onPrimaryAction: () {
+          if (_key.currentState?.validate() ?? false) widget.onSaved();
+        },
+        body: RecordSaleFields(
+          amountController: _amount,
+          selectedDate: _date,
+          onDateChanged: (value) => setState(() => _date = value),
+          stockAmountController: _stock,
+          invoiceField: OutlinedButton.icon(
+            onPressed: () {},
+            icon: const Icon(Icons.attach_file_rounded),
+            label: const Text('Attach invoice'),
+          ),
+          productField: OutlinedButton.icon(
+            onPressed: () {},
+            icon: const Icon(SpazaIcons.products),
+            label: const Text('Choose products'),
+          ),
+          notesController: _notes,
         ),
       );
 }

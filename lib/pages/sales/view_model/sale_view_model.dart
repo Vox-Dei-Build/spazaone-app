@@ -601,7 +601,7 @@ class SalesViewModel extends TransactionViewModel {
     }
   }
 
-  Future<void> updateSale(
+  Future<Sale?> updateSale(
     Sale sale,
     double updatedAmount,
     Map<String, int> updatedProducts,
@@ -611,7 +611,7 @@ class SalesViewModel extends TransactionViewModel {
 
     if (!await isAnonymousGate(context)) {
       setLoading(false);
-      return;
+      return null;
     }
 
     try {
@@ -622,23 +622,26 @@ class SalesViewModel extends TransactionViewModel {
           'Please check the stock amount entered.',
           Colors.red,
         );
-        return;
+        return null;
       }
 
       final invoiceSnapshots = _snapshotStockInvoiceDrafts();
       final invoiceResult = await _uploadStockInvoices(sale.id);
       final removedInvoicePaths = Set<String>.from(_removedStockInvoicePaths);
       // Prepare the sale update data
+      final updatedDate =
+          DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate);
+      final updatedInvoiceAttachments = invoiceResult.attachments.toList(
+        growable: false,
+      );
       final salesData = {
         'amount': updatedAmount,
         'stockAmount': updatedStockAmount,
         'products': updatedProducts,
-        'dateAdded': Timestamp.fromDate(
-          DateFormat("dd-MM-yyyy HH:mm").parse(salesSelectedDate),
-        ),
+        'dateAdded': Timestamp.fromDate(updatedDate),
         'remarks': remarksController.text,
         'stockInvoices':
-            invoiceResult.attachments.map((item) => item.toMap()).toList(),
+            updatedInvoiceAttachments.map((item) => item.toMap()).toList(),
       };
 
       // Check connectivity and notify if offline
@@ -705,13 +708,22 @@ class SalesViewModel extends TransactionViewModel {
       );
 
       refreshSales();
-
-      // Reset the form and navigate back
-      resetFormAndNavigateAway(context);
-      Navigator.pop(context, true);
+      return Sale(
+        id: sale.id,
+        amount: updatedAmount,
+        stockAmount: updatedStockAmount,
+        type: sale.type,
+        products: Map<String, int>.from(updatedProducts),
+        dateAdded: updatedDate,
+        remarks: remarksController.text.trim().isEmpty
+            ? null
+            : remarksController.text,
+        stockInvoices: updatedInvoiceAttachments,
+      );
     } catch (error) {
       print("Error updating sale: $error");
       showSnackbar(context, 'Error updating sale. Please retry.', Colors.red);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -720,8 +732,8 @@ class SalesViewModel extends TransactionViewModel {
   /// Deletes a previously committed sale and rolls back the product
   /// stock that was decremented at the time of the sale. Caller (the
   /// form scaffold) handles the destructive confirmation prompt.
-  Future<void> deleteSale(BuildContext context, Sale sale) async {
-    if (isLoading) return;
+  Future<bool> deleteSale(BuildContext context, Sale sale) async {
+    if (isLoading) return false;
     setLoading(true);
     try {
       // Roll stock back before deleting so the inventory adjustment
@@ -759,15 +771,14 @@ class SalesViewModel extends TransactionViewModel {
 
       if (context.mounted) {
         showSnackbar(context, 'Sale deleted.', Colors.green);
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          Navigator.of(context).pop(true);
-        });
       }
+      return true;
     } catch (error) {
       print("Error deleting sale: $error");
       if (context.mounted) {
         showSnackbar(context, 'Error deleting sale. Please retry.', Colors.red);
       }
+      return false;
     } finally {
       setLoading(false);
     }

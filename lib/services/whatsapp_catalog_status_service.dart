@@ -301,8 +301,8 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
       if (!_isCurrent(requestEpoch, storeId)) return;
       loading = false;
       errorMessage = snapshot == null
-          ? 'Catalogue status is unavailable. Pull to refresh and try again.'
-          : 'Showing the last checked catalogue status.';
+          ? "Couldn’t check status. Use Refresh status to try again."
+          : "Couldn’t refresh.";
       notifyListeners();
       unawaited(
         TelemetryService.instance.capture(

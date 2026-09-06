@@ -125,11 +125,11 @@ void main() {
     expect(find.text('10 in stock'), findsOneWidget);
   });
 
-  testWidgets('online visibility never masks out-of-stock status',
+  testWidgets('passive online visibility never masks or crowds stock status',
       (tester) async {
     await pumpCatalogue(tester, items: [products[2]]);
     expect(find.text('Out of stock'), findsOneWidget);
-    expect(find.text('WhatsApp listing requested'), findsOneWidget);
+    expect(find.text('Pending'), findsNothing);
   });
 
   testWidgets('unknown stock is distinct from out of stock', (tester) async {
@@ -138,8 +138,7 @@ void main() {
     expect(find.text('Out of stock'), findsNothing);
   });
 
-  testWidgets(
-      'normal product rows use comfortable spacing without oversized cards',
+  testWidgets('normal product rows are thin and retain a full tap target',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -159,10 +158,35 @@ void main() {
         tester
             .getSize(find.widgetWithText(ProductCatalogueRow, 'Bread'))
             .height,
-        inInclusiveRange(80, 84));
+        inInclusiveRange(64, 68));
     expect(
         tester.getSize(find.widgetWithText(ProductCatalogueRow, 'Milk')).height,
-        inInclusiveRange(80, 84));
+        inInclusiveRange(64, 68));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a passive WhatsApp status stays out of the product row',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpCatalogue(
+      tester,
+      items: [
+        Product(
+          id: 'listed',
+          name: 'Bread',
+          sellingPrice: 18.5,
+          quantity: 12,
+          whatsappListed: true,
+        ),
+      ],
+    );
+
+    expect(
+      tester.getSize(find.widgetWithText(ProductCatalogueRow, 'Bread')).height,
+      inInclusiveRange(64, 68),
+    );
+    expect(find.text('Pending'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -260,7 +284,7 @@ void main() {
       ),
     ));
     expect(find.text('Low stock · 2 left'), findsOneWidget);
-    expect(find.text('WhatsApp listing requested'), findsOneWidget);
+    expect(find.text('Pending'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -307,7 +331,7 @@ void main() {
         arrowRight = right;
       }
       expect(find.text('Out of stock'), findsOneWidget);
-      expect(find.text('WhatsApp listing requested'), findsOneWidget);
+      expect(find.text('Pending'), findsNothing);
       final title = find.text('A Family Value Pack Of Breakfast Cereal');
       expect(tester.getSize(title).width, greaterThanOrEqualTo(120));
       expect(tester.takeException(), isNull);

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/transactions/view_model/add_payment_view_model.dart';
+import 'package:pasella/pages/transactions/widgets/customer_form_header.dart';
 import 'package:pasella/shared/widgets/custom_text_field.dart';
 import 'package:pasella/shared/widgets/forms/date_row.dart';
+import 'package:pasella/shared/widgets/forms/progressive_form_section.dart';
 import 'package:pasella/shared/widgets/forms/transaction_form_scaffold.dart';
 import 'package:provider/provider.dart';
 
@@ -33,16 +36,17 @@ class AddPaymentScreen extends StatelessWidget {
       child: Consumer<AddPaymentViewModel>(
         builder: (context, viewModel, child) {
           return TransactionFormScaffold(
-            title: 'Record payment for $customerName',
+            title: 'Record payment',
             scaffoldKey: viewModel.scaffoldKey,
             formKey: viewModel.formKey,
             isLoading: viewModel.isLoading,
             isDirty: viewModel.isDirty,
             primaryActionLabel: 'Record payment',
-            primaryActionIcon: Icons.arrow_upward,
-            primaryActionColor: Colors.green,
+            primaryActionIcon: Icons.arrow_upward_rounded,
+            primaryActionColor: SpazaColors.action,
             onPrimaryAction: () => viewModel.addPaymentTransaction(context),
             body: CustomerPaymentFields(
+              customerName: customerName,
               amountController: viewModel.amountController,
               remarksController: viewModel.remarksController,
               selectedDate: viewModel.selectedDate,
@@ -62,6 +66,7 @@ class AddPaymentScreen extends StatelessWidget {
 class CustomerPaymentFields extends StatelessWidget {
   const CustomerPaymentFields({
     super.key,
+    required this.customerName,
     required this.amountController,
     required this.remarksController,
     required this.selectedDate,
@@ -70,6 +75,7 @@ class CustomerPaymentFields extends StatelessWidget {
     required this.onPaymentMethodChanged,
     this.isLoading = false,
   });
+  final String customerName;
   final TextEditingController amountController;
   final TextEditingController remarksController;
   final DateTime selectedDate;
@@ -82,19 +88,19 @@ class CustomerPaymentFields extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          CustomerFormHeader(customerName: customerName),
           CustomTextField(
             label: 'Amount',
-            hintText: 'Enter Amount',
-            prefixIcon: Icons.money,
+            hintText: '0.00',
+            prefixIcon: Icons.payments_outlined,
             controller: amountController,
             textInputType: const TextInputType.numberWithOptions(
               decimal: true,
             ),
             validator: (value) {
-              if (value == null ||
-                  value.isEmpty ||
-                  double.tryParse(value) == null) {
-                return 'Please enter a valid amount';
+              final amount = double.tryParse(value?.trim() ?? '');
+              if (amount == null || amount <= 0) {
+                return 'Enter an amount above 0';
               }
               return null;
             },
@@ -128,14 +134,17 @@ class CustomerPaymentFields extends StatelessWidget {
                 : (value) => onPaymentMethodChanged(value ?? 'cash'),
           ),
           const SizedBox(height: LayoutConstants.spaceLg),
-          TextFormField(
-            controller: remarksController,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Notes (optional)',
-              contentPadding: EdgeInsets.symmetric(
-                vertical: LayoutConstants.spaceMd,
-                horizontal: LayoutConstants.spaceMd,
+          ProgressiveFormSection(
+            title: 'Notes',
+            actionLabel: 'Add a note',
+            icon: Icons.notes_rounded,
+            hasValue: remarksController.text.trim().isNotEmpty,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: SpazaSpace.md),
+              child: TextFormField(
+                controller: remarksController,
+                maxLines: 3,
+                decoration: const InputDecoration(hintText: 'Optional note'),
               ),
             ),
           ),

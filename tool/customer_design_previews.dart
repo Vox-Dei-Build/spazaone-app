@@ -5,18 +5,45 @@ import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/contact/connect/widgets/message_list_view.dart';
 import 'package:pasella/pages/ledger/widgets/transaction_tile.dart';
 import 'package:pasella/pages/reports/customer_report/widgets/customer_report_panel.dart';
+import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
 import 'package:pasella/pages/transactions/add_payment/add_payment.dart';
+import 'package:pasella/pages/transactions/view_transaction/view_transaction.dart';
 import 'package:pasella/pages/transactions/widgets/customer_balance_hero.dart';
 import 'package:pasella/pages/transactions/widgets/pay_later_action_bar.dart';
 import 'package:pasella/pages/transactions/widgets/repayment_plan_sheet.dart';
 import 'package:pasella/pages/transactions/widgets/transaction_card.dart';
 import 'package:pasella/pages/transactions/widgets/transaction_date.dart';
+import 'package:pasella/shared/widgets/forms/transaction_form_scaffold.dart';
 
 Map<String, WidgetBuilder> customerDesignPreviews() => {
       'Customers': (_) => const _CustomersPreview(),
       'Customer account': (_) => const _AccountPreview(),
       'Customer messages': (_) => const _MessagesPreview(),
+      'Add to customer account': (_) => const _CreditPreview(),
       'Record customer payment': (_) => const _PaymentPreview(),
+      'Pay later details': (_) => _frame(
+            'Pay later details',
+            TransactionDetailsContent(
+              customerName: 'Naledi Mokoena',
+              transaction: {
+                ..._transactions.first,
+                'status': 'DUE',
+                'repaymentDate': DateTime(2026, 9, 25),
+                'remarks': 'Weekly groceries',
+              },
+            ),
+          ),
+      'Payment details': (_) => _frame(
+            'Payment details',
+            TransactionDetailsContent(
+              customerName: 'Naledi Mokoena',
+              transaction: {
+                ..._transactions.last,
+                'status': 'PAID',
+                'paymentMethod': 'cash',
+              },
+            ),
+          ),
       'Repayment plan': (_) => const _PlanPreview(),
       'Customer insights': (_) => _frame(
             'Customer insights',
@@ -182,10 +209,8 @@ class _PaymentPreviewState extends State<_PaymentPreview> {
       Form(
         key: _form,
         child: ListView(padding: const EdgeInsets.all(20), children: [
-          Text('Naledi Mokoena',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 20),
           CustomerPaymentFields(
+            customerName: 'Naledi Mokoena',
             amountController: _amount,
             remarksController: _notes,
             selectedDate: _date,
@@ -203,6 +228,51 @@ class _PaymentPreviewState extends State<_PaymentPreview> {
           ),
         ]),
       ));
+}
+
+class _CreditPreview extends StatefulWidget {
+  const _CreditPreview();
+
+  @override
+  State<_CreditPreview> createState() => _CreditPreviewState();
+}
+
+class _CreditPreviewState extends State<_CreditPreview> {
+  final _amount = TextEditingController(text: '420');
+  final _notes = TextEditingController();
+  final _form = GlobalKey<FormState>();
+  DateTime _date = DateTime.now();
+  DateTime _dueDate = DateTime.now().add(const Duration(days: 30));
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TransactionFormScaffold(
+        title: 'Add to account',
+        formKey: _form,
+        primaryActionLabel: 'Add to account',
+        primaryActionIcon: Icons.arrow_downward_rounded,
+        onPrimaryAction: () => _notice(context),
+        body: CreditTransactionFields(
+          customerName: 'Naledi Mokoena',
+          amountController: _amount,
+          selectedDate: _date,
+          repaymentDate: _dueDate,
+          onDateChanged: (value) => setState(() => _date = value),
+          onRepaymentDateChanged: (value) => setState(() => _dueDate = value),
+          productField: OutlinedButton.icon(
+            onPressed: () => _notice(context),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Choose products'),
+          ),
+          notesController: _notes,
+        ),
+      );
 }
 
 class _PlanPreview extends StatelessWidget {

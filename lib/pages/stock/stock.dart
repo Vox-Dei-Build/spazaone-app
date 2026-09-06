@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/design/spaza_tokens.dart';
-import 'package:pasella/shared/widgets/responsive_app_layout.dart';
 import 'package:pasella/pages/stock/product_group_page/widgets/product_list.dart';
 import 'package:pasella/pages/stock/product_report/product_report.dart';
 import 'package:pasella/shared/widgets/primary_workspace_header.dart';
-import 'package:pasella/shared/widgets/workspace_context_header.dart';
 import 'package:pasella/shared/widgets/workspace_section_tabs.dart';
 import 'package:pasella/shared/widgets/workspace_search_field.dart';
 import 'package:pasella/pages/stock/search/global_search.dart';
@@ -162,10 +160,6 @@ class _StockPageContentState extends State<StockPageContent>
                               ),
                           Column(
                             children: [
-                              const WorkspaceContextHeader(
-                                title: 'Stock report',
-                                subtitle: 'What your current stock is worth',
-                              ),
                               Expanded(
                                 child: ProductReportsTab(viewModel: viewModel),
                               ),
@@ -202,9 +196,7 @@ class _StockPageContentState extends State<StockPageContent>
 
 /// Content-first controls for the merchant's own catalogue.
 ///
-/// A calm page title introduces the catalogue. Search and the primary Add
-/// action share one toolbar; short landscape and large text omit the repeated
-/// title because the active Products destination already supplies context.
+/// The active Products tab supplies the title; search and Add share one row.
 class ProductWorkspaceToolbar extends StatelessWidget {
   const ProductWorkspaceToolbar({
     super.key,
@@ -217,51 +209,36 @@ class ProductWorkspaceToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showTitle = !usesCompactLandscapeLayout(context) &&
-        MediaQuery.textScalerOf(context).scale(14) < 20;
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Row(
         children: [
-          if (showTitle) ...[
-            Text('Products',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: SpazaColors.heading,
-                    )),
-            const SizedBox(height: 16),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: WorkspaceSearchField(
-                  key: const ValueKey('search-products-launcher'),
-                  hintText: 'Search products',
-                  semanticLabel: 'Open product search',
-                  readOnly: true,
-                  onTap: onTap,
+          Expanded(
+            child: WorkspaceSearchField(
+              key: const ValueKey('search-products-launcher'),
+              hintText: 'Search products',
+              semanticLabel: 'Open product search',
+              readOnly: true,
+              onTap: onTap,
+            ),
+          ),
+          const SizedBox(width: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 52),
+            child: FilledButton.icon(
+              key: const ValueKey('add-product-action'),
+              onPressed: onAddProduct,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 52),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SpazaRadius.control),
                 ),
               ),
-              const SizedBox(width: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 52),
-                child: FilledButton.icon(
-                  key: const ValueKey('add-product-action'),
-                  onPressed: onAddProduct,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 52),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(SpazaRadius.control),
-                    ),
-                  ),
-                  icon: const Icon(SpazaIcons.add, size: 20),
-                  label: const Text('Add'),
-                ),
-              ),
-            ],
+              icon: const Icon(SpazaIcons.add, size: 20),
+              label: const Text('Add'),
+            ),
           ),
         ],
       ),

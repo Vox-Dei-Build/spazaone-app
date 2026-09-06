@@ -52,16 +52,20 @@ class CustomersWithBadLoansTile extends StatelessWidget {
               final profileImageUrl = customer['profileImageUrl']?.toString();
               const avatarSize = 40.0;
               final wasReminded = reminderSentRecently(customer);
+              final stack = MediaQuery.sizeOf(context).width < 360 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 20;
+              final amount = Text(CurrencyUtil.format(balance),
+                  style: TextStyle(
+                      color: balance >= 0 ? kPrimaryColor : Colors.red,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5));
 
               return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: EdgeInsets.zero,
                 child: PrivateRegion(
                   child: Material(
                     key: ValueKey('customer-follow-up-$id'),
-                    color: Theme.of(context)
-                        .colorScheme
-                        .surfaceContainerHighest
-                        .withValues(alpha: .42),
+                    color: Colors.transparent,
                     borderRadius: BorderRadius.circular(SpazaRadius.control),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(SpazaRadius.control),
@@ -76,10 +80,10 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                         ),
                       ),
                       child: Ink(
-                        padding: const EdgeInsets.fromLTRB(13, 12, 10, 12),
-                        decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(SpazaRadius.control),
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(color: SpazaColors.border)),
                         ),
                         child: Row(
                           children: [
@@ -104,10 +108,13 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                                 children: [
                                   Text(
                                     name,
+                                    maxLines: stack ? null : 1,
+                                    overflow:
+                                        stack ? null : TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       color: SpazaColors.heading,
                                       fontWeight: FontWeight.w500,
-                                      fontSize: 16,
+                                      fontSize: 14.5,
                                     ),
                                   ),
                                   SizedBox(
@@ -116,28 +123,23 @@ class CustomersWithBadLoansTile extends StatelessWidget {
                                   _buildContactLine(
                                     number,
                                     wasReminded: wasReminded,
+                                    allowWrap: stack,
                                   ),
-                                  const SizedBox(height: 8),
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      CurrencyUtil.format(balance),
-                                      style: TextStyle(
-                                        color: balance >= 0
-                                            ? kPrimaryColor
-                                            : Colors.red,
-                                        fontWeight: FontWeight.w500,
-                                        fontSize: 16,
-                                      ),
-                                      maxLines: 1,
-                                    ),
-                                  ),
+                                  if (stack) ...[
+                                    const SizedBox(height: 4),
+                                    amount,
+                                  ],
                                 ],
                               ),
                             ),
+                            if (!stack) ...[
+                              const SizedBox(width: 8),
+                              ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 118),
+                                  child: amount),
+                            ],
                             const SizedBox(width: 8),
-                            const SizedBox(width: 3),
                             const Icon(
                               Icons.chevron_right_rounded,
                               color: SpazaColors.muted,
@@ -161,22 +163,25 @@ class CustomersWithBadLoansTile extends StatelessWidget {
   Widget _buildContactLine(
     String? number, {
     required bool wasReminded,
+    required bool allowWrap,
   }) {
     final raw = (number ?? '').trim();
     if (raw.isEmpty) {
-      return const Row(
+      return Row(
         children: [
-          Icon(
+          const Icon(
             Icons.phone_disabled_outlined,
             color: SpazaColors.muted,
             size: 14,
             applyTextScaling: false,
           ),
-          SizedBox(width: 5),
+          const SizedBox(width: 5),
           Expanded(
               child: Text(
             'No phone number',
-            style: TextStyle(color: SpazaColors.muted, fontSize: 13),
+            maxLines: allowWrap ? null : 1,
+            overflow: allowWrap ? null : TextOverflow.ellipsis,
+            style: const TextStyle(color: SpazaColors.muted, fontSize: 13),
           )),
         ],
       );
@@ -201,6 +206,8 @@ class CustomersWithBadLoansTile extends StatelessWidget {
         Flexible(
           child: Text(
             phoneLabel,
+            maxLines: allowWrap ? null : 1,
+            overflow: allowWrap ? null : TextOverflow.ellipsis,
             style: TextStyle(
               color: isValid ? SpazaColors.muted : Colors.orange.shade800,
               fontSize: 13,

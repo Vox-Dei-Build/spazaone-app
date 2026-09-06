@@ -46,7 +46,7 @@ class StockAmountField extends StatelessWidget {
             LayoutConstants.spaceSm,
           ),
           child: Text(
-            'Money spent buying stock today — not units on hand.',
+            'Money spent, not units on hand',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: kSecondaryAccent,
                 ),

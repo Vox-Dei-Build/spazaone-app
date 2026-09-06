@@ -3,13 +3,34 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pasella/models/common/balance_summary_model.dart';
 import 'package:pasella/services/store_session.dart';
 
+typedef BalanceSummaryLoader = Future<Map<String, dynamic>> Function(
+  Map<String, dynamic> parameters,
+);
+
 class BalanceSummaryProvider with ChangeNotifier {
-  BalanceSummaryProvider() {
-    _activeStoreId = StoreSession.instance.storeId;
-    StoreSession.instance.addListener(_onStoreChanged);
+  BalanceSummaryProvider({
+    @visibleForTesting BalanceSummaryLoader? loader,
+    @visibleForTesting ValueGetter<String>? storeIdProvider,
+    @visibleForTesting Listenable? storeSession,
+  })  : _loader = loader ?? _loadBalanceSummary,
+        _storeIdProvider =
+            storeIdProvider ?? (() => StoreSession.instance.storeId),
+        _storeSession = storeSession ?? StoreSession.instance {
+    _activeStoreId = _storeIdProvider();
+    _storeSession.addListener(_onStoreChanged);
   }
 
-  String _activeStoreId = '';
+  final BalanceSummaryLoader _loader;
+  final ValueGetter<String> _storeIdProvider;
+  final Listenable _storeSession;
+
+  late String _activeStoreId;
+  int _requestEpoch = 0;
+  int _loadingNotificationEpoch = 0;
+  bool _disposed = false;
+  String? _requestedStoreId;
+  DateTime? _requestedStartDate;
+  DateTime? _requestedEndDate;
   BalanceSummary _balanceSummary = BalanceSummary(
     netBalance: 0.0,
     paymentCount: 0,
@@ -22,9 +43,25 @@ class BalanceSummaryProvider with ChangeNotifier {
 
   BalanceSummary get balanceSummary => _balanceSummary;
 
+  static Future<Map<String, dynamic>> _loadBalanceSummary(
+    Map<String, dynamic> parameters,
+  ) async {
+    final callable =
+        FirebaseFunctions.instance.httpsCallable('calculateUserBalance');
+    final result = await callable.call(parameters);
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
   void _onStoreChanged() {
-    final storeId = StoreSession.instance.storeId;
+    final storeId = _storeIdProvider();
     if (storeId == _activeStoreId) return;
+
+    // Any response issued for the previous store is now stale, even if no
+    // newer request has started yet.
+    _requestEpoch++;
+    _requestedStoreId = null;
+    _requestedStartDate = null;
+    _requestedEndDate = null;
     _activeStoreId = storeId;
     _balanceSummary = BalanceSummary(
       netBalance: 0.0,
@@ -36,6 +73,7 @@ class BalanceSummaryProvider with ChangeNotifier {
       owingNumberOfCustomers: 0,
     );
     _isLedgerLoading = false;
+    _loadingNotificationEpoch++;
     notifyListeners();
   }
 
@@ -48,40 +86,74 @@ class BalanceSummaryProvider with ChangeNotifier {
 
   Future<void> fetchBalanceSummary(
       {DateTime? startDate, DateTime? endDate}) async {
-    if (!_isLedgerLoading) {
-      isLedgerLoading = true;
-    }
+    final requestEpoch = ++_requestEpoch;
+    final requestStoreId = _storeIdProvider();
+    final requestStartDate = startDate;
+    final requestEndDate = endDate;
+
+    _requestedStoreId = requestStoreId;
+    _requestedStartDate = requestStartDate;
+    _requestedEndDate = requestEndDate;
+    _setLedgerLoading(true);
 
     final parameters = {
-      'storeId': StoreSession.instance.storeId,
-      if (startDate != null) 'startDate': startDate.toIso8601String(),
-      if (endDate != null) 'endDate': endDate.toIso8601String(),
+      'storeId': requestStoreId,
+      if (requestStartDate != null)
+        'startDate': requestStartDate.toIso8601String(),
+      if (requestEndDate != null) 'endDate': requestEndDate.toIso8601String(),
     };
 
-    final HttpsCallable callable =
-        FirebaseFunctions.instance.httpsCallable('calculateUserBalance');
-
     try {
-      final HttpsCallableResult result = await callable.call(parameters);
+      final data = await _loader(parameters);
+
+      if (!_isLatestRequest(
+        epoch: requestEpoch,
+        storeId: requestStoreId,
+        startDate: requestStartDate,
+        endDate: requestEndDate,
+      )) {
+        return;
+      }
 
       BalanceSummary newBalanceSummary = BalanceSummary(
-        netBalance: (result.data['totalBalance'] as num).toDouble(),
-        paymentCount: result.data['payment']['count'],
-        paymentAmount: result.data['payment']['totalAmount'].toDouble(),
-        creditCount: result.data['credit']['count'],
-        creditAmount: result.data['credit']['totalAmount'].toDouble(),
-        totalCustomers: result.data['totalCustomers'],
-        owingNumberOfCustomers: result.data['outstandingCustomers'],
+        netBalance: (data['totalBalance'] as num).toDouble(),
+        paymentCount: data['payment']['count'],
+        paymentAmount: data['payment']['totalAmount'].toDouble(),
+        creditCount: data['credit']['count'],
+        creditAmount: data['credit']['totalAmount'].toDouble(),
+        totalCustomers: data['totalCustomers'],
+        owingNumberOfCustomers: data['outstandingCustomers'],
       );
 
       if (!_balanceSummary.equals(newBalanceSummary)) {
         _balanceSummary = newBalanceSummary;
       }
     } catch (e) {
-      print('Error fetching balance summary: $e');
+      debugPrint('Error fetching balance summary: $e');
     } finally {
-      isLedgerLoading = false;
+      if (_isLatestRequest(
+        epoch: requestEpoch,
+        storeId: requestStoreId,
+        startDate: requestStartDate,
+        endDate: requestEndDate,
+      )) {
+        _setLedgerLoading(false);
+      }
     }
+  }
+
+  bool _isLatestRequest({
+    required int epoch,
+    required String storeId,
+    required DateTime? startDate,
+    required DateTime? endDate,
+  }) {
+    return epoch == _requestEpoch &&
+        storeId == _requestedStoreId &&
+        startDate == _requestedStartDate &&
+        endDate == _requestedEndDate &&
+        storeId == _activeStoreId &&
+        storeId == _storeIdProvider();
   }
 
   void updateBalanceSummaryFromMap(Map<String, dynamic> data) {
@@ -104,17 +176,31 @@ class BalanceSummaryProvider with ChangeNotifier {
   bool _isLedgerLoading = false;
   bool get isLedgerLoading => _isLedgerLoading;
   set isLedgerLoading(bool value) {
-    if (_isLedgerLoading != value) {
-      Future.delayed(Duration.zero, () {
-        _isLedgerLoading = value;
-        notifyListeners();
-      });
-    }
+    _setLedgerLoading(value);
+  }
+
+  void _setLedgerLoading(bool value) {
+    if (_isLedgerLoading == value) return;
+    _isLedgerLoading = value;
+    final notificationEpoch = ++_loadingNotificationEpoch;
+    // A fetch can start from a descendant's initState. Defer the notification
+    // until the current build has finished, while updating the value now so a
+    // Consumer built later in this frame still sees the correct state.
+    Future<void>.delayed(Duration.zero, () {
+      if (_disposed || notificationEpoch != _loadingNotificationEpoch) return;
+      notifyListeners();
+    });
   }
 
   @override
   void dispose() {
-    StoreSession.instance.removeListener(_onStoreChanged);
+    _disposed = true;
+    _requestEpoch++;
+    _loadingNotificationEpoch++;
+    _requestedStoreId = null;
+    _requestedStartDate = null;
+    _requestedEndDate = null;
+    _storeSession.removeListener(_onStoreChanged);
     super.dispose();
   }
 }

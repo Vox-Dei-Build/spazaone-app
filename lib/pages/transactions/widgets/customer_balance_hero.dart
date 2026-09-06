@@ -42,66 +42,143 @@ class CustomerBalanceCard extends StatelessWidget {
     return PrivateRegion(
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           border: Border.all(color: SpazaColors.border),
           borderRadius: BorderRadius.circular(SpazaRadius.surface),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final scaled = MediaQuery.textScalerOf(context).scale(14) > 19;
+            final primary = Row(
               children: [
-                Icon(state.icon, color: state.accent, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: state.accent.withValues(alpha: .08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(state.icon, color: state.accent, size: 20),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    state.eyebrow,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: state.accent,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        state.eyebrow,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: state.accent,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: .6,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Semantics(
+                        label:
+                            '${state.eyebrow} ${CurrencyUtil.format(balance.abs())}',
+                        excludeSemantics: true,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            CurrencyUtil.format(balance.abs()),
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              color: state.accent,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 10),
-            Semantics(
-              label: '${state.eyebrow} ${CurrencyUtil.format(balance.abs())}',
-              excludeSemantics: true,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  CurrencyUtil.format(balance.abs()),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    color: state.accent,
-                    fontSize: 30,
-                    fontWeight: FontWeight.w500,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 20,
-              runSpacing: 8,
+            );
+            final counts = _BalanceCounts(
+              creditCount: creditCount,
+              paymentCount: paymentCount,
+            );
+            if (constraints.maxWidth < 330 || scaled) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  primary,
+                  const SizedBox(height: 10),
+                  counts,
+                ],
+              );
+            }
+            return Row(
               children: [
-                Text(
-                    '$creditCount ${creditCount == 1 ? 'transaction' : 'transactions'}',
-                    style: theme.textTheme.bodySmall),
-                Text(
-                    '$paymentCount ${paymentCount == 1 ? 'payment' : 'payments'}',
-                    style: theme.textTheme.bodySmall),
+                Expanded(child: primary),
+                const SizedBox(width: 12),
+                counts,
               ],
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
+}
+
+class _BalanceCounts extends StatelessWidget {
+  const _BalanceCounts({
+    required this.creditCount,
+    required this.paymentCount,
+  });
+
+  final int creditCount;
+  final int paymentCount;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+        spacing: 12,
+        runSpacing: 4,
+        alignment: WrapAlignment.end,
+        children: [
+          _Count(
+            icon: Icons.arrow_downward_rounded,
+            label: '$creditCount added',
+            color: SpazaColors.error,
+          ),
+          _Count(
+            icon: Icons.arrow_upward_rounded,
+            label: '$paymentCount paid',
+            color: SpazaColors.action,
+          ),
+        ],
+      );
+}
+
+class _Count extends StatelessWidget {
+  const _Count({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 3),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      );
 }
 
 class _BalanceState {
@@ -119,20 +196,20 @@ class _BalanceState {
     if (balance < 0) {
       return const _BalanceState._(
         eyebrow: 'OWING',
-        accent: Color(0xFFC62828), // red 800
+        accent: SpazaColors.error,
         icon: Icons.arrow_downward_rounded,
       );
     }
     if (balance > 0) {
       return const _BalanceState._(
         eyebrow: 'AHEAD',
-        accent: Color(0xFF1B5E20), // green 900
+        accent: SpazaColors.action,
         icon: Icons.arrow_upward_rounded,
       );
     }
     return const _BalanceState._(
       eyebrow: 'SETTLED',
-      accent: Color(0xFF455A64), // blue-grey 700
+      accent: SpazaColors.muted,
       icon: Icons.check_rounded,
     );
   }

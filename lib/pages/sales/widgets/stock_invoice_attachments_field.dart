@@ -42,7 +42,7 @@ class StockInvoiceAttachmentsField extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Optional · Up to 3 images or PDFs · 5 MB each · No invoice text is read automatically.',
+            '3 files max · 5 MB each · Not read automatically',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           if (attachments.isNotEmpty) ...[

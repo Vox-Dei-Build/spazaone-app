@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pasella/pages/stock/stock.dart';
 
 void main() {
-  testWidgets('product title leads a clear search and add toolbar', (
+  testWidgets('product toolbar uses one compact row beneath the Products tab', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
@@ -22,12 +22,12 @@ void main() {
       ),
     );
 
-    expect(find.text('Products'), findsOneWidget);
+    expect(find.text('Products'), findsNothing);
     expect(find.text('Search products'), findsOneWidget);
     expect(find.text('Add'), findsOneWidget);
     expect(
       tester.getSize(find.byType(ProductWorkspaceToolbar)).height,
-      lessThan(128),
+      lessThan(80),
     );
 
     await tester.tap(find.byKey(const ValueKey('search-products-launcher')));

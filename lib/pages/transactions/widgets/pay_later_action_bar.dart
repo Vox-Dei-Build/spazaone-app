@@ -11,6 +11,7 @@
 // "send / attach" anchored bar pattern that merchants are already used to.
 
 import 'package:flutter/material.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/transactions/add_credit/add_credit.dart';
 import 'package:pasella/pages/transactions/add_payment/add_payment.dart';
 import 'package:pasella/utils/auth_util.dart';
@@ -68,34 +69,68 @@ class CustomerAccountActions extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         child: SafeArea(
             top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: LayoutBuilder(builder: (context, constraints) {
-                final add = OutlinedButton.icon(
-                  onPressed: onAddCredit,
-                  icon: const Icon(Icons.arrow_downward_rounded, size: 20),
-                  label:
-                      const Text('Add to account', textAlign: TextAlign.center),
-                );
-                final pay = FilledButton.icon(
-                  onPressed: onRecordPayment,
-                  icon: const Icon(Icons.arrow_upward_rounded, size: 20),
-                  label:
-                      const Text('Record payment', textAlign: TextAlign.center),
-                );
-                if (constraints.maxWidth < 340 ||
-                    MediaQuery.textScalerOf(context).scale(14) > 19) {
-                  return Column(
+            child: Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: SpazaColors.border)),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final add = _AccountAction(
+                    label: 'Add to account',
+                    icon: Icons.arrow_downward_rounded,
+                    onPressed: onAddCredit,
+                  );
+                  final pay = _AccountAction(
+                    label: 'Record payment',
+                    icon: Icons.arrow_upward_rounded,
+                    onPressed: onRecordPayment,
+                  );
+                  if (constraints.maxWidth < 340 ||
+                      MediaQuery.textScalerOf(context).scale(14) > 19) {
+                    return Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [add, const SizedBox(height: 8), pay]);
-                }
-                return Row(children: [
-                  Expanded(child: add),
-                  const SizedBox(width: 12),
-                  Expanded(child: pay)
-                ]);
-              }),
+                      children: [add, const SizedBox(height: 8), pay],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: add),
+                      const SizedBox(width: 12),
+                      Expanded(child: pay),
+                    ],
+                  );
+                },
+              ),
             )),
+      );
+}
+
+class _AccountAction extends StatelessWidget {
+  const _AccountAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 19),
+        label: Text(label, textAlign: TextAlign.center),
+        style: FilledButton.styleFrom(
+          backgroundColor: SpazaColors.subtle,
+          foregroundColor: SpazaColors.heading,
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
       );
 }

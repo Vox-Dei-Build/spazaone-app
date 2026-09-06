@@ -187,8 +187,7 @@ void main() {
     );
   });
 
-  testWidgets('attachment field documents its limit and no-OCR behavior',
-      (tester) async {
+  testWidgets('attachment field keeps file limits concise', (tester) async {
     final drafts = [
       StockInvoiceDraft.existing(attachment('page-1')),
       StockInvoiceDraft.existing(attachment('page-2')),
@@ -212,8 +211,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Attach stock invoice'), findsOneWidget);
-    expect(find.textContaining('Up to 3 images or PDFs'), findsOneWidget);
-    expect(find.textContaining('No invoice text is read'), findsOneWidget);
+    expect(find.textContaining('3 files max'), findsOneWidget);
+    expect(find.textContaining('Not read automatically'), findsOneWidget);
     final addButton = tester.widget<OutlinedButton>(
       find.byKey(const ValueKey('attach-stock-invoice')),
     );

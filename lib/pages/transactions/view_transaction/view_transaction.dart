@@ -1,12 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:pasella/design/spaza_tokens.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pasella/services/store_session.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:pasella/design/spaza_tokens.dart';
 import 'package:pasella/pages/transactions/edit_transaction/edit_transaction.dart';
+import 'package:pasella/services/store_session.dart';
 import 'package:pasella/shared/widgets/custom_app_bar.dart';
+import 'package:pasella/shared/widgets/transaction_detail_widgets.dart';
+import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/utils/string_utils.dart';
-import 'package:pasella/config/size_config.dart';
 import 'package:pasella/utils/transaction_util.dart';
+import 'package:pasella/widgets/private_region.dart';
 
 class TransactionDetailScreen extends StatefulWidget {
   final String customerName;
@@ -14,6 +17,9 @@ class TransactionDetailScreen extends StatefulWidget {
   final String transactionId;
   final Map<String, dynamic> transaction;
   final String? mobileNumber;
+  final Future<Map<String, dynamic>?> Function()? loadTransaction;
+  final Widget Function(Map<String, dynamic> transaction)?
+      editTransactionBuilder;
 
   const TransactionDetailScreen({
     super.key,
@@ -22,6 +28,8 @@ class TransactionDetailScreen extends StatefulWidget {
     required this.transactionId,
     required this.transaction,
     this.mobileNumber,
+    this.loadTransaction,
+    this.editTransactionBuilder,
   });
 
   @override
@@ -30,18 +38,21 @@ class TransactionDetailScreen extends StatefulWidget {
 }
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
-  late Future<DocumentSnapshot> _transactionFuture;
+  late Future<Map<String, dynamic>?> _transactionFuture;
+  late Map<String, dynamic> _latestTransaction;
 
   @override
   void initState() {
     super.initState();
+    _latestTransaction = Map<String, dynamic>.from(widget.transaction);
     _transactionFuture = loadTransactionDetails();
   }
 
-  Future<DocumentSnapshot> loadTransactionDetails() {
+  Future<Map<String, dynamic>?> loadTransactionDetails() async {
+    final injectedLoader = widget.loadTransaction;
+    if (injectedLoader != null) return injectedLoader();
     final uid = StoreSession.instance.storeId;
-    // If uid is null, this will still return a future and be handled in builder
-    return FirebaseFirestore.instance
+    final snapshot = await FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .collection('customers')
@@ -49,37 +60,44 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         .collection('transactions')
         .doc(widget.transactionId)
         .get();
+    if (!snapshot.exists) return null;
+    final raw = snapshot.data();
+    return raw is Map<String, dynamic> ? raw : null;
   }
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-
-    final hm = sizeConfigUtil(SizeConfig.heightMultiplier);
-    final im = sizeConfigUtil(SizeConfig.imageSizeMultiplier);
-    final tm = sizeConfigUtil(SizeConfig.textMultiplier);
+    final initialType = widget.transaction['type']?.toString();
+    final title = switch (initialType) {
+      'Payment' => 'Payment details',
+      'Credit' => 'Pay later details',
+      _ => 'Transaction details',
+    };
 
     return Scaffold(
       appBar: CustomAppBar(
-        title: 'Transaction Details for ${widget.customerName}',
+        title: title,
         trailing: IconButton(
           tooltip: 'Edit transaction',
-          icon: const Icon(Icons.edit),
+          icon: const Icon(Icons.edit_outlined),
           onPressed: () async {
             final result = await Navigator.of(context).push<bool>(
               MaterialPageRoute(
-                builder: (context) => EditTransactionScreen(
-                  customerName: widget.customerName,
-                  customerId: widget.customerId,
-                  transactionId: widget.transactionId,
-                  transaction: widget.transaction,
-                  mobileNumber: widget.mobileNumber,
-                ),
+                builder: (context) =>
+                    widget.editTransactionBuilder
+                        ?.call(Map<String, dynamic>.from(_latestTransaction)) ??
+                    EditTransactionScreen(
+                      customerName: widget.customerName,
+                      customerId: widget.customerId,
+                      transactionId: widget.transactionId,
+                      transaction: Map<String, dynamic>.from(
+                        _latestTransaction,
+                      ),
+                      mobileNumber: widget.mobileNumber,
+                    ),
               ),
             );
-            // EditTransactionScreen returns `true` when the user
-            // deleted the transaction — there's nothing left to view,
-            // so close this details screen too.
+            // Deleting leaves no record to refresh, so close this page too.
             if (result == true && context.mounted) {
               Navigator.of(context).pop(true);
               return;
@@ -91,255 +109,221 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           },
         ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          child: FutureBuilder<DocumentSnapshot>(
-            future: _transactionFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+      body: FutureBuilder<Map<String, dynamic>?>(
+        future: _transactionFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.hasError) {
+            return const Center(
+                child: Text('Could not load this transaction.'));
+          }
 
-              if (!snapshot.hasData ||
-                  snapshot.hasError ||
-                  !snapshot.data!.exists) {
-                return const Center(
-                  child: Text(
-                    'Error loading transaction data.',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                );
-              }
-
-              final raw = snapshot.data!.data();
-              final Map<String, dynamic> transaction =
-                  (raw is Map<String, dynamic>) ? raw : <String, dynamic>{};
-
-              final hasProducts =
-                  transaction['products'] is Map<String, dynamic>;
-              final Map<String, dynamic> products = hasProducts
-                  ? (transaction['products'] as Map<String, dynamic>)
-                  : <String, dynamic>{};
-
-              final hasRemarks = transaction['remarks'] is String &&
-                  (transaction['remarks'] as String).isNotEmpty;
-              final String remarks =
-                  hasRemarks ? transaction['remarks'] as String : 'No remarks';
-              final paymentMethod = _paymentMethodLabel(
-                transaction['paymentMethod']?.toString(),
-              );
-              final rawType = (transaction['type'] ?? '—').toString();
-              final displayType = rawType == 'Credit' ? 'Transaction' : rawType;
-
-              return ListView(
-                children: [
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(SpazaRadius.control),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          buildListTile(
-                              'Amount', formatMoney(transaction['amount']), tm),
-                          buildListTile(
-                              'Date', formatDateish(transaction['date']), tm),
-                          if (transaction['type'] == 'Credit')
-                            buildListTile(
-                                'Repayment Date',
-                                formatDateish(transaction['repaymentDate']),
-                                tm),
-                          buildListTile('Status',
-                              (transaction['status'] ?? '—').toString(), tm),
-                          buildListTile('Type', displayType, tm),
-                          buildListTile('Remarks', remarks, tm),
-                          if (transaction['type'] == 'Payment')
-                            buildListTile('Payment method', paymentMethod, tm),
-                          buildProductListTile(context, products, tm, hm, im),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
+          final transaction = Map<String, dynamic>.from(snapshot.data!);
+          _latestTransaction = transaction;
+          return TransactionDetailsContent(
+            customerName: widget.customerName,
+            transaction: transaction,
+          );
+        },
       ),
     );
   }
+}
 
-  String _paymentMethodLabel(String? value) {
-    switch (value) {
-      case 'cash':
-        return 'Cash';
-      case 'bank_transfer':
-        return 'Bank transfer';
-      case 'other':
-        return 'Other';
-      default:
-        return 'Not recorded';
-    }
-  }
+/// Compact transaction receipt shared by live data and synthetic previews.
+class TransactionDetailsContent extends StatelessWidget {
+  const TransactionDetailsContent({
+    super.key,
+    required this.customerName,
+    required this.transaction,
+  });
 
-  ListTile buildListTile(String title, String subtitle, double tm) {
-    return ListTile(
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w500,
-          fontSize: 16,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(
-          fontSize: 16,
-        ),
-      ),
+  final String customerName;
+  final Map<String, dynamic> transaction;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPayment = transaction['type'] == 'Payment';
+    final rawStatus = transaction['status']?.toString().trim();
+    final status = _titleCaseStatus(
+      rawStatus == null || rawStatus.isEmpty
+          ? (isPayment ? 'PAID' : 'DUE')
+          : rawStatus,
     );
-  }
+    final normalizedStatus = status.toLowerCase();
+    final statusTone = normalizedStatus == 'paid'
+        ? TransactionDetailStatusTone.positive
+        : normalizedStatus.contains('due') ||
+                normalizedStatus.contains('pending')
+            ? TransactionDetailStatusTone.attention
+            : TransactionDetailStatusTone.neutral;
+    final remarks = transaction['remarks']?.toString().trim() ?? '';
+    final rawProducts = transaction['products'];
+    final products = rawProducts is Map
+        ? rawProducts.map<String, dynamic>(
+            (key, value) => MapEntry(key.toString(), value),
+          )
+        : const <String, dynamic>{};
+    final date = _formatDetailDate(transaction['date']);
+    final dueDate = _formatDetailDate(transaction['repaymentDate']);
 
-  Widget buildProductListTile(
-    BuildContext context,
-    Map<String, dynamic> products,
-    double tm,
-    double hm,
-    double im,
-  ) {
-    final uid = StoreSession.instance.storeId;
-    return ListTile(
-      title: const Text(
-        'Products',
-        style: TextStyle(
-          fontWeight: FontWeight.w500,
-          fontSize: 16,
-        ),
-      ),
-      subtitle: products.isNotEmpty
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: products.entries.map((entry) {
-                final productId = entry.key;
-                final quantity = toInt(entry.value, fallback: 0);
-
-                return FutureBuilder<DocumentSnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(uid)
-                      .collection('products')
-                      .doc(productId)
-                      .get(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8.0),
-                        child: LinearProgressIndicator(),
-                      );
-                    }
-                    if (snapshot.hasError) {
-                      return Text(
-                        'Error fetching product with ID: $productId',
-                        style: const TextStyle(fontSize: 16),
-                      );
-                    }
-                    if (!snapshot.hasData || !snapshot.data!.exists) {
-                      return Text(
-                        'Unknown product with ID: $productId',
-                        style: const TextStyle(fontSize: 16),
-                      );
-                    }
-                    final data =
-                        snapshot.data!.data() as Map<String, dynamic>? ?? {};
-                    final productName =
-                        (data['name'] ?? 'Unnamed product').toString();
-                    final sellingPrice =
-                        data['sellingPrice']; // num | String | null
-
-                    return buildProductCard(
-                      productName: productName,
-                      quantity: quantity,
-                      sellingPrice: sellingPrice,
-                      tm: tm,
-                      hm: hm,
-                      im: im,
-                    );
-                  },
-                );
-              }).toList(),
-            )
-          : const Text(
-              'No products associated with this transaction.',
-              style: TextStyle(fontSize: 16),
-            ),
-    );
-  }
-
-  Widget buildProductCard({
-    required String productName,
-    required int quantity,
-    required dynamic sellingPrice,
-    required double tm,
-    required double hm,
-    required double im,
-  }) {
-    return Card(
-      elevation: 2.0,
-      margin: EdgeInsets.symmetric(
-        vertical: hm * 1.0,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(SpazaRadius.control),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(im * 2.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return SafeArea(
+      child: PrivateRegion(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.inventory,
-                  size: im * 4.0,
-                ),
-                SizedBox(width: im * 2.0),
-                Expanded(
-                  child: Text(
-                    formatStringToCamelCase(productName),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w500,
-                      fontSize: 16,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+            TransactionDetailHero(
+              eyebrow: isPayment ? 'Payment' : 'Pay later',
+              amount: CurrencyUtil.format(toDouble(transaction['amount'])),
+              status: status,
+              statusTone: statusTone,
+              meta: '$customerName · $date',
             ),
-            SizedBox(height: hm * 1.0),
-            Text(
-              'Quantity: $quantity',
-              style: const TextStyle(
-                fontSize: 16,
+            const SizedBox(height: SpazaSpace.md),
+            TransactionDetailCard(
+              child: Column(
+                children: [
+                  if (isPayment)
+                    TransactionDetailRow(
+                      'Payment method',
+                      _paymentMethodLabel(
+                        transaction['paymentMethod']?.toString(),
+                      ),
+                    )
+                  else
+                    TransactionDetailRow('Due date', dueDate),
+                ],
               ),
             ),
-            SizedBox(height: hm * 0.5),
-            Text(
-              'Selling Price: ${formatMoney(sellingPrice)}',
-              style: const TextStyle(
-                fontStyle: FontStyle.italic,
-                fontSize: 16,
+            if (remarks.isNotEmpty) ...[
+              const SizedBox(height: SpazaSpace.md),
+              TransactionDetailCard(
+                title: 'Note',
+                child: Text(remarks),
               ),
-            ),
+            ],
+            if (products.isNotEmpty) ...[
+              const SizedBox(height: SpazaSpace.md),
+              TransactionDetailCard(
+                title: 'Products',
+                child: _TransactionProductList(products: products),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+}
+
+class _TransactionProductList extends StatelessWidget {
+  const _TransactionProductList({required this.products});
+
+  final Map<String, dynamic> products;
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = StoreSession.instance.storeId;
+    final entries = products.entries.toList();
+    return Column(
+      children: [
+        for (var index = 0; index < entries.length; index++) ...[
+          if (index > 0) const Divider(),
+          _TransactionProductRow(
+            productId: entries[index].key,
+            quantity: toInt(entries[index].value),
+            userId: uid,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _TransactionProductRow extends StatelessWidget {
+  const _TransactionProductRow({
+    required this.productId,
+    required this.quantity,
+    required this.userId,
+  });
+
+  final String productId;
+  final int quantity;
+  final String userId;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<DocumentSnapshot>(
+        future: FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .collection('products')
+            .doc(productId)
+            .get(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: LinearProgressIndicator(),
+            );
+          }
+          if (snapshot.hasError ||
+              !snapshot.hasData ||
+              !snapshot.data!.exists) {
+            return const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(SpazaIcons.products),
+              title: Text('Product unavailable'),
+            );
+          }
+          final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+          final productName = formatStringToCamelCase(
+            (data['name'] ?? 'Unnamed product').toString(),
+          );
+          final sellingPrice = data['sellingPrice'];
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            minVerticalPadding: 6,
+            leading: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: SpazaColors.subtle,
+                borderRadius: BorderRadius.circular(SpazaRadius.small),
+              ),
+              child: const Icon(SpazaIcons.products, size: 19),
+            ),
+            title: Text(productName),
+            subtitle: Text(
+              sellingPrice == null
+                  ? '$quantity sold'
+                  : '$quantity × ${formatMoney(sellingPrice)}',
+            ),
+          );
+        },
+      );
+}
+
+String _paymentMethodLabel(String? value) => switch (value) {
+      'cash' => 'Cash',
+      'bank_transfer' => 'Bank transfer',
+      'other' => 'Other',
+      _ => 'Not recorded',
+    };
+
+String _titleCaseStatus(String value) => value
+    .replaceAll('_', ' ')
+    .split(RegExp(r'\s+'))
+    .where((word) => word.isNotEmpty)
+    .map((word) => '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}')
+    .join(' ');
+
+String _formatDetailDate(dynamic value) {
+  DateTime? date;
+  if (value is Timestamp) date = value.toDate();
+  if (value is DateTime) date = value;
+  if (value is String) date = DateTime.tryParse(value);
+  if (date == null) return 'Not recorded';
+  return DateFormat('d MMM yyyy · HH:mm').format(date.toLocal());
 }

@@ -3,6 +3,7 @@ import 'package:pasella/design/spaza_tokens.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/layout_constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
+import 'package:pasella/pages/sales/models/sale_edit_result.dart';
 import 'package:pasella/pages/sales/view_model/sale_view_model.dart';
 import 'package:pasella/pages/sales/widgets/stock_amount_field.dart';
 import 'package:pasella/pages/sales/widgets/stock_invoice_attachments_field.dart';
@@ -22,17 +23,32 @@ import 'package:provider/provider.dart';
 /// screen. Date handling now goes through the view model setter so the
 /// time component survives picks and the screen does not throw on
 /// locale mismatch.
-class EditSale extends StatelessWidget {
+class EditSale extends StatefulWidget {
   final Sale sale;
 
   const EditSale({super.key, required this.sale});
 
+  @override
+  State<EditSale> createState() => _EditSaleState();
+}
+
+class _EditSaleState extends State<EditSale> {
+  bool _exitAuthorized = false;
+
   static final DateFormat _saleDateFmt = DateFormat('dd-MM-yyyy HH:mm');
+
+  void _exitWith(SaleEditResult result) {
+    if (!mounted || _exitAuthorized) return;
+    setState(() => _exitAuthorized = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop(result);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => SalesViewModel()..loadSaleDetails(sale),
+      create: (_) => SalesViewModel()..loadSaleDetails(widget.sale),
       child: Consumer<SalesViewModel>(
         builder: (context, transactionViewModel, child) {
           final selectedDate = _saleDateFmt.parse(
@@ -44,7 +60,7 @@ class EditSale extends StatelessWidget {
             scaffoldKey: transactionViewModel.scaffoldKey,
             formKey: transactionViewModel.formKey,
             isLoading: transactionViewModel.isLoading,
-            isDirty: transactionViewModel.isDirty,
+            isDirty: !_exitAuthorized && transactionViewModel.isDirty,
             primaryActionLabel: 'Update sale',
             primaryActionIcon: Icons.point_of_sale,
             primaryActionColor: SpazaColors.action,
@@ -61,15 +77,24 @@ class EditSale extends StatelessWidget {
               );
               if (!confirmed) return;
               if (!context.mounted) return;
-              await transactionViewModel.updateSale(
-                sale,
+              final updatedSale = await transactionViewModel.updateSale(
+                widget.sale,
                 double.tryParse(transactionViewModel.amountController.text) ??
                     0.0,
                 transactionViewModel.selectedProducts,
                 context,
               );
+              if (updatedSale != null) {
+                _exitWith(SaleEditResult.updated(updatedSale));
+              }
             },
-            onDelete: () => transactionViewModel.deleteSale(context, sale),
+            onDelete: () async {
+              final deleted = await transactionViewModel.deleteSale(
+                context,
+                widget.sale,
+              );
+              if (deleted) _exitWith(const SaleEditResult.deleted());
+            },
             deleteConfirmTitle: 'Delete sale?',
             deleteConfirmMessage:
                 'This permanently removes the sale and returns its stock to inventory.',

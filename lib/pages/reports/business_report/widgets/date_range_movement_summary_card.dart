@@ -50,11 +50,11 @@ class CustomerActivitySummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border.all(color: SpazaColors.border),
-        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -66,7 +66,7 @@ class CustomerActivitySummary extends StatelessWidget {
               color: kSecondaryAccent,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Semantics(
             label: 'Net movement ${CurrencyUtil.format(netMovement)}',
             excludeSemantics: true,
@@ -77,33 +77,26 @@ class CustomerActivitySummary extends StatelessWidget {
                 CurrencyUtil.format(netMovement),
                 style: theme.textTheme.headlineMedium?.copyWith(
                   color: kTertiaryColor,
-                  fontSize: 30,
+                  fontSize: 24,
                   fontWeight: FontWeight.w500,
                   letterSpacing: -.5,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            'Payments received − sales added',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: kSecondaryAccent,
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final stack = constraints.maxWidth < 280 ||
                   MediaQuery.textScalerOf(context).scale(14) > 20;
               final sales = _MovementMetric(
-                label: 'Sales added',
+                label: 'Sales',
                 count: salesCount,
                 amount: salesAmount,
                 color: kTertiaryColor,
               );
               final payments = _MovementMetric(
-                label: 'Payments received',
+                label: 'Payments',
                 count: paymentsCount,
                 amount: paymentsAmount,
                 color: kPrimaryColor,
@@ -111,7 +104,7 @@ class CustomerActivitySummary extends StatelessWidget {
               if (stack) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [sales, const SizedBox(height: 20), payments],
+                  children: [sales, const SizedBox(height: 12), payments],
                 );
               }
               return Row(
@@ -161,7 +154,7 @@ class _MovementMetric extends StatelessWidget {
             CurrencyUtil.format(amount),
             style: theme.textTheme.titleMedium?.copyWith(
               color: color,
-              fontSize: 19,
+              fontSize: 16,
               fontWeight: FontWeight.w500,
             ),
           ),

@@ -101,6 +101,7 @@ class _DateRangeLedgerDrilldownState extends State<DateRangeLedgerDrilldown> {
           customerId: doc.id,
           customerName: (data['name'] as String?) ?? 'Customer',
           customerNumber: data['number'] as String?,
+          profileImageUrl: data['profileImageUrl']?.toString(),
           when: when,
           type: (tx['type'] as String?) ?? '',
           amount: (tx['amount'] as num?)?.toDouble() ?? 0.0,

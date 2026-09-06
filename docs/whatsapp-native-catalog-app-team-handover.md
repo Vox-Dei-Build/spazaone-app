@@ -10,7 +10,7 @@ Implementation update (3 September 2026): the app now consumes the sanitized,
 App Check-protected `getWhatsAppCatalogSyncStatusV2` callable with tenant-bound
 pagination, one-time catalogue-drift recovery, store/session epoch isolation,
 and a user/store Hive cache. Products use server-derived catalogue states (or
-the explicit `WhatsApp listing requested` fallback) and shops outside backend
+the concise `Pending` fallback) and shops outside backend
 rollout see `Catalogue rollout is not yet enabled for this shop.` The same
 change adds private JPEG/PNG/PDF sales-attachment viewing and selection while
 retaining the existing three-file and 5 MB limits. V1 is unchanged. No backend,

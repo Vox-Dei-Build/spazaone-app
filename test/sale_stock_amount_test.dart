@@ -87,7 +87,7 @@ void main() {
       expect(find.text('Stock amount (optional)'), findsOneWidget);
       expect(find.text('Enter amount spent on stock'), findsOneWidget);
       expect(
-        find.text('Money spent buying stock today — not units on hand.'),
+        find.text('Money spent, not units on hand'),
         findsOneWidget,
       );
     });
@@ -111,7 +111,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Sales amount'), findsOneWidget);
+    expect(find.text('SALE'), findsOneWidget);
     expect(find.text('Stock amount'), findsOneWidget);
     expect(find.textContaining('1 200'), findsOneWidget);
   });

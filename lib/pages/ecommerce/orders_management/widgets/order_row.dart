@@ -64,60 +64,155 @@ class OrderRow extends StatelessWidget {
       if (relativeTime.isNotEmpty) relativeTime,
       _shortId,
     ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      child: Card(
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(SpazaRadius.surface),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          key: ValueKey('customer-order-row-$id'),
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: LayoutBuilder(builder: (context, constraints) {
+            final stack = constraints.maxWidth < 300 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20;
+            final statusDetails = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 10,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  alignment: WrapAlignment.spaceBetween,
-                  children: [
-                    _badge(context, status.label, statusColor),
-                    Text(totalText, style: theme.textTheme.titleMedium),
-                  ],
+                _StatusDot(color: statusColor, label: status.label),
+                const SizedBox(height: 5),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: metadata.substring(
+                          0,
+                          metadata.length - _shortId.length,
+                        ),
+                      ),
+                      TextSpan(
+                        text: _shortId,
+                        style: const TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontFamily: 'monospace',
+                          fontFeatures: [FontFeature.tabularFigures()],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  maxLines: stack ? null : 1,
+                  overflow:
+                      stack ? TextOverflow.visible : TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF6B7280),
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-                const SizedBox(height: 10),
-                Text(metadata, style: theme.textTheme.bodySmall),
+              ],
+            );
+            final amount = FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                totalText,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: SpazaColors.action,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            );
+            final totals = Column(
+              crossAxisAlignment:
+                  stack ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                amount,
                 if (collectedBadge != null) ...[
-                  const SizedBox(height: 10),
-                  Align(
-                      alignment: Alignment.centerLeft,
-                      child: _badge(
-                          context, collectedBadge!.text, collectedBadge!.color,
-                          outlined: true)),
+                  const SizedBox(height: 5),
+                  _OutlineBadge(
+                    text: collectedBadge!.text,
+                    color: collectedBadge!.color,
+                  ),
                 ],
               ],
-            ),
-          ),
+            );
+            if (stack) {
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [statusDetails, const SizedBox(height: 6), totals]);
+            }
+            return Row(children: [
+              Expanded(child: statusDetails),
+              const SizedBox(width: 12),
+              Flexible(child: totals),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded,
+                  color: SpazaColors.muted, size: 20),
+            ]);
+          }),
         ),
       ),
     );
   }
+}
 
-  Widget _badge(BuildContext context, String label, Color color,
-          {bool outlined = false}) =>
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(
-          color: outlined ? Colors.transparent : color.withValues(alpha: .12),
-          borderRadius: BorderRadius.circular(16),
-          border:
-              outlined ? Border.all(color: color.withValues(alpha: .6)) : null,
+          color: color.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(999),
         ),
-        child: Text(label,
-            style: Theme.of(context)
-                .textTheme
-                .labelMedium
-                ?.copyWith(color: color)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      );
+}
+
+class _OutlineBadge extends StatelessWidget {
+  const _OutlineBadge({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: .6)),
+        ),
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
       );
 }
 

@@ -87,11 +87,28 @@ class _ProductFormState extends State<ProductForm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.storefront_outlined),
+                  key: const ValueKey('whatsapp-listing-toggle'),
+                  title: const Text('List on WhatsApp Store'),
+                  subtitle: const Text(
+                    'Live after a successful sync.',
+                  ),
+                  value: widget.product.whatsappListed,
+                  onChanged: (value) {
+                    viewModel.markUnsavedChanges();
+                    setState(() {
+                      widget.product.whatsappListed = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
                 _ProductImagePicker(
                   viewModel: viewModel,
                   product: widget.product,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 CustomTextField(
                   label: "Product name*",
                   hintText: "Enter product name",
@@ -192,7 +209,7 @@ class _ProductFormState extends State<ProductForm> {
                       ),
                       Expanded(
                         child: Text(
-                          'Cost is internal. Customers only see the selling price.',
+                          'Cost stays private.',
                           style: TextStyle(
                             fontSize: 13,
                             color: SpazaColors.muted,
@@ -224,9 +241,7 @@ class _ProductFormState extends State<ProductForm> {
                       ),
                       Expanded(
                         child: Text(
-                          'Heads up: selling price is below '
-                          'cost. You will record a loss on '
-                          'each sale.',
+                          'Selling below cost records a loss.',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.orange[800],
@@ -269,96 +284,25 @@ class _ProductFormState extends State<ProductForm> {
                   textInputType: TextInputType.number,
                 ),
                 const SizedBox(height: 16),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  secondary: const Icon(Icons.storefront_outlined),
-                  title: const Text('List in WhatsApp store'),
-                  subtitle: const Text(
-                    'On requests a background catalogue sync. A name, positive selling price, product image and shop link are required. Turning this off removes the WhatsApp listing but keeps the product in stock and sales.',
-                  ),
-                  value: widget.product.whatsappListed,
-                  onChanged: (value) {
-                    viewModel.markUnsavedChanges();
-                    setState(() {
-                      widget.product.whatsappListed = value;
-                    });
-                  },
-                ),
-                // PAS-UX-XX: live preview of the listing as it
-                // appears to customers in the WhatsApp Store.
-                // Only rendered when the toggle is ON — the
-                // toggle copy already explains the OFF state
-                // ("internal-only") so the preview would just
-                // add noise there. Bound to the live form
-                // values so it updates as the merchant types.
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder: (child, animation) => SizeTransition(
-                    sizeFactor: animation,
-                    axisAlignment: -1,
-                    child: FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    ),
-                  ),
-                  child: widget.product.whatsappListed
-                      ? Padding(
-                          key: const ValueKey('wa-preview-on'),
-                          padding: const EdgeInsets.only(
-                            top: 4,
-                          ),
-                          child: WhatsappListingPreview(
-                            name: viewModel.nameController.text,
-                            sellingPrice: double.tryParse(
-                              viewModel.sellingPriceController.text,
-                            ),
-                            company: viewModel.companyController.text,
-                            description: viewModel.descriptionController.text,
-                            imageUrl: viewModel.imageUrl,
-                            localImage: viewModel.pendingImage,
-                            shopName: _shopName,
-                          ),
-                        )
-                      : const SizedBox(
-                          key: ValueKey('wa-preview-off'),
-                          width: double.infinity,
-                        ),
-                ),
-                // PAS-WA-03: inline cue for the hard validation
-                // gate in ProductViewModel.saveProduct. Surfaces
-                // the requirement at the moment the merchant
-                // flips the toggle, so the save-time block is
-                // never a surprise. Hidden as soon as an image
-                // is attached or the toggle is turned back off.
-                if (widget.product.whatsappListed && !viewModel.hasImage) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    key: const ValueKey('wa-image-required-cue'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                if (widget.product.whatsappListed)
+                  ExpansionTile(
+                    key: const ValueKey('wa-preview-on'),
+                    tilePadding: EdgeInsets.zero,
+                    title: const Text('Preview WhatsApp listing'),
                     children: [
-                      Icon(
-                        Icons.info_outline,
-                        size: 20,
-                        color: Colors.orange[700],
-                      ),
-                      const SizedBox(
-                        width: 8,
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Add a product image before listing '
-                          'this for WhatsApp orders.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.orange[800],
-                          ),
+                      WhatsappListingPreview(
+                        name: viewModel.nameController.text,
+                        sellingPrice: double.tryParse(
+                          viewModel.sellingPriceController.text,
                         ),
+                        company: viewModel.companyController.text,
+                        description: viewModel.descriptionController.text,
+                        imageUrl: viewModel.imageUrl,
+                        localImage: viewModel.pendingImage,
+                        shopName: _shopName,
                       ),
                     ],
                   ),
-                ],
                 const SizedBox(height: 16),
                 // Progressive disclosure: keep optional fields out
                 // of the merchant's way during initial create. Auto
@@ -474,8 +418,8 @@ class _ProductImagePicker extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(SpazaRadius.control),
                 child: SizedBox(
-                  width: 88,
-                  height: 88,
+                  width: 64,
+                  height: 64,
                   child: viewModel.isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : viewModel.pendingImage != null
@@ -507,8 +451,13 @@ class _ProductImagePicker extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       viewModel.hasImage
-                          ? 'Tap to replace it. The WhatsApp preview updates immediately.'
-                          : 'Required only when you list this product on WhatsApp.',
+                          ? 'Tap to change photo.'
+                          : product.whatsappListed
+                              ? 'Photo required for WhatsApp.'
+                              : 'Optional for stock.',
+                      key: product.whatsappListed && !viewModel.hasImage
+                          ? const ValueKey('wa-image-required-cue')
+                          : null,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),

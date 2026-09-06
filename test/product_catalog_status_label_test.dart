@@ -67,20 +67,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a local listing request is never labelled Online',
+  testWidgets('a local listing request stays out of the compact product row',
       (tester) async {
     await pumpList(tester);
 
-    expect(find.text('WhatsApp listing requested'), findsOneWidget);
+    expect(find.text('Pending'), findsNothing);
     expect(find.text('Online'), findsNothing);
   });
 
-  testWidgets('server-confirmed products are labelled live on WhatsApp',
+  testWidgets('passive server status stays in the catalogue summary',
       (tester) async {
     await pumpList(tester, snapshot: snapshotWith('live'));
 
-    expect(find.text('Live on WhatsApp'), findsOneWidget);
-    expect(find.text('WhatsApp listing requested'), findsNothing);
+    expect(find.text('Live on WhatsApp'), findsNothing);
+    expect(find.text('Pending'), findsNothing);
   });
 
   testWidgets('refresh status action retains its callable and stock warning',
@@ -104,7 +104,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('Out of stock'), findsOneWidget);
-    await tester.tap(find.text('Updating'));
+    await tester.tap(find.byKey(const ValueKey('product-catalog-action')));
     await tester.pumpAndSettle();
     expect(refreshes, 1);
     expect(tester.takeException(), isNull);
@@ -131,7 +131,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('product-filter-out')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Needs attention'));
+    expect(
+      tester.getSize(find.widgetWithText(ProductCatalogueRow, 'Bread')).height,
+      inInclusiveRange(64, 68),
+    );
+    await tester.tap(find.byKey(const ValueKey('product-catalog-action')));
     expect(actionProduct?.id, 'bread');
     expect(tester.takeException(), isNull);
   });

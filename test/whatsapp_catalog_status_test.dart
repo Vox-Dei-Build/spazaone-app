@@ -255,39 +255,23 @@ void main() {
     expect(controller.snapshot?.products.single.productId, 'store-b-item');
   });
 
-  for (final expectation in <(int, String)>[
-    (4, 'Add 1 more valid product to reach a five-product view.'),
-    (5, 'Ready for WhatsApp browsing. Add 5 more for a ten-product view.'),
-    (
-      10,
-      'Customers can browse 10 products at a time and continue to see more.'
-    ),
-  ]) {
-    testWidgets('summary guidance is truthful at ${expectation.$1} live',
+  for (final live in [4, 5, 10]) {
+    testWidgets('drawer reports $live live without browsing promises',
         (tester) async {
-      final controller = _summaryController(
-        summarySnapshot(live: expectation.$1),
-      );
+      final controller = _summaryController(summarySnapshot(live: live));
       addTearDown(controller.dispose);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),
-            child: Scaffold(
-              body: SingleChildScrollView(
-                child: WhatsAppCatalogStatusCard(controller: controller),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text(expectation.$2), findsNothing);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: WhatsAppCatalogStatusCard(controller: controller)),
+      ));
+      expect(find.text('Live on WhatsApp'), findsNothing);
       await tester
           .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
       await tester.pumpAndSettle();
-      expect(find.text(expectation.$2), findsOneWidget);
+      expect(find.text('Live on WhatsApp'), findsOneWidget);
+      expect(find.text('$live'), findsOneWidget);
+      expect(find.textContaining('five-product'), findsNothing);
+      expect(find.textContaining('ten-product'), findsNothing);
+      expect(find.textContaining('Ready for'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
@@ -316,7 +300,7 @@ void main() {
         .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
     await tester.pumpAndSettle();
     expect(
-      find.text('Catalogue rollout is not yet enabled for this shop.'),
+      find.text('Not available for this shop yet.'),
       findsOneWidget,
     );
   });
@@ -349,8 +333,7 @@ void main() {
     await tester.pump();
     expect(controller.refreshes, 1);
     expect(
-      find.text(
-          'Customers can browse 10 products at a time and continue to see more.'),
+      find.text('10'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -377,6 +360,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('cached failure keeps one concise error beside the check time',
+      (tester) async {
+    final controller = _summaryController(summarySnapshot(live: 4))
+      ..errorMessage = "Couldn’t refresh.";
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: WhatsAppCatalogStatusCard(controller: controller),
+      ),
+    ));
+
+    await tester
+        .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Couldn’t refresh."), findsOneWidget);
+    expect(find.textContaining('Last checked catalogue'), findsNothing);
+    expect(find.textContaining('3 Sep, 12:00'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('catalogue details remain readable on narrow large-text screens',
       (tester) async {
     final controller = _summaryController(summarySnapshot(live: 4));
@@ -399,9 +403,9 @@ void main() {
         .tap(find.byKey(const ValueKey('whatsapp-catalog-status-entry')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await tester.ensureVisible(
-        find.text('Add 1 more valid product to reach a five-product view.'));
+    await tester.ensureVisible(find.text('Refresh status'));
     await tester.pumpAndSettle();
+    expect(find.text('Refresh status').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

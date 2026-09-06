@@ -51,67 +51,77 @@ class ProductValueSummary extends StatelessWidget {
   final double potentialProfit;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: SpazaColors.surface,
-              border: Border.all(color: SpazaColors.border),
-              borderRadius: BorderRadius.circular(SpazaRadius.surface),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Possible profit',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: kSecondaryAccent,
-                      ),
-                ),
-                const SizedBox(height: 5),
-                Text(
+  Widget build(BuildContext context) {
+    final isLoss = potentialProfit < 0;
+    return Column(
+      key: const ValueKey('stock-value-summary'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isLoss
+                ? SpazaColors.error.withValues(alpha: .08)
+                : SpazaColors.successSurface,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Possible profit',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: isLoss ? SpazaColors.error : kSecondaryAccent,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 3),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
                   CurrencyUtil.format(potentialProfit),
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: kPrimaryColor,
-                        fontWeight: FontWeight.w500,
+                        color: isLoss ? SpazaColors.error : kPrimaryColor,
+                        fontWeight: FontWeight.w900,
                       ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'If all current stock is sold',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: kSecondaryAccent,
-                      ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'If all current stock is sold',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: isLoss ? SpazaColors.error : kSecondaryAccent,
+                    ),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          LayoutBuilder(builder: (context, constraints) {
-            final stacked = constraints.maxWidth < 300 ||
-                MediaQuery.textScalerOf(context).scale(14) >= 20;
-            final metrics = [
-              _ValueMetric(label: 'Stock cost', amount: costValue),
-              _ValueMetric(label: 'Selling value', amount: salesValue),
-            ];
-            return stacked
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                        metrics[0],
-                        const SizedBox(height: 10),
-                        metrics[1]
-                      ])
-                : Row(children: [
-                    Expanded(child: metrics[0]),
-                    const SizedBox(width: 10),
-                    Expanded(child: metrics[1])
-                  ]);
-          }),
-        ],
-      );
+        ),
+        const SizedBox(height: 6),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stack = constraints.maxWidth < 300 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20;
+            final cost = _ValueMetric(label: 'Stock cost', amount: costValue);
+            final sales =
+                _ValueMetric(label: 'Selling value', amount: salesValue);
+            if (stack) {
+              return Column(
+                children: [cost, const SizedBox(height: 8), sales],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: cost),
+                const SizedBox(width: 10),
+                Expanded(child: sales),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
 }
 
 class _ValueMetric extends StatelessWidget {
@@ -122,7 +132,8 @@ class _ValueMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: Theme.of(context)
               .colorScheme
@@ -140,12 +151,16 @@ class _ValueMetric extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 3),
-            Text(
-              CurrencyUtil.format(amount),
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: kTertiaryColor,
-                    fontWeight: FontWeight.w500,
-                  ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                CurrencyUtil.format(amount),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: kTertiaryColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
             ),
           ],
         ),

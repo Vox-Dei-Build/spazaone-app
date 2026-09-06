@@ -232,7 +232,7 @@ class _ProductCatalogueViewState extends State<ProductCatalogueView> {
           SliverToBoxAdapter(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(0, 10, 0, 14),
+              padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
               child: Row(
                 children: [
                   _filterChip(_StockFilter.all, 'All', widget.products.length),
@@ -284,7 +284,7 @@ class _ProductCatalogueViewState extends State<ProductCatalogueView> {
             padding: const EdgeInsets.only(bottom: 24),
             sliver: SliverList.separated(
               itemCount: visible.length,
-              separatorBuilder: (context, _) => const SizedBox(height: 10),
+              separatorBuilder: (context, _) => const SizedBox(height: 6),
               itemBuilder: (context, index) => ProductCatalogueRow(
                 key: ValueKey(visible[index].id ?? visible[index]),
                 product: visible[index],
@@ -376,24 +376,27 @@ class ProductCatalogueRow extends StatelessWidget {
       product.name?.trim().isNotEmpty == true ? product.name! : 'Product',
     );
     final price = CurrencyUtil.format(product.sellingPrice ?? 0);
+    final showCatalogAction = catalogState != null &&
+        catalogState!.action != WhatsAppCatalogProductAction.none &&
+        onCatalogAction != null;
 
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(SpazaRadius.surface),
+        borderRadius: BorderRadius.circular(SpazaRadius.control),
         side: const BorderSide(color: SpazaColors.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 80),
+          constraints: const BoxConstraints(minHeight: 64),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final priceStyle = theme.textTheme.titleSmall?.copyWith(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: kTertiaryColor,
                 );
@@ -404,7 +407,7 @@ class ProductCatalogueRow extends StatelessWidget {
                 )..layout();
                 // Keep room for the name after the image, price and arrow.
                 final nameSpace =
-                    constraints.maxWidth - 60 - 12 - 26 - pricePainter.width;
+                    constraints.maxWidth - 50 - 12 - 26 - pricePainter.width;
                 pricePainter.dispose();
                 final stacked = constraints.maxWidth < 260 ||
                     MediaQuery.textScalerOf(context).scale(14) > 19 ||
@@ -429,8 +432,8 @@ class ProductCatalogueRow extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: SizedBox(
-                        width: 48,
-                        height: 48,
+                        width: 40,
+                        height: 40,
                         child: product.image?.isNotEmpty == true
                             ? CachedNetworkImage(
                                 imageUrl: product.image!,
@@ -443,7 +446,7 @@ class ProductCatalogueRow extends StatelessWidget {
                             : const _ProductPlaceholder(),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -458,10 +461,10 @@ class ProductCatalogueRow extends StatelessWidget {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontSize: 16,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.w500,
                                     color: kTertiaryColor,
-                                    height: 1.4,
+                                    height: 1.25,
                                   ),
                                 ),
                               ),
@@ -471,7 +474,7 @@ class ProductCatalogueRow extends StatelessWidget {
                               ],
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Wrap(
                             spacing: 8,
                             runSpacing: 4,
@@ -486,10 +489,9 @@ class ProductCatalogueRow extends StatelessWidget {
                                       : FontWeight.w400,
                                 ),
                               ),
+                              if (showCatalogAction) _catalogStatus(context),
                             ],
                           ),
-                          if (catalogState != null || product.whatsappListed)
-                            _catalogStatus(context),
                           if (stacked) ...[
                             const SizedBox(height: 6),
                             priceAndArrow,
@@ -510,7 +512,7 @@ class ProductCatalogueRow extends StatelessWidget {
   Widget _catalogStatus(BuildContext context) {
     final state = catalogState;
     final label = state == null
-        ? 'WhatsApp listing requested'
+        ? 'Pending'
         : rollout == WhatsAppCatalogRollout.notEnabled &&
                 state.reasonCodes.contains('catalogue_not_enabled')
             ? 'Waiting for rollout'
@@ -540,23 +542,22 @@ class ProductCatalogueRow extends StatelessWidget {
       excludeSemantics: true,
       child: canAct
           ? InkWell(
+              key: const ValueKey('product-catalog-action'),
               onTap: onCatalogAction,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(child: labelWidget),
-                    const SizedBox(width: 4),
-                    Icon(Icons.info_outline, size: 16, color: color),
+                    const SizedBox(width: 3),
+                    Icon(Icons.info_outline, size: 15, color: color),
                   ],
                 ),
               ),
             )
-          : Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: labelWidget,
-            ),
+          : labelWidget,
     );
   }
 }

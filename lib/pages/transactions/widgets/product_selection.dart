@@ -67,7 +67,7 @@ class ProductSelectionWidget<T extends TransactionViewModel>
           const SizedBox(height: 16),
         ],
         InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(SpazaRadius.control),
           onTap: () async {
             await viewModel.loadProducts();
             if (!context.mounted) return;
@@ -77,282 +77,184 @@ class ProductSelectionWidget<T extends TransactionViewModel>
             );
           },
           child: Container(
-            padding: const EdgeInsets.all(12),
+            constraints: const BoxConstraints(minHeight: 52),
+            padding: const EdgeInsets.symmetric(
+              horizontal: SpazaSpace.md,
+              vertical: SpazaSpace.sm,
+            ),
             decoration: BoxDecoration(
               border: Border.all(color: SpazaColors.border),
-              borderRadius: BorderRadius.circular(16),
-              color: SpazaColors.canvas,
+              borderRadius: BorderRadius.circular(SpazaRadius.control),
+              color: SpazaColors.surface,
             ),
             child: Row(
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(
-                      12,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.search,
-                    size: 24,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                Icon(
+                  Icons.add_rounded,
+                  size: 22,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: SpazaSpace.sm),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Find products to add',
-                        style: TextStyle(
-                          fontSize: 18,
+                  child: Text(
+                    totalProducts > 0 ? 'Choose products' : 'Find a product',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w500,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        totalProducts > 0
-                            ? 'Search by product name, then set the exact quantity you want.'
-                            : 'Search products or create a new one if it is not listed yet.',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: SpazaColors.muted,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'Browse',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$selectedCount selected',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: SpazaColors.muted,
-                      ),
-                    ),
-                  ],
+                if (selectedCount > 0) ...[
+                  Text(
+                    '$selectedCount',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: SpazaColors.heading,
+                        ),
+                  ),
+                  const SizedBox(width: SpazaSpace.sm),
+                ],
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: SpazaColors.muted,
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        if (viewModel.selectedProducts.isNotEmpty)
-          Column(
-            children: [
-              ...viewModel.paginatedSelectedProducts.map((entry) {
-                final product = viewModel.productById(entry.key);
-                final productName = formatStringToCamelCase(
-                  product.name ?? 'Unnamed Product',
-                );
-                final quantity = entry.value;
-                final unitPrice = product.sellingPrice ?? 0;
-                final stock = viewModel.availableStockFor(entry.key);
+        if (viewModel.selectedProducts.isNotEmpty) ...[
+          const SizedBox(height: SpazaSpace.md),
+          ...viewModel.paginatedSelectedProducts.map((entry) {
+            final product = viewModel.productById(entry.key);
+            final productName = formatStringToCamelCase(
+              product.name ?? 'Unnamed Product',
+            );
+            final quantity = entry.value;
+            final unitPrice = product.sellingPrice ?? 0;
+            final stock = viewModel.availableStockFor(entry.key);
 
-                return Card(
-                  margin: const EdgeInsets.only(
-                    bottom: 12,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    productName,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(
-                                    height: 4,
-                                  ),
-                                  Text(
-                                    'Unit price: ${CurrencyUtil.format(unitPrice)}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: SpazaColors.muted,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Available stock: $stock',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: SpazaColors.muted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () async {
-                                final picked = await QuantityInputSheet.show(
-                                  context,
-                                  productName: productName,
-                                  currentQuantity: quantity,
-                                );
-                                if (picked == null || !context.mounted) return;
-                                viewModel.updateProductQuantity(
-                                  context,
-                                  entry.key,
-                                  picked,
-                                );
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(
-                                    12,
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    const Text(
-                                      'Qty',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: SpazaColors.muted,
-                                      ),
-                                    ),
-                                    Text(
-                                      quantity.toString(),
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(
-                                Icons.remove_circle_outline,
-                                size: 24,
-                              ),
-                              onPressed: () {
-                                viewModel.updateProductQuantity(
-                                  context,
-                                  entry.key,
-                                  quantity - 1,
-                                );
-                              },
-                            ),
-                            Expanded(
-                              child: Text(
-                                'Line total: ${CurrencyUtil.format(unitPrice * quantity)}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.add_circle_outline,
-                                size: 24,
-                              ),
-                              onPressed: () {
-                                viewModel.updateProductQuantity(
-                                  context,
-                                  entry.key,
-                                  quantity + 1,
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-              SizedBox(
-                height: 16,
+            return Card(
+              margin: const EdgeInsets.only(bottom: SpazaSpace.sm),
+              child: Padding(
+                padding: const EdgeInsets.all(SpazaSpace.sm),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.arrow_back,
-                        color: viewModel.currentPage > 0
-                            ? Colors.green
-                            : Colors.grey,
-                        size: 24,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            productName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                          const SizedBox(height: SpazaSpace.xs),
+                          Text(
+                            '${CurrencyUtil.format(unitPrice)} each · $stock in stock',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: SpazaColors.muted,
+                                    ),
+                          ),
+                          Text(
+                            CurrencyUtil.format(unitPrice * quantity),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: SpazaColors.heading,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                          ),
+                        ],
                       ),
-                      onPressed: viewModel.previousPage,
                     ),
                     IconButton(
-                      icon: Icon(
-                        Icons.arrow_forward,
-                        color: (viewModel.currentPage + 1) *
-                                    viewModel.itemsPerPage <
-                                viewModel.selectedProducts.length
-                            ? Colors.green
-                            : Colors.grey,
-                        size: 24,
+                      tooltip: 'Remove one $productName',
+                      icon: const Icon(Icons.remove_circle_outline, size: 22),
+                      onPressed: () => viewModel.updateProductQuantity(
+                        context,
+                        entry.key,
+                        quantity - 1,
                       ),
-                      onPressed: viewModel.nextPage,
+                    ),
+                    Semantics(
+                      button: true,
+                      label:
+                          'Set quantity for $productName, currently $quantity',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(SpazaRadius.small),
+                        onTap: () async {
+                          final picked = await QuantityInputSheet.show(
+                            context,
+                            productName: productName,
+                            currentQuantity: quantity,
+                          );
+                          if (picked == null || !context.mounted) return;
+                          viewModel.updateProductQuantity(
+                            context,
+                            entry.key,
+                            picked,
+                          );
+                        },
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 48,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$quantity',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(color: SpazaColors.heading),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Add one $productName',
+                      icon: const Icon(Icons.add_circle_outline, size: 22),
+                      onPressed: () => viewModel.updateProductQuantity(
+                        context,
+                        entry.key,
+                        quantity + 1,
+                      ),
                     ),
                   ],
                 ),
               ),
-            ],
-          )
-        else
-          const Column(
-            children: [
-              SizedBox(height: 16),
-              Center(
-                child: Text(
-                  'No products added yet',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey,
-                  ),
+            );
+          }),
+          if (viewModel.selectedProducts.length > viewModel.itemsPerPage)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  tooltip: 'Previous products',
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed:
+                      viewModel.currentPage > 0 ? viewModel.previousPage : null,
                 ),
-              ),
-            ],
-          ),
+                IconButton(
+                  tooltip: 'Next products',
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  onPressed:
+                      (viewModel.currentPage + 1) * viewModel.itemsPerPage <
+                              viewModel.selectedProducts.length
+                          ? viewModel.nextPage
+                          : null,
+                ),
+              ],
+            ),
+        ],
       ],
     );
   }

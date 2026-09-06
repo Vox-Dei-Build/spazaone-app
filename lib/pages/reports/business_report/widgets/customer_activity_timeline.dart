@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/design/spaza_tokens.dart';
+import 'package:pasella/shared/widgets/profile_image.dart';
 import 'package:pasella/utils/currency_util.dart';
 import 'package:pasella/widgets/private_region.dart';
 
@@ -16,12 +17,14 @@ class CustomerActivityEntry {
     required this.amount,
     this.when,
     this.customerNumber,
+    this.profileImageUrl,
   });
 
   final String id;
   final String customerId;
   final String customerName;
   final String? customerNumber;
+  final String? profileImageUrl;
   final String type;
   final double amount;
   final DateTime? when;
@@ -40,6 +43,7 @@ class CustomerActivityEntry {
           customerId == other.customerId &&
           customerName == other.customerName &&
           customerNumber == other.customerNumber &&
+          profileImageUrl == other.profileImageUrl &&
           type == other.type &&
           amount == other.amount &&
           when == other.when;
@@ -50,25 +54,24 @@ class CustomerActivityEntry {
         customerId,
         customerName,
         customerNumber,
+        profileImageUrl,
         type,
         amount,
         when,
       );
 }
 
-/// A flat timeline keeps each sale and payment visible without opening cards.
+/// Production's customer rollups, with entries disclosed only when needed.
+/// Totals always include every loaded entry; paging limits rendered customers.
 class CustomerActivityTimeline extends StatefulWidget {
-  const CustomerActivityTimeline({
-    super.key,
-    required this.entries,
-    required this.onOpenCustomer,
-    this.reportedNet,
-  });
-
+  const CustomerActivityTimeline(
+      {super.key,
+      required this.entries,
+      required this.onOpenCustomer,
+      this.reportedNet});
   final List<CustomerActivityEntry> entries;
   final ValueChanged<CustomerActivityEntry> onOpenCustomer;
   final double? reportedNet;
-
   @override
   State<CustomerActivityTimeline> createState() =>
       _CustomerActivityTimelineState();
@@ -78,7 +81,7 @@ class _CustomerActivityTimelineState extends State<CustomerActivityTimeline> {
   static const _pageSize = 50;
   int _visibleLimit = _pageSize;
   late List<CustomerActivityEntry> _sourceEntries;
-  late List<CustomerActivityEntry> _sortedEntries;
+  late List<List<CustomerActivityEntry>> _customers;
 
   @override
   void initState() {
@@ -89,8 +92,6 @@ class _CustomerActivityTimelineState extends State<CustomerActivityTimeline> {
   @override
   void didUpdateWidget(covariant CustomerActivityTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Equivalent lists created during a normal parent rebuild must not hide
-    // pages the merchant has already opened. Changed data starts at page one.
     if (!listEquals(_sourceEntries, widget.entries)) {
       _visibleLimit = _pageSize;
       _updateEntries();
@@ -99,255 +100,247 @@ class _CustomerActivityTimelineState extends State<CustomerActivityTimeline> {
 
   void _updateEntries() {
     _sourceEntries = List.of(widget.entries);
-    _sortedEntries = [..._sourceEntries]..sort((a, b) {
+    final groups = <String, List<CustomerActivityEntry>>{};
+    for (final entry in _sourceEntries) {
+      (groups[entry.customerId] ??= []).add(entry);
+    }
+    _customers = groups.values.toList();
+    for (final entries in _customers) {
+      entries.sort((a, b) {
         if (a.when == null && b.when == null) return a.id.compareTo(b.id);
         if (a.when == null) return 1;
         if (b.when == null) return -1;
         final dateOrder = b.when!.compareTo(a.when!);
         return dateOrder == 0 ? a.id.compareTo(b.id) : dateOrder;
       });
+    }
+    _customers.sort((a, b) {
+      final movement = _net(a).compareTo(_net(b));
+      return movement == 0
+          ? a.first.customerId.compareTo(b.first.customerId)
+          : movement;
+    });
   }
+
+  static double _net(List<CustomerActivityEntry> entries) =>
+      entries.fold(0.0, (sum, entry) => sum + entry.movement);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final entries = _sourceEntries;
-    final visibleCount = entries.length.clamp(0, _visibleLimit);
-    final groups = <String, List<CustomerActivityEntry>>{};
-    for (final entry in _sortedEntries.take(_visibleLimit)) {
-      final day = entry.when == null
-          ? 'Date unavailable'
-          : DateFormat('EEE, d MMM yyyy').format(entry.when!);
-      (groups[day] ??= []).add(entry);
-    }
-    final customerCount =
-        entries.map((entry) => entry.customerId).toSet().length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 24),
-        Text(
-          'Activity',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: kTertiaryColor,
-            fontWeight: FontWeight.w500,
-          ),
+    final visible = _customers.length.clamp(0, _visibleLimit);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            alignment: WrapAlignment.spaceBetween,
+            children: [
+              Text('Transactions in range',
+                  style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                  '${_sourceEntries.length} ${_sourceEntries.length == 1 ? 'entry' : 'entries'}'
+                  ' · ${_customers.length} ${_customers.length == 1 ? 'customer' : 'customers'}',
+                  style: Theme.of(context).textTheme.bodySmall),
+            ]),
+      ),
+      if (_customers.isEmpty)
+        const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Text('No activity for these dates')),
+      for (final entries in _customers.take(_visibleLimit))
+        _CustomerActivityGroup(
+          key: ValueKey('customer-activity-group-${entries.first.customerId}'),
+          entries: entries,
+          onOpen: () => widget.onOpenCustomer(entries.first),
         ),
-        const SizedBox(height: 4),
-        Text(
-          '${entries.length} ${entries.length == 1 ? 'entry' : 'entries'}'
-          ' · $customerCount ${customerCount == 1 ? 'customer' : 'customers'}',
-          style: theme.textTheme.bodySmall?.copyWith(color: kSecondaryAccent),
-        ),
-        if (entries.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
-            child: Column(
-              children: [
-                const Icon(
-                  SpazaIcons.sales,
-                  color: kSecondaryAccent,
-                  size: 28,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No activity for these dates',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: kTertiaryColor,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Choose another date to see sales and payments.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: kSecondaryAccent,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        for (final group in groups.entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 16, bottom: 12),
-            child: Text(
-              group.key,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: kSecondaryAccent,
-              ),
-            ),
-          ),
-          for (final entry in group.value)
-            _ActivityRow(
-              key: ValueKey('customer-activity-${entry.id}'),
-              entry: entry,
-              onTap: () => widget.onOpenCustomer(entry),
-            ),
-        ],
-        if (entries.length > _pageSize)
-          Padding(
-            padding: const EdgeInsets.only(top: 16, bottom: 4),
-            child: Text(
-              'Showing $visibleCount of ${entries.length} entries',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: kSecondaryAccent,
-              ),
-            ),
-          ),
-        if (visibleCount < entries.length)
-          Align(
-            alignment: Alignment.center,
-            child: TextButton(
-              key: const ValueKey('customer-activity-show-more'),
-              onPressed: () => setState(() => _visibleLimit += _pageSize),
-              style: TextButton.styleFrom(minimumSize: const Size(96, 48)),
-              child: const Text('Show more'),
-            ),
-          ),
-        if (widget.reportedNet != null)
-          _ActivityReconciliation(
-            rowsNet:
-                entries.fold(0.0, (total, entry) => total + entry.movement),
-            reportedNet: widget.reportedNet!,
-          ),
-      ],
-    );
+      if (_customers.length > _pageSize)
+        Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('Showing $visible of ${_customers.length} customers',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall)),
+      if (visible < _customers.length)
+        TextButton(
+            key: const ValueKey('customer-activity-show-more'),
+            onPressed: () => setState(() => _visibleLimit += _pageSize),
+            child: const Text('Show more')),
+      if (widget.reportedNet != null)
+        _ActivityReconciliation(
+            rowsNet: _net(_sourceEntries), reportedNet: widget.reportedNet!),
+    ]);
   }
 }
 
-class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({super.key, required this.entry, required this.onTap});
-
-  final CustomerActivityEntry entry;
-  final VoidCallback onTap;
+class _CustomerActivityGroup extends StatelessWidget {
+  const _CustomerActivityGroup(
+      {super.key, required this.entries, required this.onOpen});
+  final List<CustomerActivityEntry> entries;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isPayment = entry.type == 'Payment';
-    final isSale = entry.type == 'Credit';
-    final color = isPayment ? kPrimaryColor : kTertiaryColor;
-    final label = isPayment
-        ? 'Payment received'
-        : isSale
-            ? 'Sale added'
-            : entry.type.isEmpty
-                ? 'Entry'
-                : entry.type;
-    final sign = isPayment
-        ? '+'
-        : isSale
-            ? '−'
-            : '';
-    final amount = '$sign${CurrencyUtil.format(entry.amount)}';
-    final time =
-        entry.when == null ? null : DateFormat('HH:mm').format(entry.when!);
-    final detail = time == null ? label : '$label · $time';
-
-    return PrivateRegion(
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Material(
-          color: theme.colorScheme.surface,
+    final customer = entries.first;
+    final net = entries.fold(0.0, (sum, entry) => sum + entry.movement);
+    final sales = entries
+        .where((entry) => entry.type == 'Credit')
+        .fold(0.0, (sum, entry) => sum + entry.amount);
+    final payments = entries
+        .where((entry) => entry.type == 'Payment')
+        .fold(0.0, (sum, entry) => sum + entry.amount);
+    final color = net < 0 ? Theme.of(context).colorScheme.error : kPrimaryColor;
+    return PrivateRegion(child: LayoutBuilder(builder: (context, constraints) {
+      final stack = constraints.maxWidth < 300 ||
+          MediaQuery.textScalerOf(context).scale(14) > 20;
+      final money = Text(CurrencyUtil.format(net),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: color, fontSize: 15, fontWeight: FontWeight.w700));
+      return Card(
+        elevation: .5,
+        margin: const EdgeInsets.only(bottom: 6),
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(SpazaRadius.control),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(SpazaRadius.control),
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 80),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final stack = constraints.maxWidth < 300 ||
-                      MediaQuery.textScalerOf(context).scale(14) > 19;
-                  final amountText = FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      amount,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w500,
-                      ),
+        ),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            leading: stack
+                ? null
+                : SizedBox.square(
+                    dimension: 40,
+                    child: profilePicture(
+                      context,
+                      customer.customerName,
+                      customer.profileImageUrl,
+                      customer.customerNumber,
+                      false,
+                      displayIcons: false,
+                      radius: 20,
                     ),
-                  );
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: const BoxDecoration(
-                          color: SpazaColors.subtle,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isPayment
-                              ? Icons.south_west_rounded
-                              : isSale
-                                  ? SpazaIcons.sales
-                                  : Icons.notes_rounded,
-                          size: 18,
-                          color: color,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    entry.customerName,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      color: kTertiaryColor,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                if (!stack) ...[
-                                  const SizedBox(width: 12),
-                                  Flexible(child: amountText),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              detail,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: kSecondaryAccent,
-                              ),
-                            ),
-                            if (stack) ...[
-                              const SizedBox(height: 8),
-                              amountText,
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(
-                        SpazaIcons.next,
-                        size: 18,
-                        color: kSecondaryAccent,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+                  ),
+            title: Text(customer.customerName,
+                maxLines: stack ? null : 1,
+                overflow: stack ? null : TextOverflow.ellipsis,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontSize: 15)),
+            subtitle:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                  '${entries.length} ${entries.length == 1 ? 'transaction' : 'transactions'}',
+                  style: Theme.of(context).textTheme.bodySmall),
+              if (stack) money,
+            ]),
+            trailing: stack
+                ? null
+                : ConstrainedBox(
+                    constraints:
+                        BoxConstraints(maxWidth: constraints.maxWidth * .46),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Flexible(child: money),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.expand_more, size: 20),
+                    ])),
+            children: [
+              for (final entry in entries)
+                _ActivityEntryRow(
+                    key: ValueKey('customer-activity-${entry.id}'),
+                    entry: entry),
+              const Divider(height: 16),
+              _ActivityTotal(
+                  'Transactions', sales, Theme.of(context).colorScheme.error),
+              _ActivityTotal('Payments', payments, kPrimaryColor),
+              _ActivityTotal('Net movement', net, color),
+              Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                      onPressed: onOpen,
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('Open customer ledger'))),
+            ],
           ),
         ),
-      ),
-    );
+      );
+    }));
   }
+}
+
+class _ActivityEntryRow extends StatelessWidget {
+  const _ActivityEntryRow({super.key, required this.entry});
+  final CustomerActivityEntry entry;
+  @override
+  Widget build(BuildContext context) {
+    final type = entry.type == 'Credit' ? 'Transaction' : entry.type;
+    final date = entry.when == null
+        ? 'Date unavailable'
+        : DateFormat('dd MMM yyyy · HH:mm').format(entry.when!);
+    final sign = entry.type == 'Credit'
+        ? '−'
+        : entry.type == 'Payment'
+            ? '+'
+            : '';
+    return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final description =
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(type.isEmpty ? 'Entry' : type,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(fontSize: 14)),
+              Text(date, style: Theme.of(context).textTheme.bodySmall),
+            ]);
+            final amount = Text('$sign${CurrencyUtil.format(entry.amount)}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14,
+                    color: entry.type == 'Credit'
+                        ? Theme.of(context).colorScheme.error
+                        : kPrimaryColor));
+            if (constraints.maxWidth < 300 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20) {
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [description, amount]);
+            }
+            return Row(children: [
+              Expanded(child: description),
+              const SizedBox(width: 12),
+              Flexible(child: amount)
+            ]);
+          },
+        ));
+  }
+}
+
+class _ActivityTotal extends StatelessWidget {
+  const _ActivityTotal(this.label, this.amount, this.color);
+  final String label;
+  final double amount;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
+              Text(CurrencyUtil.format(amount),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(fontSize: 14, color: color)),
+            ]),
+      );
 }
 
 class _ActivityReconciliation extends StatelessWidget {
@@ -363,25 +356,24 @@ class _ActivityReconciliation extends StatelessWidget {
   Widget build(BuildContext context) {
     final delta = (rowsNet - reportedNet).abs();
     final reconciles = delta < .01;
-    final color = reconciles ? kSecondaryAccent : Colors.orange.shade900;
+    if (reconciles) return const SizedBox.shrink();
+    final color = Colors.orange.shade900;
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            reconciles ? Icons.check_rounded : Icons.info_outline_rounded,
+            Icons.info_outline_rounded,
             size: 16,
             color: color,
           ),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              reconciles
-                  ? 'Entries match the net movement above.'
-                  : 'Entries total ${CurrencyUtil.format(rowsNet)}. '
-                      'The summary shows ${CurrencyUtil.format(reportedNet)} '
-                      '— a difference of ${CurrencyUtil.format(delta)}.',
+              'Entries total ${CurrencyUtil.format(rowsNet)}. '
+              'The summary shows ${CurrencyUtil.format(reportedNet)} '
+              '— a difference of ${CurrencyUtil.format(delta)}.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: color,
                     height: 1.4,

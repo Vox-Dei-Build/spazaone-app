@@ -34,43 +34,49 @@ class ProductSection extends StatelessWidget {
         else
           ...products.map((product) {
             final quantity = product.quantity ?? 0;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(SpazaIcons.products, size: 24),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(product.name ?? 'Unknown product',
-                              style: Theme.of(context).textTheme.titleSmall),
-                          const SizedBox(height: 6),
-                          Wrap(spacing: 8, runSpacing: 4, children: [
-                            Text(quantity == 0 ? 'Out of stock' : 'Low stock',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                        color: quantity == 0
-                                            ? SpazaColors.error
-                                            : const Color(0xFF906000))),
-                            Text(
-                                quantity == 0
-                                    ? 'No stock left'
-                                    : 'Only $quantity left',
-                                style: Theme.of(context).textTheme.bodySmall),
-                          ]),
-                        ],
-                      )),
-                    ],
+            return Container(
+              key: product.id == null
+                  ? ObjectKey(product)
+                  : ValueKey('stock-alert-${product.id}'),
+              constraints: const BoxConstraints(minHeight: 56),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 6),
+              decoration: BoxDecoration(
+                color: SpazaColors.subtle,
+                borderRadius: BorderRadius.circular(SpazaRadius.small),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(product.name ?? 'Unknown product',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: SpazaColors.heading,
+                            )),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(quantity <= 0 ? 'Out of stock' : 'Low stock',
+                            textAlign: TextAlign.end,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: quantity <= 0
+                                          ? SpazaColors.error
+                                          : const Color(0xFF906000),
+                                    )),
+                        if (quantity > 0)
+                          Text('$quantity left',
+                              style: Theme.of(context).textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             );
           }),
