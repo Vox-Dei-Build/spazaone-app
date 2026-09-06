@@ -62,6 +62,14 @@ class GlobalSearchViewModel extends ChangeNotifier {
 
   void _applySearch() {
     if (_disposed) return;
+    // The catalogue listener intentionally stays alive while the search field
+    // is cleared so the next query can reuse it without another Firestore
+    // subscription. A late snapshot must still leave an empty query empty.
+    if (searchQuery.isEmpty) {
+      searchResults = [];
+      notifyListeners();
+      return;
+    }
     searchResults = _allProducts.where((product) {
       final matchesName =
           product.name?.toLowerCase().contains(searchQuery) ?? false;

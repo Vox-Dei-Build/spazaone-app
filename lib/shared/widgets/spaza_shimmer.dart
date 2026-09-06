@@ -19,22 +19,30 @@ class SpazaShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.maybeOf(context);
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: semanticsLabel,
+      child: _SpazaShimmerMask(child: child),
+    );
+  }
+}
+
+class _SpazaShimmerMask extends StatelessWidget {
+  const _SpazaShimmerMask({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     final skeleton = ExcludeSemantics(child: child);
-    final animated = media?.disableAnimations == true
+    return MediaQuery.maybeOf(context)?.disableAnimations == true
         ? skeleton
         : Shimmer.fromColors(
             baseColor: SpazaColors.subtle,
             highlightColor: SpazaColors.surface,
             child: skeleton,
           );
-
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      label: semanticsLabel,
-      child: animated,
-    );
   }
 }
 
@@ -113,8 +121,10 @@ class SpazaListSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SpazaShimmer(
-      semanticsLabel: semanticsLabel,
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: semanticsLabel,
       child: ListView.separated(
         key: const ValueKey('spaza-list-loading-shimmer'),
         padding: padding,
@@ -123,37 +133,40 @@ class SpazaListSkeleton extends StatelessWidget {
         itemCount: itemCount,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (_, __) => Container(
+          key: const ValueKey('spaza-list-skeleton-card'),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
             color: SpazaColors.surface,
             border: Border.all(color: SpazaColors.border),
             borderRadius: BorderRadius.circular(SpazaRadius.control),
           ),
-          child: Row(
-            children: [
-              if (showLeading) ...[
-                const SpazaSkeletonBox(
-                  height: 40,
-                  width: 40,
-                  radius: SpazaRadius.control,
+          child: _SpazaShimmerMask(
+            child: Row(
+              children: [
+                if (showLeading) ...[
+                  const SpazaSkeletonBox(
+                    height: 40,
+                    width: 40,
+                    radius: SpazaRadius.control,
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SpazaSkeletonLine(widthFactor: .62, height: 14),
+                      SizedBox(height: 9),
+                      SpazaSkeletonLine(widthFactor: .38, height: 10),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 12),
+                if (showTrailing) ...[
+                  const SizedBox(width: 16),
+                  const SpazaSkeletonBox(height: 14, width: 64),
+                ],
               ],
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SpazaSkeletonLine(widthFactor: .62, height: 14),
-                    SizedBox(height: 9),
-                    SpazaSkeletonLine(widthFactor: .38, height: 10),
-                  ],
-                ),
-              ),
-              if (showTrailing) ...[
-                const SizedBox(width: 16),
-                const SpazaSkeletonBox(height: 14, width: 64),
-              ],
-            ],
+            ),
           ),
         ),
       ),
@@ -174,13 +187,16 @@ class SpazaDetailSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SpazaShimmer(
-      semanticsLabel: semanticsLabel,
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: semanticsLabel,
       child: ListView(
         key: const ValueKey('spaza-detail-loading-shimmer'),
         padding: padding,
         children: [
           Container(
+            key: const ValueKey('spaza-detail-skeleton-card'),
             height: 132,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -188,21 +204,24 @@ class SpazaDetailSkeleton extends StatelessWidget {
               border: Border.all(color: SpazaColors.border),
               borderRadius: BorderRadius.circular(SpazaRadius.surface),
             ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SpazaSkeletonLine(widthFactor: .28, height: 11),
-                SizedBox(height: 14),
-                SpazaSkeletonLine(widthFactor: .58, height: 28),
-                SizedBox(height: 14),
-                SpazaSkeletonLine(widthFactor: .42, height: 11),
-              ],
+            child: const _SpazaShimmerMask(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SpazaSkeletonLine(widthFactor: .28, height: 11),
+                  SizedBox(height: 14),
+                  SpazaSkeletonLine(widthFactor: .58, height: 28),
+                  SizedBox(height: 14),
+                  SpazaSkeletonLine(widthFactor: .42, height: 11),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
           for (var index = 0; index < 3; index++) ...[
             Container(
+              key: const ValueKey('spaza-detail-skeleton-card'),
               height: 72,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -210,14 +229,16 @@ class SpazaDetailSkeleton extends StatelessWidget {
                 border: Border.all(color: SpazaColors.border),
                 borderRadius: BorderRadius.circular(SpazaRadius.surface),
               ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SpazaSkeletonLine(widthFactor: .32, height: 10),
-                  SizedBox(height: 9),
-                  SpazaSkeletonLine(widthFactor: .68, height: 14),
-                ],
+              child: const _SpazaShimmerMask(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SpazaSkeletonLine(widthFactor: .32, height: 10),
+                    SizedBox(height: 9),
+                    SpazaSkeletonLine(widthFactor: .68, height: 14),
+                  ],
+                ),
               ),
             ),
             if (index < 2) const SizedBox(height: 12),

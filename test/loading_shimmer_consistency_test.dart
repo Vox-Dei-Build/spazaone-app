@@ -168,6 +168,12 @@ void main() {
         findsOneWidget);
     expect(find.bySemanticsLabel('Loading customer records'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    final listCard =
+        find.byKey(const ValueKey('spaza-list-skeleton-card')).first;
+    expect(find.descendant(of: listCard, matching: find.byType(Shimmer)),
+        findsOneWidget);
+    expect(find.ancestor(of: listCard, matching: find.byType(Shimmer)),
+        findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(
@@ -183,6 +189,12 @@ void main() {
         findsOneWidget);
     expect(find.bySemanticsLabel('Loading payment details'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    final detailCard =
+        find.byKey(const ValueKey('spaza-detail-skeleton-card')).first;
+    expect(find.descendant(of: detailCard, matching: find.byType(Shimmer)),
+        findsOneWidget);
+    expect(find.ancestor(of: detailCard, matching: find.byType(Shimmer)),
+        findsNothing);
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });

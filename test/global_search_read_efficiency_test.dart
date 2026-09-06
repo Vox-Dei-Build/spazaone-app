@@ -56,6 +56,26 @@ void main() {
 
     expect(viewModel.searchResults.map((product) => product.id), ['milk']);
   });
+
+  test('a late catalogue snapshot cannot refill a cleared search', () async {
+    final source = _CountingStream<List<Product>>();
+    final viewModel = GlobalSearchViewModel(
+      userId: 'store-a',
+      productsStream: source,
+    );
+    addTearDown(() async {
+      viewModel.dispose();
+      await source.close();
+    });
+
+    viewModel.updateSearchQuery('milk');
+    viewModel.updateSearchQuery('');
+    source.add([Product(id: 'milk', name: 'Milk', group: 'Dairy')]);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(source.listenCount, 1);
+    expect(viewModel.searchResults, isEmpty);
+  });
 }
 
 class _CountingStream<T> extends Stream<T> {

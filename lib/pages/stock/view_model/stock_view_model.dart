@@ -300,24 +300,14 @@ class StockViewModel with ChangeNotifier {
 
   Stream<List<Product>> streamProductsByGroup(String? groupName) {
     if (groupName == null) return streamProducts();
-
-    final override = _productsStreamOverride;
-    if (override != null) {
-      return streamProducts().map(
-        (products) => products
-            .where((product) => product.group == groupName)
-            .toList(growable: false),
-      );
-    }
-    return _firestore
-        .collection('users')
-        .doc(userId)
-        .collection('products')
-        .where('group', isEqualTo: groupName)
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => Product.fromMap(doc.data(), doc.id))
-            .toList());
+    // The full catalogue remains mounted behind a group drilldown. Filter the
+    // replayed stream locally so opening a group does not create a second
+    // Firestore listener for products already present in memory.
+    return streamProducts().map(
+      (products) => products
+          .where((product) => product.group == groupName)
+          .toList(growable: false),
+    );
   }
 
   List<Product> checkLowStock() {

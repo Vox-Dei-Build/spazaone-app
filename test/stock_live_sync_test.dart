@@ -54,7 +54,7 @@ void main() {
     expect(viewModel.checkLowStock().map((product) => product.name), ['Milk']);
   });
 
-  test('report state and full product list share one upstream subscription',
+  test('report, full list, and group drilldown share one upstream subscription',
       () async {
     final source = _CountingStream<List<Product>>();
     final viewModel = StockViewModel(
@@ -70,14 +70,22 @@ void main() {
     final listValues = <List<Product>>[];
     final listSubscription =
         viewModel.streamProductsByGroup(null).listen(listValues.add);
+    final groupValues = <List<Product>>[];
+    final groupSubscription =
+        viewModel.streamProductsByGroup('Bakery').listen(groupValues.add);
     addTearDown(listSubscription.cancel);
+    addTearDown(groupSubscription.cancel);
 
-    source.add([Product(id: 'bread', name: 'Bread', quantity: 3)]);
+    source.add([
+      Product(id: 'bread', name: 'Bread', quantity: 3, group: 'Bakery'),
+      Product(id: 'milk', name: 'Milk', quantity: 2, group: 'Dairy'),
+    ]);
     await Future<void>.delayed(Duration.zero);
 
     expect(source.listenCount, 1);
-    expect(viewModel.products.single.id, 'bread');
-    expect(listValues.single.single.id, 'bread');
+    expect(viewModel.products, hasLength(2));
+    expect(listValues.single, hasLength(2));
+    expect(groupValues.single.single.id, 'bread');
   });
 }
 

@@ -69,6 +69,47 @@ class _FakeCatalogService extends WhatsAppCatalogStatusService {
   ) async {}
 }
 
+class _ManualRefreshRaceCatalogService extends WhatsAppCatalogStatusService {
+  _ManualRefreshRaceCatalogService(this.cached)
+      : super(userIdProvider: () => 'owner-a');
+
+  final WhatsAppCatalogSnapshot cached;
+  final Completer<WhatsAppCatalogSnapshot> fullRefresh = Completer();
+  int fullFetches = 0;
+  int patchFetches = 0;
+
+  @override
+  Future<WhatsAppCatalogSnapshot?> readCache(
+    String storeId, {
+    DateTime? now,
+  }) async =>
+      cached;
+
+  @override
+  Future<WhatsAppCatalogSnapshot> fetch(String storeId) {
+    fullFetches++;
+    return fullRefresh.future;
+  }
+
+  @override
+  Future<WhatsAppCatalogStatusPatch> fetchProductStatuses(
+    String storeId,
+    Iterable<String> productIds,
+  ) async {
+    patchFetches++;
+    return WhatsAppCatalogStatusPatch(
+      products: [productState('a', WhatsAppCatalogProductStatus.live)],
+      removedProductIds: const {},
+    );
+  }
+
+  @override
+  Future<void> writeCache(
+    String storeId,
+    WhatsAppCatalogSnapshot snapshot,
+  ) async {}
+}
+
 Map<String, dynamic> page({
   required List<Map<String, dynamic>> products,
   String? token,
@@ -476,6 +517,48 @@ void main() {
     expect(controller.snapshot?.summary.live, 1);
     expect(controller.snapshot?.checkedAtMs, initial.checkedAtMs);
     expect(controller.snapshot?.fromCache, isTrue);
+  });
+
+  testWidgets('manual refresh cannot be superseded by a pending poll',
+      (tester) async {
+    final now = DateTime(2026, 9, 6, 12);
+    final initial = statusSnapshot(
+      checkedAt: now,
+      productState: productState('a', WhatsAppCatalogProductStatus.syncing),
+    );
+    final service = _ManualRefreshRaceCatalogService(initial);
+    final controller = WhatsAppCatalogStatusController(
+      service: service,
+      storeSession: await storeSession(),
+      enabled: () => true,
+      now: () => now,
+      pollIntervals: const [Duration(milliseconds: 10)],
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+
+    controller.start();
+    await tester.pump();
+    final refresh = controller.manualRefresh();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+
+    expect(service.fullFetches, 1);
+    expect(service.patchFetches, 0);
+
+    final fresh = statusSnapshot(
+      checkedAt: now.add(const Duration(seconds: 1)),
+      productState: productState('a', WhatsAppCatalogProductStatus.live),
+      fromCache: false,
+    );
+    service.fullRefresh.complete(fresh);
+    await refresh;
+    await tester.pump();
+
+    expect(controller.snapshot, same(fresh));
+    expect(
+        controller.statusFor('a')?.status, WhatsAppCatalogProductStatus.live);
+    expect(service.patchFetches, 0);
   });
 
   for (final live in [4, 5, 10]) {

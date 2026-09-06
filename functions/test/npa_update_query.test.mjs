@@ -20,9 +20,10 @@ test("scheduled NPA repair queries only persisted contradictions", () => {
   );
   assert.match(
     source,
-    /collectionGroup\("customers"\)[\s\S]*?\.orderBy\(FieldPath\.documentId\(\),\s*"asc"\)[\s\S]*?\.limit\(LEGACY_NPA_AUDIT_BATCH_SIZE\)/,
+    /collectionGroup\("customers"\)[\s\S]*?\.where\("balance",\s*"<",\s*0\)[\s\S]*?\.orderBy\("balance",\s*"asc"\)[\s\S]*?\.limit\(LEGACY_NPA_AUDIT_BATCH_SIZE\)/,
   );
-  assert.match(source, /const LEGACY_NPA_AUDIT_BATCH_SIZE = 10/);
+  assert.match(source, /const LEGACY_NPA_AUDIT_BATCH_SIZE = 100/);
+  assert.match(source, /query = query\.startAfter\(cursor\)/);
 
   const indexes = JSON.parse(
     readFileSync(new URL("../../firestore.indexes.json", import.meta.url)),

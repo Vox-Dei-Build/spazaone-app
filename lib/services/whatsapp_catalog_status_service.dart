@@ -302,6 +302,7 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
   bool _started = false;
   bool _disposed = false;
   bool _isForeground = true;
+  int _fullRefreshesInFlight = 0;
 
   bool get enabled => _enabled();
   bool get isStale => snapshot?.isStaleAt(_now()) ?? false;
@@ -367,56 +368,62 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
     String storeId, {
     bool readCache = true,
   }) async {
-    final requestEpoch = ++_epoch;
-    loading = snapshot == null;
-    errorMessage = null;
-    notifyListeners();
-    if (readCache) {
-      final cached = await _service.readCache(storeId, now: _now());
-      if (!_isCurrent(requestEpoch, storeId)) return;
-      if (cached != null) {
-        snapshot = cached;
-        loading = false;
-        notifyListeners();
-        unawaited(_captureLoaded(cached, Duration.zero));
-        if (!cached.isStaleAt(_now())) {
-          _schedulePolling();
-          return;
-        }
-      }
-    }
-    final stopwatch = Stopwatch()..start();
+    _pollTimer?.cancel();
+    _fullRefreshesInFlight += 1;
     try {
-      final fresh = await _service.fetch(storeId);
-      stopwatch.stop();
-      if (!_isCurrent(requestEpoch, storeId)) return;
-      snapshot = fresh;
-      loading = false;
+      final requestEpoch = ++_epoch;
+      loading = snapshot == null;
       errorMessage = null;
       notifyListeners();
-      unawaited(_captureLoaded(fresh, stopwatch.elapsed));
-      _schedulePolling();
-    } catch (error) {
-      stopwatch.stop();
-      if (!_isCurrent(requestEpoch, storeId)) return;
-      loading = false;
-      errorMessage = snapshot == null
-          ? "Couldn’t check status. Use Refresh status to try again."
-          : "Couldn’t refresh.";
-      notifyListeners();
-      unawaited(
-        TelemetryService.instance.capture(
-          WhatsAppCatalogStatusLoadFailed(
-            failure: _failureCategory(error),
-            latencyBucket: stopwatch.elapsedMilliseconds < 500
-                ? 'under_500ms'
-                : stopwatch.elapsedMilliseconds < 2000
-                    ? '500ms_2s'
-                    : 'over_2s',
-            cacheAvailable: snapshot != null,
+      if (readCache) {
+        final cached = await _service.readCache(storeId, now: _now());
+        if (!_isCurrent(requestEpoch, storeId)) return;
+        if (cached != null) {
+          snapshot = cached;
+          loading = false;
+          notifyListeners();
+          unawaited(_captureLoaded(cached, Duration.zero));
+          if (!cached.isStaleAt(_now())) {
+            _schedulePolling();
+            return;
+          }
+        }
+      }
+      final stopwatch = Stopwatch()..start();
+      try {
+        final fresh = await _service.fetch(storeId);
+        stopwatch.stop();
+        if (!_isCurrent(requestEpoch, storeId)) return;
+        snapshot = fresh;
+        loading = false;
+        errorMessage = null;
+        notifyListeners();
+        unawaited(_captureLoaded(fresh, stopwatch.elapsed));
+        _schedulePolling();
+      } catch (error) {
+        stopwatch.stop();
+        if (!_isCurrent(requestEpoch, storeId)) return;
+        loading = false;
+        errorMessage = snapshot == null
+            ? "Couldn’t check status. Use Refresh status to try again."
+            : "Couldn’t refresh.";
+        notifyListeners();
+        unawaited(
+          TelemetryService.instance.capture(
+            WhatsAppCatalogStatusLoadFailed(
+              failure: _failureCategory(error),
+              latencyBucket: stopwatch.elapsedMilliseconds < 500
+                  ? 'under_500ms'
+                  : stopwatch.elapsedMilliseconds < 2000
+                      ? '500ms_2s'
+                      : 'over_2s',
+              cacheAvailable: snapshot != null,
+            ),
           ),
-        ),
-      );
+        );
+      }
+    } finally {
+      _fullRefreshesInFlight -= 1;
     }
   }
 
@@ -442,7 +449,13 @@ class WhatsAppCatalogStatusController extends ChangeNotifier
 
   Future<void> _refreshPendingStatuses() async {
     final current = snapshot;
-    if (_disposed || current == null || _storeId.isEmpty || !enabled) return;
+    if (_disposed ||
+        current == null ||
+        _storeId.isEmpty ||
+        !enabled ||
+        _fullRefreshesInFlight > 0) {
+      return;
+    }
     final pendingIds = current.products
         .where(
           (product) =>

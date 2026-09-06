@@ -17,6 +17,7 @@ import {
   decodeWhatsAppCatalogCursor,
   encodeWhatsAppCatalogCursor,
   summarizeWhatsAppCatalogStatusV2,
+  WhatsAppCatalogStatusV2Snapshot,
 } from "./catalogStatusV2";
 import { buildMerchantCatalogDecision } from "./catalogProjection";
 
@@ -120,9 +121,77 @@ export const getWhatsAppCatalogSyncStatusV1 = functions.https.onCall(
 // rebuilt the same whole-catalogue snapshot. Keep the response comfortably
 // below callable limits while covering normal catalogues in one scan.
 const CATALOG_STATUS_PAGE_SIZE = 1_000;
-const LEGACY_CATALOG_STATUS_PAGE_SIZE = 100;
 const CATALOG_STATUS_PATCH_SIZE = 100;
 const CATALOG_STATUS_FRESH_MS = 5 * 60 * 1000;
+const CATALOG_STATUS_PAGE_CACHE_MAX_ENTRIES = 25;
+
+type CatalogStatusPageCacheEntry = {
+  uid: string;
+  storeId: string;
+  checkedAtMs: number;
+  expiresAtMs: number;
+  rolloutEnabled: boolean;
+  snapshot: WhatsAppCatalogStatusV2Snapshot;
+};
+
+// A released client pages in batches of 100. Each old page used to rebuild
+// the same complete three-collection join. Retain only the snapshot that a
+// signed cursor refers to so subsequent pages on a warm instance reuse zero
+// catalogue reads while still honoring the caller's response-size bound.
+const catalogStatusPageCache = new Map<string, CatalogStatusPageCacheEntry>();
+
+function catalogStatusPageCacheKey(
+  uid: string,
+  storeId: string,
+  catalogVersion: string,
+): string {
+  return `${uid}\n${storeId}\n${catalogVersion}`;
+}
+
+function readCatalogStatusPageCache(input: {
+  uid: string;
+  storeId: string;
+  catalogVersion: string;
+  nowMs: number;
+}): CatalogStatusPageCacheEntry | null {
+  const key = catalogStatusPageCacheKey(
+    input.uid,
+    input.storeId,
+    input.catalogVersion,
+  );
+  const entry = catalogStatusPageCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAtMs <= input.nowMs) {
+    catalogStatusPageCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function writeCatalogStatusPageCache(entry: CatalogStatusPageCacheEntry) {
+  for (const [key, value] of catalogStatusPageCache) {
+    if (value.expiresAtMs <= entry.checkedAtMs) {
+      catalogStatusPageCache.delete(key);
+    }
+  }
+  const key = catalogStatusPageCacheKey(
+    entry.uid,
+    entry.storeId,
+    entry.snapshot.catalogVersion,
+  );
+  catalogStatusPageCache.delete(key);
+  while (catalogStatusPageCache.size >= CATALOG_STATUS_PAGE_CACHE_MAX_ENTRIES) {
+    const oldest = catalogStatusPageCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    catalogStatusPageCache.delete(oldest);
+  }
+  catalogStatusPageCache.set(key, entry);
+}
+
+/** Test-only reset for warm-instance pagination isolation. */
+export function clearWhatsAppCatalogStatusPageCacheForTesting() {
+  catalogStatusPageCache.clear();
+}
 
 function requestedProductIds(data: unknown): string[] | null {
   const value = (data as { productIds?: unknown } | null)?.productIds;
@@ -316,13 +385,6 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
         `pageSize must be between 1 and ${CATALOG_STATUS_PAGE_SIZE}.`,
       );
     }
-    // Released clients explicitly request 100. Serving the larger safe page
-    // immediately removes their five identical source scans; the signed
-    // cursor contract continues to work for catalogues above 1,000 products.
-    const effectivePageSize =
-      requestedPageSize === LEGACY_CATALOG_STATUS_PAGE_SIZE
-        ? CATALOG_STATUS_PAGE_SIZE
-        : requestedPageSize;
     const cursorSecret = catalogStatusCursorSecret();
     const rawPageToken = String(data?.pageToken ?? "").trim();
     const cursor = rawPageToken
@@ -339,37 +401,59 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
       );
     }
 
-    const [merchant, products, mappings, outbox] = await Promise.all([
-      db.doc(`users/${storeId}`).get(),
-      db.collection(`users/${storeId}/products`).get(),
-      db
-        .collection(WHATSAPP_CATALOG_MAPPINGS)
-        .where("merchantId", "==", storeId)
-        .get(),
-      db
-        .collection(WHATSAPP_CATALOG_OUTBOX)
-        .where("merchantId", "==", storeId)
-        .get(),
-    ]);
-    const checkedAtMs = Date.now();
-    const snapshot = summarizeWhatsAppCatalogStatusV2({
-      merchantId: storeId,
-      merchant: merchant.data() ?? {},
-      products: products.docs.map((product) => ({
-        id: product.id,
-        data: product.data() ?? {},
-      })),
-      mappings: mappings.docs.map((mapping) => ({
-        ...mapping.data(),
-        retailerId: mapping.data().retailerId ?? mapping.id,
-      })),
-      outbox: outbox.docs.map((job) => ({
-        ...job.data(),
-        retailerId: job.data().retailerId ?? job.id,
-      })),
-      rolloutEnabled,
-      checkedAtMs,
-    });
+    const nowMs = Date.now();
+    const cached = cursor
+      ? readCatalogStatusPageCache({
+          uid: context.auth.uid,
+          storeId,
+          catalogVersion: cursor.catalogVersion,
+          nowMs,
+        })
+      : null;
+    let checkedAtMs = cached?.checkedAtMs ?? nowMs;
+    const snapshotRolloutEnabled = cached?.rolloutEnabled ?? rolloutEnabled;
+    let snapshot = cached?.snapshot ?? null;
+    if (!snapshot) {
+      const [merchant, products, mappings, outbox] = await Promise.all([
+        db.doc(`users/${storeId}`).get(),
+        db.collection(`users/${storeId}/products`).get(),
+        db
+          .collection(WHATSAPP_CATALOG_MAPPINGS)
+          .where("merchantId", "==", storeId)
+          .get(),
+        db
+          .collection(WHATSAPP_CATALOG_OUTBOX)
+          .where("merchantId", "==", storeId)
+          .get(),
+      ]);
+      checkedAtMs = Date.now();
+      snapshot = summarizeWhatsAppCatalogStatusV2({
+        merchantId: storeId,
+        merchant: merchant.data() ?? {},
+        products: products.docs.map((product) => ({
+          id: product.id,
+          data: product.data() ?? {},
+        })),
+        mappings: mappings.docs.map((mapping) => ({
+          ...mapping.data(),
+          retailerId: mapping.data().retailerId ?? mapping.id,
+        })),
+        outbox: outbox.docs.map((job) => ({
+          ...job.data(),
+          retailerId: job.data().retailerId ?? job.id,
+        })),
+        rolloutEnabled: snapshotRolloutEnabled,
+        checkedAtMs,
+      });
+      writeCatalogStatusPageCache({
+        uid: context.auth.uid,
+        storeId,
+        checkedAtMs,
+        expiresAtMs: checkedAtMs + CATALOG_STATUS_FRESH_MS,
+        rolloutEnabled: snapshotRolloutEnabled,
+        snapshot,
+      });
+    }
     if (cursor && cursor.catalogVersion !== snapshot.catalogVersion) {
       throw new functions.https.HttpsError(
         "failed-precondition",
@@ -391,10 +475,10 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
     }
     const page = snapshot.products.slice(
       startIndex,
-      startIndex + effectivePageSize,
+      startIndex + requestedPageSize,
     );
     const hasNextPage =
-      startIndex + effectivePageSize < snapshot.products.length;
+      startIndex + requestedPageSize < snapshot.products.length;
     const lastProductId = page.at(-1)?.productId;
     const nextPageToken =
       hasNextPage && lastProductId
@@ -412,7 +496,7 @@ export const getWhatsAppCatalogSyncStatusV2 = functions
       schemaVersion: 2,
       checkedAtMs,
       freshUntilMs: checkedAtMs + CATALOG_STATUS_FRESH_MS,
-      rollout: rolloutEnabled ? "enabled" : "not_enabled",
+      rollout: snapshotRolloutEnabled ? "enabled" : "not_enabled",
       summary: snapshot.summary,
       products: page,
       nextPageToken,

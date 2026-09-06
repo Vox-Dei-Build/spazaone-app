@@ -25,20 +25,20 @@ async function clear() {
 before(clear);
 after(clear);
 
-test("NPA repair reads and corrects only contradictory customer rows", async () => {
+test("NPA repair prioritizes legacy debtors and revisits rows behind its cursor", async () => {
   const customers = db.collection("users/npa-test/customers");
   const writes = [
-    customers.doc("correct-negative").set({ balance: -100, isNPA: true }),
-    customers.doc("wrong-negative").set({ balance: -50, isNPA: false }),
+    customers.doc("correct-negative").set({ balance: -2000, isNPA: true }),
+    customers.doc("wrong-negative").set({ balance: -1900, isNPA: false }),
     customers.doc("correct-settled").set({ balance: 0, isNPA: false }),
     customers.doc("wrong-settled").set({ balance: 20, isNPA: true }),
-    customers.doc("zz-legacy-missing-flag").set({ balance: -10 }),
+    customers.doc("zz-legacy-missing-flag").set({ balance: -1 }),
   ];
-  for (let index = 0; index < 8; index += 1) {
+  for (let index = 0; index < 100; index += 1) {
     writes.push(
       customers.doc(`middle-correct-${index}`).set({
-        balance: 0,
-        isNPA: false,
+        balance: -1800 + index,
+        isNPA: true,
       }),
     );
   }
@@ -47,7 +47,7 @@ test("NPA repair reads and corrects only contradictory customer rows", async () 
   assert.deepEqual(await updateNPAs(), {
     scanned: 2,
     corrected: 2,
-    legacyAudited: 10,
+    legacyAudited: 100,
     legacyCorrected: 0,
   });
   assert.equal(
@@ -63,6 +63,10 @@ test("NPA repair reads and corrects only contradictory customer rows", async () 
     undefined,
   );
 
+  // This row sorts before the stored cursor. It is picked up on the next
+  // bounded cycle rather than remaining missing indefinitely.
+  await customers.doc("inserted-behind-cursor").set({ balance: -1950 });
+
   assert.deepEqual(await updateNPAs(), {
     scanned: 0,
     corrected: 0,
@@ -73,11 +77,23 @@ test("NPA repair reads and corrects only contradictory customer rows", async () 
     (await customers.doc("zz-legacy-missing-flag").get()).get("isNPA"),
     true,
   );
+  assert.equal(
+    (await customers.doc("inserted-behind-cursor").get()).get("isNPA"),
+    undefined,
+  );
+
+  await db
+    .doc("maintenanceState/npaLegacyAudit")
+    .set({ nextCycleAtMs: 0 }, { merge: true });
 
   assert.deepEqual(await updateNPAs(), {
     scanned: 0,
     corrected: 0,
-    legacyAudited: 0,
-    legacyCorrected: 0,
+    legacyAudited: 100,
+    legacyCorrected: 1,
   });
+  assert.equal(
+    (await customers.doc("inserted-behind-cursor").get()).get("isNPA"),
+    true,
+  );
 });

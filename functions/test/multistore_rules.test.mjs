@@ -652,9 +652,10 @@ test("catalogue status callable paginates and detects catalogue drift", async ()
       ),
     ]);
   });
-  const { getWhatsAppCatalogSyncStatusV2 } = await import(
-    "../lib/whatsapp/catalogStatus.js"
-  );
+  const {
+    clearWhatsAppCatalogStatusPageCacheForTesting,
+    getWhatsAppCatalogSyncStatusV2,
+  } = await import("../lib/whatsapp/catalogStatus.js");
   const run = getWhatsAppCatalogSyncStatusV2.run;
   const context = {
     auth: { uid: "storeA", token: {} },
@@ -669,13 +670,32 @@ test("catalogue status callable paginates and detects catalogue drift", async ()
   assert.equal(typeof first.nextPageToken, "string");
   assert.equal(first.retryPermitted, false);
 
-  // Legacy app builds explicitly send 100. The backend expands that request
-  // so a >100-product catalogue no longer causes identical full scans.
+  // Legacy app builds explicitly send 100. Keep that response bound and use
+  // the signed warm-instance snapshot for continuation pages.
   const full = await run({ storeId: "storeA", pageSize: 100 }, context);
-  assert.equal(full.products.length, catalogProductIds.length);
+  assert.equal(full.products.length, 100);
   assert.equal(full.products[0].productId, "a");
-  assert.equal(full.products.at(-1).productId, "z099");
-  assert.equal(full.nextPageToken, null);
+  assert.equal(full.products.at(-1).productId, "z096");
+  assert.equal(typeof full.nextPageToken, "string");
+  await env.withSecurityRulesDisabled(async (emulatorContext) => {
+    await updateDoc(
+      doc(emulatorContext.firestore(), "users/storeA/products/c"),
+      { name: "Changed product c" },
+    );
+  });
+  const remainder = await run(
+    {
+      storeId: "storeA",
+      pageSize: 100,
+      pageToken: full.nextPageToken,
+    },
+    context,
+  );
+  assert.deepEqual(
+    remainder.products.map((product) => product.productId),
+    ["z097", "z098", "z099"],
+  );
+  assert.equal(remainder.nextPageToken, null);
 
   const patch = await run(
     { storeId: "storeA", productIds: ["a", "missing"] },
@@ -711,12 +731,8 @@ test("catalogue status callable paginates and detects catalogue drift", async ()
       error?.details?.reason === "INVALID_PAGE_TOKEN",
   );
 
-  await env.withSecurityRulesDisabled(async (emulatorContext) => {
-    await updateDoc(
-      doc(emulatorContext.firestore(), "users/storeA/products/c"),
-      { name: "Changed product c" },
-    );
-  });
+  // A cold instance cannot reuse the snapshot and detects the changed source.
+  clearWhatsAppCatalogStatusPageCacheForTesting();
   await assert.rejects(
     run(
       {

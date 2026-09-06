@@ -1679,11 +1679,11 @@ test("Firestore index config preserves every existing entry and declares all nat
       indexes: [],
     },
   ]);
-  assert.equal(config.indexes.length, 22);
+  assert.equal(config.indexes.length, 24);
   assert.equal(existingFieldOverrides.length, 7);
   assert.equal(
     digest(config.indexes),
-    "1af74a6ed8e73d9cfb1fd7f66c4c649f0c53651169d8a850b4f6ce2d38a10ecf",
+    "5c13abe2069135854f7fdeae950a20a51d32fa78d1764759486389f1acbcc134",
   );
   assert.equal(
     digest(existingFieldOverrides),

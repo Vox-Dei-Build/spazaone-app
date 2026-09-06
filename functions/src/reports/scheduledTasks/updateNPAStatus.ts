@@ -1,15 +1,15 @@
 import {
   DocumentData,
-  FieldPath,
   FieldValue,
   QueryDocumentSnapshot,
   QuerySnapshot,
 } from "firebase-admin/firestore";
 import { functions, db } from "../../config/main";
 
-const LEGACY_NPA_AUDIT_BATCH_SIZE = 10;
+const LEGACY_NPA_AUDIT_BATCH_SIZE = 100;
 const LEGACY_NPA_AUDIT_REST_MS = 24 * 60 * 60 * 1000;
 const LEGACY_NPA_AUDIT_STATE_PATH = "maintenanceState/npaLegacyAudit";
+const LEGACY_NPA_AUDIT_SCHEMA_VERSION = 2;
 
 /**
  * Scheduled function to update Non-Performing Assets (NPA) status for customers.
@@ -77,9 +77,10 @@ export async function updateNPAs(): Promise<{
 }
 
 /**
- * Repairs old customer rows where isNPA is absent, which Firestore cannot
- * select with an equality filter. The persisted cursor caps this fallback at
- * ten reads per hourly run and rests for a day after completing a full cycle.
+ * Repairs old debt rows where isNPA is absent, which Firestore cannot select
+ * with an equality filter. Restricting this cursor audit to negative balances
+ * prioritizes records used by non-payment reminders without rereading every
+ * settled customer. A completed cycle rests for a day.
  */
 async function auditLegacyNPAState(): Promise<{
   scanned: number;
@@ -93,13 +94,20 @@ async function auditLegacyNPAState(): Promise<{
     return { scanned: 0, corrected: 0 };
   }
 
-  const cursorPath = String(stateData.cursorPath ?? "");
+  const cursorPath =
+    Number(stateData.schemaVersion) === LEGACY_NPA_AUDIT_SCHEMA_VERSION
+      ? String(stateData.cursorPath ?? "")
+      : "";
   let query = db
     .collectionGroup("customers")
-    .orderBy(FieldPath.documentId(), "asc")
+    .where("balance", "<", 0)
+    .orderBy("balance", "asc")
     .limit(LEGACY_NPA_AUDIT_BATCH_SIZE);
   if (/^users\/[^/]+\/customers\/[^/]+$/.test(cursorPath)) {
-    query = query.startAfter(cursorPath);
+    const cursor = await db.doc(cursorPath).get();
+    if (cursor.exists && Number(cursor.get("balance")) < 0) {
+      query = query.startAfter(cursor);
+    }
   }
   const snapshot = await query.get();
   const batch = db.batch();
@@ -116,6 +124,7 @@ async function auditLegacyNPAState(): Promise<{
   batch.set(
     stateRef,
     {
+      schemaVersion: LEGACY_NPA_AUDIT_SCHEMA_VERSION,
       cursorPath:
         cycleComplete || snapshot.empty
           ? FieldValue.delete()
