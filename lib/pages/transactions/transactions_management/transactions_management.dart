@@ -268,10 +268,10 @@ class CustomerAccountLayout extends StatelessWidget {
             SizedBox(height: 240, child: transactions)
           else
             Expanded(child: transactions),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           balance,
           requestPanel,
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
         ];
         final content = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch, children: children);

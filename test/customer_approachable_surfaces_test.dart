@@ -120,6 +120,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('customer balance is a compact band at phone width',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: CustomerBalanceCard(
+                balance: -93.10,
+                creditCount: 56,
+                paymentCount: 31,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ));
+
+    expect(
+      tester
+          .getSize(find.byKey(const Key('customer-balance-card-surface')))
+          .height,
+      lessThanOrEqualTo(80),
+    );
+    expect(find.text('56 added'), findsOneWidget);
+    expect(find.text('31 paid'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('short account layout scrolls to balance and payment requests',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(640, 320));

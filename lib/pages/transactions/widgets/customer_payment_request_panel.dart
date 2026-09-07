@@ -115,12 +115,12 @@ class _CustomerPaymentRequestPanelState
     final statusText = _statusText(overview);
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.icon(
+      padding: const EdgeInsets.only(top: 8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stackActions = constraints.maxWidth < 320 ||
+              MediaQuery.textScalerOf(context).scale(14) > 18;
+          final requestButton = FilledButton.icon(
             key: const Key('customer-request-payment-button'),
             onPressed: _sending
                 ? null
@@ -138,9 +138,9 @@ class _CustomerPaymentRequestPanelState
                   phoneMissing ? SpazaColors.heading : Colors.white,
               disabledBackgroundColor: SpazaColors.border,
               disabledForegroundColor: SpazaColors.muted,
-              minimumSize: const Size.fromHeight(
-                52,
-              ),
+              minimumSize: const Size.fromHeight(48),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              iconSize: 18,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(
                   SpazaRadius.control,
@@ -149,55 +149,109 @@ class _CustomerPaymentRequestPanelState
             ),
             icon: _sending || _loading
                 ? const SizedBox.square(
-                    dimension: 20,
+                    dimension: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       color: SpazaColors.heading,
                     ),
                   )
                 : Icon(
-                    phoneMissing ? Icons.phone_outlined : Icons.send_rounded),
+                    phoneMissing ? Icons.phone_outlined : Icons.send_rounded,
+                    size: 18,
+                  ),
             label: Text(
               _buttonLabel(phoneMissing, overview),
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-          if (!phoneMissing && overview?.onlinePaymentsReady == true) ...[
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              key: const Key('customer-create-repayment-plan-button'),
-              onPressed: _creatingPlan ? null : _createRepaymentPlan,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: SpazaColors.heading,
-                minimumSize: const Size.fromHeight(
-                  52,
-                ),
-                side: const BorderSide(color: SpazaColors.heading),
-              ),
-              icon: _creatingPlan
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.calendar_month_outlined),
-              label: Text(
-                _creatingPlan ? 'Creating plan…' : 'Set repayment plan',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-            ),
-          ],
-          if (statusText != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              statusText,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: SpazaColors.muted,
-                fontSize: 13,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ],
-        ],
+          );
+          final showPlan =
+              !phoneMissing && overview?.onlinePaymentsReady == true;
+          final planButton = OutlinedButton.icon(
+            key: const Key('customer-create-repayment-plan-button'),
+            onPressed: _creatingPlan ? null : _createRepaymentPlan,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: SpazaColors.heading,
+              minimumSize: const Size.fromHeight(48),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              iconSize: 18,
+              side: const BorderSide(color: SpazaColors.heading),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(SpazaRadius.control),
+              ),
+            ),
+            icon: _creatingPlan
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.calendar_month_outlined, size: 18),
+            label: Text(
+              _creatingPlan ? 'Creating plan…' : 'Set plan',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          );
+
+          final actions = showPlan
+              ? stackActions
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        requestButton,
+                        const SizedBox(height: 8),
+                        planButton,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: requestButton),
+                        const SizedBox(width: 8),
+                        Expanded(child: planButton),
+                      ],
+                    )
+              : requestButton;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              actions,
+              if (statusText != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.schedule_rounded,
+                      size: 13,
+                      color: SpazaColors.muted,
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        statusText,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: SpazaColors.muted,
+                          fontSize: 12,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

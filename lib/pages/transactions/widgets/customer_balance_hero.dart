@@ -41,8 +41,9 @@ class CustomerBalanceCard extends StatelessWidget {
     final state = _BalanceState.from(balance);
     return PrivateRegion(
       child: Container(
+        key: const Key('customer-balance-card-surface'),
         width: double.infinity,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           border: Border.all(color: SpazaColors.border),
@@ -54,15 +55,15 @@ class CustomerBalanceCard extends StatelessWidget {
             final primary = Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: state.accent.withValues(alpha: .08),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(state.icon, color: state.accent, size: 20),
+                  child: Icon(state.icon, color: state.accent, size: 18),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,13 +71,14 @@ class CustomerBalanceCard extends StatelessWidget {
                     children: [
                       Text(
                         state.eyebrow,
-                        style: theme.textTheme.labelMedium?.copyWith(
+                        style: theme.textTheme.labelSmall?.copyWith(
                           color: state.accent,
                           fontWeight: FontWeight.w700,
-                          letterSpacing: .6,
+                          letterSpacing: .5,
+                          height: 1,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       Semantics(
                         label:
                             '${state.eyebrow} ${CurrencyUtil.format(balance.abs())}',
@@ -86,10 +88,11 @@ class CustomerBalanceCard extends StatelessWidget {
                           alignment: Alignment.centerLeft,
                           child: Text(
                             CurrencyUtil.format(balance.abs()),
-                            style: theme.textTheme.headlineSmall?.copyWith(
+                            style: theme.textTheme.titleLarge?.copyWith(
                               color: state.accent,
-                              fontSize: 28,
+                              fontSize: 24,
                               fontWeight: FontWeight.w700,
+                              height: 1.08,
                               fontFeatures: const [
                                 FontFeature.tabularFigures()
                               ],
@@ -111,7 +114,7 @@ class CustomerBalanceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   primary,
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
                   counts,
                 ],
               );
@@ -119,7 +122,7 @@ class CustomerBalanceCard extends StatelessWidget {
             return Row(
               children: [
                 Expanded(child: primary),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 counts,
               ],
             );
@@ -141,8 +144,8 @@ class _BalanceCounts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-        spacing: 12,
-        runSpacing: 4,
+        spacing: 10,
+        runSpacing: 2,
         alignment: WrapAlignment.end,
         children: [
           _Count(
@@ -174,9 +177,15 @@ class _Count extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 3),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 2),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontSize: 12,
+                  height: 1.1,
+                ),
+          ),
         ],
       );
 }

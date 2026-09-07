@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:pasella/constants/constants.dart';
 import 'package:pasella/models/sales/sales_model.dart';
 import 'package:pasella/pages/sales/widgets/sales_list.dart';
@@ -27,6 +29,14 @@ Widget _screen(Widget child,
     );
 
 void main() {
+  setUpAll(() async {
+    final fonts = FontLoader('SpazaSans')
+      ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
+      ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'))
+      ..addFont(rootBundle.load('assets/fonts/Roboto-Bold.ttf'));
+    await fonts.load();
+  });
+
   testWidgets('sales from older years show a year and all dates announce it',
       (tester) async {
     final semantics = tester.ensureSemantics();
@@ -326,5 +336,128 @@ void main() {
     await tester.tap(find.text(CurrencyUtil.format(2450)));
     expect(openings, 1);
     semantics.dispose();
+  });
+
+  testWidgets('sale entry values and chevrons hold a consistent right column',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final year = DateTime.now().year;
+    final sales = [
+      Sale(
+        id: 'short-value',
+        amount: 1,
+        stockAmount: 0,
+        type: 'Cash',
+        products: const {},
+        dateAdded: DateTime(year, 9, 4, 12, 15),
+      ),
+      Sale(
+        id: 'long-value',
+        amount: 10000,
+        stockAmount: 1,
+        type: 'Cash',
+        products: const {},
+        dateAdded: DateTime(year, 9, 5, 10, 52),
+      ),
+    ];
+
+    await tester.pumpWidget(_screen(Column(
+      children: [
+        for (final sale in sales) RecordedSaleTile(sale: sale, onTap: () {}),
+      ],
+    )));
+
+    double paintedRightEdge(String text) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(text));
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: text.length),
+      );
+      final localRight = boxes
+          .map((box) => box.right)
+          .reduce((left, right) => left > right ? left : right);
+      return paragraph.localToGlobal(Offset(localRight, 0)).dx;
+    }
+
+    final amountEdges = sales
+        .map((sale) => paintedRightEdge(CurrencyUtil.format(sale.amount)))
+        .toList();
+    final stockEdges = sales
+        .map((sale) => paintedRightEdge(
+              'Stock bought ${CurrencyUtil.format(sale.stockAmount)}',
+            ))
+        .toList();
+    final chevrons = find.byIcon(Icons.chevron_right_rounded);
+    final chevronEdges = [
+      for (var index = 0; index < sales.length; index++)
+        tester.getTopLeft(chevrons.at(index)).dx,
+    ];
+    double baselineOf(String text) {
+      final paragraph = tester.renderObject<RenderBox>(find.text(text));
+      final localBaseline = paragraph.getDryBaseline(
+          paragraph.constraints, TextBaseline.alphabetic)!;
+      return paragraph.localToGlobal(Offset(0, localBaseline)).dy;
+    }
+
+    expect(amountEdges[0], closeTo(amountEdges[1], .01));
+    expect(stockEdges[0], closeTo(stockEdges[1], .01));
+    expect(chevronEdges[0], closeTo(chevronEdges[1], .01));
+    for (var index = 0; index < sales.length; index++) {
+      // Different font sizes can leave a fractional-pixel difference in their
+      // final glyph side bearings even when both paragraphs are right-aligned.
+      expect(amountEdges[index], closeTo(stockEdges[index], .5));
+      expect(
+        baselineOf(DateFormat('EEE, d MMM').format(sales[index].dateAdded)),
+        closeTo(baselineOf(CurrencyUtil.format(sales[index].amount)), .01),
+      );
+      expect(
+        baselineOf(DateFormat('HH:mm').format(sales[index].dateAdded)),
+        closeTo(
+          baselineOf(
+            'Stock bought ${CurrencyUtil.format(sales[index].stockAmount)}',
+          ),
+          .01,
+        ),
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('sale entry stacks before a financial value would be truncated',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final sale = Sale(
+      id: 'very-large-values',
+      amount: 123456789012.99,
+      stockAmount: 9876543210.87,
+      type: 'Cash',
+      products: const {},
+      dateAdded: DateTime(DateTime.now().year, 9, 4, 12, 15),
+    );
+    final amount = CurrencyUtil.format(sale.amount);
+    final stock = 'Stock bought ${CurrencyUtil.format(sale.stockAmount)}';
+
+    await tester.pumpWidget(_screen(
+      RecordedSaleTile(sale: sale, onTap: () {}),
+    ));
+
+    expect(find.text(amount), findsOneWidget);
+    expect(find.text(stock), findsOneWidget);
+    expect(tester.widget<Text>(find.text(amount)).overflow,
+        isNot(TextOverflow.ellipsis));
+    expect(tester.widget<Text>(find.text(stock)).overflow,
+        isNot(TextOverflow.ellipsis));
+    expect(
+      tester.getTopLeft(find.text(amount)).dy,
+      greaterThan(tester.getBottomLeft(find.text('12:15')).dy),
+    );
+    expect(tester.takeException(), isNull);
   });
 }

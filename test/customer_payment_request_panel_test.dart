@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pasella/constants/constants.dart';
 import 'package:pasella/pages/transactions/widgets/customer_payment_request_panel.dart';
 import 'package:pasella/services/customer_payment_request_service.dart';
 import 'package:pasella/services/repayment_plan_service.dart';
@@ -106,6 +108,7 @@ CustomerPaymentRequestOverview _overview({
   String reason = 'ready',
   bool online = true,
   int cooldownEndsAtMs = 0,
+  CustomerPaymentRequestLastStatus? lastRequest,
 }) {
   return CustomerPaymentRequestOverview(
     merchantId: 'merchant',
@@ -125,7 +128,7 @@ CustomerPaymentRequestOverview _overview({
     canRequest: canRequest,
     reason: reason,
     cooldownEndsAtMs: cooldownEndsAtMs,
-    lastRequest: null,
+    lastRequest: lastRequest,
   );
 }
 
@@ -136,9 +139,11 @@ Widget _app({
   CustomerPaymentRequestGateway? gateway,
   bool isOwing = true,
   double textScale = 1,
+  double horizontalPadding = 0,
   RepaymentPlanGateway? repaymentPlanGateway,
 }) {
   return MaterialApp(
+    theme: kCustomThemeData,
     builder: (context, child) => MediaQuery(
       data: MediaQuery.of(context).copyWith(
         textScaler: TextScaler.linear(textScale),
@@ -146,22 +151,30 @@ Widget _app({
       child: child!,
     ),
     home: Scaffold(
-      body: CustomerPaymentRequestPanel(
-        customerId: 'customer',
-        customerName: 'Thandi',
-        mobileNumber: phone,
-        isOwing: isOwing,
-        onAddPhone: onAddPhone ?? () {},
-        onSetUpOnlinePayments: () {},
-        merchantId: 'merchant',
-        service: gateway ?? _FakeGateway(overview),
-        repaymentPlanService: repaymentPlanGateway,
+      body: Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: CustomerPaymentRequestPanel(
+          customerId: 'customer',
+          customerName: 'Thandi',
+          mobileNumber: phone,
+          isOwing: isOwing,
+          onAddPhone: onAddPhone ?? () {},
+          onSetUpOnlinePayments: () {},
+          merchantId: 'merchant',
+          service: gateway ?? _FakeGateway(overview),
+          repaymentPlanService: repaymentPlanGateway,
+        ),
       ),
     ),
   );
 }
 
 void main() {
+  setUpAll(() async {
+    final fonts = FontLoader('SpazaSans')
+      ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'));
+    await fonts.load();
+  });
   setUp(() => FeatureFlags.enableCustomerPaymentRequests = true);
   tearDown(() => FeatureFlags.enableCustomerPaymentRequests = false);
 
@@ -225,6 +238,66 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
+  testWidgets('keeps payment actions and last-request status compact',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _app(
+        horizontalPadding: 16,
+        overview: _overview(
+          lastRequest: CustomerPaymentRequestLastStatus(
+            requestId: 'request-1',
+            status: 'sent',
+            sentAtMs: DateTime.now()
+                .subtract(const Duration(hours: 3))
+                .millisecondsSinceEpoch,
+            cooldownEndsAtMs: 0,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final request = find.byKey(const Key('customer-request-payment-button'));
+    final plan = find.byKey(const Key('customer-create-repayment-plan-button'));
+    expect(tester.getCenter(request).dy, tester.getCenter(plan).dy);
+    expect(find.text('Last request sent 3 hours ago.'), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(CustomerPaymentRequestPanel)).height,
+      lessThanOrEqualTo(80),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stacks both payment actions when large text needs more room',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _app(
+        overview: _overview(),
+        horizontalPadding: 16,
+        textScale: 1.6,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final request = find.byKey(const Key('customer-request-payment-button'));
+    final plan = find.byKey(const Key('customer-create-repayment-plan-button'));
+    expect(
+        tester.getRect(plan).top, greaterThan(tester.getRect(request).bottom));
+    expect(find.text('Request payment'), findsOneWidget);
+    expect(find.text('Set plan'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('hides payment requests when the account is settled',
       (tester) async {
     await tester.pumpWidget(_app(overview: _overview(), isOwing: false));
@@ -270,7 +343,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Set repayment plan'));
+    await tester.tap(
+      find.byKey(const Key('customer-create-repayment-plan-button')),
+    );
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('repayment-plan-installment')),

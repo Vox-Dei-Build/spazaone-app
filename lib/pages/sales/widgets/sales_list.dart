@@ -322,31 +322,42 @@ class RecordedSaleTile extends StatelessWidget {
     final time = DateFormat('HH:mm').format(sale.dateAdded);
     final amount = CurrencyUtil.format(sale.amount);
     final stockAmount = CurrencyUtil.format(sale.stockAmount);
+    final dateStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: kTertiaryColor,
+      fontWeight: FontWeight.w500,
+    );
     final dateWidget = Text(
       date,
-      style: theme.textTheme.bodyMedium?.copyWith(
-        color: kTertiaryColor,
-        fontWeight: FontWeight.w500,
-      ),
+      style: dateStyle,
     );
+    final timeStyle =
+        theme.textTheme.bodySmall?.copyWith(color: kSecondaryAccent);
     final timeWidget = Text(
       time,
-      style: theme.textTheme.bodySmall?.copyWith(color: kSecondaryAccent),
+      style: timeStyle,
+    );
+    final amountStyle = theme.textTheme.titleMedium?.copyWith(
+      color: kTertiaryColor,
+      fontWeight: FontWeight.w500,
     );
     final amountWidget = FittedBox(
       fit: BoxFit.scaleDown,
-      alignment: Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: Text(
         amount,
-        style: theme.textTheme.titleMedium?.copyWith(
-          color: kTertiaryColor,
-          fontWeight: FontWeight.w500,
-        ),
+        style: amountStyle,
       ),
     );
-    final stockWidget = Text(
-      'Stock bought $stockAmount',
-      style: theme.textTheme.bodySmall?.copyWith(color: kSecondaryAccent),
+    final stockStyle =
+        theme.textTheme.bodySmall?.copyWith(color: kSecondaryAccent);
+    final stockWidget = FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerRight,
+      child: Text(
+        'Stock bought $stockAmount',
+        textAlign: TextAlign.right,
+        style: stockStyle,
+      ),
     );
 
     return Semantics(
@@ -368,8 +379,29 @@ class RecordedSaleTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  final textScaler = MediaQuery.textScalerOf(context);
+                  double textWidth(String value, TextStyle? style) =>
+                      TextPainter.computeWidth(
+                        text: TextSpan(text: value, style: style),
+                        maxLines: 1,
+                        textDirection: Directionality.of(context),
+                        textScaler: textScaler,
+                        locale: Localizations.maybeLocaleOf(context),
+                      );
+
+                  // Wide rows reserve a 2:3 date/value grid, a 12px gutter,
+                  // and a fixed trailing chevron slot. If any full label would
+                  // not fit its cell, use the exact-value stacked layout.
+                  final cellWidth = constraints.maxWidth - 18 - 10 - 12;
+                  final leftCellWidth = cellWidth * 2 / 5;
+                  final rightCellWidth = cellWidth * 3 / 5;
                   final stack = constraints.maxWidth < 300 ||
-                      MediaQuery.textScalerOf(context).scale(14) > 19;
+                      textScaler.scale(14) > 19 ||
+                      textWidth(date, dateStyle) > leftCellWidth ||
+                      textWidth(time, timeStyle) > leftCellWidth ||
+                      textWidth(amount, amountStyle) > rightCellWidth ||
+                      textWidth('Stock bought $stockAmount', stockStyle) >
+                          rightCellWidth;
                   if (stack) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,26 +424,49 @@ class RecordedSaleTile extends StatelessWidget {
                     );
                   }
                   return Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            dateWidget,
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Expanded(flex: 2, child: dateWidget),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    amount,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    textAlign: TextAlign.right,
+                                    style: amountStyle,
+                                  ),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 5),
-                            timeWidget
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Flexible(
-                        flex: 2,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            amountWidget,
-                            const SizedBox(height: 5),
-                            stockWidget
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Expanded(flex: 2, child: timeWidget),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    'Stock bought $stockAmount',
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    textAlign: TextAlign.right,
+                                    style: stockStyle,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
