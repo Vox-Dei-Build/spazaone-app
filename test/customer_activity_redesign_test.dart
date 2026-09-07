@@ -130,6 +130,74 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+      'expanded activity figures share one right edge at standard and large text sizes',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final entries = [
+      CustomerActivityEntry(
+          id: 'small-sale',
+          customerId: 'customer-a',
+          customerName: 'Tshepo Number',
+          type: 'Credit',
+          amount: 10,
+          when: DateTime(2026, 8, 15, 0, 27)),
+      CustomerActivityEntry(
+          id: 'large-sale',
+          customerId: 'customer-a',
+          customerName: 'Tshepo Number',
+          type: 'Credit',
+          amount: 200,
+          when: DateTime(2026, 8, 14, 17, 43)),
+      CustomerActivityEntry(
+          id: 'payment',
+          customerId: 'customer-a',
+          customerName: 'Tshepo Number',
+          type: 'Payment',
+          amount: 1,
+          when: DateTime(2026, 8, 13, 9)),
+    ];
+    const amountKeys = [
+      'customer-activity-amount-small-sale',
+      'customer-activity-amount-large-sale',
+      'customer-activity-amount-payment',
+      'customer-activity-total-transactions',
+      'customer-activity-total-payments',
+      'customer-activity-total-net-movement',
+    ];
+
+    Future<void> expectAlignedFigures(double textScale) async {
+      await tester.pumpWidget(_frame(
+        CustomerActivityTimeline(
+            key: ValueKey('activity-figures-$textScale'),
+            entries: entries,
+            onOpenCustomer: (_) {}),
+        textScale: textScale,
+      ));
+      await tester.tap(find.text('Tshepo Number'));
+      await tester.pumpAndSettle();
+
+      final rightEdges = amountKeys
+          .map((key) => tester.getRect(find.byKey(ValueKey(key))).right)
+          .toList();
+      for (final edge in rightEdges.skip(1)) {
+        expect(edge, closeTo(rightEdges.first, .01));
+      }
+      expect(find.text('−R10,00'), findsOneWidget);
+      expect(find.text('−R200,00'), findsOneWidget);
+      expect(find.text('+R1,00'), findsOneWidget);
+      expect(find.text('R210,00'), findsOneWidget);
+      expect(find.text('R1,00'), findsOneWidget);
+      expect(find.text('-R209,00'), findsNWidgets(2));
+      expect(rightEdges.first, lessThanOrEqualTo(390));
+      expect(tester.takeException(), isNull);
+    }
+
+    await expectAlignedFigures(1);
+    await expectAlignedFigures(2);
+  });
+
   testWidgets('320px activity retains long names and full amounts at 200%',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 568));

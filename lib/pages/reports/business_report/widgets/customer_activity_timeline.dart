@@ -207,6 +207,7 @@ class _CustomerActivityGroup extends StatelessWidget {
             tilePadding:
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
             childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
             shape: const Border(),
             collapsedShape: const Border(),
             leading: stack
@@ -299,22 +300,19 @@ class _ActivityEntryRow extends StatelessWidget {
               Text(date, style: Theme.of(context).textTheme.bodySmall),
             ]);
             final amount = Text('$sign${CurrencyUtil.format(entry.amount)}',
+                key: ValueKey('customer-activity-amount-${entry.id}'),
+                textAlign: TextAlign.right,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontSize: 14,
                     color: entry.type == 'Credit'
                         ? Theme.of(context).colorScheme.error
                         : kPrimaryColor));
-            if (constraints.maxWidth < 300 ||
-                MediaQuery.textScalerOf(context).scale(14) > 20) {
-              return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [description, amount]);
-            }
-            return Row(children: [
-              Expanded(child: description),
-              const SizedBox(width: 12),
-              Flexible(child: amount)
-            ]);
+            return _ActivityFigureRow(
+              description: description,
+              amount: amount,
+              stack: constraints.maxWidth < 300 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 20,
+            );
           },
         ));
   }
@@ -328,19 +326,68 @@ class _ActivityTotal extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              Text(label, style: Theme.of(context).textTheme.bodySmall),
-              Text(CurrencyUtil.format(amount),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(fontSize: 14, color: color)),
-            ]),
+        child: LayoutBuilder(builder: (context, constraints) {
+          final amountKey = label.toLowerCase().replaceAll(' ', '-');
+          return _ActivityFigureRow(
+            description:
+                Text(label, style: Theme.of(context).textTheme.bodySmall),
+            amount: Text(
+              CurrencyUtil.format(amount),
+              key: ValueKey('customer-activity-total-$amountKey'),
+              textAlign: TextAlign.right,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontSize: 14, color: color),
+            ),
+            stack: constraints.maxWidth < 300 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20,
+          );
+        }),
       );
+}
+
+/// Keeps every activity figure on the same right edge while giving descriptions
+/// a stable share of the row. At narrow widths and large text sizes, the figure
+/// moves below the description and retains that right edge without truncation.
+class _ActivityFigureRow extends StatelessWidget {
+  const _ActivityFigureRow({
+    required this.description,
+    required this.amount,
+    required this.stack,
+  });
+
+  final Widget description;
+  final Widget amount;
+  final bool stack;
+
+  @override
+  Widget build(BuildContext context) {
+    if (stack) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          description,
+          const SizedBox(height: 2),
+          Align(alignment: Alignment.centerRight, child: amount),
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(flex: 3, child: description),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: Align(
+            alignment: Alignment.topRight,
+            child: FittedBox(fit: BoxFit.scaleDown, child: amount),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _ActivityReconciliation extends StatelessWidget {
