@@ -49,7 +49,12 @@ const RELEASE_PRESENTATION_FLAGS = [
   "FEATURE_CUSTOMER_PAYMENT_REQUESTS_ENABLED",
   "FEATURE_SUPPLIER_ORDER_PAYMENTS_ENABLED",
 ];
-const GLOBAL_PRESENTATION_FLAGS = ["FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED"];
+const GLOBAL_PRESENTATION_FLAGS = Object.freeze({
+  FEATURE_MERCHANT_ONBOARDING_INTRO_ENABLED:
+    "Global concise first-run merchant onboarding. Set false only as an emergency UI kill switch.",
+  FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED:
+    "Global merchant-facing WhatsApp catalogue status. Backend rollout state remains authoritative; set false only as an emergency UI kill switch.",
+});
 
 function parseArgs(argv) {
   const values = {};
@@ -140,7 +145,9 @@ export function prepareProductionRemoteConfig(template) {
     };
   }
 
-  for (const key of GLOBAL_PRESENTATION_FLAGS) {
+  for (const [key, description] of Object.entries(
+    GLOBAL_PRESENTATION_FLAGS,
+  )) {
     const existing = object(
       featureGroup.parameters[key] ?? {},
       `${key} parameter`,
@@ -149,9 +156,7 @@ export function prepareProductionRemoteConfig(template) {
       ...existing,
       defaultValue: { value: "true" },
       conditionalValues: {},
-      description:
-        "Global merchant-facing WhatsApp catalogue status. " +
-        "Backend rollout state remains authoritative; set false only as an emergency UI kill switch.",
+      description,
       valueType: "BOOLEAN",
     };
   }
@@ -180,7 +185,7 @@ function main() {
       releaseBuild: RELEASE_BUILD,
       conditions: RELEASE_CONDITIONS.map(({ name }) => name),
       presentationFlags: RELEASE_PRESENTATION_FLAGS,
-      globalPresentationFlags: GLOBAL_PRESENTATION_FLAGS,
+      globalPresentationFlags: Object.keys(GLOBAL_PRESENTATION_FLAGS),
       serverPaymentGatesChanged: false,
     })}\n`,
   );

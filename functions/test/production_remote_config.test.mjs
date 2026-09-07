@@ -57,6 +57,14 @@ test("current release presentation flags preserve production defaults and config
     "false",
   );
   assert.equal(
+    flags.FEATURE_MERCHANT_ONBOARDING_INTRO_ENABLED.defaultValue.value,
+    "true",
+  );
+  assert.deepEqual(
+    flags.FEATURE_MERCHANT_ONBOARDING_INTRO_ENABLED.conditionalValues,
+    {},
+  );
+  assert.equal(
     flags.FEATURE_WHATSAPP_CATALOG_STATUS_ENABLED.defaultValue.value,
     "true",
   );

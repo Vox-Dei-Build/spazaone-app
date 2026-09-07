@@ -33,8 +33,12 @@ git push origin v3.0.3+48
 
 ## Branch model
 
-- `main` is the only long-lived branch. No release branches, no fix
-  branches. Solo dev, ships from trunk on demand.
+- `main` is the release branch. Release tags are cut only from `main`.
+- `develop` is the long-lived integration branch. After each release, move it
+  to the exact released `main` commit so the next cycle starts from the same
+  source. Never cut a release tag from `develop`.
+- Temporary feature and fix branches may be used, but there are no separate
+  release branches; approved releases still ship from `main` on demand.
 - The default branch on GitHub is `main`.
 - Worktree directories under `pasella-app-worktrees/` may exist for
   parallel feature work but are not part of the release flow; tags must
