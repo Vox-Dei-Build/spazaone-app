@@ -111,7 +111,7 @@ Every helper invocation requires `--expected-app-commit` and
 exact clean 40-character `HEAD`, or a current-main value other than the frozen
 governed revision. The authority check also
 requires that commit to descend from frozen app-main base
-`14e93964a18c211a208966b0fdd44138e2ddc943`. Before an authorized write, the
+`aefaa8f3b8000dd05620450da8e1ada7bd31d8d7`. Before an authorized write, the
 high-level executor itself queries governed GitHub metadata through the
 registered Vox Dei authority and requires current remote `main` to equal that
 frozen base, then repeats the check immediately before every write-capable
