@@ -2,10 +2,9 @@ import { createHash, createHmac } from "crypto";
 import { resolveEnvironment, SpazaEnvironment } from "../config/environment";
 import { whatsappCatalogRuntimeConfig } from "./catalogConfig";
 
-export const WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS = 5;
+export const WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS = 1;
 export const WHATSAPP_CATALOG_MAX_PAGE_ITEMS = 10;
-export const WHATSAPP_PRODUCT_LIST_MIN_ITEMS =
-  WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS;
+export const WHATSAPP_PRODUCT_LIST_MIN_ITEMS = 2;
 export const WHATSAPP_PRODUCT_LIST_MAX_ITEMS = 30;
 
 export type MetaWhatsAppMessageProviderMode =
@@ -107,7 +106,7 @@ export type NativeCatalogPageDecision<T extends CatalogPageItem> =
   | {
       outcome: "fallback";
       reason:
-        | "fewer_than_five_ready_products"
+        | "no_ready_products"
         | "catalog_version_required"
         | "catalog_changed"
         | "page_out_of_range";
@@ -656,11 +655,8 @@ export function selectNativeCatalogPage<T extends CatalogPageItem>(input: {
   if (input.catalogVersion && input.catalogVersion !== catalogVersion) {
     return fallback("catalog_changed");
   }
-  if (
-    input.page === 0 &&
-    input.items.length < WHATSAPP_CATALOG_MIN_FIRST_PAGE_ITEMS
-  ) {
-    return fallback("fewer_than_five_ready_products");
+  if (input.page === 0 && input.items.length === 0) {
+    return fallback("no_ready_products");
   }
   if (input.page > 0 && !input.catalogVersion) {
     return fallback("catalog_version_required");

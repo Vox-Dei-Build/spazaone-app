@@ -837,12 +837,17 @@ test("catalog paging covers boundary counts without duplicates or skips", () => 
       retailerId: `spz_${String(index).padStart(32, "0")}`,
       lastAppliedRevision: String(index + 1).padStart(64, "a"),
     }));
-  for (const count of [0, 1, 2, 4]) {
-    const decision = selectNativeCatalogPage({ items: items(count), page: 0 });
-    assert.equal(decision.outcome, "fallback", `count=${count}`);
-    assert.equal(decision.reason, "fewer_than_five_ready_products");
-  }
-  for (const count of [5, 9, 10, 11, 22, 30]) {
+  const empty = selectNativeCatalogPage({ items: items(0), page: 0 });
+  assert.equal(empty.outcome, "fallback");
+  assert.equal(empty.reason, "no_ready_products");
+
+  const single = selectNativeCatalogPage({ items: items(1), page: 0 });
+  assert.equal(single.outcome, "ready");
+  assert.equal(single.format, "single_product");
+  assert.equal(single.items.length, 1);
+  assert.equal(single.pageCount, 1);
+
+  for (const count of [2, 4, 5, 9, 10, 11, 22, 30]) {
     const decision = selectNativeCatalogPage({ items: items(count), page: 0 });
     assert.equal(decision.outcome, "ready", `count=${count}`);
     assert.equal(decision.format, "product_list");
