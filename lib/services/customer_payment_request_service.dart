@@ -1,11 +1,17 @@
 import 'dart:convert';
 
 import 'package:pasella/config/function_endpoints.dart';
+import 'package:pasella/services/crash_service.dart';
 import 'package:pasella/services/secure_function_client.dart';
 
-class CustomerPaymentRequestException implements Exception {
-  const CustomerPaymentRequestException(this.message);
+typedef CustomerPaymentRequestEndpointBuilder = Uri Function(
+  String functionName,
+);
 
+class CustomerPaymentRequestException implements Exception {
+  const CustomerPaymentRequestException(this.code, this.message);
+
+  final String code;
   final String message;
 
   @override
@@ -77,6 +83,34 @@ class CustomerPaymentRequestOverview {
   factory CustomerPaymentRequestOverview.fromMap(Map<String, dynamic> data) {
     if (data['schemaVersion'] != 1) {
       throw const CustomerPaymentRequestException(
+        'invalid-response',
+        'Payment request details are temporarily unavailable.',
+      );
+    }
+    final canRequest = data['canRequest'] == true;
+    final messageCostMinor = _optionalMinor(data['messageCostMinor']);
+    final fallbackMessageCostMinor =
+        _optionalMinor(data['fallbackMessageCostMinor']);
+    final fallbackPriceProvided = data['fallbackMessageCostMinor'] != null;
+    final quoteKey =
+        data['quoteKey'] is String ? (data['quoteKey'] as String).trim() : '';
+    final pricingVersion = data['pricingVersion'] is String
+        ? (data['pricingVersion'] as String).trim()
+        : '';
+    final reason = data['reason']?.toString() ?? 'temporarily_unavailable';
+    final expectedChannel = data['expectedChannel']?.toString() ?? '';
+    if (canRequest &&
+        (messageCostMinor == null ||
+            messageCostMinor <= 0 ||
+            (fallbackPriceProvided && fallbackMessageCostMinor == null) ||
+            (fallbackMessageCostMinor != null &&
+                fallbackMessageCostMinor <= 0) ||
+            quoteKey.isEmpty ||
+            pricingVersion.isEmpty ||
+            reason != 'ready' ||
+            !{'sms', 'whatsapp'}.contains(expectedChannel))) {
+      throw const CustomerPaymentRequestException(
+        'invalid-pricing-response',
         'Payment request details are temporarily unavailable.',
       );
     }
@@ -87,19 +121,18 @@ class CustomerPaymentRequestOverview {
       outstandingAmountMinor:
           (data['outstandingAmountMinor'] as num?)?.toInt() ?? 0,
       mode: data['mode']?.toString() ?? 'sms_reminder',
-      expectedChannel: data['expectedChannel']?.toString() ?? 'sms',
-      messageCostMinor: (data['messageCostMinor'] as num?)?.toInt() ?? 0,
-      fallbackMessageCostMinor:
-          (data['fallbackMessageCostMinor'] as num?)?.toInt(),
+      expectedChannel: expectedChannel.isEmpty ? 'sms' : expectedChannel,
+      messageCostMinor: messageCostMinor ?? 0,
+      fallbackMessageCostMinor: fallbackMessageCostMinor,
       walletBalanceMinor: (data['walletBalanceMinor'] as num?)?.toInt() ?? 0,
       walletBalanceAfterMinor:
           (data['walletBalanceAfterMinor'] as num?)?.toInt() ?? 0,
       onlinePaymentsReady: data['onlinePaymentsReady'] == true,
       messagePreview: data['messagePreview']?.toString() ?? '',
-      quoteKey: data['quoteKey']?.toString() ?? '',
-      pricingVersion: data['pricingVersion']?.toString() ?? '',
-      canRequest: data['canRequest'] == true,
-      reason: data['reason']?.toString() ?? 'temporarily_unavailable',
+      quoteKey: quoteKey,
+      pricingVersion: pricingVersion,
+      canRequest: canRequest,
+      reason: reason,
       cooldownEndsAtMs: (data['cooldownEndsAtMs'] as num?)?.toInt() ?? 0,
       lastRequest: last is Map
           ? CustomerPaymentRequestLastStatus.fromMap(
@@ -107,6 +140,14 @@ class CustomerPaymentRequestOverview {
             )
           : null,
     );
+  }
+
+  static int? _optionalMinor(Object? value) {
+    if (value == null) return null;
+    if (value is! num || !value.isFinite || value.toInt() != value) {
+      return null;
+    }
+    return value.toInt();
   }
 }
 
@@ -152,10 +193,14 @@ abstract interface class CustomerPaymentRequestGateway {
 }
 
 class CustomerPaymentRequestService implements CustomerPaymentRequestGateway {
-  CustomerPaymentRequestService({SecureFunctionClient? client})
-      : _client = client ?? SecureFunctionClient();
+  CustomerPaymentRequestService({
+    SecureFunctionClient? client,
+    CustomerPaymentRequestEndpointBuilder? endpointBuilder,
+  })  : _client = client ?? SecureFunctionClient(),
+        _endpointBuilder = endpointBuilder ?? FunctionEndpoints.https;
 
   final SecureFunctionClient _client;
+  final CustomerPaymentRequestEndpointBuilder _endpointBuilder;
 
   @override
   Future<CustomerPaymentRequestOverview> getOverview({
@@ -166,7 +211,30 @@ class CustomerPaymentRequestService implements CustomerPaymentRequestGateway {
       'getCustomerPaymentRequestOverviewV1',
       {'merchantId': merchantId, 'customerId': customerId},
     );
-    return CustomerPaymentRequestOverview.fromMap(body);
+    try {
+      final overview = CustomerPaymentRequestOverview.fromMap(body);
+      if (overview.reason == 'pricing_unavailable') {
+        await CrashService.instance.log(
+          'customer payment request pricing unavailable',
+          context: const {
+            'diagnostic_surface': 'payment_request_pricing',
+            'diagnostic_stage': 'server_pricing',
+            'diagnostic_code': 'PRICING_UNAVAILABLE',
+            'diagnostic_retry_outcome': 'exhausted',
+          },
+        );
+      }
+      return overview;
+    } on CustomerPaymentRequestException catch (error, stack) {
+      await _recordDiagnostic(
+        'getCustomerPaymentRequestOverviewV1',
+        error,
+        stack,
+        stage: 'response',
+        retryOutcome: 'not_applicable',
+      );
+      rethrow;
+    }
   }
 
   @override
@@ -213,29 +281,121 @@ class CustomerPaymentRequestService implements CustomerPaymentRequestGateway {
     String functionName,
     Map<String, dynamic> payload,
   ) async {
+    final SecureFunctionResult request;
     try {
-      final response = await _client.post(
-        FunctionEndpoints.https(functionName),
+      request = await _client.postWithDiagnostics(
+        _endpointBuilder(functionName),
         payload,
       );
-      final body = response.body.isEmpty
-          ? <String, dynamic>{}
-          : Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw CustomerPaymentRequestException(
-          body['error']?.toString() ??
-              'Payment requests are temporarily unavailable.',
-        );
-      }
-      return body;
-    } on CustomerPaymentRequestException {
-      rethrow;
-    } catch (_) {
-      // App Check, auth refresh, transport and malformed-response failures are
-      // implementation details. Keep the account surface calm and retryable.
-      throw const CustomerPaymentRequestException(
+    } on SecureFunctionClientException catch (error, stack) {
+      final exception = CustomerPaymentRequestException(
+        error.code,
         'Payment requests are temporarily unavailable.',
       );
+      await _recordDiagnostic(
+        functionName,
+        exception,
+        stack,
+        stage: 'credentials',
+        retryOutcome: error.retryOutcome,
+      );
+      throw exception;
+    } catch (error, stack) {
+      const exception = CustomerPaymentRequestException(
+        'transport-unavailable',
+        'Payment requests are temporarily unavailable.',
+      );
+      await _recordDiagnostic(
+        functionName,
+        exception,
+        stack,
+        stage: 'transport',
+        retryOutcome: 'not_attempted',
+      );
+      throw exception;
     }
+
+    final response = request.response;
+    late final Map<String, dynamic> body;
+    try {
+      final decoded = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body);
+      if (decoded is! Map) throw const FormatException();
+      body = Map<String, dynamic>.from(decoded);
+    } catch (_, stack) {
+      const exception = CustomerPaymentRequestException(
+        'invalid-response',
+        'Payment requests are temporarily unavailable.',
+      );
+      await _recordDiagnostic(
+        functionName,
+        exception,
+        stack,
+        stage: 'response',
+        retryOutcome: request.retryOutcome,
+      );
+      throw exception;
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final exception = CustomerPaymentRequestException(
+        body['code']?.toString() ?? _codeForStatus(response.statusCode),
+        body['error']?.toString() ??
+            'Payment requests are temporarily unavailable.',
+      );
+      await _recordDiagnostic(
+        functionName,
+        exception,
+        StackTrace.current,
+        stage: 'server',
+        retryOutcome: request.retryOutcome,
+      );
+      throw exception;
+    }
+    if (request.retryOutcome != 'not_needed') {
+      await CrashService.instance.log(
+        'customer payment request recovered',
+        context: {
+          'diagnostic_surface': _surface(functionName),
+          'diagnostic_stage': 'credentials',
+          'diagnostic_code': 'request_recovered',
+          'diagnostic_retry_outcome': request.retryOutcome,
+        },
+      );
+    }
+    return body;
   }
+
+  Future<void> _recordDiagnostic(
+    String functionName,
+    CustomerPaymentRequestException error,
+    StackTrace stack, {
+    required String stage,
+    required String retryOutcome,
+  }) {
+    return CrashService.instance.recordNonFatal(
+      error,
+      stack,
+      reason: 'customer payment request unavailable',
+      context: {
+        'diagnostic_surface': _surface(functionName),
+        'diagnostic_stage': stage,
+        'diagnostic_code': error.code,
+        'diagnostic_retry_outcome': retryOutcome,
+      },
+    );
+  }
+
+  String _surface(String functionName) => switch (functionName) {
+        'getCustomerPaymentRequestOverviewV1' => 'payment_request_pricing',
+        'sendCustomerPaymentRequestV1' => 'payment_request_send',
+        _ => 'payment_request_status',
+      };
+
+  String _codeForStatus(int statusCode) => switch (statusCode) {
+        401 => 'authentication-required',
+        403 => 'access-denied',
+        409 => 'request-conflict',
+        _ => 'unavailable',
+      };
 }

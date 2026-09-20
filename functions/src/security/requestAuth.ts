@@ -73,7 +73,7 @@ export const authenticateFirebaseRequest = async (
   }
 
   if (options.expectedUid && uid !== options.expectedUid) {
-    res.status(403).json({ error: "Access denied." });
+    res.status(403).json({ error: "Access denied.", code: "ACCESS_DENIED" });
     return null;
   }
 
@@ -82,7 +82,10 @@ export const authenticateFirebaseRequest = async (
     try {
       await admin.appCheck().verifyToken(appCheckToken);
     } catch (error) {
-      console.warn("[requestAuth] invalid App Check token", { uid });
+      console.warn("[requestAuth] invalid App Check token", {
+        stage: "app_check_verification",
+        code: "APP_CHECK_FAILED",
+      });
       res.status(401).json({
         error: "App verification failed.",
         code: "APP_CHECK_FAILED",

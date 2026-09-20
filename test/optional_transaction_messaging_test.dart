@@ -92,6 +92,7 @@ void main() {
     );
     expect(find.text('Keep editing'), findsOneWidget);
     expect(find.text('Save without sending'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
 
     await tester.tap(find.text('Save without sending'));
     await tester.pumpAndSettle();
@@ -140,7 +141,7 @@ void main() {
     expect(outcome!.shouldCommit, isFalse);
   });
 
-  testWidgets('a later submit retries pricing and uses the server quote',
+  testWidgets('try again reloads pricing and uses the recovered server quote',
       (tester) async {
     late BuildContext context;
     await tester.pumpWidget(
@@ -157,47 +158,42 @@ void main() {
     var pricingRequests = 0;
     CostBreakdown? shownBreakdown;
 
-    Future<TransactionMessagingDecision> submit() =>
-        chooseOptionalTransactionMessage(
-          context,
-          mobileNumber: '0821234567',
-          customerName: 'Naledi',
-          smsText: 'Payment received',
-          smsPrice: TransactionSmsPrice.payment,
-          title: 'Payment recorded',
-          confirmLabel: 'Send receipt',
-          loadPricing: () async {
-            pricingRequests++;
-            if (pricingRequests == 1) {
-              throw const MessagingPricingUnavailable();
-            }
-            return _pricing;
-          },
-          resolveChannel: (_) async => MessageChannelExpectation.sms,
-          showPricingUnavailable: (_) async => CostSheetOutcome.skip,
-          showCostSheet: (
-            _, {
-            required breakdown,
-            required confirmLabel,
-            required skipLabel,
-            required confirmDismissal,
-          }) async {
-            shownBreakdown = breakdown;
-            return CostSheetOutcome.send;
-          },
-          reportPricingError: _ignorePricingError,
-        );
-
-    final first = await submit();
-    final second = await submit();
+    final decision = await chooseOptionalTransactionMessage(
+      context,
+      mobileNumber: '0821234567',
+      customerName: 'Naledi',
+      smsText: 'Payment received',
+      smsPrice: TransactionSmsPrice.payment,
+      title: 'Payment recorded',
+      confirmLabel: 'Send receipt',
+      loadPricing: () async {
+        pricingRequests++;
+        if (pricingRequests == 1) {
+          throw const MessagingPricingUnavailable();
+        }
+        return _pricing;
+      },
+      resolveChannel: (_) async => MessageChannelExpectation.sms,
+      showPricingUnavailable: (_) async =>
+          TransactionPricingUnavailableAction.retry,
+      showCostSheet: (
+        _, {
+        required breakdown,
+        required confirmLabel,
+        required skipLabel,
+        required confirmDismissal,
+      }) async {
+        shownBreakdown = breakdown;
+        return CostSheetOutcome.send;
+      },
+      reportPricingError: _ignorePricingError,
+    );
 
     expect(pricingRequests, 2);
-    expect(first.outcome, CostSheetOutcome.skip);
-    expect(first.canSend, isFalse);
-    expect(second.outcome, CostSheetOutcome.send);
-    expect(second.canSend, isTrue);
-    expect(second.pricingSnapshot, same(_pricing));
-    expect(second.quotedTotal, 1.74);
+    expect(decision.outcome, CostSheetOutcome.send);
+    expect(decision.canSend, isTrue);
+    expect(decision.pricingSnapshot, same(_pricing));
+    expect(decision.quotedTotal, 1.74);
     expect(shownBreakdown!.total, 1.74);
   });
 
@@ -215,6 +211,9 @@ void main() {
       ),
     );
 
+    var pricingRequests = 0;
+    var pricingPrompts = 0;
+    var costSheets = 0;
     final decision = await chooseOptionalTransactionMessage(
       context,
       mobileNumber: '0821234567',
@@ -223,11 +222,31 @@ void main() {
       smsPrice: TransactionSmsPrice.payment,
       title: 'Payment recorded',
       confirmLabel: 'Send receipt',
-      loadPricing: () async => throw const MessagingPricingUnavailable(),
-      showPricingUnavailable: (_) async => CostSheetOutcome.send,
+      loadPricing: () async {
+        pricingRequests++;
+        throw const MessagingPricingUnavailable();
+      },
+      showPricingUnavailable: (_) async {
+        pricingPrompts++;
+        return pricingPrompts == 1
+            ? TransactionPricingUnavailableAction.retry
+            : TransactionPricingUnavailableAction.keepEditing;
+      },
+      showCostSheet: (
+        _, {
+        required breakdown,
+        required confirmLabel,
+        required skipLabel,
+        required confirmDismissal,
+      }) async {
+        costSheets++;
+        return CostSheetOutcome.send;
+      },
       reportPricingError: _ignorePricingError,
     );
 
+    expect(pricingRequests, 2);
+    expect(costSheets, 0);
     expect(decision.outcome, CostSheetOutcome.keepEditing);
     expect(decision.pricingSnapshot, isNull);
     expect(decision.quotedTotal, isNull);

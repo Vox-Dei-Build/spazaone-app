@@ -244,7 +244,18 @@ async function buildQuote(
       db.doc("paymentConfiguration/global").get(),
       db.doc(`merchantPaymentProfiles/${merchantId}`).get(),
       stateRef(merchantId, customerId).get(),
-      DynamicPricingService.initialize().catch(() => null),
+      DynamicPricingService.initialize().catch((error) => {
+        console.warn("[payment-request] pricing unavailable", {
+          surface: "customer_payment_request",
+          stage: "pricing",
+          code:
+            error instanceof Error &&
+            error.name === "MessagingPricingUnavailableError"
+              ? "INVALID_PRICING_CONFIGURATION"
+              : "PRICING_PROVIDER_UNAVAILABLE",
+        });
+        return null;
+      }),
       paymentReadiness({ merchantId, purpose: "account_settlement" }),
     ]);
   if (!merchant.exists) throw new Error("MERCHANT_NOT_FOUND");
@@ -413,7 +424,11 @@ function publicQuote(quote: RequestQuote) {
   };
 }
 
-function publicError(error: unknown): { status: number; message: string } {
+function publicError(error: unknown): {
+  status: number;
+  message: string;
+  code: string;
+} {
   const code = error instanceof Error ? error.message : "";
   const known: Record<string, [number, string]> = {
     MERCHANT_NOT_FOUND: [404, "Shop not found."],
@@ -433,6 +448,7 @@ function publicError(error: unknown): { status: number; message: string } {
       503,
       "Payment requests are temporarily unavailable.",
     ],
+    PRICING_UNAVAILABLE: [503, "Payment requests are temporarily unavailable."],
     REQUEST_NOT_FOUND: [404, "Payment request not found."],
     REQUEST_BINDING_MISMATCH: [403, "Payment request access denied."],
     REQUEST_IN_PROGRESS: [
@@ -441,16 +457,18 @@ function publicError(error: unknown): { status: number; message: string } {
     ],
   };
   const mapped = known[code];
-  if (mapped) return { status: mapped[0], message: mapped[1] };
+  if (mapped) return { status: mapped[0], message: mapped[1], code };
   if (error instanceof functions.https.HttpsError) {
     return {
       status: error.code === "permission-denied" ? 403 : 400,
       message: error.message,
+      code: error.code.toUpperCase().replace(/-/g, "_"),
     };
   }
   return {
     status: 500,
     message: "Payment requests are temporarily unavailable.",
+    code: "REQUEST_UNAVAILABLE",
   };
 }
 
@@ -484,7 +502,9 @@ export const getCustomerPaymentRequestOverviewV1 = functions.https.onRequest(
         .json(publicQuote(await buildQuote(merchantId, customerId)));
     } catch (error) {
       const response = publicError(error);
-      res.status(response.status).json({ error: response.message });
+      res
+        .status(response.status)
+        .json({ error: response.message, code: response.code });
     }
   },
 );
@@ -665,6 +685,8 @@ export const sendCustomerPaymentRequestV1 = functions
           throw new Error("COOLDOWN_ACTIVE");
         if (quote.reason === "wallet_insufficient")
           throw new Error("INSUFFICIENT_CAMPAIGN_CREDITS");
+        if (quote.reason === "pricing_unavailable")
+          throw new Error("PRICING_UNAVAILABLE");
         throw new Error("REQUEST_TEMPORARILY_UNAVAILABLE");
       }
       if (String(req.body?.quoteKey ?? "") !== quote.quoteKey) {
@@ -701,7 +723,9 @@ export const sendCustomerPaymentRequestV1 = functions
       });
     } catch (error) {
       const response = publicError(error);
-      res.status(response.status).json({ error: response.message });
+      res
+        .status(response.status)
+        .json({ error: response.message, code: response.code });
     }
   });
 
@@ -1243,7 +1267,9 @@ export const claimCustomerPaymentRequestDeliveryV1BotHttp = functions
         .json({ schemaVersion: 1, requestId: id, claimed, status });
     } catch (error) {
       const response = publicError(error);
-      res.status(response.status).json({ error: response.message });
+      res
+        .status(response.status)
+        .json({ error: response.message, code: response.code });
     }
   });
 
@@ -1281,7 +1307,9 @@ export const recordCustomerPaymentRequestDeliveryV1BotHttp = functions
       res.status(200).json({ success: true });
     } catch (error) {
       const response = publicError(error);
-      res.status(response.status).json({ error: response.message });
+      res
+        .status(response.status)
+        .json({ error: response.message, code: response.code });
     }
   });
 
@@ -1318,7 +1346,9 @@ export const getCustomerPaymentRequestStatusV1 = functions.https.onRequest(
       });
     } catch (error) {
       const response = publicError(error);
-      res.status(response.status).json({ error: response.message });
+      res
+        .status(response.status)
+        .json({ error: response.message, code: response.code });
     }
   },
 );
@@ -1438,7 +1468,9 @@ export const getCustomerPaymentRequestContextV1BotHttp = functions
       });
     } catch (error) {
       const response = publicError(error);
-      res.status(response.status).json({ error: response.message });
+      res
+        .status(response.status)
+        .json({ error: response.message, code: response.code });
     }
   });
 

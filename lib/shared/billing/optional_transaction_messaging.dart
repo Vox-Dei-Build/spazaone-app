@@ -9,6 +9,12 @@ import 'package:pasella/utils/sms_pricing_util.dart';
 
 enum TransactionSmsPrice { credit, payment }
 
+enum TransactionPricingUnavailableAction {
+  retry,
+  saveWithoutSending,
+  keepEditing,
+}
+
 typedef TransactionPricingLoader = Future<MessagingPricingSnapshotV1>
     Function();
 typedef TransactionChannelResolver = Future<MessageChannelExpectation> Function(
@@ -20,8 +26,10 @@ typedef TransactionCostSheetPresenter = Future<CostSheetOutcome> Function(
   required String skipLabel,
   required bool confirmDismissal,
 });
-typedef TransactionPricingUnavailablePresenter = Future<CostSheetOutcome>
-    Function(BuildContext context);
+typedef TransactionPricingUnavailablePresenter
+    = Future<TransactionPricingUnavailableAction> Function(
+  BuildContext context,
+);
 typedef TransactionPricingErrorReporter = Future<void> Function(
   Object error,
   StackTrace stackTrace,
@@ -89,24 +97,32 @@ Future<TransactionMessagingDecision> chooseOptionalTransactionMessage(
     return const TransactionMessagingDecision.recordOnly();
   }
 
-  late final MessagingPricingSnapshotV1 pricing;
-  try {
-    pricing = await (loadPricing ?? DynamicPricingService.loadSnapshot)();
-  } catch (error, stackTrace) {
-    final reporter = reportPricingError ?? _recordPricingError;
-    await reporter(error, stackTrace);
-    if (!context.mounted) {
+  late MessagingPricingSnapshotV1 pricing;
+  while (true) {
+    try {
+      pricing = await (loadPricing ??
+          () => DynamicPricingService.loadSnapshot(
+                retryReporter: _recordPricingRetry,
+              ))();
+      break;
+    } catch (error, stackTrace) {
+      final reporter = reportPricingError ?? _recordPricingError;
+      await reporter(error, stackTrace);
+      if (!context.mounted) {
+        return const TransactionMessagingDecision.keepEditing();
+      }
+
+      final unavailableAction = await (showPricingUnavailable ??
+          showTransactionPricingUnavailableChoice)(context);
+      if (unavailableAction == TransactionPricingUnavailableAction.retry) {
+        continue;
+      }
+      if (unavailableAction ==
+          TransactionPricingUnavailableAction.saveWithoutSending) {
+        return const TransactionMessagingDecision.recordOnly();
+      }
       return const TransactionMessagingDecision.keepEditing();
     }
-
-    final unavailableOutcome = await (showPricingUnavailable ??
-        showTransactionPricingUnavailableChoice)(context);
-
-    // This guard makes the fail-closed rule explicit even for an injected
-    // presenter: unavailable pricing can never grant permission to send.
-    return unavailableOutcome == CostSheetOutcome.skip
-        ? const TransactionMessagingDecision.recordOnly()
-        : const TransactionMessagingDecision.keepEditing();
   }
 
   if (!context.mounted) {
@@ -154,20 +170,44 @@ Future<TransactionMessagingDecision> chooseOptionalTransactionMessage(
   );
 }
 
-Future<void> _recordPricingError(Object error, StackTrace stackTrace) =>
-    CrashService.instance.recordNonFatal(
-      MessagingPricingUnavailable.fromError(error),
-      stackTrace,
-      reason: 'transaction messaging pricing unavailable',
-    );
+Future<void> _recordPricingError(Object error, StackTrace stackTrace) {
+  final safeError = MessagingPricingUnavailable.fromError(error);
+  return CrashService.instance.recordNonFatal(
+    safeError,
+    stackTrace,
+    reason: 'transaction messaging pricing unavailable',
+    context: {
+      'diagnostic_surface': 'transaction_confirmation',
+      'diagnostic_stage': 'pricing',
+      'diagnostic_code': safeError.code,
+      'diagnostic_retry_outcome': 'exhausted_or_not_retryable',
+    },
+  );
+}
+
+Future<void> _recordPricingRetry({
+  required String code,
+  required String outcome,
+}) {
+  return CrashService.instance.log(
+    'transaction pricing credential retry',
+    context: {
+      'diagnostic_surface': 'transaction_confirmation',
+      'diagnostic_stage': 'credentials',
+      'diagnostic_code': code,
+      'diagnostic_retry_outcome': outcome,
+    },
+  );
+}
 
 /// Explicit fallback shown when a transaction can be recorded safely but a
 /// paid message cannot be quoted. Closing the dialog also keeps the form open.
 @visibleForTesting
-Future<CostSheetOutcome> showTransactionPricingUnavailableChoice(
+Future<TransactionPricingUnavailableAction>
+    showTransactionPricingUnavailableChoice(
   BuildContext context,
 ) async {
-  final saveWithoutSending = await showDialog<bool>(
+  final action = await showDialog<TransactionPricingUnavailableAction>(
     context: context,
     barrierDismissible: false,
     builder: (dialogContext) => AlertDialog(
@@ -177,17 +217,25 @@ Future<CostSheetOutcome> showTransactionPricingUnavailableChoice(
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(false),
+          onPressed: () => Navigator.of(dialogContext).pop(
+            TransactionPricingUnavailableAction.keepEditing,
+          ),
           child: const Text('Keep editing'),
         ),
-        FilledButton(
-          onPressed: () => Navigator.of(dialogContext).pop(true),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(
+            TransactionPricingUnavailableAction.saveWithoutSending,
+          ),
           child: const Text('Save without sending'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(
+            TransactionPricingUnavailableAction.retry,
+          ),
+          child: const Text('Try again'),
         ),
       ],
     ),
   );
-  return saveWithoutSending == true
-      ? CostSheetOutcome.skip
-      : CostSheetOutcome.keepEditing;
+  return action ?? TransactionPricingUnavailableAction.keepEditing;
 }

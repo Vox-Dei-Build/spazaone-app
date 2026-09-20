@@ -73,10 +73,14 @@ void main() {
       'pricing request uses the selected shop and preserves safe App Check reason',
       () async {
     String? requestedShop;
+    var attempts = 0;
     await expectLater(
       DynamicPricingService.loadSnapshot(
         storeId: 'test-shop',
+        refreshCredentials: () async {},
+        retryDelay: (_) async {},
         loader: (shop) async {
+          attempts++;
           requestedShop = shop;
           throw FirebaseFunctionsException(
             code: 'failed-precondition',
@@ -91,10 +95,14 @@ void main() {
               isNot(contains('must never be exposed')))),
     );
     expect(requestedShop, 'test-shop');
+    expect(attempts, 2);
   });
 
-  test('server request can recover without inventing fallback rates', () async {
+  test('transient pricing failure refreshes credentials and retries once',
+      () async {
     var attempts = 0;
+    var refreshes = 0;
+    var delays = 0;
     Future<Map<String, dynamic>> load(String _) async {
       attempts++;
       if (attempts == 1) {
@@ -104,12 +112,41 @@ void main() {
       return valid;
     }
 
-    await expectLater(
-        DynamicPricingService.loadSnapshot(loader: load, storeId: 'demo'),
-        throwsA(isA<MessagingPricingUnavailable>()));
-    final snapshot =
-        await DynamicPricingService.loadSnapshot(loader: load, storeId: 'demo');
+    final snapshot = await DynamicPricingService.loadSnapshot(
+      loader: load,
+      storeId: 'demo',
+      refreshCredentials: () async => refreshes++,
+      retryDelay: (_) async => delays++,
+    );
     expect(snapshot.smsCustomerMinor, valid['smsCustomerMinor']);
     expect(attempts, 2);
+    expect(refreshes, 1);
+    expect(delays, 1);
+  });
+
+  test('invalid pricing fails closed without retry or credential refresh',
+      () async {
+    var attempts = 0;
+    var refreshes = 0;
+    await expectLater(
+      DynamicPricingService.loadSnapshot(
+        storeId: 'demo',
+        loader: (_) async {
+          attempts++;
+          return {...valid, 'smsPaymentMinor': 0};
+        },
+        refreshCredentials: () async => refreshes++,
+        retryDelay: (_) async {},
+      ),
+      throwsA(
+        isA<MessagingPricingUnavailable>().having(
+          (error) => error.code,
+          'code',
+          'invalid-pricing-response',
+        ),
+      ),
+    );
+    expect(attempts, 1);
+    expect(refreshes, 0);
   });
 }

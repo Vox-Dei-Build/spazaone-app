@@ -26,13 +26,23 @@ export const getMessagingPricingV1 = functions.https.onCall(
       return pricing.buyerSafeSnapshot;
     } catch (error) {
       if (error instanceof MessagingPricingUnavailableError) {
-        console.error("[MESSAGING PRICING] required pricing is unavailable");
+        console.error("[MESSAGING PRICING] required pricing is unavailable", {
+          surface: "messaging_pricing",
+          stage: "validation",
+          code: "INVALID_PRICING_CONFIGURATION",
+          retryOutcome: "not_applicable",
+        });
         throw new functions.https.HttpsError(
           "failed-precondition",
           "Messaging pricing is temporarily unavailable.",
         );
       }
-      console.error("[MESSAGING PRICING] pricing lookup failed", error);
+      console.error("[MESSAGING PRICING] pricing lookup failed", {
+        surface: "messaging_pricing",
+        stage: "remote_config_read",
+        code: "PRICING_PROVIDER_UNAVAILABLE",
+        retryOutcome: "exhausted",
+      });
       throw new functions.https.HttpsError(
         "unavailable",
         "Messaging pricing is temporarily unavailable.",

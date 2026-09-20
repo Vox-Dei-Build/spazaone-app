@@ -1,102 +1,249 @@
 import 'dart:convert';
-import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-import 'package:pasella/services/store_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pasella/config/function_endpoints.dart';
 import 'package:pasella/models/conversation/conversation_presentation.dart';
+import 'package:pasella/services/crash_service.dart';
+import 'package:pasella/services/secure_function_client.dart';
 
 class BotpressConversationException implements Exception {
-  const BotpressConversationException(this.code, this.message);
+  const BotpressConversationException(
+    this.code,
+    this.message, {
+    required this.stage,
+    this.retryOutcome = 'not_attempted',
+  });
 
   final String code;
   final String message;
+  final String stage;
+  final String retryOutcome;
 
   @override
   String toString() => message;
 }
 
+class BotpressConversationWarning {
+  const BotpressConversationWarning({
+    required this.code,
+    required this.message,
+    required this.stage,
+    this.skippedMessageCount = 0,
+  });
+
+  final String code;
+  final String message;
+  final String stage;
+  final int skippedMessageCount;
+}
+
+class BotpressConversationResult {
+  const BotpressConversationResult({
+    required this.messages,
+    this.warning,
+  });
+
+  final List<Map<String, dynamic>> messages;
+  final BotpressConversationWarning? warning;
+
+  String? get warningCode => warning?.code;
+  int get skippedMessageCount => warning?.skippedMessageCount ?? 0;
+}
+
+class _BotpressEnvelope {
+  const _BotpressEnvelope({
+    required this.messages,
+    this.notFound = false,
+    this.serverSkippedMessageCount = 0,
+    this.retryOutcome = 'not_needed',
+  });
+
+  final List<dynamic> messages;
+  final bool notFound;
+  final int serverSkippedMessageCount;
+  final String retryOutcome;
+}
+
 class BotpressService {
-  BotpressService._() : _http = http.Client();
+  BotpressService._(this._client, this._endpoint);
 
-  final http.Client _http;
-
-  static Uri get _endpoint => FunctionEndpoints.https('getBotpressMessages');
+  final SecureFunctionClient _client;
+  final Uri _endpoint;
 
   static Future<BotpressService> create() async {
-    return BotpressService._();
+    return BotpressService._(
+      SecureFunctionClient(),
+      FunctionEndpoints.https('getBotpressMessages'),
+    );
   }
 
-  void dispose() => _http.close();
+  @visibleForTesting
+  factory BotpressService.forTesting(
+    SecureFunctionClient client, {
+    Uri? endpoint,
+  }) {
+    return BotpressService._(
+      client,
+      endpoint ?? Uri.parse('https://example.test/getBotpressMessages'),
+    );
+  }
+
+  void dispose() => _client.close();
 
   /// Fetch mapped messages for a merchant-owned customer thread.
-  Future<List<Map<String, dynamic>>> fetchBotpressMessages({
+  Future<BotpressConversationResult> fetchBotpressMessages({
     required String customerId,
   }) async {
     try {
-      final raw = await _fetchMessages(customerId);
-      // Map to your app's message shape
-      return raw.map<Map<String, dynamic>>((msg) {
-        final payload = (msg['payload'] as Map?)?.cast<String, dynamic>() ??
-            const <String, dynamic>{};
-        final createdAtStr =
-            (msg['createdAt'] ?? msg['created_at'])?.toString();
-        final created = createdAtStr == null
-            ? DateTime.fromMillisecondsSinceEpoch(0)
-            : DateTime.tryParse(createdAtStr)?.toLocal() ??
-                DateTime.fromMillisecondsSinceEpoch(0);
+      final envelope = await _fetchMessages(customerId);
+      if (envelope.notFound) {
+        if (envelope.retryOutcome != 'not_needed') {
+          await _recordRetry(envelope.retryOutcome);
+        }
+        return const BotpressConversationResult(messages: []);
+      }
 
-        // PAS-AI-02: full Botpress payload coverage. Previously only `text` /
-        // `value` were extracted, so `card`, `carousel`, `choice`, `dropdown`,
-        // `markdown`, `bloc`, `location` payloads rendered as blank bubbles in
-        // the Connect tab. Merchants saw nothing when the bot replied to a
-        // menu selection with anything other than a plain `text` message.
-        final text = _renderPayloadText(payload);
+      final messages = <Map<String, dynamic>>[];
+      var skippedMessageCount = envelope.serverSkippedMessageCount;
+      for (final rawMessage in envelope.messages) {
+        if (rawMessage is! Map) {
+          skippedMessageCount++;
+          continue;
+        }
+        try {
+          messages.add(_mapMessage(Map<String, dynamic>.from(rawMessage)));
+        } catch (_) {
+          skippedMessageCount++;
+        }
+      }
 
-        // Media extraction (Botpress standardizes *Url keys); now also looks
-        // inside `bloc` items and `card` images.
-        final mediaUrl = _extractMediaUrl(payload);
-
-        final direction = _normalizeDirection(msg['direction']);
-        final tags = (msg['tags'] as Map?)?.cast<String, dynamic>() ?? const {};
-        final replyTo = tags['whatsapp:replyTo']?.toString();
-        final payloadType = payload['type']?.toString();
-        final presentation = ConversationPresentationV1.fromPayload(
-          payload,
-          fallbackText: text,
-          fallbackMediaUrl: mediaUrl,
+      BotpressConversationWarning? warning;
+      if (skippedMessageCount > 0) {
+        warning = BotpressConversationWarning(
+          code: 'BOTPRESS_MESSAGES_PARTIAL',
+          stage: 'mapping',
+          skippedMessageCount: skippedMessageCount,
+          message:
+              'Some bot messages could not be displayed. Other message history is still available.',
         );
-
-        return {
-          'id': msg['id'],
-          'message': text,
-          'dateSent': created,
-          'direction': direction, // 'inbound' | 'outbound'
-          'isWhatsApp': true,
-          'isSMS': false,
-          'isAI': direction == 'outbound',
-          'mediaUrl': mediaUrl,
-          'bpTags': tags, // 👈 keep raw tags if you want
-          'replyTo': replyTo, // 👈 convenience field
-          // PAS-AI-02: expose the structured payload + its type so the chat
-          // bubble can render menu options / cards instead of a blank string.
-          'payloadType': payloadType,
-          'payload': payload,
-          'presentationModel': presentation,
-        };
-      }).toList(growable: false);
-    } on BotpressConversationException {
-      rethrow;
+        await _recordFailure(
+          warning.code,
+          warning.stage,
+          skippedMessageCount: skippedMessageCount,
+          retryOutcome: envelope.retryOutcome,
+        );
+      } else if (envelope.retryOutcome != 'not_needed') {
+        await _recordRetry(envelope.retryOutcome);
+      }
+      return BotpressConversationResult(messages: messages, warning: warning);
+    } on BotpressConversationException catch (error, stack) {
+      await _recordFailure(
+        error.code,
+        error.stage,
+        stack: stack,
+        retryOutcome: error.retryOutcome,
+      );
+      return BotpressConversationResult(
+        messages: const [],
+        warning: BotpressConversationWarning(
+          code: error.code,
+          message: error.message,
+          stage: error.stage,
+        ),
+      );
     } catch (error, stack) {
-      // Structured, non-secret diagnostic; the ViewModel keeps Twilio and the
-      // Firestore truth surface visible while showing a human fallback.
-      // ignore: avoid_print
-      print('[botpress] MESSAGE_MAPPING_FAILED: $error\n$stack');
-      throw const BotpressConversationException(
-        'BOTPRESS_MESSAGE_MAPPING_FAILED',
-        'Bot conversation history could not be read. Other message history is still available.',
+      await _recordFailure(
+        'BOTPRESS_REQUEST_FAILED',
+        'unknown',
+        stack: stack,
+      );
+      return const BotpressConversationResult(
+        messages: [],
+        warning: BotpressConversationWarning(
+          code: 'BOTPRESS_REQUEST_FAILED',
+          stage: 'unknown',
+          message:
+              'Bot conversation history is temporarily unavailable. Retry to load it again.',
+        ),
       );
     }
+  }
+
+  Map<String, dynamic> _mapMessage(Map<String, dynamic> msg) {
+    final id = msg['id']?.toString().trim() ?? '';
+    if (id.isEmpty) throw const FormatException('message id missing');
+    final payload = _safeMap(msg['payload']);
+    final createdAtStr = (msg['createdAt'] ?? msg['created_at'])?.toString();
+    final created = createdAtStr == null
+        ? DateTime.fromMillisecondsSinceEpoch(0)
+        : DateTime.tryParse(createdAtStr)?.toLocal() ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+    final text = _renderPayloadText(payload);
+    final mediaUrl = _extractMediaUrl(payload);
+    final direction = _normalizeDirection(msg['direction']);
+    final tags = _safeMap(msg['tags']);
+    final replyTo = tags['whatsapp:replyTo']?.toString();
+    final payloadType = payload['type']?.toString();
+    final presentation = ConversationPresentationV1.fromPayload(
+      payload,
+      fallbackText: text,
+      fallbackMediaUrl: mediaUrl,
+    );
+
+    return {
+      'id': id,
+      'message': text,
+      'dateSent': created,
+      'direction': direction,
+      'isWhatsApp': true,
+      'isSMS': false,
+      'isAI': direction == 'outbound',
+      'mediaUrl': mediaUrl,
+      'bpTags': tags,
+      'replyTo': replyTo,
+      'payloadType': payloadType,
+      'payload': payload,
+      'presentationModel': presentation,
+    };
+  }
+
+  Map<String, dynamic> _safeMap(dynamic value) {
+    if (value is! Map) return const <String, dynamic>{};
+    return value.map<String, dynamic>(
+      (key, nested) => MapEntry(key.toString(), nested),
+    );
+  }
+
+  Future<void> _recordFailure(
+    String code,
+    String stage, {
+    StackTrace? stack,
+    int skippedMessageCount = 0,
+    String retryOutcome = 'not_attempted',
+  }) {
+    return CrashService.instance.recordNonFatal(
+      code,
+      stack,
+      reason: 'botpress conversation recovery',
+      context: {
+        'diagnostic_surface': 'botpress_conversation',
+        'diagnostic_code': code,
+        'diagnostic_stage': stage,
+        'diagnostic_retry_outcome': retryOutcome,
+        'botpress_skipped_count': skippedMessageCount,
+      },
+    );
+  }
+
+  Future<void> _recordRetry(String retryOutcome) {
+    return CrashService.instance.log(
+      'botpress conversation credential retry',
+      context: {
+        'diagnostic_surface': 'botpress_conversation',
+        'diagnostic_stage': 'credentials',
+        'diagnostic_code': 'BOTPRESS_CREDENTIAL_RETRY',
+        'diagnostic_retry_outcome': retryOutcome,
+      },
+    );
   }
 
   /// Renders a human-readable string for any Botpress chat payload type.
@@ -115,7 +262,7 @@ class BotpressService {
       // For choice/dropdown also append the labelled options so the merchant
       // can see what the bot actually offered the customer.
       if (type == 'choice' || type == 'dropdown') {
-        final options = (payload['options'] as List?) ?? const [];
+        final options = _safeList(payload['options']);
         if (options.isEmpty) return directText;
         final lines = <String>[directText];
         for (var i = 0; i < options.length; i++) {
@@ -142,17 +289,17 @@ class BotpressService {
       case 'card':
         return _renderCard(payload);
       case 'carousel':
-        final items = (payload['items'] as List?) ?? const [];
+        final items = _safeList(payload['items']);
         return items
             .whereType<Map>()
-            .map((c) => _renderCard(c.cast<String, dynamic>()))
+            .map((c) => _renderCard(_safeMap(c)))
             .where((s) => s.isNotEmpty)
             .join('\n\n');
       case 'bloc':
-        final items = (payload['items'] as List?) ?? const [];
+        final items = _safeList(payload['items']);
         return items
             .whereType<Map>()
-            .map((it) => _renderPayloadText(it.cast<String, dynamic>()))
+            .map((it) => _renderPayloadText(_safeMap(it)))
             .where((s) => s.isNotEmpty)
             .join('\n');
       case 'location':
@@ -167,25 +314,23 @@ class BotpressService {
         ];
         return parts.isEmpty ? '📍 Location shared' : '📍 ${parts.join(' · ')}';
       case 'image':
-        return (payload['title'] as String?)?.trim().isNotEmpty == true
-            ? payload['title'] as String
-            : '';
+        return _safeText(payload['title']);
       case 'audio':
         return '🎵 Audio message';
       case 'video':
         return '🎬 Video message';
       case 'file':
-        final title = (payload['title'] as String?)?.trim();
-        return (title?.isNotEmpty ?? false) ? '📎 $title' : '📎 File';
+        final title = _safeText(payload['title']);
+        return title.isNotEmpty ? '📎 $title' : '📎 File';
     }
 
     return '';
   }
 
   String _renderCard(Map<String, dynamic> card) {
-    final title = (card['title'] as String?)?.trim() ?? '';
-    final subtitle = (card['subtitle'] as String?)?.trim() ?? '';
-    final actions = (card['actions'] as List?) ?? const [];
+    final title = _safeText(card['title']);
+    final subtitle = _safeText(card['subtitle']);
+    final actions = _safeList(card['actions']);
     final lines = <String>[
       if (title.isNotEmpty) title,
       if (subtitle.isNotEmpty) subtitle,
@@ -213,10 +358,10 @@ class BotpressService {
       if (v is String && v.isNotEmpty) return v;
     }
     if (payload['type'] == 'bloc') {
-      final items = (payload['items'] as List?) ?? const [];
+      final items = _safeList(payload['items']);
       for (final it in items) {
         if (it is Map) {
-          final found = _extractMediaUrl(it.cast<String, dynamic>());
+          final found = _extractMediaUrl(_safeMap(it));
           if (found != null && found.isNotEmpty) return found;
         }
       }
@@ -224,29 +369,44 @@ class BotpressService {
     return null;
   }
 
-  Future<List<dynamic>> _fetchMessages(String customerId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    final idToken = await user?.getIdToken();
-    final appCheckToken = await FirebaseAppCheck.instance.getToken();
-    if (idToken == null ||
-        idToken.isEmpty ||
-        appCheckToken == null ||
-        appCheckToken.isEmpty) {
-      throw StateError('Verified merchant session required.');
-    }
+  List<dynamic> _safeList(dynamic value) =>
+      value is List ? value : const <dynamic>[];
 
-    final response = await _http.post(
-      _endpoint,
-      headers: {
-        'Authorization': 'Bearer $idToken',
-        'X-Firebase-AppCheck': appCheckToken,
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'customerId': customerId,
-        'storeId': StoreSession.instance.storeId,
-      }),
-    );
+  String _safeText(dynamic value) {
+    if (value is String) return value.trim();
+    if (value is num || value is bool) return value.toString();
+    return '';
+  }
+
+  Future<_BotpressEnvelope> _fetchMessages(String customerId) async {
+    final SecureFunctionResult request;
+    try {
+      request = await _client.postWithDiagnostics(
+        _endpoint,
+        {
+          'customerId': customerId,
+        },
+      );
+    } on SecureFunctionClientException catch (error) {
+      final isAppCheck = error.code.startsWith('app-check');
+      throw BotpressConversationException(
+        isAppCheck
+            ? 'BOTPRESS_APP_CHECK_UNAVAILABLE'
+            : 'BOTPRESS_AUTHENTICATION_UNAVAILABLE',
+        isAppCheck
+            ? 'This app could not be verified to load bot history. Retry or reopen the app.'
+            : 'Sign in again to load bot conversation history.',
+        stage: 'credentials',
+        retryOutcome: error.retryOutcome,
+      );
+    } catch (_) {
+      throw const BotpressConversationException(
+        'BOTPRESS_TRANSPORT_UNAVAILABLE',
+        'Bot conversation history is temporarily unavailable. Retry to load it again.',
+        stage: 'transport',
+      );
+    }
+    final response = request.response;
     if (response.statusCode != 200) {
       Map<String, dynamic> body = const {};
       try {
@@ -255,19 +415,68 @@ class BotpressService {
       final diagnostic = body['diagnostic'] is Map
           ? Map<String, dynamic>.from(body['diagnostic'] as Map)
           : const <String, dynamic>{};
+      final responseCode = body['code']?.toString() ??
+          diagnostic['code']?.toString() ??
+          'BOTPRESS_PROXY_UNAVAILABLE';
+      final isAppCheckFailure = responseCode.startsWith('APP_CHECK');
+      final isAuthenticationFailure =
+          responseCode.startsWith('AUTHENTICATION') ||
+              (response.statusCode == 401 && !isAppCheckFailure);
+      final isAuthorizationFailure = responseCode == 'ACCESS_DENIED' ||
+          responseCode == 'CUSTOMER_ACCESS_DENIED';
       throw BotpressConversationException(
-        diagnostic['code']?.toString() ?? 'BOTPRESS_PROXY_UNAVAILABLE',
-        'Bot conversation history is temporarily unavailable. Other message history is still shown.',
+        responseCode,
+        isAppCheckFailure
+            ? 'This app could not be verified to load bot history. Retry or reopen the app.'
+            : isAuthenticationFailure
+                ? 'Sign in again to load bot conversation history.'
+                : isAuthorizationFailure
+                    ? 'Bot conversation history is unavailable for this customer.'
+                    : 'Bot conversation history is temporarily unavailable. Retry to load it again.',
+        stage: isAppCheckFailure ||
+                isAuthenticationFailure ||
+                isAuthorizationFailure
+            ? 'credentials'
+            : 'transport',
+        retryOutcome: request.retryOutcome,
       );
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    late final Map<String, dynamic> body;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) throw const FormatException();
+      body = Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      throw BotpressConversationException(
+        'BOTPRESS_RESPONSE_INVALID',
+        'Bot conversation history could not be read. Retry to load it again.',
+        stage: 'response',
+        retryOutcome: request.retryOutcome,
+      );
+    }
     if (body['state'] == 'not_found') {
-      throw const BotpressConversationException(
-        'BOTPRESS_CONVERSATION_NOT_FOUND',
-        'No bot conversation was found for this customer. Other message history is still shown.',
+      return _BotpressEnvelope(
+        messages: const [],
+        notFound: true,
+        retryOutcome: request.retryOutcome,
       );
     }
-    return body['messages'] as List? ?? const [];
+    final messages = body['messages'];
+    if (messages is! List) {
+      throw BotpressConversationException(
+        'BOTPRESS_RESPONSE_INVALID',
+        'Bot conversation history could not be read. Retry to load it again.',
+        stage: 'response',
+        retryOutcome: request.retryOutcome,
+      );
+    }
+    final diagnostic = _safeMap(body['diagnostic']);
+    return _BotpressEnvelope(
+      messages: messages,
+      serverSkippedMessageCount:
+          (diagnostic['skippedMessageCount'] as num?)?.toInt() ?? 0,
+      retryOutcome: request.retryOutcome,
+    );
   }
 
   String _normalizeDirection(dynamic d) {

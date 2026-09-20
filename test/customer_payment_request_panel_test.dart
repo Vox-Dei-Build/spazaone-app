@@ -11,6 +11,7 @@ class _FakeGateway implements CustomerPaymentRequestGateway {
   _FakeGateway(this.overview);
 
   final CustomerPaymentRequestOverview overview;
+  int sendCalls = 0;
 
   @override
   Future<CustomerPaymentRequestOverview> getOverview({
@@ -26,11 +27,13 @@ class _FakeGateway implements CustomerPaymentRequestGateway {
     required String quoteKey,
     required String pricingVersion,
     required String idempotencyKey,
-  }) async =>
-      const CustomerPaymentRequestSendResult(
-        requestId: 'cpr_test',
-        status: 'queued',
-      );
+  }) async {
+    sendCalls++;
+    return const CustomerPaymentRequestSendResult(
+      requestId: 'cpr_test',
+      status: 'queued',
+    );
+  }
 
   @override
   Future<CustomerPaymentRequestStatus> getStatus({
@@ -53,6 +56,7 @@ class _FailingGateway implements CustomerPaymentRequestGateway {
     required String customerId,
   }) =>
       throw const CustomerPaymentRequestException(
+        'app-check-unavailable',
         'Payment requests are temporarily unavailable.',
       );
 
@@ -69,6 +73,27 @@ class _FailingGateway implements CustomerPaymentRequestGateway {
     required String idempotencyKey,
   }) =>
       throw UnimplementedError();
+}
+
+class _RecoveringGateway extends _FakeGateway {
+  _RecoveringGateway(super.overview);
+
+  int overviewCalls = 0;
+
+  @override
+  Future<CustomerPaymentRequestOverview> getOverview({
+    required String merchantId,
+    required String customerId,
+  }) async {
+    overviewCalls++;
+    if (overviewCalls == 1) {
+      throw const CustomerPaymentRequestException(
+        'app-check-unavailable',
+        'Payment requests are temporarily unavailable.',
+      );
+    }
+    return overview;
+  }
 }
 
 class _FakeRepaymentPlanGateway implements RepaymentPlanGateway {
@@ -316,6 +341,41 @@ void main() {
       find.text('Payment requests are temporarily unavailable.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('retry recovers payment pricing without sending a request',
+      (tester) async {
+    final gateway = _RecoveringGateway(_overview());
+    await tester.pumpWidget(
+      _app(overview: _overview(), gateway: gateway),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Try again'), findsOneWidget);
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Request payment'), findsOneWidget);
+    expect(gateway.overviewCalls, 2);
+    expect(gateway.sendCalls, 0);
+  });
+
+  testWidgets('persistent payment pricing failure keeps the request unsent',
+      (tester) async {
+    final gateway = _FakeGateway(
+      _overview(canRequest: false, reason: 'pricing_unavailable'),
+    );
+    await tester.pumpWidget(
+      _app(overview: gateway.overview, gateway: gateway),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Try again'), findsOneWidget);
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Try again'), findsOneWidget);
+    expect(gateway.sendCalls, 0);
   });
 
   testWidgets('confirmation remains scrollable at large text', (tester) async {

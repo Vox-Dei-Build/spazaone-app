@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { isAxiosError } from "axios";
 import { randomUUID } from "crypto";
 import { db, functions } from "../config/main";
 import { authenticateFirebaseRequest } from "../security/requestAuth";
@@ -8,12 +8,147 @@ import { assertStoreAccess, requireStoreId } from "../stores/storeAccess";
 const BOTPRESS_HOST = "https://api.botpress.cloud";
 const DEFAULT_BOT_ID = "402deb8c-c6b2-45d3-85ce-d090b99e25b0";
 
-type BotpressMessagesResponse = {
-  data?: {
-    messages?: unknown[];
-    meta?: { nextToken?: string };
-  };
+type JsonRecord = Record<string, unknown>;
+
+export type SanitizedBotpressMessages = {
+  messages: JsonRecord[];
+  skippedMessageCount: number;
+  sanitizedMessageCount: number;
 };
+
+const jsonRecord = (value: unknown): JsonRecord | null =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : null;
+
+const safeDisplayString = (value: unknown): string | undefined => {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
+};
+
+export function parseBotpressProviderPage(
+  value: unknown,
+  collectionKey: "conversations" | "messages",
+): { items: unknown[]; nextToken?: string } {
+  const page = jsonRecord(value);
+  if (!page || !Array.isArray(page[collectionKey])) {
+    throw new Error("BOTPRESS_PROVIDER_CONTRACT_INVALID");
+  }
+  const meta = jsonRecord(page.meta);
+  return {
+    items: page[collectionKey] as unknown[],
+    nextToken: safeDisplayString(meta?.nextToken),
+  };
+}
+
+function sanitizeAction(value: unknown): JsonRecord | null {
+  const action = jsonRecord(value);
+  if (!action) return null;
+  const sanitized: JsonRecord = { ...action };
+  for (const key of ["label", "value", "title", "text", "description"]) {
+    if (!(key in sanitized)) continue;
+    const display = safeDisplayString(sanitized[key]);
+    if (display === undefined) delete sanitized[key];
+    else sanitized[key] = display;
+  }
+  return sanitized;
+}
+
+function sanitizePayload(value: unknown): JsonRecord {
+  const payload = jsonRecord(value);
+  if (!payload) return {};
+  const sanitized: JsonRecord = { ...payload };
+
+  for (const key of [
+    "type",
+    "kind",
+    "text",
+    "markdown",
+    "caption",
+    "value",
+    "title",
+    "subtitle",
+    "description",
+    "address",
+    "footer",
+    "buttonLabel",
+    "fileName",
+    "imageUrl",
+    "audioUrl",
+    "videoUrl",
+    "fileUrl",
+    "mediaUrl",
+  ]) {
+    if (!(key in sanitized)) continue;
+    const display = safeDisplayString(sanitized[key]);
+    if (display === undefined) delete sanitized[key];
+    else sanitized[key] = display;
+  }
+
+  for (const key of ["options", "actions", "buttons", "rows"]) {
+    if (!(key in sanitized)) continue;
+    sanitized[key] = Array.isArray(sanitized[key])
+      ? (sanitized[key] as unknown[])
+          .map(sanitizeAction)
+          .filter((entry): entry is JsonRecord => entry !== null)
+      : [];
+  }
+
+  for (const key of ["items", "cards", "sections"]) {
+    if (!(key in sanitized)) continue;
+    sanitized[key] = Array.isArray(sanitized[key])
+      ? (sanitized[key] as unknown[])
+          .map((entry) => {
+            const record = jsonRecord(entry);
+            return record ? sanitizePayload(record) : null;
+          })
+          .filter((entry): entry is JsonRecord => entry !== null)
+      : [];
+  }
+
+  return sanitized;
+}
+
+/**
+ * Produces the narrow response contract consumed by released Flutter clients.
+ * A malformed provider record is isolated instead of poisoning the full page.
+ */
+export function sanitizeBotpressMessages(
+  values: readonly unknown[],
+): SanitizedBotpressMessages {
+  const messages: JsonRecord[] = [];
+  let skippedMessageCount = 0;
+  let sanitizedMessageCount = 0;
+
+  for (const value of values) {
+    const message = jsonRecord(value);
+    if (!message) {
+      skippedMessageCount += 1;
+      continue;
+    }
+    const id = safeDisplayString(message.id)?.trim();
+    if (!id) {
+      skippedMessageCount += 1;
+      continue;
+    }
+    const payload = sanitizePayload(message.payload);
+    const tags = jsonRecord(message.tags) ?? {};
+    if (!jsonRecord(message.payload) || !jsonRecord(message.tags)) {
+      sanitizedMessageCount += 1;
+    }
+    messages.push({
+      id,
+      payload,
+      createdAt: safeDisplayString(message.createdAt ?? message.created_at),
+      direction: safeDisplayString(message.direction),
+      tags,
+    });
+  }
+  return { messages, skippedMessageCount, sanitizedMessageCount };
+}
 
 const normalizedDigits = (raw: unknown): string =>
   formatPhoneNumber(String(raw ?? "")).replace(/\D/g, "");
@@ -33,7 +168,10 @@ export const getBotpressMessages = functions
       return;
     }
     if (req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed." });
+      res.status(405).json({
+        error: "Method not allowed.",
+        code: "METHOD_NOT_ALLOWED",
+      });
       return;
     }
 
@@ -47,13 +185,16 @@ export const getBotpressMessages = functions
       merchantId = requireStoreId(req.body?.storeId ?? authenticatedUid);
       await assertStoreAccess(authenticatedUid, merchantId);
     } catch (error) {
-      res.status(403).json({ error: "Access denied." });
+      res.status(403).json({ error: "Access denied.", code: "ACCESS_DENIED" });
       return;
     }
 
     const customerId = String(req.body?.customerId ?? "").trim();
     if (!customerId) {
-      res.status(400).json({ error: "customerId is required." });
+      res.status(400).json({
+        error: "customerId is required.",
+        code: "INVALID_ARGUMENT",
+      });
       return;
     }
 
@@ -65,7 +206,10 @@ export const getBotpressMessages = functions
       .get();
     const customerNumber = normalizedDigits(customer.data()?.number);
     if (!customer.exists || !customerNumber) {
-      res.status(403).json({ error: "Customer access could not be verified." });
+      res.status(403).json({
+        error: "Customer access could not be verified.",
+        code: "CUSTOMER_ACCESS_DENIED",
+      });
       return;
     }
 
@@ -102,23 +246,35 @@ export const getBotpressMessages = functions
             timeout: 10_000,
           },
         );
-        const conversations = Array.isArray(response.data?.conversations)
-          ? response.data.conversations
-          : [];
+        const providerPage = parseBotpressProviderPage(
+          response.data,
+          "conversations",
+        );
+        const conversations = providerPage.items;
         conversationPages += 1;
         conversationsScanned += conversations.length;
-        const match = conversations.find(
-          (conversation: { id?: string; tags?: Record<string, unknown> }) =>
-            normalizedDigits(conversation.tags?.["whatsapp:userPhone"]) ===
-            customerNumber,
-        );
-        conversationId = match?.id ?? null;
-        nextToken = response.data?.meta?.nextToken;
+        const match = conversations
+          .map(jsonRecord)
+          .filter((conversation): conversation is JsonRecord =>
+            Boolean(conversation),
+          )
+          .find((conversation) => {
+            const tags = jsonRecord(conversation.tags);
+            return (
+              normalizedDigits(tags?.["whatsapp:userPhone"]) === customerNumber
+            );
+          });
+        conversationId = safeDisplayString(match?.id) ?? null;
+        nextToken = providerPage.nextToken;
         if (!nextToken) break;
       }
 
       if (!conversationId) {
         console.info("[getBotpressMessages] conversation not found", {
+          surface: "botpress_conversation",
+          stage: "provider_lookup",
+          code: "BOTPRESS_CONVERSATION_NOT_FOUND",
+          retryOutcome: "not_applicable",
           requestId,
           conversationPages,
           conversationsScanned,
@@ -140,47 +296,27 @@ export const getBotpressMessages = functions
       nextToken = undefined;
       let messagePages = 0;
       for (let page = 0; page < 20; page += 1) {
-        const response: BotpressMessagesResponse = await axios.get(
-          `${BOTPRESS_HOST}/v1/chat/messages`,
-          {
-            headers,
-            params: {
-              conversationId,
-              ...(nextToken ? { nextToken } : {}),
-            },
-            timeout: 10_000,
+        const response = await axios.get(`${BOTPRESS_HOST}/v1/chat/messages`, {
+          headers,
+          params: {
+            conversationId,
+            ...(nextToken ? { nextToken } : {}),
           },
+          timeout: 10_000,
+        });
+        const providerPage = parseBotpressProviderPage(
+          response.data,
+          "messages",
         );
-        const responseData = response.data ?? {};
-        const pageMessages = Array.isArray(responseData.messages)
-          ? responseData.messages
-          : [];
         messagePages += 1;
-        messages.push(
-          ...pageMessages.map((message) => {
-            const value = message as {
-              id?: string;
-              payload?: unknown;
-              createdAt?: unknown;
-              created_at?: unknown;
-              direction?: unknown;
-              tags?: unknown;
-            };
-            return {
-              id: value.id,
-              payload: value.payload,
-              createdAt: value.createdAt ?? value.created_at,
-              direction: value.direction,
-              tags: value.tags,
-            };
-          }),
-        );
-        nextToken = responseData.meta?.nextToken;
+        messages.push(...providerPage.items);
+        nextToken = providerPage.nextToken;
         if (!nextToken) break;
       }
 
+      const sanitized = sanitizeBotpressMessages(messages);
       res.status(200).json({
-        messages,
+        messages: sanitized.messages,
         state: "ok",
         diagnostic: {
           code: "BOTPRESS_MESSAGES_FETCHED",
@@ -188,12 +324,18 @@ export const getBotpressMessages = functions
           conversationPages,
           conversationsScanned,
           messagePages,
-          messageCount: messages.length,
+          messageCount: sanitized.messages.length,
+          skippedMessageCount: sanitized.skippedMessageCount,
+          sanitizedMessageCount: sanitized.sanitizedMessageCount,
         },
       });
     } catch (error) {
-      const status = axios.isAxiosError(error) ? error.response?.status : null;
+      const status = isAxiosError(error) ? error.response?.status : null;
       console.error("[getBotpressMessages] provider request failed", {
+        surface: "botpress_conversation",
+        stage: "provider_transport",
+        code: "BOTPRESS_PROVIDER_UNAVAILABLE",
+        retryOutcome: "not_applicable",
         requestId,
         status,
       });

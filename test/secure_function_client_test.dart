@@ -52,9 +52,11 @@ void main() {
       storeIdProvider: () => 'store-a',
     );
 
-    final response = await client.post(endpoint, const {});
+    final result = await client.postWithDiagnostics(endpoint, const {});
+    final response = result.response;
 
     expect(response.statusCode, 200);
+    expect(result.retryOutcome, 'credentials_refreshed');
     expect(delayCalls, 1);
     expect(captured.headers['authorization'], 'Bearer refreshed-id-token');
     expect(
@@ -80,9 +82,11 @@ void main() {
       storeIdProvider: () => 'store-a',
     );
 
-    final response = await client.post(endpoint, const {});
+    final result = await client.postWithDiagnostics(endpoint, const {});
+    final response = result.response;
 
     expect(response.statusCode, 200);
+    expect(result.retryOutcome, 'recovered');
     expect(captured, hasLength(2));
     expect(captured.first.headers['authorization'], 'Bearer cached-id-token');
     expect(captured.last.headers['authorization'], 'Bearer refreshed-id-token');

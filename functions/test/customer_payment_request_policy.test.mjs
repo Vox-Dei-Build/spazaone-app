@@ -142,3 +142,20 @@ test("sends proactive payment requests through approved Twilio Content", () => {
   assert.match(dispatch, /contentVariables:\s*JSON\.stringify/);
   assert.doesNotMatch(dispatch, /BOTPRESS_PAYMENT_REQUEST_WEBHOOK_URL/);
 });
+
+test("pricing failure stops before reservation or delivery", () => {
+  const source = readFileSync(
+    new URL("../src/payments/v2/customerPaymentRequests.ts", import.meta.url),
+    "utf8",
+  );
+  const start = source.indexOf("export const sendCustomerPaymentRequestV1");
+  const end = source.indexOf("async function settleReservation", start);
+  const send = source.slice(start, end);
+  const pricingGuard = send.indexOf('throw new Error("PRICING_UNAVAILABLE")');
+  const reservation = send.indexOf("await reserveCustomerPaymentRequest");
+  const dispatch = send.indexOf("await dispatchCustomerPaymentRequest");
+
+  assert.ok(pricingGuard >= 0);
+  assert.ok(pricingGuard < reservation);
+  assert.ok(reservation < dispatch);
+});

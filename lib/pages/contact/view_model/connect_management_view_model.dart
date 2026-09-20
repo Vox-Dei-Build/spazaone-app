@@ -250,16 +250,13 @@ class ConnectManagementViewModel {
 
   Future<List<Map<String, dynamic>>> _fetchBotpressSafely() async {
     try {
-      final messages = await _botpress.fetchBotpressMessages(
+      final result = await _botpress.fetchBotpressMessages(
         customerId: customerId,
       );
-      if (!isDisposed) conversationWarningNotifier.value = null;
-      return messages;
-    } on BotpressConversationException catch (error) {
-      if (!isDisposed) conversationWarningNotifier.value = error.message;
-      // ignore: avoid_print
-      print('[botpress] ${error.code}');
-      return const [];
+      if (!isDisposed) {
+        conversationWarningNotifier.value = result.warning?.message;
+      }
+      return result.messages;
     } catch (_) {
       if (!isDisposed) {
         conversationWarningNotifier.value =
@@ -268,6 +265,8 @@ class ConnectManagementViewModel {
       return const [];
     }
   }
+
+  Future<void> retryConversationHistory() => _fetchMessages();
 
   DateTime? _asDate(dynamic v) {
     if (v == null) return null;

@@ -1,6 +1,8 @@
 # Firebase App Check — Activation Backlog
 
-**Status:** Development rollout active; production enforcement intentionally pending.
+**Status:** Development rollout active; security-sensitive production HTTP
+endpoints enforce App Check. Broader Firebase-service enforcement remains a
+separate release gate.
 **Owner:** Engineering/Security release gate
 **Priority:** release evidence and production hardening.
 
@@ -40,6 +42,33 @@ them.
   Mitigated for `getCustomerOrders` by the retry in
   `lib/pages/ecommerce/orders_management/data/orders_repository.dart`,
   but the underlying cause is still here.
+
+## Production Android registration audit — 20 September 2026
+
+Read-only Firebase CLI checks, using the registered Spaza One operational
+account, verified the following in `pasella-ledger`:
+
+- the Firebase Android app exists for package `com.tsepo.pasella` with app ID
+  `1:716158514645:android:a4f2b4756aafcebbe5795c`;
+- three SHA-256 certificate fingerprints are registered for that Android app;
+- production release code activates `AndroidProvider.playIntegrity`; and
+- the security-sensitive Botpress and customer-payment HTTP endpoints require
+  App Check and keep enforcement enabled.
+
+The Firebase CLI does not expose the Play Integrity provider's Google Play
+link, the Play App Signing certificate label, or the Play-only
+recognition/licensing toggles. Therefore the registered fingerprints alone do
+not prove that one is the current Play App Signing SHA-256. Before a Play-signed
+internal verification build, an authorized operator must confirm in the
+Firebase and Play consoles that:
+
+1. Play Integrity for `com.tsepo.pasella` is linked to `pasella-ledger`.
+2. The current Play App Signing SHA-256 exactly matches a Firebase App Check
+   registration.
+3. Play-only recognition and licensing settings match the approved release
+   policy.
+
+No production configuration was changed during this audit.
 
 ## Rollout plan
 

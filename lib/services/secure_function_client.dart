@@ -10,6 +10,29 @@ typedef SecureAppCheckTokenProvider = Future<String?> Function();
 typedef SecureRetryDelay = Future<void> Function(Duration duration);
 typedef SecureStoreIdProvider = String Function();
 
+class SecureFunctionClientException implements Exception {
+  const SecureFunctionClientException({
+    required this.code,
+    required this.retryOutcome,
+  });
+
+  final String code;
+  final String retryOutcome;
+
+  @override
+  String toString() => 'Secure function request unavailable.';
+}
+
+class SecureFunctionResult {
+  const SecureFunctionResult({
+    required this.response,
+    required this.retryOutcome,
+  });
+
+  final http.Response response;
+  final String retryOutcome;
+}
+
 class SecureFunctionClient {
   SecureFunctionClient({
     http.Client? httpClient,
@@ -51,18 +74,35 @@ class SecureFunctionClient {
   final SecureRetryDelay _retryDelay;
   final SecureStoreIdProvider _storeIdProvider;
 
+  void close() => _httpClient.close();
+
   Future<http.Response> post(
+    Uri endpoint,
+    Map<String, dynamic> payload,
+  ) async =>
+      (await postWithDiagnostics(endpoint, payload)).response;
+
+  Future<SecureFunctionResult> postWithDiagnostics(
     Uri endpoint,
     Map<String, dynamic> payload,
   ) async {
     _SecureFunctionTokens tokens;
+    var retryOutcome = 'not_needed';
     try {
       tokens = await _loadTokens(forceRefresh: false);
-    } catch (_) {
+    } on SecureFunctionClientException {
       // Play Integrity/App Check can still be warming up immediately after a
       // cold start. Retry once with fresh credentials before failing closed.
       await _retryDelay(const Duration(milliseconds: 300));
-      tokens = await _loadTokens(forceRefresh: true);
+      try {
+        tokens = await _loadTokens(forceRefresh: true);
+        retryOutcome = 'credentials_refreshed';
+      } on SecureFunctionClientException catch (error) {
+        throw SecureFunctionClientException(
+          code: error.code,
+          retryOutcome: 'exhausted',
+        );
+      }
     }
 
     var response = await _send(endpoint, payload, tokens);
@@ -70,25 +110,59 @@ class SecureFunctionClient {
       // A cached credential can expire between acquisition and server-side
       // verification. Replay only authentication failures, never provider or
       // business-rule failures that could represent a financial attempt.
-      tokens = await _loadTokens(forceRefresh: true);
+      try {
+        tokens = await _loadTokens(forceRefresh: true);
+      } on SecureFunctionClientException catch (error) {
+        throw SecureFunctionClientException(
+          code: error.code,
+          retryOutcome: 'exhausted',
+        );
+      }
       response = await _send(endpoint, payload, tokens);
+      retryOutcome = _isCredentialFailure(response) ? 'exhausted' : 'recovered';
     }
-    return response;
+    return SecureFunctionResult(
+      response: response,
+      retryOutcome: retryOutcome,
+    );
   }
 
   Future<_SecureFunctionTokens> _loadTokens({
     required bool forceRefresh,
   }) async {
-    final idToken =
-        await (forceRefresh ? _refreshedIdTokenProvider() : _idTokenProvider());
-    if (idToken == null || idToken.isEmpty) {
-      throw StateError('A signed-in merchant is required.');
+    final String? idToken;
+    try {
+      idToken = await (forceRefresh
+          ? _refreshedIdTokenProvider()
+          : _idTokenProvider());
+    } catch (_) {
+      throw const SecureFunctionClientException(
+        code: 'authentication-unavailable',
+        retryOutcome: 'not_attempted',
+      );
     }
-    final appCheckToken = await (forceRefresh
-        ? _refreshedAppCheckTokenProvider()
-        : _appCheckTokenProvider());
+    if (idToken == null || idToken.isEmpty) {
+      throw const SecureFunctionClientException(
+        code: 'authentication-required',
+        retryOutcome: 'not_attempted',
+      );
+    }
+    final String? appCheckToken;
+    try {
+      appCheckToken = await (forceRefresh
+          ? _refreshedAppCheckTokenProvider()
+          : _appCheckTokenProvider());
+    } catch (_) {
+      throw const SecureFunctionClientException(
+        code: 'app-check-unavailable',
+        retryOutcome: 'not_attempted',
+      );
+    }
     if (appCheckToken == null || appCheckToken.isEmpty) {
-      throw StateError('App verification is required.');
+      throw const SecureFunctionClientException(
+        code: 'app-check-required',
+        retryOutcome: 'not_attempted',
+      );
     }
 
     return _SecureFunctionTokens(idToken, appCheckToken);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  loadMessagingPricingSnapshotV1,
   MessagingPricingUnavailableError,
   messagingPricingSnapshotV1,
 } from "../lib/services/dynamic_pricing_service.js";
@@ -63,3 +64,58 @@ for (const [name, override] of [
     );
   });
 }
+
+test("messaging pricing retries one transient template read", async () => {
+  let attempts = 0;
+  let delays = 0;
+  const snapshot = await loadMessagingPricingSnapshotV1(
+    async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("temporary provider failure");
+      return { parameters: parameters() };
+    },
+    async () => {
+      delays += 1;
+    },
+  );
+
+  assert.equal(attempts, 2);
+  assert.equal(delays, 1);
+  assert.equal(snapshot.smsPaymentMinor, 174);
+});
+
+test("messaging pricing does not retry an invalid fetched template", async () => {
+  let attempts = 0;
+  await assert.rejects(
+    loadMessagingPricingSnapshotV1(
+      async () => {
+        attempts += 1;
+        return {
+          parameters: parameters({ ...values, USD_SMS_PAYMENT_PRICE: "0" }),
+        };
+      },
+      async () => assert.fail("invalid pricing must not be retried"),
+    ),
+    MessagingPricingUnavailableError,
+  );
+  assert.equal(attempts, 1);
+});
+
+test("messaging pricing stops after one failed provider retry", async () => {
+  let attempts = 0;
+  let delays = 0;
+  await assert.rejects(
+    loadMessagingPricingSnapshotV1(
+      async () => {
+        attempts += 1;
+        throw new Error("provider unavailable");
+      },
+      async () => {
+        delays += 1;
+      },
+    ),
+    /provider unavailable/,
+  );
+  assert.equal(attempts, 2);
+  assert.equal(delays, 1);
+});

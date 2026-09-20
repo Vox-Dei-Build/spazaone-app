@@ -5,6 +5,12 @@ export type RemoteConfigTemplateLike = {
   parameterGroups?: Record<string, { parameters?: Record<string, unknown> }>;
 };
 
+export type MessagingPricingTemplateLoader =
+  () => Promise<RemoteConfigTemplateLike>;
+export type MessagingPricingRetryDelay = (
+  milliseconds: number,
+) => Promise<void>;
+
 export type MessagingPricingSnapshotV1 = {
   schemaVersion: 1;
   currency: "ZAR";
@@ -101,17 +107,64 @@ export function messagingPricingSnapshotV1(
   };
 }
 
+/**
+ * Loads the Remote Config template with one bounded retry, then validates it.
+ *
+ * Only provider-read failures are retried. A template that was fetched but is
+ * missing or contains invalid rates fails closed immediately so a bad pricing
+ * configuration is never treated as a transient networking problem.
+ */
+export async function loadMessagingPricingSnapshotV1(
+  loadTemplate: MessagingPricingTemplateLoader,
+  retryDelay: MessagingPricingRetryDelay = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds)),
+): Promise<MessagingPricingSnapshotV1> {
+  let template: RemoteConfigTemplateLike;
+  try {
+    template = await loadTemplate();
+  } catch (_) {
+    console.warn("[MESSAGING PRICING] template read retry", {
+      surface: "messaging_pricing",
+      stage: "remote_config_read",
+      code: "PRICING_PROVIDER_UNAVAILABLE",
+      attempt: 1,
+      retryOutcome: "started",
+    });
+    await retryDelay(250);
+    try {
+      template = await loadTemplate();
+      console.info("[MESSAGING PRICING] template read recovered", {
+        surface: "messaging_pricing",
+        stage: "remote_config_read",
+        code: "PRICING_PROVIDER_UNAVAILABLE",
+        retryOutcome: "recovered",
+      });
+    } catch (error) {
+      console.warn("[MESSAGING PRICING] template read unavailable", {
+        surface: "messaging_pricing",
+        stage: "remote_config_read",
+        code: "PRICING_PROVIDER_UNAVAILABLE",
+        retryOutcome: "exhausted",
+      });
+      throw error;
+    }
+  }
+  return messagingPricingSnapshotV1(template);
+}
+
 /** Server-side pricing authority shared by send paths and the app projection. */
 export class DynamicPricingService {
   private readonly snapshot: MessagingPricingSnapshotV1;
 
-  private constructor(template: admin.remoteConfig.RemoteConfigTemplate) {
-    this.snapshot = messagingPricingSnapshotV1(template);
+  private constructor(snapshot: MessagingPricingSnapshotV1) {
+    this.snapshot = snapshot;
   }
 
   static async initialize(): Promise<DynamicPricingService> {
-    const template = await admin.remoteConfig().getTemplate();
-    return new DynamicPricingService(template);
+    const snapshot = await loadMessagingPricingSnapshotV1(() =>
+      admin.remoteConfig().getTemplate(),
+    );
+    return new DynamicPricingService(snapshot);
   }
 
   get buyerSafeSnapshot(): MessagingPricingSnapshotV1 {

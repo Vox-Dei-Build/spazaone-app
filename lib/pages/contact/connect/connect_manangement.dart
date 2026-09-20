@@ -5,6 +5,58 @@ import 'package:pasella/pages/contact/view_model/connect_management_view_model.d
 import 'package:pasella/providers/customer_balance_summary_provider.dart';
 import 'package:pasella/shared/widgets/spaza_shimmer.dart';
 
+class ConversationHistoryWarningBanner extends StatelessWidget {
+  const ConversationHistoryWarningBanner({
+    super.key,
+    required this.warning,
+    required this.onRetry,
+  });
+
+  final String warning;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.orange.shade50,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 18,
+              color: Colors.orange.shade900,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                warning,
+                style: TextStyle(
+                  color: Colors.orange.shade900,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            TextButton(
+              key: const Key('customer-message-history-retry'),
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.orange.shade900,
+                minimumSize: const Size(48, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ConnectManagementPage extends StatefulWidget {
   final String customerId;
   final String? profileImageUrl;
@@ -84,31 +136,10 @@ class _ConnectManagementPageState extends State<ConnectManagementPage> {
                     if (warning == null || warning.isEmpty) {
                       return const SizedBox.shrink();
                     }
-                    return Material(
-                      color: Colors.orange.shade50,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 18,
-                              color: Colors.orange.shade900,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                warning,
-                                style: TextStyle(
-                                  color: Colors.orange.shade900,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    return ConversationHistoryWarningBanner(
+                      warning: warning,
+                      onRetry:
+                          connectManagementViewModel.retryConversationHistory,
                     );
                   },
                 ),
